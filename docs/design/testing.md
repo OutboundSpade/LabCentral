@@ -25,6 +25,8 @@ Phase 0 executable catalogs are:
 - Renderer, job, provider, and security catalogs under [`design/contracts/`](../../design/contracts/).
 - [`tools/verify_phase0.py`](../../tools/verify_phase0.py), which validates the catalogs, examples/manifests, canonical digests, Buf format/lint/breaking, links, and state consistency without running provider code.
 
+The Go renderer is executable: `go test ./...` runs the strict parser and schema corpus, every `TEST-RENDER-*` contract mapping, deterministic example renders, graph ordering/cycles, bounded CEL evaluation, and native RFC 8785 vectors. `go test -race ./...` and `go vet ./...` are required before a renderer milestone is recorded complete.
+
 ## Release gates
 
 The design-only Phase 0 exit is satisfied when examples validate against the executable schema, canonical vectors are stable, the plugin protocol passes compatibility checks, the fake-provider contract catalog covers failure windows, the threat model has owner/test mapping, and the verifier passes. This means implementation-ready, not that the future Go fake provider or database adapters already pass runtime tests. Provider releases require the implemented shared contract suite, target-specific integration tier, least-privilege credential documentation, capability evidence tests, cleanup/orphan tests, and upgrade/state-migration rehearsal.

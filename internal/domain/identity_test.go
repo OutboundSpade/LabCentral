@@ -10,6 +10,9 @@ func TestOpaqueIDValidation(t *testing.T) {
 	if _, err := NewLogicalResourceID("network.red"); err != nil {
 		t.Fatalf("qualified logical resource ID rejected: %v", err)
 	}
+	if _, err := NewLogicalResourceID("container.loadgen[one]"); err != nil {
+		t.Fatalf("stable expanded logical resource ID rejected: %v", err)
+	}
 	for _, invalid := range []string{"", "contains space", "/absolute"} {
 		if _, err := NewInstanceID(invalid); err == nil {
 			t.Fatalf("invalid ID accepted: %q", invalid)

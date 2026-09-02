@@ -42,8 +42,9 @@ type SHA256Digest string
 type ByteQuantity uint64
 
 var (
-	opaqueIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-	namePattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+	opaqueIDPattern          = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	logicalResourceIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}\.[a-z][a-z0-9-]{0,62}(\[[A-Za-z0-9._-]{1,128}\])?$`)
+	namePattern              = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 )
 
 func validateOpaqueID(kind, value string) error {
@@ -86,7 +87,14 @@ func NewInstanceID(value string) (InstanceID, error) {
 }
 
 func NewLogicalResourceID(value string) (LogicalResourceID, error) {
-	return LogicalResourceID(value), validateOpaqueID("logical resource ID", value)
+	return LogicalResourceID(value), validateLogicalResourceID(value)
+}
+
+func validateLogicalResourceID(value string) error {
+	if !logicalResourceIDPattern.MatchString(value) {
+		return fmt.Errorf("logical resource ID must be a qualified canonical resource key")
+	}
+	return nil
 }
 
 func NewOperationID(value string) (OperationID, error) {

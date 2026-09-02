@@ -1,11 +1,12 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T03:53:53Z"
+verifiedAt: "2026-09-02T04:32:51Z"
 result: pass
-scope: TASK-DOMAIN-001
+scope: foundation_through_TASK-RENDER-001
 toolchain:
   go: "1.27.1"
 commands:
-  - go test ./...
+  - go test -count=1 ./...
+  - go test -race -count=1 ./...
   - go vet ./...
 checks:
   - typed_identity_and_digest_validation
@@ -15,5 +16,12 @@ checks:
   - provider_state_ownership_and_size
   - ephemeral_secret_redaction
   - recursive_import_boundaries
+  - bounded_strict_yaml_parser
+  - draft_2020_12_author_schema
+  - typed_input_and_component_expansion
+  - bounded_cel_environment
+  - typed_reference_graph_and_reverse_destroy_order
+  - rfc_8785_canonical_bytes_and_framed_digests
+  - deterministic_example_and_render_contract_fixtures
 notes:
   - No runtime service, database adapter, provider, or lab workload was started.

@@ -283,6 +283,16 @@ def verify_contract_catalogs() -> None:
     tests = collect_test_ids()
     provider = load_yaml(ROOT / "design/contracts/provider-conformance.yaml")
     assert len(provider["requiredCases"]) >= 18, "provider suite lost required failure coverage"
+    rendering = load_yaml(ROOT / "design/contracts/rendering-cases.yaml")
+    go_test_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in ROOT.glob("internal/**/*_test.go")
+    )
+    for case in rendering["cases"]:
+        go_test = case.get("goTest")
+        assert go_test, f"rendering case has no Go test binding: {case['id']}"
+        assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+            f"rendering case references missing Go test: {case['id']}: {go_test}"
+        )
     security = load_yaml(ROOT / "design/contracts/security-controls.yaml")
     threat_ids: set[str] = set()
     for threat in security["threats"]:

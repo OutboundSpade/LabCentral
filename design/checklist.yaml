@@ -115,7 +115,7 @@ tasks:
       - Recursive import-boundary tests keep domain/application code independent of adapters and providers.
   - id: TASK-RENDER-001
     title: Implement strict Lab rendering and canonicalization
-    status: proposed
+    status: complete
     dependencies: [TASK-SCHEMA-001, TASK-DOMAIN-001]
     relatedAdrs: [ADR-0005, ADR-0007, ADR-0012]
     relatedDocuments: [docs/design/declarative-labs.md, docs/design/template-rendering.md, design/contracts/rendering-cases.yaml, schemas/fixtures]

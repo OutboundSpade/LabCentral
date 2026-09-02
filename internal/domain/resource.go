@@ -243,7 +243,7 @@ type NetworkInterface struct {
 }
 
 func (i NetworkInterface) Validate() error {
-	if err := validateOpaqueID("network ID", string(i.NetworkID)); err != nil {
+	if err := validateLogicalResourceID(string(i.NetworkID)); err != nil {
 		return err
 	}
 	if i.IPv4.IsValid() && !i.IPv4.Is4() {
@@ -268,7 +268,7 @@ type Mount struct {
 }
 
 func (m Mount) Validate() error {
-	if err := validateOpaqueID("volume ID", string(m.VolumeID)); err != nil {
+	if err := validateLogicalResourceID(string(m.VolumeID)); err != nil {
 		return err
 	}
 	if !strings.HasPrefix(m.Path, "/") || path.Clean(m.Path) != m.Path {
@@ -316,6 +316,29 @@ type VMSpec struct {
 	Interfaces   []NetworkInterface
 	Mounts       []Mount
 	Provisioning *ProvisioningSpec
+	Lifecycle    WorkloadLifecycle
+}
+
+type ResetMode string
+
+const (
+	ResetRecreate ResetMode = "recreate"
+	ResetSnapshot ResetMode = "snapshot"
+)
+
+type WorkloadLifecycle struct {
+	Snapshot bool
+	Reset    ResetMode
+}
+
+func (l WorkloadLifecycle) Validate() error {
+	if l.Reset != "" && l.Reset != ResetRecreate && l.Reset != ResetSnapshot {
+		return fmt.Errorf("invalid reset mode %q", l.Reset)
+	}
+	if l.Reset == ResetSnapshot && !l.Snapshot {
+		return fmt.Errorf("snapshot reset requires snapshot lifecycle support")
+	}
+	return nil
 }
 
 func (s VMSpec) Validate() error {
@@ -345,6 +368,9 @@ func (s VMSpec) Validate() error {
 		if err := s.Provisioning.Validate(); err != nil {
 			return err
 		}
+	}
+	if err := s.Lifecycle.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -526,7 +552,7 @@ func (s AccessEndpointSpec) Validate() error {
 	if _, err := NewName(string(s.Name)); err != nil {
 		return err
 	}
-	if err := validateOpaqueID("access target ID", string(s.TargetID)); err != nil {
+	if err := validateLogicalResourceID(string(s.TargetID)); err != nil {
 		return err
 	}
 	if len(s.Methods) == 0 {
@@ -654,7 +680,7 @@ func NewLogicalResource(
 	required CapabilityExpression,
 	spec ResourceSpec,
 ) (LogicalResource, error) {
-	if err := validateOpaqueID("logical resource ID", string(id)); err != nil {
+	if err := validateLogicalResourceID(string(id)); err != nil {
 		return nil, err
 	}
 	if err := required.Validate(); err != nil {
@@ -662,7 +688,7 @@ func NewLogicalResource(
 	}
 	seenDependencies := make(map[LogicalResourceID]struct{})
 	for _, dependency := range dependencies {
-		if err := validateOpaqueID("dependency ID", string(dependency)); err != nil {
+		if err := validateLogicalResourceID(string(dependency)); err != nil {
 			return nil, err
 		}
 		if dependency == id {

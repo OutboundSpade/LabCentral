@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type RevisionContent struct {
 	Revision       TemplateRevision
@@ -14,6 +17,7 @@ const (
 	InputInteger    InputKind = "integer"
 	InputNumber     InputKind = "number"
 	InputBoolean    InputKind = "boolean"
+	InputEnum       InputKind = "enum"
 	InputStringList InputKind = "stringList"
 	InputCIDR       InputKind = "cidr"
 	InputIP         InputKind = "ip"
@@ -29,7 +33,26 @@ type TypedInput struct {
 	Number     float64
 	Boolean    bool
 	StringList []string
+	Enum       *EnumValue
 	SecretRef  *SecretRef
+}
+
+// EnumValue preserves whether an enum input is a string or an integer. Exactly
+// one member must be set, including when the selected value is the zero value.
+type EnumValue struct {
+	String  *string
+	Integer *int64
+}
+
+func (v EnumValue) Value() (any, error) {
+	switch {
+	case v.String != nil && v.Integer == nil:
+		return *v.String, nil
+	case v.String == nil && v.Integer != nil:
+		return *v.Integer, nil
+	default:
+		return nil, fmt.Errorf("enum value must set exactly one of string or integer")
+	}
 }
 
 type TypedInputs []TypedInput

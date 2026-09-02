@@ -94,11 +94,15 @@ documents:
     status: complete
   - path: go.mod
     status: complete
+  - path: go.sum
+    status: complete
   - path: internal/domain
     status: complete
   - path: internal/application
     status: complete
   - path: internal/architecture
+    status: complete
+  - path: internal/render
     status: complete
   - path: examples
     status: complete
@@ -133,8 +137,8 @@ completedTasks:
   - TASK-DESIGN-009
   - TASK-CONTRACT-001
   - TASK-DOMAIN-001
+  - TASK-RENDER-001
 currentTasks: []
 nextRecommendedTasks:
-  - TASK-RENDER-001
   - TASK-JOBS-001
   - TASK-PROVIDER-001

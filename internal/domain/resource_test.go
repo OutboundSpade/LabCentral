@@ -21,10 +21,10 @@ func TestResourceSpecIsClosedSum(t *testing.T) {
 
 func TestLogicalResourceOwnsCopiesOfGraphMetadata(t *testing.T) {
 	t.Parallel()
-	dependencies := []LogicalResourceID{"network-red"}
+	dependencies := []LogicalResourceID{"network.red"}
 	required := CapabilityExpression{AllOf: []CapabilityID{"compute.vm"}}
 	resource, err := NewLogicalResource(
-		"target-vm",
+		"vm.target",
 		dependencies,
 		required,
 		ResourceSpec{VM: &VMSpec{
@@ -43,7 +43,7 @@ func TestLogicalResourceOwnsCopiesOfGraphMetadata(t *testing.T) {
 	}
 	dependencies[0] = "mutated"
 	required.AllOf[0] = "mutated"
-	if got := resource.Dependencies()[0]; got != "network-red" {
+	if got := resource.Dependencies()[0]; got != "network.red" {
 		t.Fatalf("dependency mutated through caller slice: %q", got)
 	}
 	if got := resource.RequiredCapabilities().AllOf[0]; got != "compute.vm" {

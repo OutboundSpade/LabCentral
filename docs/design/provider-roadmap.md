@@ -6,9 +6,9 @@ The thin Docker path optimizes onboarding, not production priority.
 
 Finalize executable Lab schema/canonical vectors, domain/application boundary specification, Protobuf plugin protocol and descriptor baseline, capability predicates, machine-readable fake-provider/job/security contracts, and the repeatable design verifier. This gate is complete at `MILESTONE-DESIGN-READY`; it proves implementation readiness, not runtime behavior.
 
-## Phase 0B — architecture foundation implementation (next)
+## Phase 0B — architecture foundation implementation (in progress)
 
-Compile the domain/application ports; implement renderer/schema/canonical conformance; build SQLite/PostgreSQL job/outbox prototypes; implement the fake provider and shared failure contract runner. `TASK-DOMAIN-001` is complete. Exit only when `TASK-RENDER-001`, `TASK-JOBS-001`, and `TASK-PROVIDER-001` also pass their runtime acceptance criteria. Real provider code remains out of scope here.
+Compile the domain/application ports; implement renderer/schema/canonical conformance; build SQLite/PostgreSQL job/outbox prototypes; implement the fake provider and shared failure contract runner. `TASK-DOMAIN-001` and `TASK-RENDER-001` are complete. Exit only when `TASK-JOBS-001` and `TASK-PROVIDER-001` also pass their runtime acceptance criteria. Real provider code remains out of scope here.
 
 ## Phase 1 — local vertical slice
 

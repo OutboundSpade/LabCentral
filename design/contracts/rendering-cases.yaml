@@ -3,41 +3,49 @@ suite: labcentral.rendering/v1alpha1
 cases:
   - id: TEST-RENDER-001
     title: Unresolved typed reference
+    goTest: TestRenderContract001UnresolvedTypedReference
     input: {networkRef: networks.missing}
     expected: {stage: reference_resolution, code: unresolved_reference}
   - id: TEST-RENDER-002
     title: Dependency cycle
+    goTest: TestRenderContract002DependencyCycle
     resources:
       - {id: vm.a, dependsOn: [vm.b]}
       - {id: vm.b, dependsOn: [vm.a]}
     expected: {stage: graph, code: dependency_cycle, cycle: [vm.a, vm.b, vm.a]}
   - id: TEST-RENDER-003
     title: Secret value is unavailable to CEL
+    goTest: TestRenderContract003SecretValueUnavailable
     expression: params.database_password
     parameterType: secretRef
     expected: {stage: cel_typecheck, code: secret_value_unavailable}
   - id: TEST-RENDER-004
     title: Forbidden CEL host function
+    goTest: TestRenderContract004ForbiddenHostFunction
     expression: http.get("http://169.254.169.254/")
     expected: {stage: cel_typecheck, code: undeclared_function}
   - id: TEST-RENDER-005
     title: Stable forEach identity uses key
+    goTest: TestRenderContract005StableForEachIdentity
     inputKeys: [two, one]
     expectedOrder: [one, two]
     expectedResourceIDs: ["container.loadgen[one]", "container.loadgen[two]"]
   - id: TEST-RENDER-006
     title: Conditional resource and attachment agree
+    goTest: TestRenderContract006ConditionalResourceAndAttachmentAgree
     parameter: {controlled_egress: false}
     omitted: [network.uplink, vm.router.interfaces.uplink]
     expected: {result: valid}
   - id: TEST-RENDER-007
     title: Conditional attachment references omitted resource
+    goTest: TestRenderContract007ConditionalAttachmentReferencesOmittedResource
     parameter: {controlled_egress: false}
     omitted: [network.uplink]
     retained: [vm.router.interfaces.uplink]
     expected: {stage: reference_resolution, code: unresolved_reference_after_expansion}
   - id: TEST-RENDER-008
     title: Expansion limit fails atomically
+    goTest: TestRenderContract008ExpansionLimitFailsAtomically
     requestedExpansionCount: 10001
     configuredLimit: 10000
     expected: {stage: expansion, code: expansion_limit_exceeded, partialCanonicalOutput: false}
