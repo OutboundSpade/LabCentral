@@ -155,6 +155,8 @@ documents:
     status: complete
   - path: tools/proxmox-qualification
     status: complete
+  - path: tools/proxmox-probe-agent
+    status: complete
   - path: examples
     status: complete
 openQuestions:

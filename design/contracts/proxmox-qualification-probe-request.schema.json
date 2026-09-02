@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labcentral.local/proxmox-qualification-probe-request-v1.schema.json",
+  "title": "LabCentral Proxmox qualification probe request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runID", "nonce", "attempts", "timeoutMillis", "targets"],
+  "properties": {
+    "schemaVersion": {"const": "labcentral.proxmox-qualification-probe-request/v1"},
+    "runID": {"$ref": "#/$defs/stableID"},
+    "nonce": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "attempts": {"type": "integer", "minimum": 3, "maximum": 10},
+    "timeoutMillis": {"type": "integer", "minimum": 100, "maximum": 5000},
+    "targets": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {"$ref": "#/$defs/intendedTarget"},
+        {"$ref": "#/$defs/managementTarget"},
+        {"$ref": "#/$defs/crossInstanceTarget"}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "stableID": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$"},
+    "address": {"type": "string", "minLength": 9, "maxLength": 21, "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}:[0-9]{1,5}$"},
+    "intendedTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "address"],
+      "properties": {"kind": {"const": "intended_segment"}, "address": {"$ref": "#/$defs/address"}}
+    },
+    "managementTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "address"],
+      "properties": {"kind": {"const": "management"}, "address": {"$ref": "#/$defs/address"}}
+    },
+    "crossInstanceTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "address"],
+      "properties": {"kind": {"const": "cross_instance"}, "address": {"$ref": "#/$defs/address"}}
+    }
+  }
+}

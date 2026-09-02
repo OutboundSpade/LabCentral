@@ -89,6 +89,35 @@ credentialedSmokeHarness:
   cleanupTimeoutSeconds: 300
   defaultBehavior: skipped_with_zero_provider_calls
   qualifyingEvidence: false
+qualificationProbe:
+  status: protocol_agent_and_client_implemented_not_executed_on_guest
+  requestSchema: labcentral.proxmox-qualification-probe-request/v1
+  requestSchemaFile: design/contracts/proxmox-qualification-probe-request.schema.json
+  responseSchema: labcentral.proxmox-qualification-probe-response/v1
+  responseSchemaFile: design/contracts/proxmox-qualification-probe-response.schema.json
+  transport:
+    protocol: HTTPS_HTTP_1_1
+    tlsMinimum: "1.3"
+    clientAuthentication: dedicated_CA_mTLS_required
+    agentOrigin: exact_non_loopback_ipv4_and_unprivileged_port
+    redirectsAndProxies: disabled
+  operation:
+    method: POST
+    path: /v1/probes
+    behavior: bounded_TCP_connect_only
+    shellOrGuestExec: false
+    singleFlight: true
+  limits:
+    bodyBytes: 16384
+    orderedTargets: [intended_segment, management, cross_instance]
+    attempts: {minimum: 3, maximum: 10}
+    timeoutMillis: {minimum: 100, maximum: 5000}
+  evidence:
+    nonceBound: true
+    agentImageDigestBound: true
+    rawTargetAddressesReturned: false
+    canonicalTranscriptDigest: sha256
+  productionRole: none_qualification_fixture_only
 capabilityGate:
   requiredFacts:
     - supported_pve_9_release
@@ -313,3 +342,10 @@ cases:
     testBinding: "providers/proxmox/t3_smoke_test.go#TestContractTESTPROXMOX025CredentialedSmokeRequiresExplicitTargetConfirmation"
     credentialedBinding: "providers/proxmox/t3_smoke_test.go#TestCredentialedProxmoxT3Smoke"
     expect: {defaultMutations: 0, partialActivationRejected: true, exactDisposableClaims: true, lifecycleRoundTrip: true, automaticOwnedCleanup: true, absenceConfirmed: true, qualifiesByItself: false, productionGateBypass: false}
+  - id: TEST-PROXMOX-026
+    title: Guest-origin probe protocol is closed, bounded, mutually authenticated, and redacted
+    layer: T0_T3
+    testBinding: "tools/proxmox-qualification/probe/protocol_test.go#TestContractTESTPROXMOX026GuestProbeProtocolIsClosedBoundedAndRedacted"
+    companionBinding: "tools/proxmox-qualification/probe/client_test.go#TestProbeClientUsesPinnedTLSAndBoundedTypedResponse"
+    evidenceBinding: "tools/proxmox-qualification/qualification/probe_test.go#TestContractTESTPROXMOX026ProbeTranscriptMapsToSignedEvidence"
+    expect: {orderedTargets: [intended_segment, management, cross_instance], tcpConnectOnly: true, mutualTLS: true, singleFlight: true, boundedAttempts: true, rawTargetAddressesReturned: false, guestExecutionOutstanding: true, productionRole: none}

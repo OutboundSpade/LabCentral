@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T20:25:02Z"
+verifiedAt: "2026-09-02T20:40:28Z"
 result: pass
-scope: phase_2_proxmox_t3_smoke_runner_t0
+scope: phase_2_proxmox_qualification_guest_probe_t0
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -44,6 +44,10 @@ commands:
   - go test -race -count=1 ./... with the credentialed Proxmox smoke disabled by default
   - go vet ./... after the guarded credentialed Proxmox smoke runner
   - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the guarded credentialed Proxmox smoke runner
+  - go test -race -count=1 ./... after the bounded Proxmox qualification guest probe
+  - go vet ./... after the bounded Proxmox qualification guest probe
+  - make build-proxmox-probe-agent
+  - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the bounded Proxmox qualification guest probe
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -174,17 +178,27 @@ checks:
   - package_test_only_real_https_create_lifecycle_destroy_path
   - independent_bounded_owned_cleanup_and_provider_absence_check
   - test_proxmox_025_guarded_credentialed_smoke_readiness
+  - closed_draft_2020_12_qualification_probe_request_and_response
+  - tls_1_3_mutual_authentication_with_pinned_runner_and_agent_trust
+  - exactly_three_ordered_distinct_ipv4_tcp_probe_destinations
+  - bounded_body_attempt_timeout_and_single_flight_probe_execution
+  - no_shell_guest_exec_dns_provider_api_or_raw_address_response
+  - nonce_endpoint_agent_image_and_canonical_transcript_binding
+  - direct_validated_probe_transcript_to_signed_evidence_mapping
+  - test_proxmox_026_guest_probe_mechanism
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
-  - Every TEST-PROXMOX-001 through TEST-PROXMOX-025 case has an executable normal-CI binding. Exact-target credentialed T3 execution and real guest connectivity probes remain outstanding.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-026 case has an executable normal-CI binding. Exact-target credentialed T3 execution and real guest connectivity probes remain outstanding.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
   - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or capability-enablement command and is not included in the production release artifacts.
   - TEST-PROXMOX-025 exercised its activation guard, closed profile, and exact synthetic claim planning only. No T3 environment variables, target profile, or credential file were configured, so the destructive smoke skipped before any provider call.
   - The credentialed Proxmox smoke is package-test-only, uses the existing private mutation constructor, and cannot be invoked by the production provider binary. It does not claim full T3 qualification or emit signed passing evidence.
+  - TEST-PROXMOX-026 used only synthetic TCP outcomes and local TLS servers. It proved dedicated client and server trust, closed schemas, response/evidence binding, redaction, and effort bounds but contacted no Proxmox endpoint and did not execute inside a guest.
+  - The standalone probe agent is a qualification fixture excluded from production release packaging. Its configured image digest is bound evidence rather than runtime attestation; the future runner must rebind it to the approved exact template and content digest.
   - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
   - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.

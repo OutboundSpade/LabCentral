@@ -105,6 +105,14 @@ def verify_yaml_and_json() -> None:
     t3_schema = json.loads((ROOT / "design/contracts/proxmox-t3-smoke-profile.schema.json").read_text(encoding="utf-8"))
     t3_profile = json.loads((ROOT / "schemas/fixtures/proxmox/t3-smoke-profile.valid.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(t3_schema).validate(t3_profile)
+    for name in ["request", "response"]:
+        probe_schema = json.loads(
+            (ROOT / f"design/contracts/proxmox-qualification-probe-{name}.schema.json").read_text(encoding="utf-8")
+        )
+        probe_fixture = json.loads(
+            (ROOT / f"schemas/fixtures/proxmox/qualification-probe-{name}.valid.json").read_text(encoding="utf-8")
+        )
+        jsonschema.Draft202012Validator(probe_schema).validate(probe_fixture)
     for path in ROOT.glob("schemas/fixtures/canonical/*.json"):
         json.loads(path.read_text(encoding="utf-8"))
 
@@ -369,6 +377,41 @@ def verify_proxmox_mutation_contract() -> None:
         "defaultBehavior": "skipped_with_zero_provider_calls",
         "qualifyingEvidence": False,
     }
+    qualification_probe = contract["qualificationProbe"]
+    assert qualification_probe == {
+        "status": "protocol_agent_and_client_implemented_not_executed_on_guest",
+        "requestSchema": "labcentral.proxmox-qualification-probe-request/v1",
+        "requestSchemaFile": "design/contracts/proxmox-qualification-probe-request.schema.json",
+        "responseSchema": "labcentral.proxmox-qualification-probe-response/v1",
+        "responseSchemaFile": "design/contracts/proxmox-qualification-probe-response.schema.json",
+        "transport": {
+            "protocol": "HTTPS_HTTP_1_1",
+            "tlsMinimum": "1.3",
+            "clientAuthentication": "dedicated_CA_mTLS_required",
+            "agentOrigin": "exact_non_loopback_ipv4_and_unprivileged_port",
+            "redirectsAndProxies": "disabled",
+        },
+        "operation": {
+            "method": "POST",
+            "path": "/v1/probes",
+            "behavior": "bounded_TCP_connect_only",
+            "shellOrGuestExec": False,
+            "singleFlight": True,
+        },
+        "limits": {
+            "bodyBytes": 16384,
+            "orderedTargets": ["intended_segment", "management", "cross_instance"],
+            "attempts": {"minimum": 3, "maximum": 10},
+            "timeoutMillis": {"minimum": 100, "maximum": 5000},
+        },
+        "evidence": {
+            "nonceBound": True,
+            "agentImageDigestBound": True,
+            "rawTargetAddressesReturned": False,
+            "canonicalTranscriptDigest": "sha256",
+        },
+        "productionRole": "none_qualification_fixture_only",
+    }
 
     allowed_methods = {"GET", "POST", "DELETE"}
     allowed_paths = {
@@ -418,6 +461,22 @@ def verify_proxmox_mutation_contract() -> None:
             assert test_path.is_file(), f"{case['id']} credentialed binding file is missing: {relative_path}"
             source = test_path.read_text(encoding="utf-8")
             assert f"func {test_name}(" in source, f"{case['id']} credentialed test function is missing: {test_name}"
+        companion_binding = case.get("companionBinding")
+        if companion_binding:
+            assert "#" in companion_binding, f"{case['id']} companion binding is invalid"
+            relative_path, test_name = companion_binding.split("#", 1)
+            test_path = ROOT / relative_path
+            assert test_path.is_file(), f"{case['id']} companion binding file is missing: {relative_path}"
+            source = test_path.read_text(encoding="utf-8")
+            assert f"func {test_name}(" in source, f"{case['id']} companion test function is missing: {test_name}"
+        evidence_binding = case.get("evidenceBinding")
+        if evidence_binding:
+            assert "#" in evidence_binding, f"{case['id']} evidence binding is invalid"
+            relative_path, test_name = evidence_binding.split("#", 1)
+            test_path = ROOT / relative_path
+            assert test_path.is_file(), f"{case['id']} evidence binding file is missing: {relative_path}"
+            source = test_path.read_text(encoding="utf-8")
+            assert f"func {test_name}(" in source, f"{case['id']} evidence test function is missing: {test_name}"
 
     before_gate = contract["capabilityGate"]["beforeGate"]
     assert before_gate, "Proxmox mutation capability gate is empty"
