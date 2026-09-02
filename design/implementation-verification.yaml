@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T20:12:04Z"
+verifiedAt: "2026-09-02T20:25:02Z"
 result: pass
-scope: phase_2_proxmox_t3_evidence_boundary_t0
+scope: phase_2_proxmox_t3_smoke_runner_t0
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -41,6 +41,9 @@ commands:
   - go vet ./... after the signed Proxmox qualification-evidence boundary
   - make build-proxmox-qualification
   - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the signed Proxmox qualification-evidence boundary
+  - go test -race -count=1 ./... with the credentialed Proxmox smoke disabled by default
+  - go vet ./... after the guarded credentialed Proxmox smoke runner
+  - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the guarded credentialed Proxmox smoke runner
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -164,19 +167,28 @@ checks:
   - mode_protected_non_symlink_qualification_signing_key
   - qualification_tool_has_no_provider_execution_or_enablement_action
   - test_proxmox_024_signed_evidence_boundary
+  - closed_proxmox_t3_smoke_profile_schema_and_fixture
+  - exact_destructive_sentinel_and_target_specific_confirmation
+  - default_and_partial_t3_activation_make_zero_provider_calls
+  - confirmed_disposable_vmid_and_vlan_plan_equality_before_apply
+  - package_test_only_real_https_create_lifecycle_destroy_path
+  - independent_bounded_owned_cleanup_and_provider_absence_check
+  - test_proxmox_025_guarded_credentialed_smoke_readiness
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
-  - Every TEST-PROXMOX-001 through TEST-PROXMOX-024 case has an executable T0 binding. Exact-target credentialed T3 execution and real guest connectivity probes remain outstanding.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-025 case has an executable normal-CI binding. Exact-target credentialed T3 execution and real guest connectivity probes remain outstanding.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
   - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or capability-enablement command and is not included in the production release artifacts.
+  - TEST-PROXMOX-025 exercised its activation guard, closed profile, and exact synthetic claim planning only. No T3 environment variables, target profile, or credential file were configured, so the destructive smoke skipped before any provider call.
+  - The credentialed Proxmox smoke is package-test-only, uses the existing private mutation constructor, and cannot be invoked by the production provider binary. It does not claim full T3 qualification or emit signed passing evidence.
   - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
   - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
-  - The credentialed smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.
+  - The credentialed Docker smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.
   - Example A reached ready at a provider-selected 127.0.0.1 port and returned {"service":"LabCentral Example A","visits":1} before destroy succeeded.
   - Post-destroy checks found zero instance-labeled containers, networks, and volumes; diagnostic failed attempts were also compensated without leftovers.
   - Docker images remain in the normal Engine cache and were not deleted.

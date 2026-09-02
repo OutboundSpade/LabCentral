@@ -71,6 +71,24 @@ qualificationEvidence:
     qualifyingCondition: provider_absence_confirmed_and_no_leftovers_and_all_claims_released
     failureCondition: retain_or_orphan_claims_and_block_capability
   productionEnablement: separate_accepted_adr_and_implementation_required
+credentialedSmokeHarness:
+  status: implemented_not_executed
+  profileSchema: labcentral.proxmox-t3-smoke-profile/v1
+  profileSchemaFile: design/contracts/proxmox-t3-smoke-profile.schema.json
+  activation:
+    exactSentinel: I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE
+    targetSpecificConfirmation: required
+    absoluteDistinctInputPaths: required
+  operations:
+    - read_only_discovery_and_exact_preflight
+    - plan_and_bind_confirmed_disposable_vmid_and_vlan
+    - create_network_and_single_qemu_full_clone
+    - stop_start_pause_resume
+    - ownership_checked_reverse_destroy
+    - provider_absence_confirmation
+  cleanupTimeoutSeconds: 300
+  defaultBehavior: skipped_with_zero_provider_calls
+  qualifyingEvidence: false
 capabilityGate:
   requiredFacts:
     - supported_pve_9_release
@@ -289,3 +307,9 @@ cases:
     layer: T0
     testBinding: "tools/proxmox-qualification/qualification/evidence_test.go#TestContractTESTPROXMOX024SignedQualificationEvidenceFailsClosed"
     expect: {canonical: true, signed: true, exactTargetBound: true, completeT3MatrixRequired: true, isolationFailureBlocks: true, cleanupAmbiguityBlocks: true, claimsRetained: true, productionGateBypass: false}
+  - id: TEST-PROXMOX-025
+    title: Credentialed smoke requires exact destructive and target-specific confirmation
+    layer: T0_T3
+    testBinding: "providers/proxmox/t3_smoke_test.go#TestContractTESTPROXMOX025CredentialedSmokeRequiresExplicitTargetConfirmation"
+    credentialedBinding: "providers/proxmox/t3_smoke_test.go#TestCredentialedProxmoxT3Smoke"
+    expect: {defaultMutations: 0, partialActivationRejected: true, exactDisposableClaims: true, lifecycleRoundTrip: true, automaticOwnedCleanup: true, absenceConfirmed: true, qualifiesByItself: false, productionGateBypass: false}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "labcentral.proxmox-t3-smoke-profile/v1",
+  "runID": "qualification.smoke-001",
+  "targetID": "target.proxmox-t3",
+  "instanceID": "instance.qualification-smoke-001",
+  "networkResourceID": "network.smoke",
+  "vmResourceID": "vm.smoke",
+  "networkCIDR": "10.220.0.0/24",
+  "guestIPv4": "10.220.0.10",
+  "imageRepository": "labcentral/proxmox/qualification-agent",
+  "imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "templateAlias": "qualification-agent",
+  "storageAlias": "qualification-storage",
+  "networkAlias": "qualification-network",
+  "expectedVMID": 910001,
+  "expectedVLAN": 3901,
+  "cpuMillis": 2000,
+  "memoryBytes": 2147483648
+}

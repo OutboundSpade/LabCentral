@@ -99,6 +99,12 @@ def verify_yaml_and_json() -> None:
     for path in yaml_paths:
         load_yaml(path)
     json.loads((ROOT / "schemas/lab-v1alpha1.schema.json").read_text(encoding="utf-8"))
+    for path in ROOT.glob("design/contracts/*.json"):
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator.check_schema(schema)
+    t3_schema = json.loads((ROOT / "design/contracts/proxmox-t3-smoke-profile.schema.json").read_text(encoding="utf-8"))
+    t3_profile = json.loads((ROOT / "schemas/fixtures/proxmox/t3-smoke-profile.valid.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(t3_schema).validate(t3_profile)
     for path in ROOT.glob("schemas/fixtures/canonical/*.json"):
         json.loads(path.read_text(encoding="utf-8"))
 
@@ -341,6 +347,28 @@ def verify_proxmox_mutation_contract() -> None:
         "TEST-PROXMOX-022",
     ]
     assert qualification["productionEnablement"] == "separate_accepted_adr_and_implementation_required"
+    smoke = contract["credentialedSmokeHarness"]
+    assert smoke == {
+        "status": "implemented_not_executed",
+        "profileSchema": "labcentral.proxmox-t3-smoke-profile/v1",
+        "profileSchemaFile": "design/contracts/proxmox-t3-smoke-profile.schema.json",
+        "activation": {
+            "exactSentinel": "I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE",
+            "targetSpecificConfirmation": "required",
+            "absoluteDistinctInputPaths": "required",
+        },
+        "operations": [
+            "read_only_discovery_and_exact_preflight",
+            "plan_and_bind_confirmed_disposable_vmid_and_vlan",
+            "create_network_and_single_qemu_full_clone",
+            "stop_start_pause_resume",
+            "ownership_checked_reverse_destroy",
+            "provider_absence_confirmation",
+        ],
+        "cleanupTimeoutSeconds": 300,
+        "defaultBehavior": "skipped_with_zero_provider_calls",
+        "qualifyingEvidence": False,
+    }
 
     allowed_methods = {"GET", "POST", "DELETE"}
     allowed_paths = {
@@ -382,6 +410,14 @@ def verify_proxmox_mutation_contract() -> None:
         assert f"func {top_level_test}(" in source, f"{case['id']} test function is missing: {top_level_test}"
         if "/" in test_name:
             assert case["id"] in source, f"{case['id']} subtest binding is missing"
+        credentialed_binding = case.get("credentialedBinding")
+        if credentialed_binding:
+            assert "#" in credentialed_binding, f"{case['id']} credentialed binding is invalid"
+            relative_path, test_name = credentialed_binding.split("#", 1)
+            test_path = ROOT / relative_path
+            assert test_path.is_file(), f"{case['id']} credentialed binding file is missing: {relative_path}"
+            source = test_path.read_text(encoding="utf-8")
+            assert f"func {test_name}(" in source, f"{case['id']} credentialed test function is missing: {test_name}"
 
     before_gate = contract["capabilityGate"]["beforeGate"]
     assert before_gate, "Proxmox mutation capability gate is empty"
