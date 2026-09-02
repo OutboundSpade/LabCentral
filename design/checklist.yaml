@@ -105,12 +105,24 @@ tasks:
       - The Phase 0 design verifier passes without contacting a provider.
   - id: TASK-DOMAIN-001
     title: Specify Go domain interfaces and state transitions
-    status: proposed
+    status: complete
     dependencies: [TASK-SCHEMA-001]
     relatedAdrs: [ADR-0007]
     relatedDocuments: [docs/design/domain-model.md, docs/design/domain-ports.md]
     acceptanceCriteria:
       - Interfaces compile without concrete HTTP, database, or provider dependencies.
+      - Typed value/resource validation and lifecycle transitions pass unit tests.
+      - Recursive import-boundary tests keep domain/application code independent of adapters and providers.
+  - id: TASK-RENDER-001
+    title: Implement strict Lab rendering and canonicalization
+    status: proposed
+    dependencies: [TASK-SCHEMA-001, TASK-DOMAIN-001]
+    relatedAdrs: [ADR-0005, ADR-0007, ADR-0012]
+    relatedDocuments: [docs/design/declarative-labs.md, docs/design/template-rendering.md, design/contracts/rendering-cases.yaml, schemas/fixtures]
+    acceptanceCriteria:
+      - Go parser rejects the curated invalid and duplicate-key fixtures under configured limits.
+      - Typed rendering and graph construction pass reference, cycle, expansion, and capability cases.
+      - Go canonical bytes and framed SHA-256 digests match every golden vector independently of the JavaScript oracle.
   - id: TASK-JOBS-001
     title: Prototype database lease and outbox invariants
     status: proposed

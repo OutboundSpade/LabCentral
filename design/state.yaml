@@ -90,6 +90,16 @@ documents:
     status: complete
   - path: design/verification.yaml
     status: complete
+  - path: design/implementation-verification.yaml
+    status: complete
+  - path: go.mod
+    status: complete
+  - path: internal/domain
+    status: complete
+  - path: internal/application
+    status: complete
+  - path: internal/architecture
+    status: complete
   - path: examples
     status: complete
 openQuestions:
@@ -122,8 +132,9 @@ completedTasks:
   - TASK-PLUGIN-001
   - TASK-DESIGN-009
   - TASK-CONTRACT-001
+  - TASK-DOMAIN-001
 currentTasks: []
 nextRecommendedTasks:
-  - TASK-DOMAIN-001
+  - TASK-RENDER-001
   - TASK-JOBS-001
   - TASK-PROVIDER-001

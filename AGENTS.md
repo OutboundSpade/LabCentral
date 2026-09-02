@@ -1,6 +1,6 @@
 # LabCentral agent guide
 
-LabCentral is a Go control plane and plugin ecosystem for declarative, isolated virtual labs. Cybersecurity classrooms are the primary production use case; every guest, image, bundle, network, and third-party plugin is untrusted. The design-only Phase 0 gate is complete and the repository is implementation-ready; production application code has not started. Begin implementation only through the proposed tasks and dependency order in `design/checklist.yaml`, keeping the accepted contracts and ADRs authoritative.
+LabCentral is a Go control plane and plugin ecosystem for declarative, isolated virtual labs. Cybersecurity classrooms are the primary production use case; every guest, image, bundle, network, and third-party plugin is untrusted. The design-only Phase 0 gate is complete and foundation implementation has started; runtime services, persistence adapters, and real providers have not. Continue implementation only through the proposed tasks and dependency order in `design/checklist.yaml`, keeping the accepted contracts and ADRs authoritative.
 
 ## Mandatory reading order
 

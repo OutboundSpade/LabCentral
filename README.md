@@ -1,6 +1,6 @@
 # LabCentral
 
-LabCentral is a planned modular client-server platform for declarative virtual labs, with cybersecurity classrooms as its primary production use case. Its design-only Phase 0 gate is complete and implementation may now begin through `design/checklist.yaml`; production application code has intentionally not been scaffolded yet.
+LabCentral is a modular client-server platform for declarative virtual labs, with cybersecurity classrooms as its primary production use case. Its design-only Phase 0 gate is complete. The typed Go domain/application foundation is implemented; runtime services, persistence adapters, and providers remain gated by `design/checklist.yaml`.
 
 Start with [`PROJECT_STATE.md`](PROJECT_STATE.md), then follow [`AGENTS.md`](AGENTS.md). The architecture baseline is in [`docs/design/architecture.md`](docs/design/architecture.md), accepted decisions are in [`docs/adr/`](docs/adr/), and machine-readable progress is in [`design/state.yaml`](design/state.yaml) and [`design/checklist.yaml`](design/checklist.yaml).
 
@@ -14,3 +14,10 @@ python3 tools/verify_phase0.py
 ```
 
 Set `BUFBIN` or `BUN` to an explicit executable path when they are not on `PATH`. This verifies design contracts only; it does not contact providers or execute lab workloads.
+
+Verify the Go foundation with the toolchain declared by `go.mod`:
+
+```sh
+go test ./...
+go vet ./...
+```

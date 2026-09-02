@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design complete and implementation-ready; production application implementation has not started.
+**Phase:** Design complete; foundation implementation in progress. Runtime services and production adapters have not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -19,6 +19,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - Domain/application ports, relational schema/migration invariants, and renderer/job/provider/security conformance catalogs completed.
 - `tools/verify_phase0.py` passes all design gates without contacting a provider.
 - Current official provider behavior recorded with primary sources retrieved 2026-09-02.
+- `TASK-DOMAIN-001` implemented the minimal Go module, sealed typed logical resources, validated value contracts, lifecycle transitions, application ports, secret redaction, and recursive import-boundary tests.
 
 ## Open questions and risks
 
@@ -26,7 +27,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Begin `TASK-DOMAIN-001`: create the minimal Go module and compile the typed domain/application ports against the accepted schema.
+1. Implement `TASK-RENDER-001`: strict parser, typed rendering, graph construction, and RFC 8785-compatible canonical vectors.
 2. Implement `TASK-JOBS-001`: SQLite/PostgreSQL repository conformance tests for the accepted lease/outbox invariants.
 3. Implement `TASK-PROVIDER-001`: fake provider and shared contract runner from `design/contracts/provider-conformance.yaml`.
 4. After those gates pass, start the thin Docker local vertical slice; do not start a real production provider earlier.

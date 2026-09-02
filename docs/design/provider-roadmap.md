@@ -8,7 +8,7 @@ Finalize executable Lab schema/canonical vectors, domain/application boundary sp
 
 ## Phase 0B — architecture foundation implementation (next)
 
-Create the minimal Go module and compile domain/application ports; implement renderer/schema/canonical conformance; build SQLite/PostgreSQL job/outbox prototypes; implement the fake provider and shared failure contract runner. Exit only when `TASK-DOMAIN-001`, `TASK-JOBS-001`, and `TASK-PROVIDER-001` pass their runtime acceptance criteria. Real provider code remains out of scope here.
+Compile the domain/application ports; implement renderer/schema/canonical conformance; build SQLite/PostgreSQL job/outbox prototypes; implement the fake provider and shared failure contract runner. `TASK-DOMAIN-001` is complete. Exit only when `TASK-RENDER-001`, `TASK-JOBS-001`, and `TASK-PROVIDER-001` also pass their runtime acceptance criteria. Real provider code remains out of scope here.
 
 ## Phase 1 — local vertical slice
 

@@ -1,6 +1,6 @@
 # Domain and application ports
 
-This is the implementation boundary for `TASK-DOMAIN-001`. Names are illustrative Go API names; semantics and dependency direction are normative. Implementations may group methods to avoid tiny packages, but may not leak Huma, SQL, generated plugin, or provider SDK types into domain code.
+This is the implementation boundary for `TASK-DOMAIN-001`. The accepted interfaces and state contracts are implemented under `internal/domain` and `internal/application`; `internal/architecture/imports_test.go` enforces their dependency direction recursively. Implementations may group methods to avoid tiny packages, but may not leak Huma, SQL, generated plugin, or provider SDK types into domain code.
 
 ## Value types
 
@@ -130,4 +130,3 @@ The first Go module must add import-boundary tests or a static dependency rule p
 - persistence adapters implement ports without exporting SQL models.
 - `providers/*` import generated plugin API/SDK and provider libraries, never `internal/*`.
 - `pkg/plugin-sdk-go` imports generated public protocol only.
-
