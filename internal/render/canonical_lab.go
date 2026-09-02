@@ -8,6 +8,17 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
+// CanonicalResource serializes one already-rendered logical resource with the
+// same RFC 8785 rules used inside CanonicalLab. It is the provider RPC payload;
+// provider-specific state is never added to these bytes.
+func CanonicalResource(resource domain.LogicalResource) ([]byte, error) {
+	value, err := canonicalResourceValue(resource)
+	if err != nil {
+		return nil, err
+	}
+	return Canonicalize(value)
+}
+
 func canonicalLabValue(author AuthorLab, graph domain.ResourceGraph, inputs resolvedInputs) (map[string]any, error) {
 	resources := make([]any, len(graph.Resources))
 	for index, resource := range graph.Resources {

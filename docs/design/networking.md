@@ -19,6 +19,12 @@ The core does not model DHCP, DNS, routes, NAT, firewalls, VPNs, or routing prot
 | Fly network | Custom 6PN per lab or isolation scope, private IPv6/DNS and Fly services. Reject arbitrary L2, custom MAC/CIDR, multi-NIC, and router topology. |
 | AWS network | VPC/subnet (shared or dedicated policy), route table, ENIs, security groups and optional NACL/NAT/IGW/public address. Subnet is one AZ and L3 semantics; router appliances require explicit source/destination-check and route validation. |
 
+## Docker laptop degradation
+
+The `TASK-DOCKER-001` baseline uses only version-negotiated Docker Engine image/container/volume/network APIs. Every published port is bound explicitly to `127.0.0.1`; a provider-selected host port is read back from Engine state before the instance becomes ready, and published TCP ports must accept a bounded loopback connection. Containers drop all Linux capabilities, set `no-new-privileges`, and receive declared CPU/memory limits. These controls reduce exposure but do not turn containers into a hostile-workload boundary.
+
+Example A requests both denied egress and a host-published web port. The thin provider cannot prove denied egress for that portable published-port path, so it refuses validation until `trustedLaptopIsolationAccepted` is true, creates a normal user-defined bridge, and reports `docker_trusted_laptop_only`. Thus `egress.mode: deny` is explicitly degraded—not silently treated as satisfied. Strong egress enforcement remains capability-gated future work.
+
 ## Routed cybersecurity example
 
 ```mermaid
@@ -36,4 +42,3 @@ Target has no external attachment; router egress is optional and policy constrai
 ## Plan and drift
 
 Plans show logical segments, attachment order/addresses, provider mapping class, policy enforcement evidence, exposure, warnings, and management-network deny assumptions. Refresh can report drift (changed SG/policy/bridge/VLAN) but does not silently repair it. Any explicit re-apply shows destructive connectivity changes.
-

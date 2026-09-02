@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design and Phase 0B architecture foundation complete; local vertical slice is next. Runtime services and production providers have not started.
+**Phase:** Design, Phase 0B architecture foundation, and the thin Phase 1 Docker laptop vertical slice are complete. Production provider and multi-user control-plane work has not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -23,6 +23,9 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - `TASK-RENDER-001` implemented bounded strict YAML parsing, Draft 2020-12 validation, typed inputs/components/resources, bounded CEL, two-stage typed reference resolution, stable dependency ordering, native RFC 8785 canonicalization, framed digests, and executable example/contract fixtures.
 - `TASK-JOBS-001` implemented a checksummed transactional job/outbox prototype, database-time leases, monotonic fencing, unknown-invocation recovery, idempotency binding, quota/leftover safeguards, and one shared eight-case conformance suite proven on SQLite and PostgreSQL.
 - `TASK-PROVIDER-001` implemented a public provider harness, reusable 18-case contract runner, and programmable fake with virtual time, durable invocation restart, compensation/leftover behavior, ownership fencing, state migration, deterministic planning, cancellation, and secret-canary checks.
+- `TASK-DOCKER-001` implemented `labd`, the Huma/OpenAPI laptop API, embedded SvelteKit/DaisyUI assets, durable SQLite operations, a content-addressed filesystem artifact adapter, a checksummed out-of-process Docker plugin, and the typed Docker Engine realization of Example A.
+- The Docker slice enforces loopback-only no-auth and port publication, digest-pinned images, provider executable verification, resource limits, reduced container privileges, stable invocation replay, fenced persistence, and ownership-verified reverse destroy. It explicitly warns that ordinary containers and the degraded denied-egress path are trusted-laptop-only.
+- Example A was built and exercised against Docker Engine 29.7.2 / API 1.55 on Linux amd64: the operation reached `ready`, its loopback URL returned the SQLite visit-counter JSON, destroy succeeded, and no instance-labeled container, network, or volume remained.
 
 ## Open questions and risks
 
@@ -30,7 +33,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Implement `TASK-DOCKER-001`: the thin local Huma/SQLite/filesystem/static-UI/Docker vertical slice for Example A, retaining its explicit trusted-laptop isolation warning.
-2. Keep real production providers gated until the local operation/apply/destroy path and shared contract integration are complete.
+1. Define and accept the next bounded checklist task before further implementation. Candidate follow-on scope is release archive/Docker/Compose packaging or the Phase 2 Proxmox production path; neither is currently authorized as a proposed task.
+2. Keep production providers and multi-user deployment gated behind their target-specific integration, authorization, threat-control, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

@@ -330,6 +330,10 @@ def verify_contract_catalogs() -> None:
 def verify_markdown_links_and_state() -> None:
     link_pattern = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
     for markdown in ROOT.rglob("*.md"):
+        # Generated dependency/build trees are not repository documentation and
+        # may contain package-relative links whose source files are not shipped.
+        if {".git", "node_modules", ".svelte-kit"}.intersection(markdown.relative_to(ROOT).parts):
+            continue
         for raw_target in link_pattern.findall(markdown.read_text(encoding="utf-8")):
             target = raw_target.split("#", 1)[0]
             if not target or "://" in target or target.startswith("mailto:"):

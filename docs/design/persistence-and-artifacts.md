@@ -22,9 +22,12 @@ Objects are immutable and content-addressed by SHA-256; mutable metadata lives i
 
 Reference counts alone do not authorize deletion. GC selects old unreferenced committed objects, records a candidate epoch, rechecks references after grace, then deletes idempotently. Failed upload staging has shorter TTL. VM images normally remain provider inventory refs; LabCentral artifact store holds only approved import sources/build outputs under explicit policy.
 
+`TASK-DOCKER-001` implements the local artifact port under `internal/adapter/filesystem`. The adapter creates a private root, keeps staging and objects on the same filesystem, persists the expected manifest beside a random upload, bounds writes by the declared byte count, measures SHA-256 while streaming, remeasures before commit, changes committed objects to mode 0400, fsyncs files/directories, and atomically renames into a `sha256/<prefix>/<digest>` key. Open re-verifies content and refuses symlink or non-regular paths. Authorization remains an application concern expressed by `AuthorizedArtifactRef`; the raw artifact tree is not served by HTTP.
+
+The local relational adapter adds a checksummed migration for instances, ordered logical resources, Operations, and invocation records on top of the job/outbox schema. Startup enables foreign keys, WAL, a busy timeout, one database connection, and a non-blocking process file lock. This adapter is intentionally single-node and implements only the Docker laptop slice, not the complete production relational model above.
+
 ## Backup, restore, and migration
 
 Production backup coordinates a database snapshot with an artifact inventory/manifest watermark; restore verifies every referenced digest and reports missing/orphaned artifacts. External secrets are backed up by their owning system. Provider resources are not reconstructed from database backup alone: post-restore starts in observation-safe mode until installation identity, target credentials, and ownership are confirmed.
 
 Migrations are numbered and monotonic. Multi-replica rollouts use expand → dual-read/write if needed → backfill → contract after the compatibility window. Destructive schema changes and irreversible provider-state migrations require backup/restore rehearsal and ADR.
-

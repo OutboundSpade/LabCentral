@@ -141,9 +141,9 @@ tasks:
       - Crash, timeout, partial-create, compensation-failure, and state-upgrade cases pass.
   - id: TASK-DOCKER-001
     title: Implement thin Docker onboarding vertical slice
-    status: proposed
+    status: complete
     dependencies: [TASK-JOBS-001, TASK-PROVIDER-001]
     relatedAdrs: [ADR-0001, ADR-0004]
-    relatedDocuments: [examples/docker-laptop, docs/design/provider-roadmap.md]
+    relatedDocuments: [examples/docker-laptop, docs/design/provider-roadmap.md, docs/design/deployment.md, docs/design/testing.md]
     acceptanceCriteria:
       - Loopback no-auth setup realizes and destroys Example A with explicit isolation warning.

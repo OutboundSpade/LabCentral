@@ -10,9 +10,9 @@ Finalize executable Lab schema/canonical vectors, domain/application boundary sp
 
 Compile the domain/application ports; implement renderer/schema/canonical conformance; build SQLite/PostgreSQL job/outbox prototypes; implement the fake provider and shared failure contract runner. `TASK-DOMAIN-001`, `TASK-RENDER-001`, `TASK-JOBS-001`, and `TASK-PROVIDER-001` are complete. The Phase 0B exit is satisfied; real provider code remained out of scope.
 
-## Phase 1 — local vertical slice
+## Phase 1 — local vertical slice (thin slice complete)
 
-Build `labd` modular monolith, Huma API/OpenAPI checks, SQLite/filesystem, no-auth loopback mode, durable validate/plan/apply/destroy, static SvelteKit shell, thin Docker plugin, and Example A. Clearly gate hostile images and advanced Linux networking. Add release archive/Docker/Compose.
+`TASK-DOCKER-001` built the `labd` modular monolith, Huma API/OpenAPI checks, SQLite/filesystem adapters, no-auth loopback mode, durable validate/plan/apply/destroy path, static SvelteKit shell, separately supervised thin Docker plugin, and live Example A gate. Hostile images and unenforced denied egress remain explicitly gated behind the trusted-laptop acknowledgement. Release archive, Docker/Compose packaging, and advanced Linux networking remain separate follow-on scope and are not implied by this milestone.
 
 ## Phase 2 — Proxmox production path
 

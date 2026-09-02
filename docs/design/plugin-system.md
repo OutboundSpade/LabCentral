@@ -47,3 +47,9 @@ The same gRPC service is tunnelable through a future Site Agent. Remote identity
 Provider and access services share the transport handshake and envelope, but advertise and negotiate their service/schema versions independently. Updating access messages does not force a provider-state or capability version change.
 
 The accepted v1 wire baseline is [`api/plugin/v1/plugin.proto`](../../api/plugin/v1/plugin.proto). [`api/plugin/v1/compat/compatibility.yaml`](../../api/plugin/v1/compat/compatibility.yaml) defines negotiation/deadline/cancellation/state cases and pins a compact descriptor used by Buf `FILE` breaking checks. Field numbers/names are reserved rather than reused after deletion. See ADR-0002 and ADR-0012.
+
+## Implemented local launch subset
+
+`TASK-DOCKER-001` generates Go bindings from the accepted descriptor and implements the shared launch/runtime helpers plus the `labd` plugin host. Before execution, the host resolves and SHA-256 verifies the configured executable. It creates a mode-0700 runtime directory, exposes a private registration Unix socket, issues a one-time token, checks configured plugin and instance identities, negotiates protocol v1, performs health checks, consumes heartbeats, and bounds captured child logs.
+
+This thin supervisor deliberately has one configured Docker child. If that child exits, `labd` stops instead of silently running without its only target. Automatic bounded restart/backoff, circuit breaking, upgrade draining, remote mTLS transport, Windows IPC, manifest installation, and third-party sandbox identities remain required follow-on work before the supervisor is production-complete.

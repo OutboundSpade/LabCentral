@@ -9,6 +9,14 @@
 
 Laptop defaults: listen `127.0.0.1`, no-auth warning, SQLite, filesystem artifacts, Docker target auto-registration only after explicit socket selection, conservative quotas/TTL, and non-hostile-workload warning. No external broker or Site Agent is required.
 
+## Implemented laptop distribution
+
+`TASK-DOCKER-001` provides the native-binary development path. `make build` performs a frozen Bun install, Svelte type check/static build, builds `labd` and `lab-provider-docker`, and writes `bin/lab-provider-docker.sha256`. `make run` starts `labd` on `127.0.0.1:8080` with state under `./labcentral-data`. The server verifies the provider executable digest before launch, negotiates protocol v1 over a private per-launch Unix socket, and initializes SQLite WAL plus the filesystem artifact root before accepting work.
+
+The server refuses a non-loopback no-auth listener unless `--unsafe-listen-non-loopback-without-auth` is supplied exactly. That override changes the startup/API/UI warning; it does not add authentication or TLS. The thin Docker provider reads `DOCKER_HOST`, defaults to `/var/run/docker.sock`, accepts plaintext TCP only on loopback, and does not yet configure a remote TLS Docker endpoint.
+
+Release archives, a supported LabCentral container image, Compose, and Kubernetes manifests remain roadmap deployment forms; they are not produced by the thin native slice.
+
 Production defaults: TLS (or trusted TLS-terminating proxy with strict header trust), OIDC/local auth, PostgreSQL, durable shared artifacts, separate provider credentials, management network routes/firewalls, plugin sandbox identities, encrypted backups, audit retention, metrics/traces, and deny-egress policy. Multi-replica requires PostgreSQL, shared artifacts, stable encryption/session keys, and compatible job leasing.
 
 ## Configuration and secrets
@@ -24,4 +32,3 @@ Health endpoints distinguish liveness (process), readiness (database/migrations/
 ## Upgrade
 
 Upgrade order: back up → expand database schema → roll `labd` within compatibility matrix → upgrade/drain plugins per target → verify capabilities/state readability → backfill/contract later. Static UI declares server range. Rollback is supported until an explicitly irreversible database/provider-state migration, which is gated and reported.
-

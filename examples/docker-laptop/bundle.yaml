@@ -2,6 +2,6 @@ apiVersion: labcentral.bundle/v1alpha1
 kind: LabBundle
 entrypoint: lab.yaml
 files:
-  - {path: lab.yaml, size: 1643, sha256: 66e8e54c521ffc60b227ae7eaa7dc4032ccfb86862f39288d99b839f9babce17, mediaType: application/yaml}
-  - {path: README.md, size: 1513, sha256: f1dac4e8020341b1d6cac254105bc26ff86cf0c697e240e357a4eed6119baa38, mediaType: text/markdown}
-  - {path: resolved.json, size: 1799, sha256: a67daa5e4c613682449b6a6d7c9e39dc1961306cb212fd091da44858780b60b0, mediaType: application/json}
+  - {path: lab.yaml, size: 2827, sha256: 1e427c52042d5d88167a62c0d69874c4ffe52c60d72afce64f9e120858a93840, mediaType: application/yaml}
+  - {path: README.md, size: 1809, sha256: 8d50b09daed8a9346108aaa9eb58208e53280fa7f244b9f4a228f131dbe6379d, mediaType: text/markdown}
+  - {path: resolved.json, size: 2767, sha256: a5ff4ce653add08ec5b7cca6c73a1229737ecf7b6cd1f64f2b7c74e5e00c40df, mediaType: application/json}

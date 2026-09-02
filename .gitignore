@@ -1,0 +1,9 @@
+/web/node_modules/
+/web/.svelte-kit/
+/dist/
+/bin/
+*.db
+*.db-shm
+*.db-wal
+*.lock
+!web/bun.lock

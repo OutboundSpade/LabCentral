@@ -29,7 +29,12 @@ SSE uses `text/event-stream`, event ID equal to durable event ID, named event ty
 
 `GET /server-info` returns server/API version, auth mode/methods, public API base, UI feature flags, enabled provider kinds (not target secrets), no-auth warning, and build info. Reverse-proxy/public URL config is server-controlled and allowlisted.
 
+## Implemented laptop surface
+
+The thin local server currently exposes `GET /server-info`, `GET /session`, `GET /examples/docker-laptop`, `POST /lab-validations`, `POST /lab-plans`, `GET|POST /lab-instances`, `GET /lab-instances/{id}`, `POST /lab-instances/{id}/actions/destroy`, and `GET /operations/{id}` beneath `/api/v1`. Mutations return `202` and `Location`, bind idempotency keys to request digests, and instance reads return ETags. Huma's generated OpenAPI 3.1 document is tested for every implemented operation.
+
+The embedded static handler serves only files that exist in the generated export and does not turn unknown paths into a catch-all HTML response. All API and UI responses receive a restrictive same-origin content security policy, no-referrer policy, MIME-sniffing protection, and frame denial. Authentication, conditional `If-Match` writes, pagination beyond this bounded local list, SSE, cancellation, and the broader resource surface remain later production work.
+
 ## Versioning and retries
 
 Additive fields/endpoints are minor-compatible. Semantic removal/type change requires `/api/v2`, ADR, migration, and published deprecation. Clients ignore unknown response fields but must not send unknown request fields. `GET`/validation/plan are safely retryable; mutations require idempotency. `429/503` include Retry-After when known.
-
