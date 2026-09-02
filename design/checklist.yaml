@@ -147,3 +147,14 @@ tasks:
     relatedDocuments: [examples/docker-laptop, docs/design/provider-roadmap.md, docs/design/deployment.md, docs/design/testing.md]
     acceptanceCriteria:
       - Loopback no-auth setup realizes and destroys Example A with explicit isolation warning.
+  - id: TASK-RELEASE-001
+    title: Package the laptop slice for native archive, Docker, and Compose
+    status: complete
+    dependencies: [TASK-DOCKER-001]
+    relatedAdrs: [ADR-0001, ADR-0002, ADR-0004, ADR-0011]
+    relatedDocuments: [docs/design/deployment.md, docs/design/provider-roadmap.md, docs/design/testing.md, docs/references.md]
+    acceptanceCriteria:
+      - A deterministic native archive contains separate labd and Docker-provider executables, verified checksums, a plugin manifest, CycloneDX SBOM, and source/build provenance.
+      - A pinned multi-stage image excludes Bun and the Go toolchain at runtime and still launches the verified provider as a separate process.
+      - Docker Compose persists local data, mounts only the selected Docker socket, uses host networking for loopback semantics, and passes the Example A apply/access/destroy smoke test without labeled leftovers.
+      - Documentation states the Docker socket privilege, no-auth, host-networking, and platform limitations without weakening the trusted-laptop warning.

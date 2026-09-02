@@ -1,9 +1,13 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T07:13:08Z"
+verifiedAt: "2026-09-02T16:18:43Z"
 result: pass
-scope: phase_1_local_vertical_slice
+scope: phase_1_packaged_local_vertical_slice
 toolchain:
   go: "1.27.1"
+  bun: "1.3.14"
+  dockerEngine: "29.7.2 / API 1.55 / linux amd64"
+  dockerCompose: "5.5.0"
+  dockerBuildx: "0.36.1"
 commands:
   - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py
   - buf lint && buf generate
@@ -11,10 +15,16 @@ commands:
   - go test -race -count=1 ./...
   - go vet ./...
   - make build
+  - make web twice; compare content-tree digests
+  - SOURCE_DATE_EPOCH=<git-commit-time> make release VERSION=0.1.0-test
+  - repeat native release to separate directories; cmp archives; extract; sha256sum -c SHA256SUMS
+  - docker compose config --quiet
+  - docker build --build-arg VERSION=0.1.0-test --build-arg VCS_REF=<revision> --tag labcentral:task-release .
+  - inspect/export scratch image filesystem and runtime configuration
   - bun install --frozen-lockfile && bun run check && bun run build
   - LABCENTRAL_TEST_POSTGRES_DSN=<isolated-test-url> go test -race -count=3 ./internal/adapter/jobsdb
   - go test -race -count=10 ./internal/adapter/fakeprovider
-  - real Docker create -> ready -> loopback HTTP request -> destroy -> ownership-label absence check
+  - Compose real Docker create -> ready -> loopback HTTP request -> destroy -> ownership-label absence -> restart persistence check
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -63,9 +73,29 @@ checks:
   - huma_openapi_3_1_local_surface
   - no_auth_listener_and_static_response_security
   - frozen_bun_static_sveltekit_daisyui_build
+  - deterministic_sveltekit_version_and_asset_tree
+  - deterministic_native_release_archive
+  - archive_wide_and_provider_executable_checksums
+  - versioned_plugin_inventory_manifest
+  - cyclonedx_1_6_sbom_and_source_build_provenance
+  - cyclonedx_1_6_official_json_schema_validation
+  - digest_pinned_multistage_scratch_image
+  - runtime_excludes_go_bun_shell_and_package_managers
+  - container_healthcheck_and_separate_provider_process
+  - compose_read_only_root_dropped_capabilities_no_new_privileges_and_pid_limit
+  - compose_host_loopback_networking_and_selected_socket_mount
+  - compose_named_volume_persistence_across_restart
+  - compose_example_a_apply_access_destroy_without_owned_leftovers
 notes:
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - The credentialed smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.
   - Example A reached ready at a provider-selected 127.0.0.1 port and returned {"service":"LabCentral Example A","visits":1} before destroy succeeded.
   - Post-destroy checks found zero instance-labeled containers, networks, and volumes; diagnostic failed attempts were also compensated without leftovers.
   - Docker images remain in the normal Engine cache and were not deleted.
+  - Two consecutive WEB_VERSION=dev builds with source scanning bounded to web/src had identical content-tree SHA-256 052b33c10a58f9b68ec2d04ebec03e3002bdaf5d70b1c9f9a1b1aa5917b4f05e.
+  - Two native linux/amd64 archives built from the same source epoch had identical SHA-256 2d9fd674c84eaabb2dcdf337f6c6eec50cc04f623d843e42da678d67558a8238; every packaged checksum verified.
+  - The emitted SBOM passed the official CycloneDX 1.6 JSON schema with 142 application/library components.
+  - The final scratch image was 14,895,823 compressed bytes and exported only labd, lab-provider-docker, and the provider checksum beyond Docker runtime mount points; no shell or build toolchain was present.
+  - Compose exposed labd only at 127.0.0.1:18082 through host networking. docker top showed docker-init, labd, and a distinct lab-provider-docker child.
+  - The first request immediately after ready received one connection reset; the bounded retry returned {"service":"LabCentral Example A","visits":1}. Destroy then left zero labeled objects.
+  - Restarting the Compose service retained the destroyed instance record in the named volume. The isolated test container and volume were removed after verification.

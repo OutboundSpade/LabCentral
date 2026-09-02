@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, and the thin Phase 1 Docker laptop vertical slice are complete. Production provider and multi-user control-plane work has not started.
+**Phase:** Design, Phase 0B architecture foundation, and the packaged Phase 1 Docker laptop vertical slice are complete. Production provider and multi-user control-plane work has not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -26,6 +26,8 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - `TASK-DOCKER-001` implemented `labd`, the Huma/OpenAPI laptop API, embedded SvelteKit/DaisyUI assets, durable SQLite operations, a content-addressed filesystem artifact adapter, a checksummed out-of-process Docker plugin, and the typed Docker Engine realization of Example A.
 - The Docker slice enforces loopback-only no-auth and port publication, digest-pinned images, provider executable verification, resource limits, reduced container privileges, stable invocation replay, fenced persistence, and ownership-verified reverse destroy. It explicitly warns that ordinary containers and the degraded denied-egress path are trusted-laptop-only.
 - Example A was built and exercised against Docker Engine 29.7.2 / API 1.55 on Linux amd64: the operation reached `ready`, its loopback URL returned the SQLite visit-counter JSON, destroy succeeded, and no instance-labeled container, network, or volume remained.
+- `TASK-RELEASE-001` added byte-reproducible native tarballs with executable/archive checksums, a Docker plugin inventory manifest, CycloneDX SBOM, and source/build provenance; a digest-pinned multi-stage `scratch` image; and persistent, hardened, host-networked Compose packaging.
+- The Compose distribution passed the real Example A apply/access/destroy gate with separate live `labd` and provider processes, zero ownership-labeled leftovers, and SQLite state retained across a control-plane restart. The image contained no Go, Bun, shell, or package-manager runtime.
 
 ## Open questions and risks
 
@@ -33,7 +35,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Define and accept the next bounded checklist task before further implementation. Candidate follow-on scope is release archive/Docker/Compose packaging or the Phase 2 Proxmox production path; neither is currently authorized as a proposed task.
+1. Propose and accept the first bounded Phase 2 task: read-only Proxmox target discovery and capability-evidence contracts before any mutating provider operation.
 2. Keep production providers and multi-user deployment gated behind their target-specific integration, authorization, threat-control, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -39,10 +40,48 @@ type config struct {
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		if err := healthcheck(); err != nil {
+			logger.Error("LabCentral healthcheck failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(logger); err != nil {
 		logger.Error("labd stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func healthcheck() error {
+	endpoint := strings.TrimSpace(os.Getenv("LABCENTRAL_HEALTHCHECK_URL"))
+	if endpoint == "" {
+		endpoint = "http://127.0.0.1:8080/api/v1/server-info"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("create healthcheck request: %w", err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("request server info: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("server info returned HTTP %d", response.StatusCode)
+	}
+	var info struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&info); err != nil {
+		return fmt.Errorf("decode server info: %w", err)
+	}
+	if info.APIVersion != "v1" {
+		return fmt.Errorf("server reported unexpected API version %q", info.APIVersion)
+	}
+	return nil
 }
 
 func run(logger *slog.Logger) error {

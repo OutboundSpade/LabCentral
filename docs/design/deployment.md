@@ -15,7 +15,18 @@ Laptop defaults: listen `127.0.0.1`, no-auth warning, SQLite, filesystem artifac
 
 The server refuses a non-loopback no-auth listener unless `--unsafe-listen-non-loopback-without-auth` is supplied exactly. That override changes the startup/API/UI warning; it does not add authentication or TLS. The thin Docker provider reads `DOCKER_HOST`, defaults to `/var/run/docker.sock`, accepts plaintext TCP only on loopback, and does not yet configure a remote TLS Docker endpoint.
 
-Release archives, a supported LabCentral container image, Compose, and Kubernetes manifests remain roadmap deployment forms; they are not produced by the thin native slice.
+`TASK-RELEASE-001` adds these supported laptop artifacts:
+
+- `make release VERSION=<version>` writes `dist/labcentral-<version>-<os>-<arch>.tar.gz` and its adjacent checksum. Archive headers, ordering, ownership, modes, gzip metadata, build IDs, and timestamps are normalized. `SOURCE_DATE_EPOCH` selects the timestamp and otherwise defaults to the Git commit time.
+- The archive contains separate `labd` and `lab-provider-docker` executables, the provider checksum, a v1 plugin manifest, archive-wide `SHA256SUMS`, a CycloneDX 1.6 SBOM, release metadata, and source/build provenance. The provenance records revision and dirty state but is neither signed nor a SLSA attestation. Linux amd64 is the verified target; Windows IPC remains gated by `OQ-GUEST-001`.
+- `make image VERSION=<version> IMAGE=<tag>` uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing only the two static executables and provider checksum. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
+- `docker compose up -d --build` persists `/var/lib/labcentral` in the named `labcentral-data` volume, mounts the explicitly selected `${DOCKER_SOCKET_PATH:-/var/run/docker.sock}`, and uses host networking. `LABCENTRAL_PORT`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` override the loopback port, image, and volume name. `docker compose down` preserves state; `docker compose down --volumes` deliberately removes it.
+
+Host networking is part of the laptop correctness boundary: it preserves a true host-loopback no-auth listener and lets the containerized control plane probe provider-published `127.0.0.1` ports. It is supported directly by Docker Engine on Linux; Docker Desktop 4.34 or newer requires the host-networking setting to be enabled. This Compose form is not declared supported on other platforms.
+
+The image runs as root because common Linux Docker sockets are root-owned. A read-only socket bind prevents changing the socket inode through that mount; it does **not** make Docker Engine commands read-only. Anyone controlling `labd` or its provider through this socket effectively controls the Docker host. Compose also uses a read-only root filesystem, drops Linux capabilities, applies `no-new-privileges`, bounds PIDs, and mounts only the selected socket and data volume, but none of those settings reduce Docker socket authority. The socket never reaches created lab guests.
+
+Kubernetes manifests remain a roadmap deployment form and are not produced by the laptop slice.
 
 Production defaults: TLS (or trusted TLS-terminating proxy with strict header trust), OIDC/local auth, PostgreSQL, durable shared artifacts, separate provider credentials, management network routes/firewalls, plugin sandbox identities, encrypted backups, audit retention, metrics/traces, and deny-egress policy. Multi-replica requires PostgreSQL, shared artifacts, stable encryption/session keys, and compatible job leasing.
 

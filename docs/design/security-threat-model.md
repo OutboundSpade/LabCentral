@@ -50,6 +50,10 @@ The authoritative owner/control/test mapping is machine-readable in [`design/con
 
 Normal Docker isolation is not a security boundary for arbitrary hostile code. Docker API/socket possession is host-equivalent privilege; LabCentral never mounts it into guests. Desktop networking and host firewall enforcement vary. Laptop mode is for trusted learning/dev images unless the operator explicitly acknowledges the risk; it cannot claim protection equivalent to QEMU/KubeVirt/EC2.
 
+The packaged Compose deployment mounts only the operator-selected Docker socket and uses a read-only bind, read-only root filesystem, dropped capabilities, `no-new-privileges`, and a PID limit. Those container controls reduce incidental mutation but do not constrain commands sent through the Docker API; the LabCentral image runs as root for the normal root-owned socket. Host networking is required to preserve loopback binding/probing, so the deployment must remain single-user and trusted-laptop-only.
+
+Native releases normalize archive metadata and include executable/archive checksums, a plugin manifest, CycloneDX SBOM, and source/build provenance. These make inspection and corruption detection possible but do not establish publisher authenticity. Release signing, protected build identity, transparency, and loader-side provenance/signature verification remain future `THREAT-SUPPLY-001` controls.
+
 ## Future hardening
 
 Bundle/plugin signing, transparency/provenance verification, external policy modules that only constrain, isolated image importers, hardware-backed key management, and anomaly/flow monitoring are roadmap items. They do not weaken current fail-closed defaults.

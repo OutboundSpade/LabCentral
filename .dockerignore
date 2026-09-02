@@ -1,0 +1,12 @@
+.git
+.github
+bin
+dist
+labcentral-data
+web/.svelte-kit
+web/build
+web/node_modules
+*.db
+*.db-shm
+*.db-wal
+*.lock

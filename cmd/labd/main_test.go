@@ -3,6 +3,8 @@ package main
 import (
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -23,6 +25,32 @@ func TestNoAuthListenerClassification(t *testing.T) {
 				t.Fatalf("listenerIsLoopback(%s) = %t, want %t", testCase.ip, got, testCase.want)
 			}
 		})
+	}
+}
+
+func TestHealthcheckRequiresHealthyV1ServerInfo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/server-info" {
+			t.Errorf("healthcheck path = %q", request.URL.Path)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"apiVersion":"v1"}`))
+	}))
+	defer server.Close()
+	t.Setenv("LABCENTRAL_HEALTHCHECK_URL", server.URL+"/api/v1/server-info")
+	if err := healthcheck(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHealthcheckRejectsWrongVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = response.Write([]byte(`{"apiVersion":"v2"}`))
+	}))
+	defer server.Close()
+	t.Setenv("LABCENTRAL_HEALTHCHECK_URL", server.URL)
+	if err := healthcheck(); err == nil {
+		t.Fatal("healthcheck accepted an unexpected API version")
 	}
 }
 

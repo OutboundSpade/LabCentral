@@ -1,0 +1,42 @@
+name: labcentral
+
+services:
+  labcentral:
+    image: ${LABCENTRAL_IMAGE:-labcentral:dev}
+    build:
+      context: .
+      args:
+        VERSION: ${LABCENTRAL_VERSION:-dev}
+        VCS_REF: ${LABCENTRAL_VCS_REF:-unknown}
+    network_mode: host
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 15s
+    restart: unless-stopped
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+      LABCENTRAL_HEALTHCHECK_URL: http://127.0.0.1:${LABCENTRAL_PORT:-8080}/api/v1/server-info
+    command:
+      - --listen
+      - 127.0.0.1:${LABCENTRAL_PORT:-8080}
+      - --data-dir
+      - /var/lib/labcentral
+    volumes:
+      - type: bind
+        source: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+        target: /var/run/docker.sock
+        read_only: true
+      - type: volume
+        source: labcentral-data
+        target: /var/lib/labcentral
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+
+volumes:
+  labcentral-data:
+    name: ${LABCENTRAL_DATA_VOLUME:-labcentral-data}

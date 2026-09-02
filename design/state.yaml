@@ -1,6 +1,6 @@
 formatVersion: 1
 project: LabCentral
-phase: phase_1_local_vertical_slice_complete
+phase: phase_1_packaged_local_vertical_slice_complete
 lastUpdated: "2026-09-02"
 acceptedAdrs:
   - ADR-0001
@@ -136,6 +136,12 @@ documents:
     status: complete
   - path: Makefile
     status: complete
+  - path: Dockerfile
+    status: complete
+  - path: compose.yaml
+    status: complete
+  - path: tools/release
+    status: complete
   - path: examples
     status: complete
 openQuestions:
@@ -155,6 +161,8 @@ milestones:
     status: complete
   - id: MILESTONE-LOCAL-VERTICAL-SLICE
     status: complete
+  - id: MILESTONE-LAPTOP-DISTRIBUTION
+    status: complete
 completedTasks:
   - TASK-DESIGN-001
   - TASK-DESIGN-002
@@ -173,5 +181,6 @@ completedTasks:
   - TASK-JOBS-001
   - TASK-PROVIDER-001
   - TASK-DOCKER-001
+  - TASK-RELEASE-001
 currentTasks: []
 nextRecommendedTasks: []
