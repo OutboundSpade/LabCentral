@@ -105,6 +105,13 @@ def verify_yaml_and_json() -> None:
     t3_schema = json.loads((ROOT / "design/contracts/proxmox-t3-smoke-profile.schema.json").read_text(encoding="utf-8"))
     t3_profile = json.loads((ROOT / "schemas/fixtures/proxmox/t3-smoke-profile.valid.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(t3_schema).validate(t3_profile)
+    isolation_schema = json.loads(
+        (ROOT / "design/contracts/proxmox-t3-isolation-profile.schema.json").read_text(encoding="utf-8")
+    )
+    isolation_profile = json.loads(
+        (ROOT / "schemas/fixtures/proxmox/t3-isolation-profile.valid.json").read_text(encoding="utf-8")
+    )
+    jsonschema.Draft202012Validator(isolation_schema).validate(isolation_profile)
     for name in ["request", "response"]:
         probe_schema = json.loads(
             (ROOT / f"design/contracts/proxmox-qualification-probe-{name}.schema.json").read_text(encoding="utf-8")
@@ -411,6 +418,35 @@ def verify_proxmox_mutation_contract() -> None:
             "canonicalTranscriptDigest": "sha256",
         },
         "productionRole": "none_qualification_fixture_only",
+    }
+    isolation = contract["credentialedIsolationHarness"]
+    assert isolation == {
+        "status": "implemented_not_executed",
+        "profileSchema": "labcentral.proxmox-t3-isolation-profile/v1",
+        "profileSchemaFile": "design/contracts/proxmox-t3-isolation-profile.schema.json",
+        "activation": {
+            "exactSentinel": "I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE",
+            "targetSpecificConfirmation": "required",
+            "absoluteDistinctInputPaths": 6,
+        },
+        "topology": {
+            "sourceInstance": {"networks": 1, "guests": 2},
+            "crossInstance": {"networks": 1, "guests": 1},
+            "distinctVMIDs": 3,
+            "distinctVLANs": 2,
+        },
+        "probe": {
+            "origin": "source_guest_exact_ipv4",
+            "destinations": ["intended_peer", "management", "cross_instance_guest"],
+            "evidenceMapping": "typed_probe_records_for_signed_evidence",
+        },
+        "cleanup": {
+            "order": "reverse_dependency",
+            "perResourceTimeoutSeconds": 300,
+            "vmAbsenceRechecked": True,
+        },
+        "defaultBehavior": "skipped_with_zero_provider_calls",
+        "qualifyingEvidence": False,
     }
 
     allowed_methods = {"GET", "POST", "DELETE"}

@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, and the Phase 2 Proxmox discovery, QEMU mutation contract, allocation/protocol prerequisites, and gated T0 provider implementation are complete. `TASK-PROXMOX-005` now has target integration, the signed evidence boundary, a guarded credentialed smoke runner, and a bounded mTLS guest-probe mechanism; credentialed exact-target execution has not occurred, the complete T3 matrix has not run, no probe has run from a real guest, and production enablement remains closed.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, and the Phase 2 Proxmox discovery, QEMU mutation contract, allocation/protocol prerequisites, and gated T0 provider implementation are complete. `TASK-PROXMOX-005` now has target integration, the signed evidence boundary, guarded lifecycle and isolation runners, and a bounded mTLS guest-probe mechanism; credentialed exact-target execution has not occurred, the complete T3 matrix has not run, no probe has run from a real guest, and production enablement remains closed.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -48,6 +48,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - Signature verification alone never qualifies a run. Expiry, target/build mismatch, missing or failed T3 cases, failed intended/management/cross-instance semantics, ambiguous provider absence, leftovers, and retained/orphaned claims all produce a non-qualifying result. The tool has no provider-execution or gate-opening path and is not in the production package.
 - `TEST-PROXMOX-025` adds a package-test-only real-HTTPS smoke runner plus a closed profile schema. It requires the exact destructive sentinel and target confirmation, rejects partial activation, verifies the one expected disposable VMID/VLAN before apply, exercises create and every supported lifecycle transition, performs owned reverse cleanup with an independent timeout, and confirms absence. Normal CI skips before any provider call; no credentialed run was performed.
 - `TEST-PROXMOX-026` adds closed Draft 2020-12 request/response schemas, a qualification-only guest agent, a pinned-mTLS runner client, and direct mapping into signed probe evidence. The TLS 1.3 agent accepts exactly three ordered, distinct IPv4 TCP destinations with bounded attempts/time, permits one run at a time, has no shell or provider API, and returns only nonce-bound aggregate observations and endpoint/transcript digests. Local synthetic tests prove both sides of mTLS and fail-closed response binding; the agent has not run in a Proxmox guest.
+- `TEST-PROXMOX-027` adds a separate closed isolation profile and package-test-only executor. Normal CI proves exact planning for source/peer guests on one VLAN and a distinct-instance guest on another, with three preconfirmed VMIDs, two preconfirmed VLANs, six distinct protected inputs, direct probe-evidence mapping, reverse owned cleanup, and fresh absence reads. The default path skips before external access; this runner has not been credentialed or executed.
 
 ## Open questions and risks
 
@@ -55,8 +56,8 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Extend the guarded smoke to create source and intended-segment peer guests plus a separately isolated cross-instance guest, invoke the preinstalled probe agent, and populate every required signed-evidence record.
-2. Run the smoke and then the complete `TASK-PROXMOX-005` matrix only with explicitly supplied mode-protected credentials and dedicated probe PKI for a disposable PVE 9.x target, reserved VMID/VLAN ranges, and reviewer-approved intended/management/cross-instance destinations.
+1. Prepare the digest-pinned qualification template and dedicated short-lived probe PKI, then run the guarded lifecycle smoke and source/peer/cross isolation executor using explicitly supplied mode-protected inputs on a disposable PVE 9.x target.
+2. Extend the executor through the remaining target-applicable failure/recovery cases and assemble, sign, and independently verify the complete exact-target evidence document.
 3. Keep the separately reviewed production enablement and multi-user deployment gated behind target-specific authorization, accepted T3 evidence, threat controls, cleanup/orphan checks, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

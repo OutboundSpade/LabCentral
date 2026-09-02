@@ -118,6 +118,29 @@ qualificationProbe:
     rawTargetAddressesReturned: false
     canonicalTranscriptDigest: sha256
   productionRole: none_qualification_fixture_only
+credentialedIsolationHarness:
+  status: implemented_not_executed
+  profileSchema: labcentral.proxmox-t3-isolation-profile/v1
+  profileSchemaFile: design/contracts/proxmox-t3-isolation-profile.schema.json
+  activation:
+    exactSentinel: I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE
+    targetSpecificConfirmation: required
+    absoluteDistinctInputPaths: 6
+  topology:
+    sourceInstance: {networks: 1, guests: 2}
+    crossInstance: {networks: 1, guests: 1}
+    distinctVMIDs: 3
+    distinctVLANs: 2
+  probe:
+    origin: source_guest_exact_ipv4
+    destinations: [intended_peer, management, cross_instance_guest]
+    evidenceMapping: typed_probe_records_for_signed_evidence
+  cleanup:
+    order: reverse_dependency
+    perResourceTimeoutSeconds: 300
+    vmAbsenceRechecked: true
+  defaultBehavior: skipped_with_zero_provider_calls
+  qualifyingEvidence: false
 capabilityGate:
   requiredFacts:
     - supported_pve_9_release
@@ -305,6 +328,7 @@ cases:
     title: Management and cross-instance isolation are proved positively and negatively
     layer: T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxAllocationAndCapabilityEvidenceContract/TEST-PROXMOX-018"
+    credentialedBinding: "providers/proxmox/t3_isolation_test.go#TestCredentialedProxmoxT3Isolation"
     expect: {intendedSegmentReachable: true, managementReachable: false, otherInstanceReachable: false}
   - id: TEST-PROXMOX-019
     title: Missing or mis-scoped effective privilege blocks capability
@@ -349,3 +373,9 @@ cases:
     companionBinding: "tools/proxmox-qualification/probe/client_test.go#TestProbeClientUsesPinnedTLSAndBoundedTypedResponse"
     evidenceBinding: "tools/proxmox-qualification/qualification/probe_test.go#TestContractTESTPROXMOX026ProbeTranscriptMapsToSignedEvidence"
     expect: {orderedTargets: [intended_segment, management, cross_instance], tcpConnectOnly: true, mutualTLS: true, singleFlight: true, boundedAttempts: true, rawTargetAddressesReturned: false, guestExecutionOutstanding: true, productionRole: none}
+  - id: TEST-PROXMOX-027
+    title: Credentialed isolation runner binds exact source peer and cross-instance topology
+    layer: T0_T3
+    testBinding: "providers/proxmox/t3_isolation_test.go#TestContractTESTPROXMOX027CredentialedIsolationRunnerBindsExactTopologyAndProbeInputs"
+    credentialedBinding: "providers/proxmox/t3_isolation_test.go#TestCredentialedProxmoxT3Isolation"
+    expect: {defaultMutations: 0, exactInputPaths: 6, sourceGuests: 2, crossInstanceGuests: 1, distinctVMIDs: 3, distinctVLANs: 2, guestProbeBound: true, reverseCleanup: true, vmAbsenceRechecked: true, qualifiesByItself: false, productionGateBypass: false}
