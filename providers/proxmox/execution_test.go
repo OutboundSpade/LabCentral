@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,20 +35,25 @@ type fakeMutationAPI struct {
 	deleteErrorAfter         bool
 	deleteErrorBefore        bool
 	taskFailureType          string
+	taskFailuresRemaining    map[string]int
+	runningTaskType          string
 	foreignOnClone           bool
 	cloneWithoutObject       bool
 	missingPermission        bool
+	missingPropagation       bool
 	lifecycleErrorAfter      map[string]bool
 	malformedUPIDType        string
 	agentError               bool
+	missingConfigStatusCode  int
 	completeTaskOnPoll       bool
+	deferLifecycleState      bool
 	closed                   bool
 }
 
 func newFakeMutationAPI() *fakeMutationAPI {
 	return &fakeMutationAPI{
 		configs:  map[uint32]VMConfig{9000: {Digest: strings40("c"), Fields: map[string]string{"digest": strings40("c"), "agent": "1", "scsi0": "local-lvm:base-9000-disk-0,size=8G", "ide2": "local-lvm:cloudinit"}}},
-		statuses: map[uint32]string{9000: "stopped"}, lifecycleCalls: make(map[string]int), lifecycleErrorAfter: make(map[string]bool),
+		statuses: map[uint32]string{9000: "stopped"}, lifecycleCalls: make(map[string]int), lifecycleErrorAfter: make(map[string]bool), taskFailuresRemaining: make(map[string]int),
 	}
 }
 
@@ -65,13 +71,18 @@ func (fake *fakeMutationAPI) Discover(context.Context) (Inventory, error) {
 func (fake *fakeMutationAPI) CloseIdleConnections() { fake.closed = true }
 func (fake *fakeMutationAPI) EffectivePermissions(context.Context) (EffectivePermissions, error) {
 	paths := make(map[string][]string)
+	propagating := make(map[string][]string)
 	for _, scope := range mutationTestPermissionScopes() {
 		paths[scope.Path] = append([]string(nil), scope.Privileges...)
+		propagating[scope.Path] = append([]string(nil), scope.Privileges...)
 	}
 	if fake.missingPermission {
 		paths["/vms/9000"] = paths["/vms/9000"][1:]
 	}
-	return EffectivePermissions{Paths: paths}, nil
+	if fake.missingPropagation {
+		delete(propagating, "/sdn/zones/localnetwork/vmbr1")
+	}
+	return EffectivePermissions{Paths: paths, PropagatingPaths: propagating}, nil
 }
 func (fake *fakeMutationAPI) AdvisoryVMIDAvailable(_ context.Context, vmid uint32) (bool, error) {
 	fake.record(fmt.Sprintf("GET nextid %d", vmid))
@@ -86,9 +97,27 @@ func (fake *fakeMutationAPI) VMConfig(_ context.Context, _ string, vmid uint32) 
 	defer fake.mu.Unlock()
 	config, exists := fake.configs[vmid]
 	if !exists {
-		return VMConfig{}, &APIStatusError{Method: "GET", Path: fmt.Sprintf("/qemu/%d/config", vmid), StatusCode: 404}
+		statusCode := fake.missingConfigStatusCode
+		if statusCode == 0 {
+			statusCode = 404
+		}
+		return VMConfig{}, &APIStatusError{Method: "GET", Path: fmt.Sprintf("/qemu/%d/config", vmid), StatusCode: statusCode}
 	}
 	return cloneVMConfig(config), nil
+}
+
+func TestReadOptionalVMConfigConfirmsPVE500AbsenceWithExactNextID(t *testing.T) {
+	fake := newFakeMutationAPI()
+	fake.missingConfigStatusCode = http.StatusInternalServerError
+	config, exists, err := readOptionalVMConfig(context.Background(), fake, "pve-a", 101)
+	if err != nil || exists || config.Fields != nil {
+		t.Fatalf("missing PVE 9.2 config = %#v, exists %t, err %v", config, exists, err)
+	}
+	fake.configs[101] = VMConfig{Digest: strings40("a"), Fields: map[string]string{"digest": strings40("a")}}
+	config, exists, err = readOptionalVMConfig(context.Background(), fake, "pve-a", 101)
+	if err != nil || !exists || config.Digest != strings40("a") {
+		t.Fatalf("existing PVE config = %#v, exists %t, err %v", config, exists, err)
+	}
 }
 func (fake *fakeMutationAPI) CloneVM(_ context.Context, request CloneRequest) (UPID, error) {
 	fake.record("POST clone")
@@ -99,7 +128,7 @@ func (fake *fakeMutationAPI) CloneVM(_ context.Context, request CloneRequest) (U
 		return UPID{}, errors.New("clone canary-secret response lost")
 	}
 	if fake.cloneWithoutObject {
-		return fakeUPID(request.SourceNode, "qmclone", request.NewVMID), nil
+		return fakeUPID(request.SourceNode, "qmclone", request.SourceVMID), nil
 	}
 	base := cloneVMConfig(fake.configs[request.SourceVMID])
 	base.Digest = strings40("d")
@@ -116,23 +145,23 @@ func (fake *fakeMutationAPI) CloneVM(_ context.Context, request CloneRequest) (U
 	if fake.cloneErrorAfter {
 		return UPID{}, errors.New("clone canary-secret response lost")
 	}
-	upid := fakeUPID(request.SourceNode, "qmclone", request.NewVMID)
+	upid := fakeUPID(request.SourceNode, "qmclone", request.SourceVMID)
 	if fake.malformedUPIDType == "clone" {
 		upid.Raw = "UPID:wrong-node:00000001:00000002:00000003:qmclone:100:root@pam:"
 	}
 	return upid, nil
 }
-func (fake *fakeMutationAPI) ConfigureVM(_ context.Context, request ConfigureRequest) error {
+func (fake *fakeMutationAPI) ConfigureVM(_ context.Context, request ConfigureRequest) (UPID, error) {
 	fake.record("POST config")
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	fake.configureCalls++
 	if fake.configureError {
-		return errors.New("config canary-secret")
+		return UPID{}, errors.New("config canary-secret")
 	}
 	config := fake.configs[request.VMID]
 	if config.Digest != request.Digest {
-		return errors.New("digest conflict")
+		return UPID{}, errors.New("digest conflict")
 	}
 	config.Description = request.Description
 	config.Tags = request.Tags
@@ -152,9 +181,13 @@ func (fake *fakeMutationAPI) ConfigureVM(_ context.Context, request ConfigureReq
 	}
 	fake.configs[request.VMID] = config
 	if fake.configureErrorAfterApply {
-		return errors.New("config canary-secret response lost")
+		return UPID{}, errors.New("config canary-secret response lost")
 	}
-	return nil
+	upid := fakeUPID(request.Node, "qmconfig", request.VMID)
+	if fake.malformedUPIDType == "config" {
+		upid.Raw = "UPID:wrong-node:00000001:00000002:00000003:qmconfig:100:root@pam:"
+	}
+	return upid, nil
 }
 func (fake *fakeMutationAPI) VMStatus(_ context.Context, _ string, vmid uint32) (VMStatus, error) {
 	fake.record(fmt.Sprintf("GET status %d", vmid))
@@ -171,8 +204,10 @@ func (fake *fakeMutationAPI) LifecycleVM(_ context.Context, request LifecycleReq
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	fake.lifecycleCalls[request.Action]++
-	taskType := map[string]string{"start": "qmstart", "stop": "qmshutdown", "pause": "qmsuspend", "resume": "qmresume"}[request.Action]
-	fake.statuses[request.VMID] = map[string]string{"start": "running", "stop": "stopped", "pause": "paused", "resume": "running"}[request.Action]
+	taskType := map[string]string{"start": "qmstart", "stop": "qmshutdown", "pause": "qmpause", "resume": "qmresume"}[request.Action]
+	if !fake.deferLifecycleState {
+		fake.statuses[request.VMID] = map[string]string{"start": "running", "stop": "stopped", "pause": "paused", "resume": "running"}[request.Action]
+	}
 	upid := fakeUPID(request.Node, taskType, request.VMID)
 	if fake.malformedUPIDType == request.Action {
 		upid.Raw = "UPID:wrong-node:00000001:00000002:00000003:" + taskType + ":100:root@pam:"
@@ -191,9 +226,19 @@ func (fake *fakeMutationAPI) GuestAgentPing(_ context.Context, _ string, vmid ui
 }
 func (fake *fakeMutationAPI) TaskStatus(_ context.Context, _ string, upid UPID) (TaskStatus, error) {
 	fake.record("GET task " + upid.Type)
+	if fake.runningTaskType == upid.Type {
+		return TaskStatus{Status: "running"}, nil
+	}
+	fake.mu.Lock()
+	if fake.taskFailuresRemaining[upid.Type] > 0 {
+		fake.taskFailuresRemaining[upid.Type]--
+		fake.mu.Unlock()
+		return TaskStatus{Status: "stopped", ExitStatus: "ERROR canary-secret"}, nil
+	}
+	fake.mu.Unlock()
 	if fake.completeTaskOnPoll {
 		vmid, _ := strconv.ParseUint(upid.ObjectID, 10, 32)
-		if status := map[string]string{"qmstart": "running", "qmshutdown": "stopped", "qmsuspend": "paused", "qmresume": "running"}[upid.Type]; status != "" {
+		if status := map[string]string{"qmstart": "running", "qmshutdown": "stopped", "qmpause": "paused", "qmresume": "running"}[upid.Type]; status != "" {
 			fake.mu.Lock()
 			fake.statuses[uint32(vmid)] = status
 			fake.mu.Unlock()
@@ -448,7 +493,7 @@ func TestClosedMutationStateAndCommittedClaimBoundaries(t *testing.T) {
 }
 
 func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *testing.T) {
-	for _, phase := range []string{"prepared", "clone-submitted", "clone-complete", "configured", "lifecycle-submitted"} {
+	for _, phase := range []string{"prepared", "clone-submitted", "clone-complete", "config-submitted", "configured", "lifecycle-submitted"} {
 		t.Run(phase, func(t *testing.T) {
 			fixture := newExecutionFixture(t)
 			prepared, failure := fixture.service.prepareExecution(fixture.vmInput, "apply")
@@ -463,16 +508,19 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 			if phase != "prepared" {
 				materializeOwnedClone(t, fixture.fake, plan)
 			}
-			if phase == "configured" || phase == "lifecycle-submitted" {
+			if phase == "config-submitted" || phase == "configured" || phase == "lifecycle-submitted" {
 				config := fixture.fake.configs[100]
 				marker, _ := encodeOwnershipMarker(*plan.Ownership)
-				if err := fixture.fake.ConfigureVM(context.Background(), ConfigureRequest{Node: plan.Destination.Node, VMID: 100, Digest: config.Digest, Sockets: plan.Hardware.Sockets, Cores: plan.Hardware.Cores, CPULimit: plan.Hardware.CPULimit, MemoryMiB: plan.Hardware.MemoryMiB, Description: marker, Tags: ownershipTag(*plan.Ownership), Networks: plan.Networks}); err != nil {
+				if _, err := fixture.fake.ConfigureVM(context.Background(), ConfigureRequest{Node: plan.Destination.Node, VMID: 100, Digest: config.Digest, Sockets: plan.Hardware.Sockets, Cores: plan.Hardware.Cores, CPULimit: plan.Hardware.CPULimit, MemoryMiB: plan.Hardware.MemoryMiB, Description: marker, Tags: ownershipTag(*plan.Ownership), Networks: plan.Networks}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			prepared.record.Phase = phase
 			if phase == "clone-submitted" {
-				prepared.record.TaskUPID = fakeUPID(plan.Template.SourceNode, "qmclone", 100).Raw
+				prepared.record.TaskUPID = fakeUPID(plan.Template.SourceNode, "qmclone", plan.Template.VMID).Raw
+			}
+			if phase == "config-submitted" {
+				prepared.record.TaskUPID = fakeUPID(plan.Destination.Node, "qmconfig", 100).Raw
 			}
 			if phase == "lifecycle-submitted" {
 				prepared.record.TaskUPID = fakeUPID(plan.Destination.Node, "qmstart", 100).Raw
@@ -492,7 +540,7 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 			if phase != "prepared" && fixture.fake.cloneCalls != baselineClone {
 				t.Fatalf("phase %s repeated clone", phase)
 			}
-			if (phase == "configured" || phase == "lifecycle-submitted") && fixture.fake.configureCalls != baselineConfig {
+			if (phase == "config-submitted" || phase == "configured" || phase == "lifecycle-submitted") && fixture.fake.configureCalls != baselineConfig {
 				t.Fatalf("phase %s repeated configuration", phase)
 			}
 			if phase == "lifecycle-submitted" && fixture.fake.lifecycleCalls["start"] != baselineStart {
@@ -664,12 +712,41 @@ func TestProxmoxFailureWindowContract(t *testing.T) {
 		}
 	})
 
+	t.Run("TEST-PROXMOX-010 configuration task failure compensates", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		fixture.fake.taskFailureType = "qmconfig"
+		result := applyVMFixture(t, fixture)
+		if result.GetError().GetCode() != "provider_task_failed" || !result.GetCompensationAttempted() || !result.GetCompensationComplete() {
+			t.Fatalf("result=%#v attempted=%t complete=%t", result.GetError(), result.GetCompensationAttempted(), result.GetCompensationComplete())
+		}
+	})
+
 	t.Run("TEST-PROXMOX-012 lost start response reconciles state", func(t *testing.T) {
 		fixture := newExecutionFixture(t)
 		fixture.fake.lifecycleErrorAfter["start"] = true
 		result := applyVMFixture(t, fixture)
 		if result.GetError() != nil || fixture.fake.lifecycleCalls["start"] != 1 {
 			t.Fatalf("result=%#v startCalls=%d", result.GetError(), fixture.fake.lifecycleCalls["start"])
+		}
+	})
+
+	t.Run("TEST-PROXMOX-015 definitively failed lifecycle task retries from unchanged state", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		applied := applyVMFixture(t, fixture)
+		fixture.fake.taskFailuresRemaining["qmpause"] = 2
+		fixture.fake.deferLifecycleState = true
+		fixture.fake.completeTaskOnPoll = true
+		stream := &lifecycleCapture{}
+		request := &pluginv1.LifecycleRequest{
+			Context: completeCall("pause-retry", "vm.lab", fixture.target.GetTargetId()), Target: fixture.target,
+			Action: pluginv1.LifecycleAction_LIFECYCLE_ACTION_PAUSE, PriorState: applied.GetProviderState(), ActionParametersJson: []byte(`{}`),
+		}
+		if err := fixture.service.Lifecycle(request, stream); err != nil {
+			t.Fatal(err)
+		}
+		result := stream.events[0].GetEvent().GetResult()
+		if result.GetError() != nil || fixture.fake.lifecycleCalls["pause"] != 3 {
+			t.Fatalf("result=%#v pauseCalls=%d", result.GetError(), fixture.fake.lifecycleCalls["pause"])
 		}
 	})
 
@@ -793,6 +870,15 @@ func TestProxmoxFailureWindowContract(t *testing.T) {
 		}
 	})
 
+	t.Run("TEST-PROXMOX-019 non-propagating VLAN scope blocks mutation", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		fixture.fake.missingPropagation = true
+		result := applyVMFixture(t, fixture)
+		if result.GetError().GetCode() != "permission_gate_failed" || fixture.fake.cloneCalls != 0 {
+			t.Fatalf("result=%#v clone=%d", result.GetError(), fixture.fake.cloneCalls)
+		}
+	})
+
 	t.Run("TEST-PROXMOX-021 malformed UPID", func(t *testing.T) {
 		fixture := newExecutionFixture(t)
 		fixture.fake.malformedUPIDType = "clone"
@@ -810,6 +896,15 @@ func TestProxmoxFailureWindowContract(t *testing.T) {
 		encoded, _ := json.Marshal(result)
 		if result.GetError().GetCode() != "provider_task_failed" || strings.Contains(string(encoded), "canary-secret") || countCalls(fixture.fake.calls, "GET task") > maximumTaskPolls {
 			t.Fatalf("result=%s calls=%#v", encoded, fixture.fake.calls)
+		}
+	})
+
+	t.Run("TEST-PROXMOX-022 running clone timeout does not race compensation", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		fixture.fake.runningTaskType = "qmclone"
+		result := applyVMFixture(t, fixture)
+		if result.GetError().GetCode() != "unknown_clone_outcome" || result.GetCompensationAttempted() || fixture.fake.deleteCalls != 0 || countCalls(fixture.fake.calls, "GET task") != maximumTaskPolls {
+			t.Fatalf("result=%#v attempted=%t delete=%d calls=%#v", result.GetError(), result.GetCompensationAttempted(), fixture.fake.deleteCalls, fixture.fake.calls)
 		}
 	})
 }

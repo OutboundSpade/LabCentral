@@ -449,7 +449,7 @@ func (state QEMUProviderState) validate() error {
 	}
 	if state.TaskUPID != "" {
 		upid, err := ParseUPID(state.TaskUPID)
-		if err != nil || upid.validateObject(state.Node, state.VMID, "qmclone", "qmstart", "qmshutdown", "qmsuspend", "qmresume", "qmdestroy") != nil {
+		if err != nil || upid.validateObject(state.Node, state.VMID, "qmclone", "qmstart", "qmshutdown", "qmpause", "qmresume", "qmdestroy") != nil {
 			return fmt.Errorf("VM task identity is invalid")
 		}
 	}

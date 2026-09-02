@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -49,6 +50,7 @@ type Client struct {
 	tokenID          string
 	tokenSecret      string
 	maxResponseBytes int64
+	permissionPaths  []string
 	httpClient       *http.Client
 }
 
@@ -122,9 +124,16 @@ func NewClient(config TargetConfig, credentials APITokenCredentials) (*Client, e
 		}).DialContext,
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
 	}
+	permissionPaths := make([]string, 0)
+	if config.MutationEnabled {
+		for path := range expectedPermissionScopes(config) {
+			permissionPaths = append(permissionPaths, path)
+		}
+		sort.Strings(permissionPaths)
+	}
 	return &Client{
 		endpoint: endpoint, tokenID: credentials.TokenID, tokenSecret: credentials.TokenSecret,
-		maxResponseBytes: limit,
+		maxResponseBytes: limit, permissionPaths: permissionPaths,
 		httpClient: &http.Client{
 			Transport: transport,
 			Timeout:   timeout,

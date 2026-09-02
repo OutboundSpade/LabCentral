@@ -106,3 +106,28 @@ func TestInvocationJournalDoesNotPersistCanariesOutsideTypedFields(t *testing.T)
 		}
 	}
 }
+
+func TestInvocationJournalAcceptsSourceBoundCloneTaskOnlyForApply(t *testing.T) {
+	record := JournalRecord{
+		SchemaVersion: journalV10, InvocationID: "invocation.test", TargetID: "target.test", Action: "apply",
+		RequestDigest: sha("a"), Node: "pve-destination", VMID: 101, OwnershipDigest: sha("b"), Phase: "clone-submitted",
+		TaskUPID: "UPID:pve-source:00000001:00000002:00000003:qmclone:9000:root@pam:",
+	}
+	if err := validateJournalRecord(record); err != nil {
+		t.Fatalf("source-bound clone task rejected: %v", err)
+	}
+
+	record.Action = "start"
+	if err := validateJournalRecord(record); err == nil || !strings.Contains(err.Error(), "task identity") {
+		t.Fatalf("clone task accepted for lifecycle action: %v", err)
+	}
+	record.Action = "apply"
+	record.TaskUPID = "UPID:pve-source:00000001:00000002:00000003:qmstart:101:root@pam:"
+	if err := validateJournalRecord(record); err == nil || !strings.Contains(err.Error(), "task identity") {
+		t.Fatalf("source-bound non-clone task accepted: %v", err)
+	}
+	record.TaskUPID = "UPID:pve-destination:00000001:00000002:00000003:qmconfig:101:root@pam:"
+	if err := validateJournalRecord(record); err != nil {
+		t.Fatalf("destination-bound configuration task rejected: %v", err)
+	}
+}

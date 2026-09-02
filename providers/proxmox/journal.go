@@ -195,7 +195,7 @@ func validateJournalRecord(record JournalRecord) error {
 	}
 	if record.TaskUPID != "" {
 		upid, err := ParseUPID(record.TaskUPID)
-		if err != nil || record.VMID < 100 || upid.validateObject(record.Node, record.VMID, journalTaskTypes(record.Action)...) != nil {
+		if err != nil || record.VMID < 100 || validateJournalTask(record, upid) != nil {
 			return fmt.Errorf("invocation journal task identity is invalid")
 		}
 	}
@@ -227,10 +227,22 @@ func validateJournalRecord(record JournalRecord) error {
 	return nil
 }
 
+func validateJournalTask(record JournalRecord, upid UPID) error {
+	// PVE identifies qmclone tasks by the source template node and VMID, while
+	// the journal's node and VMID deliberately bind the destination resource.
+	// The record has no duplicate source fields: apply replay validates this
+	// parsed identity against the exact source in the persisted provider plan
+	// before polling it. Every other task remains destination-bound here.
+	if record.Action == "apply" && upid.Type == "qmclone" {
+		return upid.validate(upid.Node, "qmclone")
+	}
+	return upid.validateObject(record.Node, record.VMID, journalTaskTypes(record.Action)...)
+}
+
 func journalTaskTypes(action string) []string {
 	switch action {
 	case "apply":
-		return []string{"qmclone", "qmstart"}
+		return []string{"qmclone", "qmconfig", "qmstart"}
 	case "destroy":
 		return []string{"qmdestroy"}
 	case "start":
@@ -238,7 +250,7 @@ func journalTaskTypes(action string) []string {
 	case "stop":
 		return []string{"qmshutdown"}
 	case "pause":
-		return []string{"qmsuspend"}
+		return []string{"qmpause"}
 	case "resume":
 		return []string{"qmresume"}
 	default:

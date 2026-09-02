@@ -24,12 +24,15 @@ import (
 )
 
 const (
-	maximumTaskPolls      = 12
-	maximumReadinessPolls = 8
+	maximumTaskPolls         = 64
+	maximumReadinessPolls    = 8
+	maximumLifecycleAttempts = 3
 )
 
 var diskFieldPattern = regexp.MustCompile(`^(scsi|virtio|sata|ide)[0-9]{1,2}$`)
 var networkFieldPattern = regexp.MustCompile(`^(net|ipconfig)[0-9]{1,2}$`)
+var errTaskReportedFailure = errors.New("provider task reported failure")
+var errTaskPollingTimedOut = errors.New("provider task polling timed out")
 
 func (service *Service) ApplyResource(request *pluginv1.ApplyResourceRequest, stream grpc.ServerStreamingServer[pluginv1.ApplyResourceResponse]) error {
 	if stream == nil {
@@ -287,8 +290,16 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 		if parseErr != nil || upid.validateObject(state.Node, state.VMID, allowedType) != nil {
 			return lifecycleJournalFailure(journal, record, "invalid_task_identity", "provider_protocol_error", "Persisted Proxmox lifecycle task identity is invalid", false, resourceID)
 		}
-		if service.waitTask(ctx, client, state.Node, upid) != nil {
-			return lifecycleJournalFailure(journal, record, "provider_task_failed", "provider_failure", "Persisted Proxmox lifecycle task did not complete successfully", false, resourceID)
+		if waitErr := service.waitTask(ctx, client, state.Node, upid); waitErr != nil {
+			if !errors.Is(waitErr, errTaskReportedFailure) {
+				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Persisted Proxmox lifecycle task outcome is unknown", true, resourceID)
+			}
+			record.TaskUPID = ""
+			record.Phase = "prepared"
+			record.LastSafeObservation = "persisted lifecycle task failed"
+			if journal.Write(record) != nil {
+				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle retry could not be persisted", true, resourceID)
+			}
 		}
 	}
 	current, exists, err := readOptionalVMConfig(ctx, client, state.Node, state.VMID)
@@ -300,23 +311,52 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 		return lifecycleJournalFailure(journal, record, "provider_read_failed", "provider_unavailable", "Proxmox VM status could not be read", true, resourceID)
 	}
 	if status.Status != desired {
-		if !validLifecycleSource(action, status.Status) {
-			return lifecycleJournalFailure(journal, record, "invalid_lifecycle_transition", "conflict", "Proxmox VM is not in a state that permits this lifecycle action", false, resourceID)
-		}
-		upid, actionErr := client.LifecycleVM(ctx, LifecycleRequest{Node: state.Node, VMID: state.VMID, Action: action})
-		if actionErr != nil {
-			observed, readErr := client.VMStatus(ctx, state.Node, state.VMID)
-			if readErr != nil || observed.Status != desired {
-				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
+		for attempt := 0; attempt < maximumLifecycleAttempts && status.Status != desired; attempt++ {
+			if !validLifecycleSource(action, status.Status) {
+				return lifecycleJournalFailure(journal, record, "invalid_lifecycle_transition", "conflict", "Proxmox VM is not in a state that permits this lifecycle action", false, resourceID)
 			}
-		} else if upid.validateObject(state.Node, state.VMID, allowedType) != nil {
-			return lifecycleJournalFailure(journal, record, "invalid_task_identity", "provider_protocol_error", "Proxmox lifecycle returned an invalid task identity", false, resourceID)
-		} else {
+			upid, actionErr := client.LifecycleVM(ctx, LifecycleRequest{Node: state.Node, VMID: state.VMID, Action: action})
+			if actionErr != nil {
+				observed, readErr := client.VMStatus(ctx, state.Node, state.VMID)
+				if readErr != nil || observed.Status != desired {
+					return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
+				}
+				status = observed
+				break
+			}
+			if upid.validateObject(state.Node, state.VMID, allowedType) != nil {
+				return lifecycleJournalFailure(journal, record, "invalid_task_identity", "provider_protocol_error", "Proxmox lifecycle returned an invalid task identity", false, resourceID)
+			}
 			record.TaskUPID = upid.Raw
 			record.Phase = "lifecycle-submitted"
-			if journal.Write(record) != nil || service.waitTask(ctx, client, state.Node, upid) != nil {
+			record.LastSafeObservation = "lifecycle task accepted"
+			if journal.Write(record) != nil {
+				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle task could not be persisted", true, resourceID)
+			}
+			waitErr := service.waitTask(ctx, client, state.Node, upid)
+			if waitErr == nil {
+				break
+			}
+			if !errors.Is(waitErr, errTaskReportedFailure) {
+				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle task outcome is unknown", true, resourceID)
+			}
+			status, err = client.VMStatus(ctx, state.Node, state.VMID)
+			if err != nil {
+				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
+			}
+			if status.Status == desired {
+				break
+			}
+			if attempt+1 == maximumLifecycleAttempts {
 				return lifecycleJournalFailure(journal, record, "provider_task_failed", "provider_failure", "Proxmox lifecycle task did not complete successfully", false, resourceID)
 			}
+			record.TaskUPID = ""
+			record.Phase = "prepared"
+			record.LastSafeObservation = "lifecycle task failed before state change"
+			if journal.Write(record) != nil {
+				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle retry could not be persisted", true, resourceID)
+			}
+			service.sleep(2 * time.Second)
 		}
 		status, err = client.VMStatus(ctx, state.Node, state.VMID)
 		if err != nil || status.Status != desired {
@@ -363,7 +403,7 @@ func lifecycleNames(action pluginv1.LifecycleAction) (string, string, string) {
 	case pluginv1.LifecycleAction_LIFECYCLE_ACTION_STOP:
 		return "stop", "stopped", "qmshutdown"
 	case pluginv1.LifecycleAction_LIFECYCLE_ACTION_PAUSE:
-		return "pause", "paused", "qmsuspend"
+		return "pause", "paused", "qmpause"
 	case pluginv1.LifecycleAction_LIFECYCLE_ACTION_RESUME:
 		return "resume", "running", "qmresume"
 	default:
@@ -547,7 +587,7 @@ func verifyNetworkPreflight(ctx context.Context, client MutationAPI, config Targ
 		}
 	}
 	permissions, err := client.EffectivePermissions(ctx)
-	if err != nil || !permissionsSatisfy(config.PermissionScopes, permissions) {
+	if err != nil || !permissionsSatisfy(config, permissions) {
 		return errPermissionGate
 	}
 	if !nodeOK || !bridgeOK {
@@ -572,11 +612,14 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 	}
 	if prepared.existing != nil && prepared.existing.Phase == "clone-submitted" {
 		upid, parseErr := ParseUPID(prepared.existing.TaskUPID)
-		if parseErr != nil || upid.validateObject(plan.Template.SourceNode, vmid, "qmclone") != nil {
+		if parseErr != nil || upid.validateObject(plan.Template.SourceNode, plan.Template.VMID, "qmclone") != nil {
 			return prepared.fail("failed", "invalid_task_identity", "provider_protocol_error", "Persisted Proxmox clone task identity is invalid", false, false, false, nil)
 		}
 		prepared.record.TaskUPID = upid.Raw
-		if service.waitTask(ctx, prepared.client, plan.Template.SourceNode, upid) != nil {
+		if waitErr := service.waitTask(ctx, prepared.client, plan.Template.SourceNode, upid); waitErr != nil {
+			if !errors.Is(waitErr, errTaskReportedFailure) {
+				return prepared.fail("partial", "unknown_clone_outcome", "unknown_outcome", "Persisted Proxmox clone task outcome is unknown", true, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+			}
 			_, destinationExists, readErr := readOptionalVMConfig(ctx, prepared.client, plan.Destination.Node, vmid)
 			if readErr == nil && !destinationExists {
 				return prepared.fail("failed", "provider_task_failed", "provider_failure", "Persisted Proxmox clone task did not complete successfully", false, false, true, nil)
@@ -588,6 +631,7 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 			}
 			return prepared.fail(phase, "provider_task_failed", "provider_failure", "Persisted Proxmox clone task did not complete successfully", false, true, complete, leftovers)
 		}
+		prepared.record.TaskUPID = ""
 		if !prepared.checkpoint("clone-complete", "persisted clone task completed") {
 			return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox invocation journal could not checkpoint clone completion", true, plan.LogicalResourceID)
 		}
@@ -626,14 +670,17 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 				return prepared.fail("partial", "unknown_clone_outcome", "unknown_outcome", "Proxmox clone completion could not be confirmed", true, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
 			}
 		} else {
-			if upid.validateObject(plan.Template.SourceNode, vmid, "qmclone") != nil {
+			if upid.validateObject(plan.Template.SourceNode, plan.Template.VMID, "qmclone") != nil {
 				return prepared.fail("failed", "invalid_task_identity", "provider_protocol_error", "Proxmox clone returned an invalid task identity", false, false, false, nil)
 			}
 			prepared.record.TaskUPID = upid.Raw
 			if !prepared.checkpoint("clone-submitted", "clone task accepted") {
 				return executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal could not checkpoint clone", true, plan.LogicalResourceID)
 			}
-			if err := service.waitTask(ctx, prepared.client, plan.Template.SourceNode, upid); err != nil {
+			if waitErr := service.waitTask(ctx, prepared.client, plan.Template.SourceNode, upid); waitErr != nil {
+				if !errors.Is(waitErr, errTaskReportedFailure) {
+					return prepared.fail("partial", "unknown_clone_outcome", "unknown_outcome", "Proxmox clone task outcome is unknown", true, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+				}
 				_, destinationExists, readErr := readOptionalVMConfig(ctx, prepared.client, plan.Destination.Node, vmid)
 				if readErr == nil && !destinationExists {
 					return prepared.fail("failed", "provider_task_failed", "provider_failure", "Proxmox clone task did not complete successfully", false, false, true, nil)
@@ -646,6 +693,7 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 				return prepared.fail(phase, "provider_task_failed", "provider_failure", "Proxmox clone task did not complete successfully", false, true, complete, leftovers)
 			}
 		}
+		prepared.record.TaskUPID = ""
 		if !prepared.checkpoint("clone-complete", "clone ownership observed") {
 			return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox invocation journal could not checkpoint clone completion", true, plan.LogicalResourceID)
 		}
@@ -654,24 +702,85 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 			return prepared.fail("partial", "ownership_mismatch", "ownership_mismatch", "Cloned Proxmox VM ownership could not be verified", false, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
 		}
 	}
+	if prepared.existing != nil && prepared.existing.Phase == "config-submitted" {
+		upid, parseErr := ParseUPID(prepared.existing.TaskUPID)
+		if parseErr != nil || upid.validateObject(plan.Destination.Node, vmid, "qmconfig") != nil {
+			return prepared.fail("partial", "invalid_task_identity", "provider_protocol_error", "Persisted Proxmox configuration task identity is invalid", false, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+		}
+		prepared.record.TaskUPID = upid.Raw
+		if waitErr := service.waitTask(ctx, prepared.client, plan.Destination.Node, upid); waitErr != nil {
+			if !errors.Is(waitErr, errTaskReportedFailure) {
+				return prepared.fail("partial", "unknown_config_outcome", "unknown_outcome", "Persisted Proxmox configuration task outcome is unknown", true, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+			}
+			complete, leftovers := service.compensateVM(ctx, prepared)
+			phase := "failed"
+			if !complete {
+				phase = "partial"
+			}
+			return prepared.fail(phase, "provider_task_failed", "provider_failure", "Persisted Proxmox configuration task did not complete successfully", false, true, complete, leftovers)
+		}
+		prepared.record.TaskUPID = ""
+		readback, readErr := service.waitManagedConfiguration(ctx, prepared.client, plan)
+		if readErr != nil {
+			complete, leftovers := service.compensateVM(ctx, prepared)
+			phase := "failed"
+			if !complete {
+				phase = "partial"
+			}
+			return prepared.fail(phase, "provider_config_failed", "provider_failure", "Persisted Proxmox VM configuration could not be verified", false, true, complete, leftovers)
+		}
+		destinationConfig = readback
+	}
 	if !managedConfigurationMatches(plan, destinationConfig) {
-		configureErr := prepared.client.ConfigureVM(ctx, ConfigureRequest{
+		upid, configureErr := prepared.client.ConfigureVM(ctx, ConfigureRequest{
 			Node: plan.Destination.Node, VMID: vmid, Digest: destinationConfig.Digest,
 			Sockets: plan.Hardware.Sockets, Cores: plan.Hardware.Cores, CPULimit: plan.Hardware.CPULimit,
 			MemoryMiB: plan.Hardware.MemoryMiB, Description: prepared.ownershipText, Tags: ownershipTag(*plan.Ownership), Networks: plan.Networks,
 		})
-		readback, readErr := prepared.client.VMConfig(ctx, plan.Destination.Node, vmid)
-		if configureErr != nil || readErr != nil || !managedConfigurationMatches(plan, readback) {
-			if configureErr != nil && readErr == nil && managedConfigurationMatches(plan, readback) {
-				destinationConfig = readback
-			} else {
+		if configureErr == nil {
+			if upid.validateObject(plan.Destination.Node, vmid, "qmconfig") != nil {
 				complete, leftovers := service.compensateVM(ctx, prepared)
 				phase := "failed"
 				if !complete {
 					phase = "partial"
 				}
-				return prepared.fail(phase, "provider_config_failed", "provider_failure", "Proxmox VM configuration failed", false, true, complete, leftovers)
+				return prepared.fail(phase, "invalid_task_identity", "provider_protocol_error", "Proxmox configuration returned an invalid task identity", false, true, complete, leftovers)
 			}
+			prepared.record.TaskUPID = upid.Raw
+			if !prepared.checkpoint("config-submitted", "configuration task accepted") {
+				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox invocation journal could not checkpoint configuration", true, plan.LogicalResourceID)
+			}
+			if waitErr := service.waitTask(ctx, prepared.client, plan.Destination.Node, upid); waitErr != nil {
+				if !errors.Is(waitErr, errTaskReportedFailure) {
+					return prepared.fail("partial", "unknown_config_outcome", "unknown_outcome", "Proxmox configuration task outcome is unknown", true, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+				}
+				complete, leftovers := service.compensateVM(ctx, prepared)
+				phase := "failed"
+				if !complete {
+					phase = "partial"
+				}
+				return prepared.fail(phase, "provider_task_failed", "provider_failure", "Proxmox configuration task did not complete successfully", false, true, complete, leftovers)
+			}
+			prepared.record.TaskUPID = ""
+		} else {
+			var status *APIStatusError
+			if errors.As(configureErr, &status) {
+				complete, leftovers := service.compensateVM(ctx, prepared)
+				phase := "failed"
+				if !complete {
+					phase = "partial"
+				}
+				return prepared.fail(phase, "provider_config_failed", "provider_failure", "Proxmox VM configuration was rejected", false, true, complete, leftovers)
+			}
+		}
+		readback, readErr := service.waitManagedConfiguration(ctx, prepared.client, plan)
+		if readErr != nil {
+			complete, leftovers := service.compensateVM(ctx, prepared)
+			phase := "failed"
+			if !complete {
+				phase = "partial"
+			}
+			return prepared.fail(phase, "provider_config_failed", "provider_failure", "Proxmox VM configuration failed", false, true, complete, leftovers)
 		} else {
 			destinationConfig = readback
 		}
@@ -737,6 +846,17 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 	return result
 }
 
+func (service *Service) waitManagedConfiguration(ctx context.Context, client MutationAPI, plan QEMUPlan) (VMConfig, error) {
+	for attempt := 0; attempt < maximumTaskPolls; attempt++ {
+		config, err := client.VMConfig(ctx, plan.Destination.Node, planVMID(plan))
+		if err == nil && managedConfigurationMatches(plan, config) {
+			return config, nil
+		}
+		service.sleep(boundedBackoff(attempt))
+	}
+	return VMConfig{}, fmt.Errorf("managed configuration was not observed")
+}
+
 func (service *Service) waitCloneUnlocked(ctx context.Context, client MutationAPI, node string, vmid uint32) (VMConfig, error) {
 	for attempt := 0; attempt < maximumTaskPolls; attempt++ {
 		config, err := client.VMConfig(ctx, node, vmid)
@@ -794,7 +914,7 @@ func verifyInventoryAndPermissions(ctx context.Context, client MutationAPI, conf
 		return fmt.Errorf("target component evidence is stale")
 	}
 	permissions, err := client.EffectivePermissions(ctx)
-	if err != nil || !permissionsSatisfy(config.PermissionScopes, permissions) {
+	if err != nil || !permissionsSatisfy(config, permissions) {
 		return errPermissionGate
 	}
 	return nil
@@ -804,7 +924,7 @@ func qualifiedReleaseMatchesInventory(qualified string, observed Version) bool {
 	return strings.HasPrefix(observed.Release, "9.") && (observed.Version == qualified || strings.HasPrefix(observed.Version, "pve-manager/"+qualified+"/"))
 }
 
-func permissionsSatisfy(required []PermissionScope, actual EffectivePermissions) bool {
+func permissionsSatisfy(config TargetConfig, actual EffectivePermissions) bool {
 	for _, privileges := range actual.Paths {
 		for _, privilege := range privileges {
 			if _, forbidden := forbiddenMutationPrivileges[privilege]; forbidden {
@@ -812,18 +932,34 @@ func permissionsSatisfy(required []PermissionScope, actual EffectivePermissions)
 			}
 		}
 	}
-	for _, scope := range required {
+	for _, scope := range config.PermissionScopes {
 		granted := make(map[string]bool, len(actual.Paths[scope.Path]))
 		for _, privilege := range actual.Paths[scope.Path] {
 			granted[privilege] = true
 		}
+		propagating := make(map[string]bool, len(actual.PropagatingPaths[scope.Path]))
+		for _, privilege := range actual.PropagatingPaths[scope.Path] {
+			propagating[privilege] = true
+		}
 		for _, privilege := range scope.Privileges {
-			if !granted[privilege] {
+			if !granted[privilege] || scopeRequiresPropagation(config, scope.Path) && !propagating[privilege] {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+func scopeRequiresPropagation(config TargetConfig, path string) bool {
+	if config.Pool == "" && path == "/vms" {
+		return true
+	}
+	for _, network := range config.Networks {
+		if path == "/sdn/zones/localnetwork/"+network.Bridge {
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) waitTask(ctx context.Context, client MutationAPI, node string, upid UPID) error {
@@ -836,11 +972,11 @@ func (service *Service) waitTask(ctx context.Context, client MutationAPI, node s
 			if status.ExitStatus == "OK" {
 				return nil
 			}
-			return fmt.Errorf("provider task failed")
+			return errTaskReportedFailure
 		}
 		service.sleep(boundedBackoff(attempt))
 	}
-	return fmt.Errorf("provider task timed out")
+	return errTaskPollingTimedOut
 }
 
 func boundedBackoff(attempt int) time.Duration {
@@ -927,6 +1063,16 @@ func readOptionalVMConfig(ctx context.Context, client MutationAPI, node string, 
 	var status *APIStatusError
 	if errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
 		return VMConfig{}, false, nil
+	}
+	// PVE 9.2 returns HTTP 500 with a missing-config message for an unused
+	// VMID. Error bodies are intentionally never parsed because they can
+	// contain attacker-controlled or secret material. Treat that response as
+	// absence only when the separate typed nextid check positively confirms
+	// the exact VMID is available; otherwise preserve the original error.
+	if errors.As(err, &status) && status.StatusCode == http.StatusInternalServerError {
+		if available, checkErr := client.AdvisoryVMIDAvailable(ctx, vmid); checkErr == nil && available {
+			return VMConfig{}, false, nil
+		}
 	}
 	return VMConfig{}, false, err
 }
