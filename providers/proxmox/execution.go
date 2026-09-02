@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	maximumTaskPolls         = 64
+	maximumTaskPolls         = 192
+	maximumTaskReadErrors    = 3
 	maximumReadinessPolls    = 8
 	maximumLifecycleAttempts = 3
 )
@@ -963,11 +964,21 @@ func scopeRequiresPropagation(config TargetConfig, path string) bool {
 }
 
 func (service *Service) waitTask(ctx context.Context, client MutationAPI, node string, upid UPID) error {
+	consecutiveReadErrors := 0
 	for attempt := 0; attempt < maximumTaskPolls; attempt++ {
 		status, err := client.TaskStatus(ctx, node, upid)
 		if err != nil {
-			return err
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			consecutiveReadErrors++
+			if consecutiveReadErrors > maximumTaskReadErrors {
+				return err
+			}
+			service.sleep(boundedBackoff(attempt))
+			continue
 		}
+		consecutiveReadErrors = 0
 		if status.Status == "stopped" {
 			if status.ExitStatus == "OK" {
 				return nil

@@ -258,19 +258,14 @@ func TestCredentialedProxmoxT3Isolation(t *testing.T) {
 		}
 	}()
 
-	sourceNetwork := planApplyT3IsolationResource(t, ctx, service, target, profile, sourceValidation, sourceDocuments.resources[profile.SourceNetworkResourceID], profile.SourceInstanceID, profile.SourceNetworkResourceID, nil, nil, vlanClaimNamespace, profile.ExpectedVLANs[0], "Network")
-	applied = append(applied, sourceNetwork)
-	crossNetwork := planApplyT3IsolationResource(t, ctx, service, target, profile, crossValidation, crossDocuments.resources[profile.CrossNetworkResourceID], profile.CrossInstanceID, profile.CrossNetworkResourceID, cloneClaims(sourceNetwork.claims), nil, vlanClaimNamespace, profile.ExpectedVLANs[1], "Network")
-	applied = append(applied, crossNetwork)
+	sourceNetwork := planApplyT3IsolationResource(t, ctx, service, target, profile, sourceValidation, sourceDocuments.resources[profile.SourceNetworkResourceID], profile.SourceInstanceID, profile.SourceNetworkResourceID, nil, nil, vlanClaimNamespace, profile.ExpectedVLANs[0], "Network", &applied)
+	crossNetwork := planApplyT3IsolationResource(t, ctx, service, target, profile, crossValidation, crossDocuments.resources[profile.CrossNetworkResourceID], profile.CrossInstanceID, profile.CrossNetworkResourceID, cloneClaims(sourceNetwork.claims), nil, vlanClaimNamespace, profile.ExpectedVLANs[1], "Network", &applied)
 	sourceDependency := t3IsolationAppliedDependency(sourceNetwork)
-	sourceVM := planApplyT3IsolationResource(t, ctx, service, target, profile, sourceValidation, sourceDocuments.resources[profile.SourceVMResourceID], profile.SourceInstanceID, profile.SourceVMResourceID, nil, []*pluginv1.ResourceDependency{sourceDependency}, vmidClaimNamespace, profile.ExpectedVMIDs[0], "VM")
-	applied = append(applied, sourceVM)
-	peerVM := planApplyT3IsolationResource(t, ctx, service, target, profile, sourceValidation, sourceDocuments.resources[profile.PeerVMResourceID], profile.SourceInstanceID, profile.PeerVMResourceID, cloneClaims(sourceVM.claims), []*pluginv1.ResourceDependency{sourceDependency}, vmidClaimNamespace, profile.ExpectedVMIDs[1], "VM")
-	applied = append(applied, peerVM)
+	sourceVM := planApplyT3IsolationResource(t, ctx, service, target, profile, sourceValidation, sourceDocuments.resources[profile.SourceVMResourceID], profile.SourceInstanceID, profile.SourceVMResourceID, nil, []*pluginv1.ResourceDependency{sourceDependency}, vmidClaimNamespace, profile.ExpectedVMIDs[0], "VM", &applied)
+	peerVM := planApplyT3IsolationResource(t, ctx, service, target, profile, sourceValidation, sourceDocuments.resources[profile.PeerVMResourceID], profile.SourceInstanceID, profile.PeerVMResourceID, cloneClaims(sourceVM.claims), []*pluginv1.ResourceDependency{sourceDependency}, vmidClaimNamespace, profile.ExpectedVMIDs[1], "VM", &applied)
 	crossExclusions := append(cloneClaims(sourceVM.claims), cloneClaims(peerVM.claims)...)
 	crossDependency := t3IsolationAppliedDependency(crossNetwork)
-	crossVM := planApplyT3IsolationResource(t, ctx, service, target, profile, crossValidation, crossDocuments.resources[profile.CrossVMResourceID], profile.CrossInstanceID, profile.CrossVMResourceID, crossExclusions, []*pluginv1.ResourceDependency{crossDependency}, vmidClaimNamespace, profile.ExpectedVMIDs[2], "VM")
-	applied = append(applied, crossVM)
+	planApplyT3IsolationResource(t, ctx, service, target, profile, crossValidation, crossDocuments.resources[profile.CrossVMResourceID], profile.CrossInstanceID, profile.CrossVMResourceID, crossExclusions, []*pluginv1.ResourceDependency{crossDependency}, vmidClaimNamespace, profile.ExpectedVMIDs[2], "VM", &applied)
 
 	if err := waitForT3ProbeAgent(ctx, profile.Probe.AgentOrigin, 2*time.Minute); err != nil {
 		t.Fatal(err)
@@ -531,12 +526,25 @@ func planT3IsolationResource(t *testing.T, service *Service, target *pluginv1.Ta
 	return plan, input
 }
 
-func planApplyT3IsolationResource(t *testing.T, ctx context.Context, service *Service, target *pluginv1.TargetContext, profile t3IsolationProfile, validationPlan, resourceJSON []byte, instanceID, resourceID string, excluded []*pluginv1.AllocationClaim, dependencies []*pluginv1.ResourceDependency, expectedNamespace string, expectedValue uint32, kind string) *t3AppliedResource {
+func planApplyT3IsolationResource(t *testing.T, ctx context.Context, service *Service, target *pluginv1.TargetContext, profile t3IsolationProfile, validationPlan, resourceJSON []byte, instanceID, resourceID string, excluded []*pluginv1.AllocationClaim, dependencies []*pluginv1.ResourceDependency, expectedNamespace string, expectedValue uint32, kind string, tracked *[]*t3AppliedResource) *t3AppliedResource {
 	t.Helper()
 	plan, input := planT3IsolationResource(t, service, target, profile, validationPlan, resourceJSON, instanceID, resourceID, excluded, dependencies, expectedNamespace, expectedValue)
 	input.Context = t3IsolationCall(profile, instanceID, "apply", resourceID)
 	input.ProviderPlan = plan.GetProviderPlan()
 	input.CommittedAllocations = cloneClaims(plan.GetProposedAllocations())
+	vmid := uint32(0)
+	if kind == "VM" {
+		vmid = expectedValue
+	}
+	resource := &t3AppliedResource{
+		instanceID: instanceID, resourceID: resourceID, kind: kind, expectedVMID: vmid,
+		input: input, plan: plan.GetProviderPlan(), planDigest: plan.GetProviderPlanDigest(),
+		claims: cloneClaims(plan.GetProposedAllocations()),
+	}
+	// Register the cleanup claim before the first provider write. Apply may
+	// conservatively return an unknown outcome without provider state, but the
+	// plan still binds the exact address and ownership marker needed to recover.
+	*tracked = append(*tracked, resource)
 	stream := &applyCapture{grpcServerStream: grpcServerStream{ctx: ctx}}
 	if err := service.ApplyResource(&pluginv1.ApplyResourceRequest{Input: input}, stream); err != nil {
 		t.Fatalf("T3 isolation %s apply: %v", resourceID, err)
@@ -545,15 +553,8 @@ func planApplyT3IsolationResource(t *testing.T, ctx context.Context, service *Se
 	if result == nil || result.GetError() != nil {
 		t.Fatalf("T3 isolation %s apply = %#v", resourceID, result)
 	}
-	vmid := uint32(0)
-	if kind == "VM" {
-		vmid = expectedValue
-	}
-	return &t3AppliedResource{
-		instanceID: instanceID, resourceID: resourceID, kind: kind, expectedVMID: vmid,
-		input: input, state: result.GetProviderState(), plan: plan.GetProviderPlan(), planDigest: plan.GetProviderPlanDigest(),
-		claims: cloneClaims(plan.GetProposedAllocations()),
-	}
+	resource.state = result.GetProviderState()
+	return resource
 }
 
 func t3IsolationDependency(resourceID string, plan *pluginv1.PlanResourceResponse, state *pluginv1.ProviderState) *pluginv1.ResourceDependency {
@@ -577,7 +578,21 @@ func cleanupT3IsolationResources(service *Service, profile t3IsolationProfile, t
 		if resource == nil || resource.destroyed {
 			continue
 		}
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		if resource.state == nil {
+			state, absent, err := recoverT3IsolationCleanupState(cleanupCtx, service, config, configBytes, credentialBytes, resource)
+			if err != nil {
+				result = append(result, fmt.Errorf("%s: %w", resource.resourceID, err))
+				cancel()
+				continue
+			}
+			if absent {
+				resource.destroyed = true
+				cancel()
+				continue
+			}
+			resource.state = state
+		}
 		destroyInput := proto.Clone(resource.input).(*pluginv1.ResourceMutationInput)
 		destroyInput.Context = t3IsolationCall(profile, resource.instanceID, "destroy", resource.resourceID)
 		destroyInput.Target = target
@@ -610,6 +625,71 @@ func cleanupT3IsolationResources(service *Service, profile t3IsolationProfile, t
 		cancel()
 	}
 	return result
+}
+
+func recoverT3IsolationCleanupState(ctx context.Context, service *Service, config TargetConfig, configBytes, credentialBytes []byte, resource *t3AppliedResource) (*pluginv1.ProviderState, bool, error) {
+	var plan QEMUPlan
+	if err := decodeEnvelope(resource.plan, maximumConfigBytes, &plan); err != nil || plan.validate() != nil {
+		return nil, false, errors.New("cleanup plan is invalid")
+	}
+	if plan.ResourceKind == "Network" {
+		state := &QEMUProviderState{
+			SchemaVersion: qemuStateV10, ResourceKind: "Network", TargetID: plan.TargetID,
+			Node: config.DestinationNode, LogicalResourceID: plan.LogicalResourceID,
+			Generation: plan.Generation, Networks: append([]NetworkBinding(nil), plan.Networks...), Phase: "ready",
+		}
+		return successResult(state, &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "Network", Node: state.Node, Networks: state.Networks}, resource.input.GetOwnershipTokens()).GetProviderState(), false, nil
+	}
+	created, err := service.factory.New(configBytes, credentialBytes)
+	if err != nil {
+		return nil, false, errors.New("reopen target client for cleanup")
+	}
+	client, ok := created.(MutationAPI)
+	if !ok {
+		created.CloseIdleConnections()
+		return nil, false, errors.New("target cleanup client does not support mutation")
+	}
+	defer client.CloseIdleConnections()
+	journal, err := OpenInvocationJournal(config.JournalDirectory)
+	if err != nil {
+		return nil, false, errors.New("open invocation journal for cleanup")
+	}
+	record, err := journal.Read(resource.input.GetContext().GetInvocationId())
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, false, errors.New("read apply invocation for cleanup")
+	}
+	if err == nil && record.TaskUPID != "" {
+		upid, parseErr := ParseUPID(record.TaskUPID)
+		if parseErr != nil {
+			return nil, false, errors.New("parse apply task for cleanup")
+		}
+		waitErr := service.waitTask(ctx, client, upid.Node, upid)
+		if waitErr != nil && !errors.Is(waitErr, errTaskReportedFailure) {
+			return nil, false, errors.New("apply task terminal state was not confirmed before cleanup")
+		}
+	}
+	current, exists, err := readOptionalVMConfig(ctx, client, plan.Destination.Node, planVMID(plan))
+	if err != nil {
+		return nil, false, errors.New("read VM before cleanup")
+	}
+	if !exists {
+		return nil, true, nil
+	}
+	if plan.Ownership == nil || verifyOwnership(current.Description, *plan.Ownership) != nil {
+		return nil, false, errors.New("VM ownership did not match cleanup plan")
+	}
+	if current.Fields["lock"] == "clone" {
+		current, err = service.waitCloneUnlocked(ctx, client, plan.Destination.Node, planVMID(plan))
+		if err != nil {
+			return nil, false, errors.New("clone completion was not confirmed before cleanup")
+		}
+	}
+	state := qemuVMState(plan, current, "stopped", "")
+	if err := state.validate(); err != nil {
+		return nil, false, errors.New("recovered cleanup state is invalid")
+	}
+	observed := &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "VM", Node: state.Node, VMID: state.VMID, ConfigDigest: state.ConfigDigest, Networks: append([]NetworkBinding(nil), state.Networks...)}
+	return successResult(state, observed, resource.input.GetOwnershipTokens()).GetProviderState(), false, nil
 }
 
 func t3IsolationCall(profile t3IsolationProfile, instanceID, action, resourceID string) *pluginv1.CallContext {

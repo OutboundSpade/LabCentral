@@ -36,6 +36,7 @@ type fakeMutationAPI struct {
 	deleteErrorBefore        bool
 	taskFailureType          string
 	taskFailuresRemaining    map[string]int
+	taskReadErrorsRemaining  map[string]int
 	runningTaskType          string
 	foreignOnClone           bool
 	cloneWithoutObject       bool
@@ -53,7 +54,7 @@ type fakeMutationAPI struct {
 func newFakeMutationAPI() *fakeMutationAPI {
 	return &fakeMutationAPI{
 		configs:  map[uint32]VMConfig{9000: {Digest: strings40("c"), Fields: map[string]string{"digest": strings40("c"), "agent": "1", "scsi0": "local-lvm:base-9000-disk-0,size=8G", "ide2": "local-lvm:cloudinit"}}},
-		statuses: map[uint32]string{9000: "stopped"}, lifecycleCalls: make(map[string]int), lifecycleErrorAfter: make(map[string]bool), taskFailuresRemaining: make(map[string]int),
+		statuses: map[uint32]string{9000: "stopped"}, lifecycleCalls: make(map[string]int), lifecycleErrorAfter: make(map[string]bool), taskFailuresRemaining: make(map[string]int), taskReadErrorsRemaining: make(map[string]int),
 	}
 }
 
@@ -226,6 +227,13 @@ func (fake *fakeMutationAPI) GuestAgentPing(_ context.Context, _ string, vmid ui
 }
 func (fake *fakeMutationAPI) TaskStatus(_ context.Context, _ string, upid UPID) (TaskStatus, error) {
 	fake.record("GET task " + upid.Type)
+	fake.mu.Lock()
+	if fake.taskReadErrorsRemaining[upid.Type] > 0 {
+		fake.taskReadErrorsRemaining[upid.Type]--
+		fake.mu.Unlock()
+		return TaskStatus{}, errors.New("transient task status failure")
+	}
+	fake.mu.Unlock()
 	if fake.runningTaskType == upid.Type {
 		return TaskStatus{Status: "running"}, nil
 	}
@@ -896,6 +904,15 @@ func TestProxmoxFailureWindowContract(t *testing.T) {
 		encoded, _ := json.Marshal(result)
 		if result.GetError().GetCode() != "provider_task_failed" || strings.Contains(string(encoded), "canary-secret") || countCalls(fixture.fake.calls, "GET task") > maximumTaskPolls {
 			t.Fatalf("result=%s calls=%#v", encoded, fixture.fake.calls)
+		}
+	})
+
+	t.Run("TEST-PROXMOX-022 transient task reads are retried without replay", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		fixture.fake.taskReadErrorsRemaining["qmclone"] = maximumTaskReadErrors
+		result := applyVMFixture(t, fixture)
+		if result.GetError() != nil || fixture.fake.cloneCalls != 1 || countCalls(fixture.fake.calls, "GET task qmclone") != maximumTaskReadErrors+1 {
+			t.Fatalf("result=%#v clone=%d calls=%#v", result.GetError(), fixture.fake.cloneCalls, fixture.fake.calls)
 		}
 	})
 
