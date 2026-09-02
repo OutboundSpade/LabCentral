@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design complete; foundation implementation in progress. Runtime services and production adapters have not started.
+**Phase:** Design and Phase 0B architecture foundation complete; local vertical slice is next. Runtime services and production providers have not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -22,6 +22,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - `TASK-DOMAIN-001` implemented the minimal Go module, sealed typed logical resources, validated value contracts, lifecycle transitions, application ports, secret redaction, and recursive import-boundary tests.
 - `TASK-RENDER-001` implemented bounded strict YAML parsing, Draft 2020-12 validation, typed inputs/components/resources, bounded CEL, two-stage typed reference resolution, stable dependency ordering, native RFC 8785 canonicalization, framed digests, and executable example/contract fixtures.
 - `TASK-JOBS-001` implemented a checksummed transactional job/outbox prototype, database-time leases, monotonic fencing, unknown-invocation recovery, idempotency binding, quota/leftover safeguards, and one shared eight-case conformance suite proven on SQLite and PostgreSQL.
+- `TASK-PROVIDER-001` implemented a public provider harness, reusable 18-case contract runner, and programmable fake with virtual time, durable invocation restart, compensation/leftover behavior, ownership fencing, state migration, deterministic planning, cancellation, and secret-canary checks.
 
 ## Open questions and risks
 
@@ -29,7 +30,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Implement `TASK-PROVIDER-001`: fake provider and shared contract runner from `design/contracts/provider-conformance.yaml`.
-2. After that gate passes, start the thin Docker local vertical slice; do not start a real production provider earlier.
+1. Implement `TASK-DOCKER-001`: the thin local Huma/SQLite/filesystem/static-UI/Docker vertical slice for Example A, retaining its explicit trusted-laptop isolation warning.
+2. Keep real production providers gated until the local operation/apply/destroy path and shared contract integration are complete.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

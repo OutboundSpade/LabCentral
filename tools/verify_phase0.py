@@ -287,6 +287,16 @@ def verify_contract_catalogs() -> None:
     go_test_source = "\n".join(
         path.read_text(encoding="utf-8") for path in ROOT.glob("internal/**/*_test.go")
     )
+    provider_suite_source = (ROOT / "pkg/plugin-sdk-go/contracttest/suite.go").read_text(encoding="utf-8")
+    for case in provider["requiredCases"]:
+        go_test = case.get("goTest")
+        assert go_test, f"provider case has no Go test binding: {case['id']}"
+        assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+            f"provider case references missing Go test: {case['id']}: {go_test}"
+        )
+        assert f'"{case["id"]}"' in provider_suite_source, (
+            f"provider case is missing from the shared contract runner: {case['id']}"
+        )
     for case in rendering["cases"]:
         go_test = case.get("goTest")
         assert go_test, f"rendering case has no Go test binding: {case['id']}"

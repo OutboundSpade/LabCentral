@@ -5,6 +5,7 @@ normalCredentialRequirement: none
 requiredCases:
   - id: TEST-PROVIDER-001
     title: Idempotent apply replay
+    goTest: TestProviderContract001IdempotentApplyReplay
     setup: no provider primitives
     calls:
       - apply: {resource: container.app, generation: 1, idempotencyKey: op-1/apply/container.app/1}
@@ -15,26 +16,31 @@ requiredCases:
       identicalProviderState: true
   - id: TEST-PROVIDER-002
     title: Stale generation is fenced
+    goTest: TestProviderContract002StaleGenerationIsFenced
     setup: {resourceGeneration: 2, fencingToken: 9}
     call: {applyGeneration: 1, fencingToken: 8}
     expect: {error: stale_generation, mutations: 0}
   - id: TEST-PROVIDER-003
     title: Name collision is not adopted
+    goTest: TestProviderContract003NameCollisionIsNotAdopted
     setup: {sameDisplayNamePrimitiveOwnedBy: another-installation}
     call: {apply: vm.router}
     expect: {error: ownership_mismatch, adopted: false, deleted: false}
   - id: TEST-PROVIDER-004
     title: Crash after provider create before response
+    goTest: TestProviderContract004CrashAfterCreateBeforeResponse
     fault: crash_after_create_before_response
     recovery: restart_plugin_then_get_invocation
     expect: {createCount: 1, operationStateBeforeQuery: unknown, finalState: ready}
   - id: TEST-PROVIDER-005
     title: Lost response after mutation
+    goTest: TestProviderContract005LostResponseAfterMutation
     fault: drop_final_response
     recovery: get_invocation_before_retry
     expect: {createCount: 1, duplicateMutation: false, finalState: ready}
   - id: TEST-PROVIDER-006
     title: Partial logical-resource creation compensates this resource
+    goTest: TestProviderContract006PartialCreationCompensates
     setup: {logicalResource: container.app, physicalSteps: [vm, disk, bootstrap]}
     fault: fail_step_bootstrap
     expect:
@@ -44,6 +50,7 @@ requiredCases:
       instancePhase: degraded
   - id: TEST-PROVIDER-007
     title: Compensation failure reports leftovers
+    goTest: TestProviderContract007CompensationFailureReportsLeftovers
     setup: {logicalResource: vm.target, createdPrimitives: [vm-123, disk-456]}
     fault: fail_delete_disk
     expect:
@@ -53,6 +60,7 @@ requiredCases:
       instancePhase: degraded
   - id: TEST-PROVIDER-008
     title: Destroy continues after independent deletion failure
+    goTest: TestProviderContract008DestroyContinuesAfterFailure
     graph: "network.red -> [vm.attacker, vm.router]"
     fault: fail_delete_vm_attacker
     expect:
@@ -62,55 +70,64 @@ requiredCases:
       destroyedClaimed: false
   - id: TEST-PROVIDER-009
     title: Old provider state is migrated explicitly
+    goTest: TestProviderContract009OldStateMigratesExplicitly
     setup: {storedStateMajor: 1, pluginReadableMajors: [1], pluginWritableMajor: 2}
     call: {migrateState: {dryRun: true, destinationMajor: 2}}
     expect: {sourceUnchanged: true, migrationReported: possible}
   - id: TEST-PROVIDER-010
     title: Unknown provider state fails closed
+    goTest: TestProviderContract010UnknownStateFailsClosed
     setup: {storedStateMajor: 3, pluginReadableMajors: [1, 2]}
     call: {apply: vm.router}
     expect: {errorClass: state_version_incompatible, mutations: 0}
   - id: TEST-PROVIDER-011
     title: Capability downgrade invalidates plan
+    goTest: TestProviderContract011CapabilityDowngradeInvalidatesPlan
     setup: {planCapabilityDigest: old, currentCapabilityDigest: new, removed: lifecycle.snapshot}
     call: {applyPlan: routed-lab}
     expect: {error: stale_plan, mutations: 0, revalidationRequired: true}
   - id: TEST-PROVIDER-012
     title: Cancellation before unsafe boundary
+    goTest: TestProviderContract012CancellationBeforeUnsafeBoundary
     setup: {invocationPhase: provider_request_not_sent}
     call: cancel
     expect: {cancelOutcome: requested, mutations: 0, operationState: canceled}
   - id: TEST-PROVIDER-013
     title: Cancellation after committed side effect
+    goTest: TestProviderContract013CancellationAfterSideEffect
     setup: {invocationPhase: provider_request_committed}
     call: cancel
     expect: {cancelOutcome: too_late, operationState: running, queryRequired: true}
   - id: TEST-PROVIDER-014
     title: Secret canary is absent from outputs
+    goTest: TestProviderContract014SecretCanaryAbsent
     setup: {secretCanary: LABCENTRAL_TEST_SECRET_DO_NOT_LOG}
     injectThrough: [targetCredential, guestSecretRef]
     scanSinks: [pluginLogs, error, progress, providerState, observedState, events, audit, traces]
     expect: {canaryOccurrences: 0}
   - id: TEST-PROVIDER-015
     title: Plan is deterministic
+    goTest: TestProviderContract015PlanIsDeterministic
     calls:
       - plan: {canonicalDigest: same, targetCapabilityDigest: same, policyDigest: same}
       - plan: {canonicalDigest: same, targetCapabilityDigest: same, policyDigest: same}
     expect: {providerPlanBytesIdentical: true, providerPlanDigestIdentical: true}
   - id: TEST-PROVIDER-016
     title: Restart does not lose invocation identity
+    goTest: TestProviderContract016RestartPreservesInvocation
     setup: {inFlightInvocation: inv-123, checkpoint: provider_task_created}
     fault: plugin_process_exit
     recovery: supervised_restart
     expect: {resumedInvocation: inv-123, duplicateMutation: false, progressSequenceMonotonic: true}
   - id: TEST-PROVIDER-017
     title: Reverse dependency destroy order
+    goTest: TestProviderContract017ReverseDependencyDestroyOrder
     graph: "network.red -> vm.router -> access.router"
     call: destroy
     expect: {strictOrder: [access.router, vm.router, network.red]}
   - id: TEST-PROVIDER-018
     title: Ownership token mismatch blocks destructive action
+    goTest: TestProviderContract018OwnershipMismatchBlocksDestroy
     setup: {recordedProviderID: vm-123, expectedOwnershipToken: token-a, observedOwnershipToken: token-b}
     call: destroy
     expect: {error: ownership_mismatch, deleteCount: 0, auditAlert: true}
-

@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T04:47:15Z"
+verifiedAt: "2026-09-02T04:56:23Z"
 result: pass
-scope: foundation_through_TASK-JOBS-001
+scope: phase_0b_foundation
 toolchain:
   go: "1.27.1"
 commands:
@@ -9,6 +9,7 @@ commands:
   - go test -race -count=1 ./...
   - go vet ./...
   - LABCENTRAL_TEST_POSTGRES_DSN=<isolated-test-url> go test -race -count=3 ./internal/adapter/jobsdb
+  - go test -race -count=10 ./internal/adapter/fakeprovider
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -33,6 +34,14 @@ checks:
   - unknown_outcome_quota_retention
   - leftover_aware_destroy_finalization
   - stable_at_least_once_outbox_redelivery
+  - public_provider_contract_boundary
+  - all_18_provider_contract_cases
+  - idempotent_provider_replay_and_unknown_outcome_recovery
+  - compensation_leftovers_and_reverse_destroy
+  - provider_state_migration_and_capability_revalidation
+  - cancellation_restart_and_progress_monotonicity
+  - ownership_mismatch_fail_closed
+  - provider_secret_canary_absent_from_all_fake_sinks
 notes:
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - No runtime service, provider, or lab workload was started.

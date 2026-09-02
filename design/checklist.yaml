@@ -133,7 +133,7 @@ tasks:
       - SQLite and PostgreSQL tests prove recovery, fencing, retry, and atomic outbox behavior.
   - id: TASK-PROVIDER-001
     title: Build fake provider and shared contract suite
-    status: proposed
+    status: complete
     dependencies: [TASK-PLUGIN-001, TASK-DOMAIN-001]
     relatedAdrs: [ADR-0002, ADR-0007]
     relatedDocuments: [docs/design/provider-contract.md, docs/design/testing.md, design/contracts/provider-conformance.yaml]
@@ -141,7 +141,7 @@ tasks:
       - Crash, timeout, partial-create, compensation-failure, and state-upgrade cases pass.
   - id: TASK-DOCKER-001
     title: Implement thin Docker onboarding vertical slice
-    status: deferred
+    status: proposed
     dependencies: [TASK-JOBS-001, TASK-PROVIDER-001]
     relatedAdrs: [ADR-0001, ADR-0004]
     relatedDocuments: [examples/docker-laptop, docs/design/provider-roadmap.md]
