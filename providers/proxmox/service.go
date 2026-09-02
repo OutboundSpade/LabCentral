@@ -81,6 +81,10 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 	if err != nil {
 		return nil, status.Error(codes.Internal, "Proxmox target inventory was invalid")
 	}
+	mutationDigest, err := inventory.MutationDigest()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Proxmox target mutation inventory was invalid")
+	}
 	discoveredAt := service.now().UTC()
 	capacity, err := makeCapacity(inventory, digest)
 	if err != nil {
@@ -88,7 +92,7 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 	}
 	overrideDigest := sha256.Sum256(emptyOverrideSchema)
 	capabilities := makeCapabilities(inventory, digest, request.GetTarget().GetConfigFingerprint())
-	if enabled, evidence := service.mutationCapabilityGate(ctx, request.GetTarget(), client, inventory, digest); enabled {
+	if enabled, evidence := service.mutationCapabilityGate(ctx, request.GetTarget(), client, inventory, mutationDigest); enabled {
 		enableMutationCapabilities(capabilities, evidence)
 	}
 	return &pluginv1.DiscoverTargetResponse{
@@ -155,12 +159,12 @@ func makeCapabilities(inventory Inventory, digest, fingerprint string) []*plugin
 	return result
 }
 
-func (service *Service) mutationCapabilityGate(ctx context.Context, target *pluginv1.TargetContext, discovered DiscoveryClient, inventory Inventory, digest string) (bool, string) {
+func (service *Service) mutationCapabilityGate(ctx context.Context, target *pluginv1.TargetContext, discovered DiscoveryClient, inventory Inventory, mutationDigest string) (bool, string) {
 	if !service.allowT0Mutation {
 		return false, "exact-target credentialed qualification is not enabled in this provider build"
 	}
 	config, err := mutationConfig(target)
-	if err != nil || !config.MutationEnabled || config.Qualification.InventoryDigest != digest {
+	if err != nil || !config.MutationEnabled || config.Qualification.InventoryDigest != mutationDigest {
 		return false, "mutation target configuration or inventory binding is invalid"
 	}
 	client, ok := discovered.(MutationAPI)
@@ -170,7 +174,7 @@ func (service *Service) mutationCapabilityGate(ctx context.Context, target *plug
 	plan := QEMUPlan{
 		Template:        &PlanTemplate{SourceNode: config.Templates[0].SourceNode, VMID: config.Templates[0].VMID, ConfigDigest: config.Templates[0].ConfigDigest},
 		Destination:     &PlanDestination{Node: config.DestinationNode, StorageID: config.Storages[0].ID, StorageFormat: config.Storages[0].Format},
-		InventoryDigest: digest,
+		InventoryDigest: mutationDigest,
 	}
 	if len(config.Networks) > 0 {
 		plan.Networks = []NetworkBinding{{Bridge: config.Networks[0].Bridge}}
@@ -195,7 +199,7 @@ func (service *Service) mutationCapabilityGate(ctx context.Context, target *plug
 	if _, err := OpenInvocationJournal(config.JournalDirectory); err != nil {
 		return false, "durable invocation journal is unavailable"
 	}
-	return true, "fixed-node PVE 9.x QEMU full-clone T0 qualification gates passed; exact-target production T3 remains required"
+	return true, "fixed-node PVE 9.x QEMU full-clone T0 qualification gates passed with mutation inventory " + mutationDigest + "; exact-target production T3 remains required"
 }
 
 func inventorySupportsConfiguredProfiles(config TargetConfig, inventory Inventory) bool {

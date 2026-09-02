@@ -23,7 +23,7 @@ func mutationTestTarget(t *testing.T) *pluginv1.TargetContext {
 	if err := inventory.normalize(); err != nil {
 		t.Fatal(err)
 	}
-	inventoryDigest, err := inventory.Digest()
+	inventoryDigest, err := inventory.MutationDigest()
 	if err != nil {
 		t.Fatal(err)
 	}

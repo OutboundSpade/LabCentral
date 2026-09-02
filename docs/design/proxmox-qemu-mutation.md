@@ -41,7 +41,7 @@ ADR-0013 makes the core the authority for opaque target-scoped claims. Planning 
 
 1. The observed target is in the configured PVE 9.x range and exposes the required API schemas.
 2. `/access/permissions` proves the invocation token's effective privileges at every configured source, destination, pool, storage, bridge/VLAN, node, and task scope.
-3. The fixed node is online; template config/digest, Cloud-Init drive, guest agent, storage profile/format, and VLAN-aware bridge still match configuration.
+3. The fixed node is online; the versioned mutation-inventory digest (which excludes only volatile load, uptime, and used/free-capacity counters) matches; and template config/digest, Cloud-Init drive, guest agent, storage profile/format, and VLAN-aware bridge still match configuration.
 4. Management-path isolation is operator-attested and has passed the target's negative connectivity probe.
 5. Core allocation claims and dependency-plan protocol features were negotiated.
 6. The durable provider journal is writable, version-compatible, and passes restart/recovery self-tests.

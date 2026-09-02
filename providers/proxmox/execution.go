@@ -531,7 +531,7 @@ func verifyNetworkPreflight(ctx context.Context, client MutationAPI, config Targ
 	if err != nil || inventory.normalize() != nil {
 		return fmt.Errorf("target inventory is unavailable")
 	}
-	digest, err := inventory.Digest()
+	digest, err := inventory.MutationDigest()
 	if err != nil || digest != plan.InventoryDigest || !strings.HasPrefix(inventory.Version.Release, "9.") {
 		return fmt.Errorf("target inventory is stale")
 	}
@@ -765,7 +765,7 @@ func verifyMutationPreflight(ctx context.Context, client MutationAPI, config Tar
 }
 
 func verifyInventoryAndPermissions(ctx context.Context, client MutationAPI, config TargetConfig, plan QEMUPlan, inventory Inventory) error {
-	digest, err := inventory.Digest()
+	digest, err := inventory.MutationDigest()
 	if err != nil || digest != plan.InventoryDigest || !qualifiedReleaseMatchesInventory(config.Qualification.PVERelease, inventory.Version) {
 		return fmt.Errorf("target inventory is stale")
 	}

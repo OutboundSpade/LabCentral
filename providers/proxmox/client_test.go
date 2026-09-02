@@ -112,6 +112,44 @@ func TestClientDiscoversTypedSortedInventoryAndPartialIssues(t *testing.T) {
 	}
 }
 
+func TestMutationInventoryDigestExcludesOnlyVolatileCapacity(t *testing.T) {
+	inventory := Inventory{
+		Version: Version{Release: "9.2", Version: "9.2.2", RepoID: "b9984c6d90a4bd80"},
+		Nodes: []Node{{
+			Name: "pve", Status: "online", MaxCPU: 4, CPUUsage: 0.1,
+			MaxMemoryBytes: 12 << 30, UsedMemoryBytes: 2 << 30, UptimeSeconds: 10, QEMUAPI: true,
+		}},
+		Storages: []Storage{{
+			Node: "pve", ID: "local-lvm", Type: "lvmthin", Content: []string{"images"},
+			Formats: []string{"raw"}, DefaultFormat: "raw", Active: true, Enabled: true,
+			TotalBytes: 60 << 30, UsedBytes: 1 << 30, AvailableBytes: 59 << 30,
+		}},
+		Bridges:   []Bridge{{Node: "pve", Name: "vmbr1", Active: true, Autostart: true, VLANAware: true, Ports: []string{"nic1"}}},
+		Templates: []Template{{Node: "pve", VMID: 900000, Name: "labcentral-debian", Status: "stopped"}},
+	}
+	first, err := inventory.MutationDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory.Nodes[0].CPUUsage = 0.9
+	inventory.Nodes[0].UsedMemoryBytes = 7 << 30
+	inventory.Nodes[0].UptimeSeconds = 999
+	inventory.Storages[0].UsedBytes = 20 << 30
+	inventory.Storages[0].AvailableBytes = 40 << 30
+	second, err := inventory.MutationDigest()
+	if err != nil || second != first {
+		t.Fatalf("volatile capacity changed mutation digest: %q %q: %v", first, second, err)
+	}
+	inventory.Bridges[0].Ports = []string{"nic2"}
+	changed, err := inventory.MutationDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == first {
+		t.Fatal("security-relevant bridge change did not change mutation digest")
+	}
+}
+
 func TestClientRejectsUnsafeConfiguration(t *testing.T) {
 	validCredentials := APITokenCredentials{TokenID: testTokenID, TokenSecret: testTokenSecret}
 	tests := []TargetConfig{

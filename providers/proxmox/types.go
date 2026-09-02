@@ -33,8 +33,9 @@ var pveReleasePattern = regexp.MustCompile(`^9\.[0-9]+\.[0-9]+$`)
 var templateDiskPattern = regexp.MustCompile(`^(scsi|virtio)[0-9]{1,2}$`)
 
 const (
-	targetConfigV11   = "proxmox.target-config/v1.1"
-	supportedPVERange = ">=9.0.0 <10.0.0"
+	targetConfigV11      = "proxmox.target-config/v1.1"
+	mutationInventoryV10 = "proxmox.mutation-inventory/v1.0"
+	supportedPVERange    = ">=9.0.0 <10.0.0"
 )
 
 type TargetConfig struct {
@@ -402,6 +403,41 @@ type Inventory struct {
 	Issues    []DiscoveryIssue `json:"issues,omitempty"`
 }
 
+// mutationInventoryDocument contains only target facts that must remain stable
+// between qualification, planning, and mutation preflight. Point-in-time load,
+// uptime, and free-space counters remain in the full discovery inventory but
+// cannot safely fence a multi-request operation on a live target.
+type mutationInventoryDocument struct {
+	SchemaVersion string                   `json:"schemaVersion"`
+	Version       Version                  `json:"version"`
+	Nodes         []mutationInventoryNode  `json:"nodes"`
+	Storages      []mutationInventoryStore `json:"storages"`
+	Bridges       []Bridge                 `json:"bridges"`
+	Templates     []Template               `json:"templates"`
+	Issues        []DiscoveryIssue         `json:"issues,omitempty"`
+}
+
+type mutationInventoryNode struct {
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	MaxCPU         int64  `json:"maxCPU,omitempty"`
+	MaxMemoryBytes int64  `json:"maxMemoryBytes,omitempty"`
+	QEMUAPI        bool   `json:"qemuAPI"`
+}
+
+type mutationInventoryStore struct {
+	Node          string   `json:"node"`
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	Content       []string `json:"content"`
+	Formats       []string `json:"formats,omitempty"`
+	DefaultFormat string   `json:"defaultFormat,omitempty"`
+	Active        bool     `json:"active"`
+	Enabled       bool     `json:"enabled"`
+	Shared        bool     `json:"shared"`
+	TotalBytes    int64    `json:"totalBytes,omitempty"`
+}
+
 func (inventory *Inventory) normalize() error {
 	if inventory.Nodes == nil {
 		inventory.Nodes = []Node{}
@@ -578,6 +614,42 @@ func (inventory *Inventory) Digest() (string, error) {
 		return "", err
 	}
 	contents, err := json.Marshal(inventory)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(contents)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
+}
+
+// MutationDigest returns a deterministic digest of the versioned,
+// mutation-relevant inventory projection. It deliberately excludes volatile
+// utilization counters that would otherwise make every real preflight stale.
+func (inventory *Inventory) MutationDigest() (string, error) {
+	if err := inventory.normalize(); err != nil {
+		return "", err
+	}
+	document := mutationInventoryDocument{
+		SchemaVersion: mutationInventoryV10,
+		Version:       inventory.Version,
+		Bridges:       append([]Bridge(nil), inventory.Bridges...),
+		Templates:     append([]Template(nil), inventory.Templates...),
+		Issues:        append([]DiscoveryIssue(nil), inventory.Issues...),
+	}
+	for _, node := range inventory.Nodes {
+		document.Nodes = append(document.Nodes, mutationInventoryNode{
+			Name: node.Name, Status: node.Status, MaxCPU: node.MaxCPU,
+			MaxMemoryBytes: node.MaxMemoryBytes, QEMUAPI: node.QEMUAPI,
+		})
+	}
+	for _, storage := range inventory.Storages {
+		document.Storages = append(document.Storages, mutationInventoryStore{
+			Node: storage.Node, ID: storage.ID, Type: storage.Type,
+			Content: append([]string(nil), storage.Content...), Formats: append([]string(nil), storage.Formats...),
+			DefaultFormat: storage.DefaultFormat, Active: storage.Active, Enabled: storage.Enabled,
+			Shared: storage.Shared, TotalBytes: storage.TotalBytes,
+		})
+	}
+	contents, err := json.Marshal(document)
 	if err != nil {
 		return "", err
 	}
