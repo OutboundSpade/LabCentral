@@ -65,7 +65,7 @@ Legend: **N** native, **E** emulated, **C** constrained/discover, **—** unsupp
 
 ## Precise provider notes
 
-- **Proxmox:** discover cluster nodes, QEMU versions, storage content/format and snapshot/clone support, bridges/VLAN awareness, firewall, templates, console methods, guest agent, and per-node placement. Never infer snapshot from “Proxmox” alone because storage backends differ.
+- **Proxmox:** the completed `TASK-PROXMOX-001` foundation discovers version, nodes, QEMU-list reachability/templates, VM-image storage content/formats/capacity, and bridges/VLAN awareness. These are target facts, not portable realization claims: every mutation feature remains unsupported. Later slices must separately discover snapshot/clone compatibility, firewall enforcement, console methods, guest agent, and placement before advertising them. Never infer snapshot from “Proxmox” alone because storage backends differ.
 - **KubeVirt:** discover CRDs/API versions, KubeVirt readiness/features, CDI, VolumeSnapshot/CSI classes, Multus/NADs/bindings, RuntimeClasses, CNI NetworkPolicy enforcement evidence, live migration, and permitted MAC/interface modes. Absence of KubeVirt is explicit container-only.
 - **Fly:** a Machine is accepted only as logical container realization. Custom 6PN offers L3 IPv6 segmentation; it does not satisfy L2, arbitrary multi-NIC, static lab CIDR/MAC, or VM requirements.
 - **Docker:** baseline uses Engine REST containers, images, volumes, user-defined networks, and port publishing. Desktop runs Engine networking behind a VM/backend and differs from Linux bridge behavior; advanced namespace/iptables features require `docker.linuxAdvancedNetworking` and operator opt-in.

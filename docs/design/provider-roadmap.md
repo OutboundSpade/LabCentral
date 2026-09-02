@@ -16,7 +16,9 @@ Compile the domain/application ports; implement renderer/schema/canonical confor
 
 ## Phase 2 — Proxmox production path
 
-Discover clusters/nodes/storage/bridges/VLAN/firewall/templates/console. Implement QEMU VM, multi-NIC isolated router labs, placement, template clone, cloud-init/Ignition, snapshot/restore/reset, access integration, ownership/orphan safety, classroom batches, and Example B at scale. Container-via-VM follows shared contract after VM path is reliable.
+The `TASK-PROXMOX-001` foundation is complete: a separate provider now performs strict HTTPS/API-token `GET` discovery of version, nodes, QEMU-list reachability/templates, VM-image storage/formats/capacity, and bridges/VLAN awareness, with expiring deterministic evidence and no advertised mutations. It is not yet integrated into `labd` target registration or a credentialed Proxmox environment.
+
+Next specify and gate the first mutation slice before implementation: target registration/supervision, exact QEMU/template/volume/network plan schemas, privilege and ownership tokens, task polling/unknown outcomes, cleanup, and T3 fixtures. Then implement QEMU VM, multi-NIC isolated router labs, placement, template clone, cloud-init/Ignition, snapshot/restore/reset, access integration, classroom batches, and Example B at scale. Firewall, snapshot, access, and placement support must be discovered independently. Container-via-VM follows the shared contract after the VM path is reliable.
 
 ## Phase 3 — production control plane
 

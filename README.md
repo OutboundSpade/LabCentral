@@ -2,6 +2,8 @@
 
 LabCentral is a modular client-server platform for declarative virtual labs, with cybersecurity classrooms as its primary production use case. Its design-only Phase 0, architecture-foundation Phase 0B, and packaged Docker laptop vertical slice are complete. The repository now includes the typed Go core, strict renderer, durable SQLite operations, a separately supervised Docker provider, the Huma/OpenAPI API, a content-addressed filesystem artifact adapter, an embedded static SvelteKit/DaisyUI interface, and native/Docker/Compose laptop distributions.
 
+Phase 2 has a separate read-only Proxmox discovery foundation. Build it with `make build-proxmox-provider`. It verifies TLS and performs bounded API-token-authenticated inventory `GET` requests, but it is not yet selected by the current single-Docker-target `labd` and exposes no mutation path. See [`docs/design/proxmox-provider.md`](docs/design/proxmox-provider.md).
+
 Start with [`PROJECT_STATE.md`](PROJECT_STATE.md), then follow [`AGENTS.md`](AGENTS.md). The architecture baseline is in [`docs/design/architecture.md`](docs/design/architecture.md), accepted decisions are in [`docs/adr/`](docs/adr/), and machine-readable progress is in [`design/state.yaml`](design/state.yaml) and [`design/checklist.yaml`](design/checklist.yaml).
 
 The implementation-ready design includes three complete examples under [`examples/`](examples/), an executable Lab authoring schema and canonical fixtures under [`schemas/`](schemas/), an accepted plugin v1 descriptor baseline under [`api/plugin/v1/`](api/plugin/v1/), and machine-readable conformance catalogs under [`design/contracts/`](design/contracts/).

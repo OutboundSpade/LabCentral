@@ -5,6 +5,8 @@ All sources were retrieved **2026-09-02**. Provider features remain target-disco
 | Subject | Primary source | Supported claim |
 |---|---|---|
 | Proxmox architecture/API/network/storage | [Proxmox VE Administration Guide](https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf) | PVE exposes REST through `pveproxy`; QEMU VMs, bridges/VLAN tags, clusters and storage capabilities are provider primitives. |
+| Proxmox API paths and schemas | [Proxmox VE API Viewer](https://pve.proxmox.com/pve-docs/api-viewer/) | The current API exposes read-only `GET` schemas for `/version`, `/nodes`, and per-node storage, network, and QEMU inventory; storage accepts content/enabled/format filters. |
+| Proxmox API-token authentication | [Proxmox VE user-management guide: API Tokens](https://pve.proxmox.com/pve-docs/chapter-pveum.html#pveum_tokens) | API tokens support separate ACLs and expiry; requests use `Authorization: PVEAPIToken=USER@REALM!TOKENID=UUID`; effective permissions are bounded by both the token and backing user. |
 | Proxmox storage variance | [Proxmox `pvesm` storage documentation](https://pve.proxmox.com/pve-docs/pvesm.1.html) | Snapshot/clone support depends on storage backend and format, so target discovery is mandatory. |
 | KubeVirt VM networking | [KubeVirt interfaces and networks](https://kubevirt.io/user-guide/network/interfaces_and_networks/) | VM networks/interfaces pair explicitly; Multus enables secondary networks; binding/CNI constraints affect MAC, L2, ports, and migration. |
 | KubeVirt snapshots | [KubeVirt Snapshot/Restore API](https://kubevirt.io/user-guide/storage/snapshot_restore_api/) | VM snapshots depend on KubeVirt APIs, CSI VolumeSnapshot support/classes, storage, and guest-agent consistency. |

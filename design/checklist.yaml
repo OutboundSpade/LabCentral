@@ -158,3 +158,25 @@ tasks:
       - A pinned multi-stage image excludes Bun and the Go toolchain at runtime and still launches the verified provider as a separate process.
       - Docker Compose persists local data, mounts only the selected Docker socket, uses host networking for loopback semantics, and passes the Example A apply/access/destroy smoke test without labeled leftovers.
       - Documentation states the Docker socket privilege, no-auth, host-networking, and platform limitations without weakening the trusted-laptop warning.
+  - id: TASK-PROXMOX-001
+    title: Implement read-only Proxmox target discovery and capability evidence
+    status: complete
+    dependencies: [TASK-PLUGIN-001, TASK-PROVIDER-001]
+    relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0007]
+    relatedDocuments: [docs/design/proxmox-provider.md, docs/design/provider-contract.md, docs/design/provider-capability-matrix.md, docs/design/provider-roadmap.md, docs/design/security-threat-model.md, docs/design/testing.md, docs/references.md]
+    acceptanceCriteria:
+      - A separately runnable Proxmox provider accepts only strict typed HTTPS target configuration and target-scoped API-token credentials, verifies TLS, refuses redirects, bounds responses, and performs GET requests only.
+      - Discovery returns a deterministic typed inventory of nodes, QEMU availability/templates, bridges/VLAN awareness, and VM-image storage/formats without persisting or logging credentials.
+      - Capability and capacity output cites target evidence, distinguishes unavailable or constrained features, expires, and never infers snapshot, firewall, access, or placement support merely from provider type.
+      - Fake-API and TLS tests cover deterministic ordering/digest, authorization, malformed envelopes, response limits, partial/offline inventory, error redaction, and unsupported mutation behavior without real credentials.
+  - id: TASK-PROXMOX-002
+    title: Specify the first Proxmox QEMU mutation and integration contract
+    status: proposed
+    dependencies: [TASK-PROXMOX-001, TASK-JOBS-001]
+    relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007]
+    relatedDocuments: [docs/design/proxmox-provider.md, docs/design/provider-contract.md, docs/design/reconciliation-and-jobs.md, docs/design/security-threat-model.md, docs/design/testing.md]
+    acceptanceCriteria:
+      - A typed plan contract fixes the supported Linux QEMU template-clone, disk, approved bridge/VLAN, cloud-init, lifecycle, and output subset without generic executable configuration.
+      - Target discovery and planning identify the exact API permissions, component/storage/network constraints, and integration versions required before any mutation capability is advertised.
+      - Provider state, idempotency, task polling, unknown outcomes, ownership fencing, reverse destroy, compensation, and leftover reporting are specified against the accepted plugin/job contracts.
+      - A credentialed T3 test matrix and deterministic fake-API cases cover success and every provider failure window before implementation is proposed.

@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, and the packaged Phase 1 Docker laptop vertical slice are complete. Production provider and multi-user control-plane work has not started.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, and the read-only Phase 2 Proxmox discovery foundation are complete. Mutating production-provider and multi-user control-plane work has not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -28,6 +28,8 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - Example A was built and exercised against Docker Engine 29.7.2 / API 1.55 on Linux amd64: the operation reached `ready`, its loopback URL returned the SQLite visit-counter JSON, destroy succeeded, and no instance-labeled container, network, or volume remained.
 - `TASK-RELEASE-001` added byte-reproducible native tarballs with executable/archive checksums, a Docker plugin inventory manifest, CycloneDX SBOM, and source/build provenance; a digest-pinned multi-stage `scratch` image; and persistent, hardened, host-networked Compose packaging.
 - The Compose distribution passed the real Example A apply/access/destroy gate with separate live `labd` and provider processes, zero ownership-labeled leftovers, and SQLite state retained across a control-plane restart. The image contained no Go, Bun, shell, or package-manager runtime.
+- `TASK-PROXMOX-001` added a separately runnable, GET-only Proxmox provider with strict versioned HTTPS/API-token envelopes, verified TLS, refused redirects/proxies, bounded deterministic inventory, expiring evidence, and typed partial failures.
+- The T0 TLS fake-API suite proves exact authorization and queries, offline/partial behavior, provider-returned path validation, deterministic inventory/capacity, credential and error-body redaction, and that every non-discovery provider RPC remains unimplemented. No real Proxmox credentials or mutations were used.
 
 ## Open questions and risks
 
@@ -35,7 +37,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Propose and accept the first bounded Phase 2 task: read-only Proxmox target discovery and capability-evidence contracts before any mutating provider operation.
+1. Complete proposed `TASK-PROXMOX-002`: specify the exact Linux QEMU template-clone mutation, ownership, async-task, least-privilege, and credentialed integration contracts before implementation.
 2. Keep production providers and multi-user deployment gated behind their target-specific integration, authorization, threat-control, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

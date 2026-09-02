@@ -54,6 +54,12 @@ The packaged Compose deployment mounts only the operator-selected Docker socket 
 
 Native releases normalize archive metadata and include executable/archive checksums, a plugin manifest, CycloneDX SBOM, and source/build provenance. These make inspection and corruption detection possible but do not establish publisher authenticity. Release signing, protected build identity, transparency, and loader-side provenance/signature verification remain future `THREAT-SUPPLY-001` controls.
 
+## Proxmox discovery boundary
+
+The `TASK-PROXMOX-001` provider receives a target API token only in the invocation envelope and keeps it in process memory. It accepts an HTTPS origin only, verifies system/private-CA trust with TLS 1.2 or newer, disables environment proxies and redirects, performs `GET` only, bounds every response and aggregate inventory, and never reports upstream response bodies. Provider-returned node names are validated before URL construction, while externally visible gRPC errors omit configuration and credential details. Tests seed token canaries through envelopes, headers, upstream failures, and factory errors and reject any output leak.
+
+Operators must use a dedicated privilege-separated, expiring token whose backing user and token have only audit access required for the target inventory. The provider must reach the Proxmox management origin, but lab guests must not; management-plane routing/firewall separation remains the deployment control for `THREAT-NET-001`. This discovery-only process has no mutation RPC and should not receive mutation privileges. A later mutating provider requires a new threat/control/test review for ownership fencing, asynchronous task ambiguity, cleanup, and least-privilege write ACLs.
+
 ## Future hardening
 
 Bundle/plugin signing, transparency/provenance verification, external policy modules that only constrain, isolated image importers, hardware-backed key management, and anomaly/flow monitoring are roadmap items. They do not weaken current fail-closed defaults.
