@@ -144,29 +144,10 @@ func TestServiceRedactsFactoryAndDiscoveryErrors(t *testing.T) {
 	}
 }
 
-func TestServiceLeavesEveryNonDiscoveryRPCUnimplemented(t *testing.T) {
+func TestServiceLeavesMutationExecutionAndUnrelatedRPCsUnimplemented(t *testing.T) {
 	service := NewService()
 	ctx := context.Background()
 	checks := map[string]func() error{
-		"ValidateLab": func() error {
-			_, err := service.ValidateLab(ctx, &pluginv1.ValidateLabRequest{})
-			return err
-		},
-		"PlanResource": func() error {
-			_, err := service.PlanResource(ctx, &pluginv1.PlanResourceRequest{})
-			return err
-		},
-		"ApplyResource": func() error { return service.ApplyResource(&pluginv1.ApplyResourceRequest{}, nil) },
-		"ReadResource": func() error {
-			_, err := service.ReadResource(ctx, &pluginv1.ReadResourceRequest{})
-			return err
-		},
-		"DestroyResource": func() error { return service.DestroyResource(&pluginv1.DestroyResourceRequest{}, nil) },
-		"Lifecycle":       func() error { return service.Lifecycle(&pluginv1.LifecycleRequest{}, nil) },
-		"GetInvocation": func() error {
-			_, err := service.GetInvocation(ctx, &pluginv1.GetInvocationRequest{})
-			return err
-		},
 		"CancelInvocation": func() error {
 			_, err := service.CancelInvocation(ctx, &pluginv1.CancelInvocationRequest{})
 			return err
@@ -189,6 +170,18 @@ func TestServiceLeavesEveryNonDiscoveryRPCUnimplemented(t *testing.T) {
 		if code := status.Code(check()); code != codes.Unimplemented {
 			t.Errorf("%s status = %s, want Unimplemented", name, code)
 		}
+	}
+}
+
+func TestServiceValidationAndPlanningFailClosedWithoutMutationConfiguration(t *testing.T) {
+	service := NewService()
+	validation, err := service.ValidateLab(context.Background(), &pluginv1.ValidateLabRequest{})
+	if err != nil || len(validation.GetErrors()) != 1 || validation.GetErrors()[0].GetCode() != "invalid_target" {
+		t.Fatalf("validation = %#v, err = %v", validation, err)
+	}
+	plan, err := service.PlanResource(context.Background(), &pluginv1.PlanResourceRequest{})
+	if err != nil || plan.GetError().GetCode() != "invalid_plan_request" {
+		t.Fatalf("plan = %#v, err = %v", plan, err)
 	}
 }
 

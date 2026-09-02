@@ -295,7 +295,7 @@ def collect_test_ids() -> set[str]:
 def verify_proxmox_mutation_contract() -> None:
     contract = load_yaml(ROOT / "design/contracts/proxmox-qemu-mutation.yaml")
     assert contract["suite"] == "labcentral.proxmox-qemu-mutation/v1alpha1"
-    assert contract["status"] == "design_gate", "mutation contract must not claim implementation readiness"
+    assert contract["status"] == "t0_implemented", "mutation contract must retain its implemented T0 gate"
     assert contract["schemas"] == {
         "targetConfig": {"name": "proxmox.target-config", "version": 1.1},
         "plan": {"name": "proxmox.qemu-plan", "version": 1.0},
@@ -342,6 +342,17 @@ def verify_proxmox_mutation_contract() -> None:
     assert len(case_ids) == len(set(case_ids)), "duplicate Proxmox mutation test ID"
     referenced = {test_id for mapped in contract["covers"].values() for test_id in mapped}
     assert referenced <= set(case_ids), "Proxmox generic coverage references an undefined case"
+    for case in cases:
+        binding = case.get("testBinding", "")
+        assert "#" in binding, f"{case['id']} has no executable test binding"
+        relative_path, test_name = binding.split("#", 1)
+        test_path = ROOT / relative_path
+        assert test_path.is_file(), f"{case['id']} test binding file is missing: {relative_path}"
+        source = test_path.read_text(encoding="utf-8")
+        top_level_test = test_name.split("/", 1)[0]
+        assert f"func {top_level_test}(" in source, f"{case['id']} test function is missing: {top_level_test}"
+        if "/" in test_name:
+            assert case["id"] in source, f"{case['id']} subtest binding is missing"
 
     before_gate = contract["capabilityGate"]["beforeGate"]
     assert before_gate, "Proxmox mutation capability gate is empty"

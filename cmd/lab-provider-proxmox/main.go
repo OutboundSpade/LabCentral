@@ -33,11 +33,17 @@ func main() {
 		ProviderKinds: []string{"proxmox"},
 		Schemas: []*pluginv1.SchemaVersion{
 			{Name: "proxmox.target-config", Major: 1, Minor: 0},
+			{Name: "proxmox.target-config", Major: 1, Minor: 1},
 			{Name: "proxmox.api-token-credentials", Major: 1, Minor: 0},
 			{Name: "proxmox.capacity", Major: 1, Minor: 0},
+			{Name: "proxmox.validation-plan", Major: 1, Minor: 0},
+			{Name: "proxmox.qemu-plan", Major: 1, Minor: 0},
+			{Name: "proxmox.qemu-state", Major: 1, Minor: 0},
+			{Name: "proxmox.invocation-journal", Major: 1, Minor: 0},
 		},
 		Features: []string{
-			"read-only-target-discovery",
+			"target-discovery",
+			"qualification-gated-qemu-mutation-t0",
 			"target-scoped-api-token",
 			plugincontract.FeatureOpaqueAllocationClaimsV1,
 			plugincontract.FeatureDependencyResourceInputV1,

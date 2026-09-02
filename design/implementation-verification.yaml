@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T18:06:39Z"
+verifiedAt: "2026-09-02T19:16:32Z"
 result: pass
-scope: phase_2_proxmox_mutation_prerequisites
+scope: phase_2_proxmox_qemu_mutation_t0
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -25,6 +25,7 @@ commands:
   - LABCENTRAL_TEST_POSTGRES_DSN=<isolated-test-url> go test -race -count=3 ./internal/adapter/jobsdb
   - go test -race -count=10 ./internal/adapter/fakeprovider
   - go test -count=1 ./providers/proxmox ./cmd/lab-provider-proxmox
+  - go test -race -count=1 ./providers/proxmox
   - go test -race -count=1 ./...
   - go vet ./...
   - make build-proxmox-provider
@@ -101,8 +102,8 @@ checks:
   - expiring_target_evidenced_proxmox_capabilities
   - proxmox_partial_and_offline_inventory_classification
   - proxmox_credential_upstream_body_and_fingerprint_redaction
-  - proxmox_non_discovery_rpcs_unimplemented
-  - all_18_generic_provider_cases_mapped_to_22_proxmox_mutation_cases
+  - proxmox_unrelated_rpcs_unimplemented
+  - all_18_generic_provider_cases_mapped_to_22_executable_proxmox_mutation_cases
   - proxmox_mutation_capabilities_remain_unsupported_before_gates
   - core_owned_allocation_claim_contract
   - proxmox_username_api_token_syntax
@@ -115,12 +116,31 @@ checks:
   - deterministic_allocation_replan_with_eight_attempt_bound
   - stable_instance_identity_before_dependency_aware_planning
   - provider_plan_digest_validation_and_unhandled_claim_refusal
+  - strict_closed_proxmox_target_validation_plan_qemu_plan_state_and_journal
+  - deterministic_proxmox_vmid_vlan_claim_planning_and_dependency_binding
+  - proxmox_plan_fields_rebound_to_configured_profiles_and_canonical_input
+  - proxmox_provider_state_node_vmid_and_profile_substitution_refusal
+  - proxmox_allowlisted_http_methods_paths_and_safe_form_fields
+  - proxmox_recursive_upstream_duplicate_key_rejection
+  - proxmox_effective_permission_template_inventory_and_isolation_gates
+  - proxmox_ownership_fenced_apply_read_destroy_and_lifecycle
+  - proxmox_optimistic_config_digest_and_readback_reconciliation
+  - proxmox_bounded_upid_task_and_guest_readiness_polling
+  - proxmox_lost_clone_config_start_and_destroy_response_recovery
+  - proxmox_compensation_leftover_and_absence_confirmation
+  - proxmox_checksummed_journal_restart_at_every_checkpoint
+  - proxmox_persisted_start_task_polled_before_any_reissue
+  - proxmox_terminal_journal_write_failure_returns_unknown_outcome
+  - all_22_proxmox_t0_test_bindings
+  - proxmox_mutation_canary_redaction
+  - production_proxmox_mutation_constructor_gate_closed
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
-  - The mutation contract verification contacted no Proxmox target and performed no mutation; it defines prerequisites and future T0/T3 cases only.
-  - The Proxmox foundation used only local TLS fake APIs and synthetic token canaries; it contacted no Proxmox target and performed no mutation.
+  - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-022 case has an executable binding. Exact-target credentialed T3 qualification remains outstanding.
+  - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - The credentialed smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.
   - Example A reached ready at a provider-selected 127.0.0.1 port and returned {"service":"LabCentral Example A","visits":1} before destroy succeeded.

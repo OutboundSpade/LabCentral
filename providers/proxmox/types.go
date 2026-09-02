@@ -1,5 +1,5 @@
-// Package proxmox implements target-scoped Proxmox VE discovery. This first
-// slice is deliberately read-only and does not implement provider mutations.
+// Package proxmox implements target-scoped Proxmox VE discovery and the gated,
+// fixed-node QEMU mutation subset.
 package proxmox
 
 import (
@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -24,12 +25,310 @@ const (
 
 var nodeNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$`)
 var repoIDPattern = regexp.MustCompile(`^[0-9A-Fa-f]{8,64}$`)
+var aliasPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+var storageIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+var sha1Pattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+var sha256Pattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+var pveReleasePattern = regexp.MustCompile(`^9\.[0-9]+\.[0-9]+$`)
+var templateDiskPattern = regexp.MustCompile(`^(scsi|virtio)[0-9]{1,2}$`)
+
+const (
+	targetConfigV11   = "proxmox.target-config/v1.1"
+	supportedPVERange = ">=9.0.0 <10.0.0"
+)
 
 type TargetConfig struct {
-	Endpoint              string `json:"endpoint"`
-	CACertificatePEM      string `json:"caCertificatePEM,omitempty"`
-	RequestTimeoutSeconds uint32 `json:"requestTimeoutSeconds,omitempty"`
-	MaxResponseBytes      int64  `json:"maxResponseBytes,omitempty"`
+	SchemaVersion         string                      `json:"schemaVersion,omitempty"`
+	Endpoint              string                      `json:"endpoint"`
+	CACertificatePEM      string                      `json:"caCertificatePEM,omitempty"`
+	RequestTimeoutSeconds uint32                      `json:"requestTimeoutSeconds,omitempty"`
+	MaxResponseBytes      int64                       `json:"maxResponseBytes,omitempty"`
+	MutationEnabled       bool                        `json:"mutationEnabled,omitempty"`
+	InstallationID        string                      `json:"installationID,omitempty"`
+	SupportedPVERange     string                      `json:"supportedPVERange,omitempty"`
+	DestinationNode       string                      `json:"destinationNode,omitempty"`
+	Pool                  string                      `json:"pool,omitempty"`
+	VMIDRanges            []IntegerRange              `json:"vmidRanges,omitempty"`
+	Templates             []TemplateProfile           `json:"templates,omitempty"`
+	Storages              []StorageProfile            `json:"storages,omitempty"`
+	Networks              []NetworkProfile            `json:"networks,omitempty"`
+	Limits                MutationLimits              `json:"limits,omitempty"`
+	ManagementIsolation   ManagementIsolationEvidence `json:"managementIsolation,omitempty"`
+	Qualification         TargetQualification         `json:"qualification,omitempty"`
+	PermissionScopes      []PermissionScope           `json:"permissionScopes,omitempty"`
+	JournalDirectory      string                      `json:"journalDirectory,omitempty"`
+}
+
+type IntegerRange struct {
+	Start uint32 `json:"start"`
+	End   uint32 `json:"end"`
+}
+
+type TemplateProfile struct {
+	Alias                string                `json:"alias"`
+	SourceNode           string                `json:"sourceNode"`
+	VMID                 uint32                `json:"vmid"`
+	ConfigDigest         string                `json:"configDigest"`
+	ContentDigest        string                `json:"contentDigest"`
+	Architecture         string                `json:"architecture"`
+	CloudInitDrive       bool                  `json:"cloudInitDrive"`
+	GuestAgent           bool                  `json:"guestAgent"`
+	ForbidUnknownDevices bool                  `json:"forbidUnknownDevices"`
+	Disks                []TemplateDiskProfile `json:"disks"`
+}
+
+type TemplateDiskProfile struct {
+	Device    string `json:"device"`
+	SizeBytes uint64 `json:"sizeBytes"`
+	Boot      bool   `json:"boot,omitempty"`
+}
+
+type StorageProfile struct {
+	Alias  string `json:"alias"`
+	ID     string `json:"id"`
+	Format string `json:"format"`
+}
+
+type NetworkProfile struct {
+	Alias      string         `json:"alias"`
+	Bridge     string         `json:"bridge"`
+	VLANRanges []IntegerRange `json:"vlanRanges"`
+}
+
+type MutationLimits struct {
+	MaxCPUMillis   uint32 `json:"maxCPUMillis"`
+	MaxMemoryBytes uint64 `json:"maxMemoryBytes"`
+	MaxNICs        uint32 `json:"maxNICs"`
+	MaxVMs         uint32 `json:"maxVMs"`
+}
+
+type ManagementIsolationEvidence struct {
+	AttestationDigest        string `json:"attestationDigest"`
+	ProbeDigest              string `json:"probeDigest"`
+	IntendedSegmentReachable bool   `json:"intendedSegmentReachable"`
+	ManagementReachable      bool   `json:"managementReachable"`
+	CrossInstanceReachable   bool   `json:"crossInstanceReachable"`
+}
+
+type TargetQualification struct {
+	PVERelease       string `json:"pveRelease"`
+	CapabilityDigest string `json:"capabilityDigest"`
+	InventoryDigest  string `json:"inventoryDigest"`
+	PolicyDigest     string `json:"policyDigest"`
+	EvidenceDigest   string `json:"evidenceDigest"`
+	Passed           bool   `json:"passed"`
+}
+
+type PermissionScope struct {
+	Path       string   `json:"path"`
+	Privileges []string `json:"privileges"`
+}
+
+var forbiddenMutationPrivileges = map[string]struct{}{"VM.GuestAgent.Unrestricted": {}, "Sys.Modify": {}}
+
+func (config TargetConfig) validateMutation() error {
+	if !config.MutationEnabled {
+		return nil
+	}
+	if config.SchemaVersion != targetConfigV11 {
+		return fmt.Errorf("mutation requires schemaVersion %q", targetConfigV11)
+	}
+	if config.SupportedPVERange != supportedPVERange {
+		return fmt.Errorf("supportedPVERange must be %q", supportedPVERange)
+	}
+	if !logicalIDPattern.MatchString(config.InstallationID) {
+		return fmt.Errorf("installationID is invalid")
+	}
+	if !nodeNamePattern.MatchString(config.DestinationNode) || config.Pool != "" && !storageIDPattern.MatchString(config.Pool) {
+		return fmt.Errorf("destination node or pool is invalid")
+	}
+	if err := validateDisjointRanges(config.VMIDRanges, 100, 999999999); err != nil {
+		return fmt.Errorf("vmidRanges: %w", err)
+	}
+	if len(config.Templates) == 0 || len(config.Templates) > 64 {
+		return fmt.Errorf("templates must contain between 1 and 64 entries")
+	}
+	seenAliases := make(map[string]struct{})
+	seenTemplates := make(map[string]struct{})
+	for _, profile := range config.Templates {
+		if !aliasPattern.MatchString(profile.Alias) || !nodeNamePattern.MatchString(profile.SourceNode) || profile.SourceNode != config.DestinationNode || profile.VMID < 100 || !sha1Pattern.MatchString(profile.ConfigDigest) || !sha256Pattern.MatchString(profile.ContentDigest) || profile.Architecture != "amd64" || !profile.CloudInitDrive || !profile.GuestAgent || !profile.ForbidUnknownDevices {
+			return fmt.Errorf("template profile is outside the supported fixed-node Linux subset")
+		}
+		if len(profile.Disks) == 0 || len(profile.Disks) > 16 {
+			return fmt.Errorf("template profile must declare between 1 and 16 cloned disks")
+		}
+		seenDisks := make(map[string]struct{})
+		bootDisks := 0
+		for _, disk := range profile.Disks {
+			if !templateDiskPattern.MatchString(disk.Device) || disk.SizeBytes == 0 {
+				return fmt.Errorf("template disk profile is invalid")
+			}
+			if _, exists := seenDisks[disk.Device]; exists {
+				return fmt.Errorf("duplicate template disk %q", disk.Device)
+			}
+			seenDisks[disk.Device] = struct{}{}
+			if disk.Boot {
+				bootDisks++
+			}
+		}
+		if bootDisks != 1 {
+			return fmt.Errorf("template profile must declare exactly one boot disk")
+		}
+		if _, exists := seenAliases[profile.Alias]; exists {
+			return fmt.Errorf("duplicate profile alias %q", profile.Alias)
+		}
+		seenAliases[profile.Alias] = struct{}{}
+		identity := fmt.Sprintf("%s/%d", profile.SourceNode, profile.VMID)
+		if _, exists := seenTemplates[identity]; exists {
+			return fmt.Errorf("duplicate template identity %q", identity)
+		}
+		seenTemplates[identity] = struct{}{}
+	}
+	if len(config.Storages) == 0 || len(config.Storages) > 16 {
+		return fmt.Errorf("storages must contain between 1 and 16 profiles")
+	}
+	seenStorageIDs := make(map[string]struct{})
+	for _, storage := range config.Storages {
+		if !aliasPattern.MatchString(storage.Alias) || !storageIDPattern.MatchString(storage.ID) || (storage.Format != "qcow2" && storage.Format != "raw") {
+			return fmt.Errorf("storage profile is invalid")
+		}
+		if _, exists := seenAliases[storage.Alias]; exists {
+			return fmt.Errorf("duplicate profile alias %q", storage.Alias)
+		}
+		if _, exists := seenStorageIDs[storage.ID]; exists {
+			return fmt.Errorf("duplicate storage ID %q", storage.ID)
+		}
+		seenAliases[storage.Alias] = struct{}{}
+		seenStorageIDs[storage.ID] = struct{}{}
+	}
+	if len(config.Networks) == 0 || len(config.Networks) > 16 {
+		return fmt.Errorf("networks must contain between 1 and 16 profiles")
+	}
+	seenBridges := make(map[string]struct{})
+	for _, network := range config.Networks {
+		if !aliasPattern.MatchString(network.Alias) || !storageIDPattern.MatchString(network.Bridge) {
+			return fmt.Errorf("network profile is invalid")
+		}
+		if _, exists := seenAliases[network.Alias]; exists {
+			return fmt.Errorf("duplicate profile alias %q", network.Alias)
+		}
+		if _, exists := seenBridges[network.Bridge]; exists {
+			return fmt.Errorf("duplicate network bridge %q", network.Bridge)
+		}
+		if err := validateDisjointRanges(network.VLANRanges, 1, 4094); err != nil {
+			return fmt.Errorf("network vlanRanges: %w", err)
+		}
+		seenAliases[network.Alias] = struct{}{}
+		seenBridges[network.Bridge] = struct{}{}
+	}
+	if config.Limits.MaxCPUMillis == 0 || config.Limits.MaxCPUMillis > 128000 || config.Limits.MaxMemoryBytes < 16<<20 || config.Limits.MaxNICs == 0 || config.Limits.MaxNICs > 16 || config.Limits.MaxVMs == 0 {
+		return fmt.Errorf("mutation limits are invalid")
+	}
+	if !sha256Pattern.MatchString(config.ManagementIsolation.AttestationDigest) || !sha256Pattern.MatchString(config.ManagementIsolation.ProbeDigest) || !config.ManagementIsolation.IntendedSegmentReachable || config.ManagementIsolation.ManagementReachable || config.ManagementIsolation.CrossInstanceReachable {
+		return fmt.Errorf("management isolation evidence is invalid")
+	}
+	if !config.Qualification.Passed || !pveReleasePattern.MatchString(config.Qualification.PVERelease) || !sha256Pattern.MatchString(config.Qualification.CapabilityDigest) || !sha256Pattern.MatchString(config.Qualification.InventoryDigest) || !sha256Pattern.MatchString(config.Qualification.PolicyDigest) || !sha256Pattern.MatchString(config.Qualification.EvidenceDigest) {
+		return fmt.Errorf("exact-target qualification evidence is invalid")
+	}
+	if err := validatePermissionScopes(config); err != nil {
+		return err
+	}
+	if !filepath.IsAbs(config.JournalDirectory) || filepath.Clean(config.JournalDirectory) != config.JournalDirectory || config.JournalDirectory == "/" {
+		return fmt.Errorf("journalDirectory must be an absolute clean non-root path")
+	}
+	return nil
+}
+
+func validatePermissionScopes(config TargetConfig) error {
+	scopes := config.PermissionScopes
+	if len(scopes) == 0 || len(scopes) > 32 {
+		return fmt.Errorf("permissionScopes must contain between 1 and 32 entries")
+	}
+	expected := expectedPermissionScopes(config)
+	if len(scopes) != len(expected) {
+		return fmt.Errorf("permissionScopes do not exactly cover configured target objects")
+	}
+	seenPaths := make(map[string]struct{})
+	for _, scope := range scopes {
+		if len(scope.Path) == 0 || len(scope.Path) > 512 || scope.Path == "/" || !strings.HasPrefix(scope.Path, "/") || strings.Contains(scope.Path, "..") || len(scope.Privileges) == 0 || len(scope.Privileges) > 32 {
+			return fmt.Errorf("permission scope is invalid")
+		}
+		if _, exists := seenPaths[scope.Path]; exists {
+			return fmt.Errorf("duplicate permission scope %q", scope.Path)
+		}
+		seenPaths[scope.Path] = struct{}{}
+		expectedPrivileges, expectedPath := expected[scope.Path]
+		if !expectedPath || len(scope.Privileges) != len(expectedPrivileges) {
+			return fmt.Errorf("permission scope %q is not an exact configured target scope", scope.Path)
+		}
+		seenPrivileges := make(map[string]struct{})
+		for _, privilege := range scope.Privileges {
+			if !validField(privilege) {
+				return fmt.Errorf("permission scope privilege is invalid")
+			}
+			if _, forbidden := forbiddenMutationPrivileges[privilege]; forbidden {
+				return fmt.Errorf("permission scope contains forbidden broad privilege %q", privilege)
+			}
+			if _, duplicate := seenPrivileges[privilege]; duplicate {
+				return fmt.Errorf("permission scope contains duplicate privilege %q", privilege)
+			}
+			seenPrivileges[privilege] = struct{}{}
+			if !expectedPrivileges[privilege] {
+				return fmt.Errorf("permission scope %q contains unexpected privilege %q", scope.Path, privilege)
+			}
+		}
+	}
+	for path := range expected {
+		if _, exists := seenPaths[path]; !exists {
+			return fmt.Errorf("permissionScopes omit configured scope %q", path)
+		}
+	}
+	return nil
+}
+
+func expectedPermissionScopes(config TargetConfig) map[string]map[string]bool {
+	result := make(map[string]map[string]bool)
+	add := func(path string, privileges ...string) {
+		if result[path] == nil {
+			result[path] = make(map[string]bool)
+		}
+		for _, privilege := range privileges {
+			result[path][privilege] = true
+		}
+	}
+	for _, profile := range config.Templates {
+		add(fmt.Sprintf("/vms/%d", profile.VMID), "VM.Audit", "VM.Clone")
+	}
+	destinationPath := "/vms"
+	if config.Pool != "" {
+		destinationPath = "/pool/" + config.Pool
+	}
+	add(destinationPath, "VM.Allocate", "VM.Audit", "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Memory", "VM.Config.Network", "VM.Config.Options", "VM.GuestAgent.Audit", "VM.PowerMgmt")
+	for _, profile := range config.Storages {
+		add("/storage/"+profile.ID, "Datastore.AllocateSpace", "Datastore.Audit")
+	}
+	for _, profile := range config.Networks {
+		add("/sdn/zones/localnetwork/"+profile.Bridge, "SDN.Use")
+	}
+	add("/nodes/"+config.DestinationNode, "Sys.Audit")
+	return result
+}
+
+func validateDisjointRanges(ranges []IntegerRange, minimum, maximum uint32) error {
+	if len(ranges) == 0 || len(ranges) > 64 {
+		return fmt.Errorf("must contain between 1 and 64 ranges")
+	}
+	ordered := append([]IntegerRange(nil), ranges...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Start < ordered[j].Start })
+	for index, value := range ordered {
+		if value.Start < minimum || value.End > maximum || value.Start > value.End {
+			return fmt.Errorf("range is outside %d-%d", minimum, maximum)
+		}
+		if index > 0 && ordered[index-1].End >= value.Start {
+			return fmt.Errorf("ranges overlap")
+		}
+	}
+	return nil
 }
 
 type APITokenCredentials struct {

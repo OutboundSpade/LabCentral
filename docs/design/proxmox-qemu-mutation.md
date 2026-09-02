@@ -1,6 +1,6 @@
 # Proxmox QEMU mutation contract
 
-`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. Neither authorizes mutation by the current provider. `workload.vm` and every lifecycle capability remain `unsupported` until the provider implementation and credentialed T3 gates below pass on the configured target.
+`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. `TASK-PROXMOX-004` implements the closed provider types and every T0 fake-API case behind a package-private test gate. The production constructor still refuses writes and reports `workload.vm` and every lifecycle capability as `unsupported` until `TASK-PROXMOX-005` integrates and passes the credentialed T3 gates below on the configured target.
 
 ## Supported slice
 
@@ -19,7 +19,7 @@ Example B remains gated because its router/guest provisioning and access require
 
 ## Typed target and plan schemas
 
-Mutation configuration is a future additive `proxmox.target-config` v1.1 document. `mutationEnabled` defaults to false. When enabled it contains a release-supported PVE range, fixed destination node and optional pool, disjoint VMID ranges, a template catalogue keyed by operator aliases, one or more storage profiles, approved bridge profiles with VLAN pools, hard VM/NIC/resource limits, management-network separation evidence, and the provider-journal directory. A template entry pins source node/VMID, expected PVE config digest and operator-approved content digest, architecture, Cloud-Init drive, guest-agent requirement, and forbidden-device policy. A provider override may select administrator aliases only; it cannot supply raw bridge names, VLANs, storage IDs, VMIDs, PVE arguments, or weaken isolation.
+Mutation configuration is the additive closed `proxmox.target-config` v1.1 document. `mutationEnabled` defaults to false. When enabled it contains the release-supported PVE range, installation ID, fixed destination node and optional pool, disjoint VMID ranges, a template catalogue keyed by operator aliases, one or more storage profiles, approved bridge profiles with VLAN pools, hard VM/NIC/resource limits, positive intended-segment plus negative management/cross-instance evidence, exact qualification digests, exact non-root ACL paths, and the provider-journal directory. A template entry pins source node/VMID, expected PVE config digest and operator-approved content digest, cloned disks, architecture, Cloud-Init drive, guest-agent requirement, and forbidden-device policy. A provider override selects administrator aliases only through the closed validation plan; it cannot supply raw bridge names, VLANs, storage IDs, VMIDs, PVE arguments, or weaken isolation.
 
 The plan is `proxmox.qemu-plan` v1.0. It is a closed typed document containing:
 
@@ -81,7 +81,7 @@ Observed provider JSON exposes only typed VMID, node, power/readiness state, pla
 
 ## Credentialed integration matrix
 
-T0 fake-API tests must deterministically cover every case in [`proxmox-qemu-mutation.yaml`](../../design/contracts/proxmox-qemu-mutation.yaml), including all generic provider cases. T3 runs are isolated and opt-in, record exact PVE `pve-manager` version and storage/network configuration, use a disposable VMID/VLAN range, and verify at minimum:
+T0 fake-API tests deterministically cover every case in [`proxmox-qemu-mutation.yaml`](../../design/contracts/proxmox-qemu-mutation.yaml), including all generic provider cases. The catalog records the exact Go test binding for each stable ID. T3 runs remain isolated and opt-in, record exact PVE `pve-manager` version and storage/network configuration, use a disposable VMID/VLAN range, and verify at minimum:
 
 - the minimum supported 9.x release and current supported 9.x release;
 - full clone on `dir`/qcow2 and `lvmthin`/raw when the target advertises each profile;

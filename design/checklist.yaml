@@ -193,7 +193,7 @@ tasks:
       - Shared conformance tests prove deterministic bounded replanning, target isolation, persistence parity, protocol downgrade behavior, and absence-gated release before Proxmox write code begins.
   - id: TASK-PROXMOX-004
     title: Implement the gated Proxmox QEMU mutation and T0 suite
-    status: proposed
+    status: complete
     dependencies: [TASK-PROXMOX-003]
     relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013]
     relatedDocuments: [providers/proxmox, cmd/lab-provider-proxmox, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/provider-contract.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml]
@@ -202,3 +202,14 @@ tasks:
       - Validate, plan, apply, read, destroy, GetInvocation, and start/stop/pause/resume use only the allowlisted Proxmox APIs, committed claims/dependency states, ownership markers, optimistic config digests, and bounded UPID polling.
       - Every TEST-PROXMOX case has a deterministic fake-API binding covering response loss, restart, task/config failure, compensation, ownership refusal, redaction, and unsupported input without real credentials.
       - Mutation remains disabled by default and unadvertised unless the local protocol/config/evidence gates pass; production support remains blocked on the later exact-target credentialed T3 qualification.
+  - id: TASK-PROXMOX-005
+    title: Integrate Proxmox targets and execute credentialed T3 qualification
+    status: proposed
+    dependencies: [TASK-PROXMOX-004]
+    relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013]
+    relatedDocuments: [providers/proxmox, internal/controlplane, internal/pluginhost, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml]
+    acceptanceCriteria:
+      - Provider-target registration, secret-backed credential delivery, supervision, protocol v1.1 negotiation, capability persistence, allocation commits, and dependency states drive the Proxmox provider without weakening the Docker slice.
+      - Isolated opt-in T3 runs record exact PVE 9.x, storage, bridge, permission, template, VMID, and VLAN evidence and pass every applicable TEST-PROXMOX case with automatic owned cleanup.
+      - Positive intended-segment and negative management/cross-instance connectivity probes are measured on real guests, and failed or ambiguous cleanup retains claims and blocks capability advertisement.
+      - A separate reviewed production-enablement decision consumes signed qualification evidence; no configuration-only or test-constructor bypass can open writes.

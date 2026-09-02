@@ -255,6 +255,18 @@ func TestClientRejectsMissingAPIData(t *testing.T) {
 	}
 }
 
+func TestClientRejectsRecursivelyDuplicateProviderResponseFields(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = response.Write([]byte(`{"data":{"release":"9.0","release":"9.1","version":"pve-manager/9.0.3/abcd1234","repoid":"abcd1234"}}`))
+	}))
+	defer server.Close()
+	client := newTestClient(t, server, 0)
+	defer client.CloseIdleConnections()
+	if _, err := client.Discover(context.Background()); err == nil || !strings.Contains(err.Error(), "duplicate field") {
+		t.Fatalf("duplicate provider response field error = %v", err)
+	}
+}
+
 func TestAPIBool(t *testing.T) {
 	for input, expected := range map[string]bool{"true": true, "1": true, `"1"`: true, "false": false, "0": false, "null": false} {
 		var value apiBool
