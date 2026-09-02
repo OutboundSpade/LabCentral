@@ -1,0 +1,25 @@
+# Primary references
+
+All sources were retrieved **2026-09-02**. Provider features remain target-discovered; these sources support design direction, not universal target guarantees.
+
+| Subject | Primary source | Supported claim |
+|---|---|---|
+| Proxmox architecture/API/network/storage | [Proxmox VE Administration Guide](https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf) | PVE exposes REST through `pveproxy`; QEMU VMs, bridges/VLAN tags, clusters and storage capabilities are provider primitives. |
+| Proxmox storage variance | [Proxmox `pvesm` storage documentation](https://pve.proxmox.com/pve-docs/pvesm.1.html) | Snapshot/clone support depends on storage backend and format, so target discovery is mandatory. |
+| KubeVirt VM networking | [KubeVirt interfaces and networks](https://kubevirt.io/user-guide/network/interfaces_and_networks/) | VM networks/interfaces pair explicitly; Multus enables secondary networks; binding/CNI constraints affect MAC, L2, ports, and migration. |
+| KubeVirt snapshots | [KubeVirt Snapshot/Restore API](https://kubevirt.io/user-guide/storage/snapshot_restore_api/) | VM snapshots depend on KubeVirt APIs, CSI VolumeSnapshot support/classes, storage, and guest-agent consistency. |
+| Kubernetes runtime isolation | [Kubernetes RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/) | RuntimeClass selects an operator-installed runtime and can represent a hardware-virtualized sandbox with scheduling/overhead constraints. |
+| Kubernetes policy limits | [Kubernetes NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/) | L3/L4 policy requires a network plugin that actually enforces NetworkPolicy; API presence alone is insufficient evidence. |
+| Fly private networking | [Fly private networking](https://fly.io/docs/networking/private-networking/) and [custom private networks](https://fly.io/docs/networking/custom-private-networks/) | Fly 6PN is private IPv6/WireGuard L3 networking; custom 6PNs isolate groups but do not provide arbitrary L2 lab topology. |
+| Fly workload model | [Fly Machines API](https://fly.io/docs/machines/api/machines-resource/) | Machines are configured from container images with Machine/service/volume semantics; LabCentral maps only logical containers. |
+| Docker portable API | [Docker Engine API](https://docs.docker.com/reference/api/engine/) and [networking overview](https://docs.docker.com/engine/network/) | Baseline can use REST Engine container/image/volume/network APIs and user-defined networks. |
+| Docker Desktop differences | [Docker Desktop networking](https://docs.docker.com/desktop/features/networking/) | Desktop routes Engine/container networking through a lightweight VM/backend, so Linux host bridge assumptions are not portable. |
+| AWS VPC isolation | [AWS VPC infrastructure security](https://docs.aws.amazon.com/vpc/latest/userguide/infrastructure-security.html) | VPC/subnets, routes, security groups, and NACLs provide L3 controls; private subnets are recommended for non-public instances. |
+| AWS multiple NICs | [EC2 elastic network interfaces](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html) | ENIs attach within an Availability Zone and maximum interfaces varies by instance type. |
+| AWS snapshots | [Amazon EBS snapshots](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-snapshots.html) | EBS provides point-in-time volume snapshots/restores, not an automatic universal whole-lab snapshot. |
+| CEL safety/model | [CEL overview](https://cel.dev/overview/cel-overview) | CEL is designed for safe embedded evaluation with declared environments and parse/check/evaluate phases; LabCentral still adds cost/expansion limits. |
+| Huma contract generation | [Huma OpenAPI generation](https://huma.rocks/features/openapi-generation/) | Huma generates OpenAPI 3.1 from registered operation inputs/outputs. |
+| Go plugin framework comparison | [HashiCorp go-plugin](https://github.com/hashicorp/go-plugin) and [protocol internals](https://github.com/hashicorp/go-plugin/blob/main/docs/internals.md) | Established framework provides subprocess RPC/gRPC, handshake, health/TLS/reattach concepts; LabCentral selects a thinner shared local/remote protocol. |
+| Protobuf evolution | [Protocol Buffer best practices](https://protobuf.dev/best-practices/dos-donts/) and [language guide](https://protobuf.dev/programming-guides/editions/) | Field numbers/names must not be reused; additive evolution and reserved fields underpin plugin compatibility rules. |
+| Protobuf lint/breaking configuration | [Buf v2 `buf.yaml`](https://buf.build/docs/configuration/v2/buf-yaml/), [lint usage](https://buf.build/docs/lint/usage/), and [breaking checks](https://buf.build/docs/breaking/) | `STANDARD` lint and `FILE` breaking rules provide the checked v1 protocol baseline; breaking compares current schema with a past descriptor/Git input. |
+| Canonical JSON | [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html) | JCS uses I-JSON/ECMAScript primitive serialization and deterministic property sorting for stable canonical bytes. |

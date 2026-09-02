@@ -1,0 +1,10 @@
+apiVersion: labs.labcentral.io/v1alpha1
+kind: Lab
+metadata: {name: invalid-override}
+spec:
+  resources: {}
+  providerOverrides:
+    proxmox:
+      apiVersion: proxmox
+      spec: {storagePool: local-zfs}
+

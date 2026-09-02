@@ -1,0 +1,116 @@
+formatVersion: 1
+suite: labcentral.provider-contract/v1alpha1
+clock: virtual
+normalCredentialRequirement: none
+requiredCases:
+  - id: TEST-PROVIDER-001
+    title: Idempotent apply replay
+    setup: no provider primitives
+    calls:
+      - apply: {resource: container.app, generation: 1, idempotencyKey: op-1/apply/container.app/1}
+      - apply: {resource: container.app, generation: 1, idempotencyKey: op-1/apply/container.app/1}
+    expect:
+      logicalResult: ready
+      createCount: 1
+      identicalProviderState: true
+  - id: TEST-PROVIDER-002
+    title: Stale generation is fenced
+    setup: {resourceGeneration: 2, fencingToken: 9}
+    call: {applyGeneration: 1, fencingToken: 8}
+    expect: {error: stale_generation, mutations: 0}
+  - id: TEST-PROVIDER-003
+    title: Name collision is not adopted
+    setup: {sameDisplayNamePrimitiveOwnedBy: another-installation}
+    call: {apply: vm.router}
+    expect: {error: ownership_mismatch, adopted: false, deleted: false}
+  - id: TEST-PROVIDER-004
+    title: Crash after provider create before response
+    fault: crash_after_create_before_response
+    recovery: restart_plugin_then_get_invocation
+    expect: {createCount: 1, operationStateBeforeQuery: unknown, finalState: ready}
+  - id: TEST-PROVIDER-005
+    title: Lost response after mutation
+    fault: drop_final_response
+    recovery: get_invocation_before_retry
+    expect: {createCount: 1, duplicateMutation: false, finalState: ready}
+  - id: TEST-PROVIDER-006
+    title: Partial logical-resource creation compensates this resource
+    setup: {logicalResource: container.app, physicalSteps: [vm, disk, bootstrap]}
+    fault: fail_step_bootstrap
+    expect:
+      compensationOrder: [disk, vm]
+      priorLogicalResourcesRetained: true
+      leftovers: []
+      instancePhase: degraded
+  - id: TEST-PROVIDER-007
+    title: Compensation failure reports leftovers
+    setup: {logicalResource: vm.target, createdPrimitives: [vm-123, disk-456]}
+    fault: fail_delete_disk
+    expect:
+      errorClass: partial_cleanup
+      leftovers: [disk-456]
+      operationState: partial
+      instancePhase: degraded
+  - id: TEST-PROVIDER-008
+    title: Destroy continues after independent deletion failure
+    graph: "network.red -> [vm.attacker, vm.router]"
+    fault: fail_delete_vm_attacker
+    expect:
+      attempted: [vm.attacker, vm.router, network.red]
+      networkDeleteCondition: only_if_no_owned_dependents
+      operationState: partial
+      destroyedClaimed: false
+  - id: TEST-PROVIDER-009
+    title: Old provider state is migrated explicitly
+    setup: {storedStateMajor: 1, pluginReadableMajors: [1], pluginWritableMajor: 2}
+    call: {migrateState: {dryRun: true, destinationMajor: 2}}
+    expect: {sourceUnchanged: true, migrationReported: possible}
+  - id: TEST-PROVIDER-010
+    title: Unknown provider state fails closed
+    setup: {storedStateMajor: 3, pluginReadableMajors: [1, 2]}
+    call: {apply: vm.router}
+    expect: {errorClass: state_version_incompatible, mutations: 0}
+  - id: TEST-PROVIDER-011
+    title: Capability downgrade invalidates plan
+    setup: {planCapabilityDigest: old, currentCapabilityDigest: new, removed: lifecycle.snapshot}
+    call: {applyPlan: routed-lab}
+    expect: {error: stale_plan, mutations: 0, revalidationRequired: true}
+  - id: TEST-PROVIDER-012
+    title: Cancellation before unsafe boundary
+    setup: {invocationPhase: provider_request_not_sent}
+    call: cancel
+    expect: {cancelOutcome: requested, mutations: 0, operationState: canceled}
+  - id: TEST-PROVIDER-013
+    title: Cancellation after committed side effect
+    setup: {invocationPhase: provider_request_committed}
+    call: cancel
+    expect: {cancelOutcome: too_late, operationState: running, queryRequired: true}
+  - id: TEST-PROVIDER-014
+    title: Secret canary is absent from outputs
+    setup: {secretCanary: LABCENTRAL_TEST_SECRET_DO_NOT_LOG}
+    injectThrough: [targetCredential, guestSecretRef]
+    scanSinks: [pluginLogs, error, progress, providerState, observedState, events, audit, traces]
+    expect: {canaryOccurrences: 0}
+  - id: TEST-PROVIDER-015
+    title: Plan is deterministic
+    calls:
+      - plan: {canonicalDigest: same, targetCapabilityDigest: same, policyDigest: same}
+      - plan: {canonicalDigest: same, targetCapabilityDigest: same, policyDigest: same}
+    expect: {providerPlanBytesIdentical: true, providerPlanDigestIdentical: true}
+  - id: TEST-PROVIDER-016
+    title: Restart does not lose invocation identity
+    setup: {inFlightInvocation: inv-123, checkpoint: provider_task_created}
+    fault: plugin_process_exit
+    recovery: supervised_restart
+    expect: {resumedInvocation: inv-123, duplicateMutation: false, progressSequenceMonotonic: true}
+  - id: TEST-PROVIDER-017
+    title: Reverse dependency destroy order
+    graph: "network.red -> vm.router -> access.router"
+    call: destroy
+    expect: {strictOrder: [access.router, vm.router, network.red]}
+  - id: TEST-PROVIDER-018
+    title: Ownership token mismatch blocks destructive action
+    setup: {recordedProviderID: vm-123, expectedOwnershipToken: token-a, observedOwnershipToken: token-b}
+    call: destroy
+    expect: {error: ownership_mismatch, deleteCount: 0, auditAlert: true}
+

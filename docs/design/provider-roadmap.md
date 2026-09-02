@@ -1,0 +1,37 @@
+# Implementation and provider roadmap
+
+The thin Docker path optimizes onboarding, not production priority.
+
+## Phase 0A — architecture and contract gate (complete)
+
+Finalize executable Lab schema/canonical vectors, domain/application boundary specification, Protobuf plugin protocol and descriptor baseline, capability predicates, machine-readable fake-provider/job/security contracts, and the repeatable design verifier. This gate is complete at `MILESTONE-DESIGN-READY`; it proves implementation readiness, not runtime behavior.
+
+## Phase 0B — architecture foundation implementation (next)
+
+Create the minimal Go module and compile domain/application ports; implement renderer/schema/canonical conformance; build SQLite/PostgreSQL job/outbox prototypes; implement the fake provider and shared failure contract runner. Exit only when `TASK-DOMAIN-001`, `TASK-JOBS-001`, and `TASK-PROVIDER-001` pass their runtime acceptance criteria. Real provider code remains out of scope here.
+
+## Phase 1 — local vertical slice
+
+Build `labd` modular monolith, Huma API/OpenAPI checks, SQLite/filesystem, no-auth loopback mode, durable validate/plan/apply/destroy, static SvelteKit shell, thin Docker plugin, and Example A. Clearly gate hostile images and advanced Linux networking. Add release archive/Docker/Compose.
+
+## Phase 2 — Proxmox production path
+
+Discover clusters/nodes/storage/bridges/VLAN/firewall/templates/console. Implement QEMU VM, multi-NIC isolated router labs, placement, template clone, cloud-init/Ignition, snapshot/restore/reset, access integration, ownership/orphan safety, classroom batches, and Example B at scale. Container-via-VM follows shared contract after VM path is reliable.
+
+## Phase 3 — production control plane
+
+PostgreSQL, OIDC/local auth, organizations/projects/teams/RBAC, quotas/reservations, expanded audit/outbox, access proxy plugins, TLS/backup/HA deployment, TTL/renewal/idle signals where honest, and operator workflows.
+
+## Phase 4 — Kubernetes/KubeVirt
+
+Dynamic CRD/component/CNI/CSI/RuntimeClass discovery; KubeVirt VM and container-via-VM; native Pods and optional sandbox RuntimeClass as distinct isolation; Multus/NAD and NetworkPolicy evidence; snapshots and access. A cluster without KubeVirt remains explicitly container-only.
+
+## Phase 5 — additional providers and sites
+
+Fly portable L3 container subset and custom 6PN; Docker feature completion; deliberately small AWS EC2/VPC/ENI/SG/EBS plus container-via-VM; outbound-mTLS Site Agent with offline leases. Example C must produce provider-specific plan warnings rather than equivalence claims.
+
+## Phase 6 — ecosystem
+
+Git/commit provenance, OCI bundle distribution, image resolver/importer, isolated build service, plugin/bundle checksums/signatures and registries, third-party SDK maturity, policy/event/audit extensions, and educational metadata consumers.
+
+Windows support follows OQ-GUEST-001 and is not implicit in these phase exits. Each phase requires threat-model/test/state/checklist updates before implementation is called complete.

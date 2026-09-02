@@ -1,0 +1,7 @@
+#cloud-config
+hostname: target
+write_files:
+  - path: /etc/labcentral-role
+    permissions: "0644"
+    content: target
+

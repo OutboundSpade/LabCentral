@@ -1,0 +1,129 @@
+formatVersion: 1
+project: LabCentral
+phase: design_complete_implementation_ready
+lastUpdated: "2026-09-02"
+acceptedAdrs:
+  - ADR-0001
+  - ADR-0002
+  - ADR-0003
+  - ADR-0004
+  - ADR-0005
+  - ADR-0006
+  - ADR-0007
+  - ADR-0008
+  - ADR-0009
+  - ADR-0010
+  - ADR-0011
+  - ADR-0012
+proposedAdrs: []
+supersededAdrs: []
+documents:
+  - path: AGENTS.md
+    status: complete
+  - path: PROJECT_STATE.md
+    status: complete
+  - path: docs/adr
+    status: complete
+  - path: docs/design/requirements.md
+    status: complete
+  - path: docs/design/architecture.md
+    status: complete
+  - path: docs/design/domain-model.md
+    status: complete
+  - path: docs/design/domain-ports.md
+    status: complete
+  - path: docs/design/declarative-labs.md
+    status: complete
+  - path: docs/design/plugin-system.md
+    status: complete
+  - path: docs/design/provider-contract.md
+    status: complete
+  - path: docs/design/provider-capability-matrix.md
+    status: complete
+  - path: docs/design/networking.md
+    status: complete
+  - path: docs/design/template-rendering.md
+    status: complete
+  - path: docs/design/guest-provisioning.md
+    status: complete
+  - path: docs/design/reconciliation-and-jobs.md
+    status: complete
+  - path: docs/design/security-threat-model.md
+    status: complete
+  - path: docs/design/auth-tenancy-rbac.md
+    status: complete
+  - path: docs/design/access-sessions.md
+    status: complete
+  - path: docs/design/http-api.md
+    status: complete
+  - path: docs/design/persistence-and-artifacts.md
+    status: complete
+  - path: docs/design/database-schema.md
+    status: complete
+  - path: docs/design/deployment.md
+    status: complete
+  - path: docs/design/testing.md
+    status: complete
+  - path: docs/design/provider-roadmap.md
+    status: complete
+  - path: docs/design/open-questions.md
+    status: complete
+  - path: docs/references.md
+    status: complete
+  - path: schemas/lab-v1alpha1.schema.json
+    status: complete
+  - path: schemas/fixtures
+    status: complete
+  - path: api/plugin/v1/plugin.proto
+    status: complete
+  - path: api/plugin/v1/compat
+    status: complete
+  - path: buf.yaml
+    status: complete
+  - path: design/contracts
+    status: complete
+  - path: tools/verify_phase0.py
+    status: complete
+  - path: tools/jcs.mjs
+    status: complete
+  - path: tools/requirements-phase0.txt
+    status: complete
+  - path: design/verification.yaml
+    status: complete
+  - path: examples
+    status: complete
+openQuestions:
+  - OQ-GUEST-001
+  - OQ-IMAGE-001
+  - OQ-SECRET-001
+  - OQ-ACCESS-001
+  - OQ-QUOTA-001
+milestones:
+  - id: MILESTONE-DESIGN-BASELINE
+    status: complete
+  - id: MILESTONE-SCHEMA-CONTRACTS
+    status: complete
+  - id: MILESTONE-PLUGIN-PROTOCOL
+    status: complete
+  - id: MILESTONE-DESIGN-READY
+    status: complete
+  - id: MILESTONE-LOCAL-VERTICAL-SLICE
+    status: proposed
+completedTasks:
+  - TASK-DESIGN-001
+  - TASK-DESIGN-002
+  - TASK-DESIGN-003
+  - TASK-DESIGN-004
+  - TASK-DESIGN-005
+  - TASK-DESIGN-006
+  - TASK-DESIGN-007
+  - TASK-DESIGN-008
+  - TASK-SCHEMA-001
+  - TASK-PLUGIN-001
+  - TASK-DESIGN-009
+  - TASK-CONTRACT-001
+currentTasks: []
+nextRecommendedTasks:
+  - TASK-DOMAIN-001
+  - TASK-JOBS-001
+  - TASK-PROVIDER-001

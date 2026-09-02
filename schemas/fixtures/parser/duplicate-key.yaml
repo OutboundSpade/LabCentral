@@ -1,0 +1,7 @@
+apiVersion: labs.labcentral.io/v1alpha1
+kind: Lab
+metadata:
+  name: first-name
+  name: second-name
+spec: {resources: {}}
+

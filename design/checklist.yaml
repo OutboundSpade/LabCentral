@@ -1,0 +1,137 @@
+formatVersion: 1
+lastUpdated: "2026-09-02"
+tasks:
+  - id: TASK-DESIGN-001
+    title: Interpret and trace product requirements
+    status: complete
+    dependencies: []
+    relatedAdrs: [ADR-0001]
+    relatedDocuments: [docs/design/requirements.md]
+    acceptanceCriteria:
+      - Requirements use stable IDs and distinguish guarantees from goals.
+  - id: TASK-DESIGN-002
+    title: Define top-level architecture and boundaries
+    status: complete
+    dependencies: [TASK-DESIGN-001]
+    relatedAdrs: [ADR-0001, ADR-0002]
+    relatedDocuments: [docs/design/architecture.md, docs/design/plugin-system.md]
+    acceptanceCriteria:
+      - Core, plugins, persistence, artifacts, UI, and trust boundaries are explicit.
+  - id: TASK-DESIGN-003
+    title: Define portable domain and declarative model
+    status: complete
+    dependencies: [TASK-DESIGN-001]
+    relatedAdrs: [ADR-0005, ADR-0007]
+    relatedDocuments: [docs/design/domain-model.md, docs/design/declarative-labs.md, docs/design/template-rendering.md]
+    acceptanceCriteria:
+      - Resources are typed, references resolve deterministically, and canonical identity is specified.
+  - id: TASK-DESIGN-004
+    title: Define provider contract and capability matrix
+    status: complete
+    dependencies: [TASK-DESIGN-002, TASK-DESIGN-003]
+    relatedAdrs: [ADR-0002, ADR-0003]
+    relatedDocuments: [docs/design/provider-contract.md, docs/design/provider-capability-matrix.md]
+    acceptanceCriteria:
+      - Six target profiles are compared and uncertain features require discovery.
+  - id: TASK-DESIGN-005
+    title: Define networking and security baseline
+    status: complete
+    dependencies: [TASK-DESIGN-003]
+    relatedAdrs: [ADR-0004, ADR-0008]
+    relatedDocuments: [docs/design/networking.md, docs/design/security-threat-model.md]
+    acceptanceCriteria:
+      - Default egress, management-plane separation, and degraded modes are explicit.
+  - id: TASK-DESIGN-006
+    title: Define durable orchestration and persistence
+    status: complete
+    dependencies: [TASK-DESIGN-003]
+    relatedAdrs: [ADR-0006, ADR-0011]
+    relatedDocuments: [docs/design/reconciliation-and-jobs.md, docs/design/persistence-and-artifacts.md]
+    acceptanceCriteria:
+      - Leases, idempotency, compensation, outbox, locking, and restart recovery are specified.
+  - id: TASK-DESIGN-007
+    title: Define API, tenancy, and access contracts
+    status: complete
+    dependencies: [TASK-DESIGN-002]
+    relatedAdrs: [ADR-0009, ADR-0010]
+    relatedDocuments: [docs/design/http-api.md, docs/design/auth-tenancy-rbac.md, docs/design/access-sessions.md]
+    acceptanceCriteria:
+      - Authorization, asynchronous actions, ETags, SSE, and short-lived access are specified.
+  - id: TASK-DESIGN-008
+    title: Create example bundles and implementation roadmap
+    status: complete
+    dependencies: [TASK-DESIGN-003, TASK-DESIGN-004]
+    relatedAdrs: [ADR-0005, ADR-0012]
+    relatedDocuments: [examples, docs/design/provider-roadmap.md, docs/design/testing.md]
+    acceptanceCriteria:
+      - Docker, routed VM, and portable-container examples include requirements and plans.
+  - id: TASK-DESIGN-009
+    title: Define implementation boundary and database invariants
+    status: complete
+    dependencies: [TASK-DESIGN-002, TASK-DESIGN-006]
+    relatedAdrs: [ADR-0001, ADR-0006, ADR-0011]
+    relatedDocuments: [docs/design/domain-ports.md, docs/design/database-schema.md]
+    acceptanceCriteria:
+      - Domain and application ports exclude HTTP, SQL, and generated plugin types.
+      - Database tables, transaction boundaries, lease fencing, outbox, quota, and migration invariants are concrete.
+  - id: TASK-SCHEMA-001
+    title: Convert Lab schema sketch into executable compatibility contract
+    status: complete
+    dependencies: [TASK-DESIGN-003]
+    relatedAdrs: [ADR-0005, ADR-0012]
+    relatedDocuments: [schemas/lab-v1alpha1.schema.json, schemas/fixtures, tools/jcs.mjs]
+    acceptanceCriteria:
+      - Schema validates all examples and rejects curated invalid fixtures.
+      - Canonicalization golden vectors cover aliases, number forms, and Unicode.
+  - id: TASK-PLUGIN-001
+    title: Finalize plugin v1 protocol compatibility fixtures
+    status: complete
+    dependencies: [TASK-DESIGN-002, TASK-DESIGN-004]
+    relatedAdrs: [ADR-0002, ADR-0012]
+    relatedDocuments: [api/plugin/v1/plugin.proto, api/plugin/v1/compat, buf.yaml]
+    acceptanceCriteria:
+      - Buf lint and breaking checks pass.
+      - Handshake, deadlines, cancellation, and old-plugin fixtures are tested.
+  - id: TASK-CONTRACT-001
+    title: Define executable Phase 0 conformance and threat-control catalogs
+    status: complete
+    dependencies: [TASK-DESIGN-005, TASK-DESIGN-006, TASK-PLUGIN-001, TASK-SCHEMA-001]
+    relatedAdrs: [ADR-0002, ADR-0006, ADR-0007, ADR-0008]
+    relatedDocuments: [design/contracts, tools/verify_phase0.py]
+    acceptanceCriteria:
+      - Provider failure windows and destructive ownership safeguards have stable test IDs.
+      - Job invariants cover atomic outbox, leases, fencing, unknown outcomes, idempotency, and quotas.
+      - Every threat has explicit owners, controls, and defined test IDs.
+      - The Phase 0 design verifier passes without contacting a provider.
+  - id: TASK-DOMAIN-001
+    title: Specify Go domain interfaces and state transitions
+    status: proposed
+    dependencies: [TASK-SCHEMA-001]
+    relatedAdrs: [ADR-0007]
+    relatedDocuments: [docs/design/domain-model.md, docs/design/domain-ports.md]
+    acceptanceCriteria:
+      - Interfaces compile without concrete HTTP, database, or provider dependencies.
+  - id: TASK-JOBS-001
+    title: Prototype database lease and outbox invariants
+    status: proposed
+    dependencies: [TASK-DOMAIN-001]
+    relatedAdrs: [ADR-0006, ADR-0011]
+    relatedDocuments: [docs/design/reconciliation-and-jobs.md, docs/design/database-schema.md, design/contracts/job-invariants.yaml]
+    acceptanceCriteria:
+      - SQLite and PostgreSQL tests prove recovery, fencing, retry, and atomic outbox behavior.
+  - id: TASK-PROVIDER-001
+    title: Build fake provider and shared contract suite
+    status: proposed
+    dependencies: [TASK-PLUGIN-001, TASK-DOMAIN-001]
+    relatedAdrs: [ADR-0002, ADR-0007]
+    relatedDocuments: [docs/design/provider-contract.md, docs/design/testing.md, design/contracts/provider-conformance.yaml]
+    acceptanceCriteria:
+      - Crash, timeout, partial-create, compensation-failure, and state-upgrade cases pass.
+  - id: TASK-DOCKER-001
+    title: Implement thin Docker onboarding vertical slice
+    status: deferred
+    dependencies: [TASK-JOBS-001, TASK-PROVIDER-001]
+    relatedAdrs: [ADR-0001, ADR-0004]
+    relatedDocuments: [examples/docker-laptop, docs/design/provider-roadmap.md]
+    acceptanceCriteria:
+      - Loopback no-auth setup realizes and destroys Example A with explicit isolation warning.

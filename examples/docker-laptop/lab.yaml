@@ -1,0 +1,54 @@
+apiVersion: labs.labcentral.io/v1alpha1
+kind: Lab
+metadata:
+  name: docker-sqlite-web
+  title: Two-container SQLite web lab
+spec:
+  requirements:
+    isolationClass: process
+    capabilities:
+      - workload.container.native
+      - network.segment.isolated
+      - network.portPublication.host
+  resources:
+    networks:
+      - name: app
+        kind: isolated
+        ipam: providerManaged
+        egress:
+          mode: deny
+    volumes:
+      - name: data
+        size: 1Gi
+        persistence: persistent
+        snapshot: false
+    containers:
+      - name: web
+        image: ghcr.io/labcentral/examples/sqlite-web@sha256:1111111111111111111111111111111111111111111111111111111111111111
+        compute: {cpu: 0.5, memory: 256Mi, architecture: amd64}
+        isolation: process
+        interfaces:
+          - networkRef: networks.app
+        mounts:
+          - volumeRef: volumes.data
+            path: /var/lib/lab
+        environment:
+          DATABASE_URL: sqlite:////var/lib/lab/lab.db
+        publishedPorts:
+          - {name: web, port: 8080, protocol: tcp, exposure: host}
+      - name: client
+        image: docker.io/curlimages/curl@sha256:2222222222222222222222222222222222222222222222222222222222222222
+        compute: {cpu: 0.25, memory: 128Mi, architecture: amd64}
+        isolation: process
+        interfaces:
+          - networkRef: networks.app
+        command: ["sleep", "infinity"]
+    accessEndpoints:
+      - name: client-shell
+        targetRef: containers.client
+        methods: [containerExec]
+  outputs:
+    - name: web-url
+      type: url
+      value: resources.containers.web.publishedPorts.web.url
+

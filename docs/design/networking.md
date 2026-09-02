@@ -1,0 +1,39 @@
+# Networking
+
+## Portable model
+
+`Network` declares `kind: isolated|external`, optional IPv4/IPv6 CIDRs, `ipam.mode: none|static|providerManaged`, MTU hint, and `egress.mode: deny|restricted|allow`. A workload NIC declares ordered `networkRef`, optional static addresses/MAC, and capability requirements. `publishedPorts` declare protocol, workload port, exposure `host|public|proxied`, optional requested external port, and allowed sources. A proxied service produces an access/application URL without promising a public IP.
+
+Defaults are isolated and denied egress (ADR-0004). `external` requires an administrator-resolved target network reference or provider override. CIDRs define author intent; providers that cannot allocate that exact CIDR fail rather than substitute. Interface order is stable and part of canonical identity.
+
+The core does not model DHCP, DNS, routes, NAT, firewalls, VPNs, or routing protocols inside a router guest. Guest provisioning configures those. Advanced features—broadcast fidelity, trunks, BGP, spoofing, promiscuous mode, taps, shaping/latency/loss, overlays, and public-IP details—are required capability predicates or versioned overrides.
+
+## Provider mappings
+
+| Logical construct | Mapping and limitation |
+|---|---|
+| Proxmox isolated network | Existing/admin-approved VLAN-aware bridge plus allocated VLAN, or SDN zone/VNet if discovered; NIC maps to QEMU `netN`. Plugin never creates host bridges casually. L2/static MAC/VLAN depend on target policy. |
+| KubeVirt network | Pod network for simple L3; Multus `NetworkAttachmentDefinition` plus KubeVirt network/interface for multiple segments/L2. IPAM/MAC/NetworkPolicy depend on installed CNI and binding. |
+| Kubernetes container | Namespace + CNI pod network; Multus only when discovered. NetworkPolicy realizes L3/L4 isolation only when the CNI actually enforces it. |
+| Docker network | User-defined Engine network with labels, optional requested IPAM if supported. Published ports use Engine API. Desktop baseline makes no raw L2/host firewall claim. |
+| Fly network | Custom 6PN per lab or isolation scope, private IPv6/DNS and Fly services. Reject arbitrary L2, custom MAC/CIDR, multi-NIC, and router topology. |
+| AWS network | VPC/subnet (shared or dedicated policy), route table, ENIs, security groups and optional NACL/NAT/IGW/public address. Subnet is one AZ and L3 semantics; router appliances require explicit source/destination-check and route validation. |
+
+## Routed cybersecurity example
+
+```mermaid
+flowchart LR
+  A[Attacker VM] --- RED[red 10.10.10.0/24]
+  RED --- R[Router / firewall VM]
+  R --- BLUE[blue 10.10.20.0/24]
+  BLUE --- T[Target VM]
+  R -. explicit controlled egress .-> E[External network]
+  U[User] -->|Access Session| A
+```
+
+Target has no external attachment; router egress is optional and policy constrained. Providers lacking at least two isolated segments, VM isolation, and a three-interface router (when egress enabled) fail capability validation.
+
+## Plan and drift
+
+Plans show logical segments, attachment order/addresses, provider mapping class, policy enforcement evidence, exposure, warnings, and management-network deny assumptions. Refresh can report drift (changed SG/policy/bridge/VLAN) but does not silently repair it. Any explicit re-apply shows destructive connectivity changes.
+

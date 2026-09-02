@@ -1,0 +1,426 @@
+syntax = "proto3";
+
+package labcentral.plugin.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/labcentral/labcentral/api/plugin/v1;pluginv1";
+
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+message ProtocolVersionRange {
+  uint32 major = 1;
+  uint32 min_minor = 2;
+  uint32 max_minor = 3;
+}
+
+message SchemaVersion {
+  string name = 1;
+  uint32 major = 2;
+  uint32 minor = 3;
+}
+
+message PluginInfo {
+  string plugin_id = 1;
+  string plugin_version = 2;
+  string build_digest = 3;
+  repeated ProtocolVersionRange supported_protocols = 4;
+  repeated string categories = 5;
+  repeated string provider_kinds = 6;
+  repeated string access_kinds = 7;
+  repeated SchemaVersion schemas = 8;
+  repeated string features = 9;
+}
+
+message RegisterPluginRequest {
+  string launch_token = 1;
+  string configured_plugin_id = 2;
+  string plugin_instance_id = 3;
+  string service_endpoint = 4;
+  PluginInfo plugin = 5;
+}
+
+message RegisterPluginResponse {
+  ProtocolVersion selected_protocol = 1;
+  google.protobuf.Duration heartbeat_interval = 2;
+  uint64 max_request_bytes = 3;
+  uint64 max_response_bytes = 4;
+}
+
+message HeartbeatRequest {
+  string plugin_instance_id = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp sent_at = 3;
+}
+
+message HeartbeatResponse {
+  google.protobuf.Timestamp received_at = 1;
+  bool drain_requested = 2;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_STARTING = 1;
+    STATUS_HEALTHY = 2;
+    STATUS_DEGRADED = 3;
+    STATUS_UNHEALTHY = 4;
+  }
+
+  Status status = 1;
+  string safe_message = 2;
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message IntList {
+  repeated int64 values = 1;
+}
+
+message Parameter {
+  string name = 1;
+  oneof value {
+    bool bool_value = 2;
+    int64 int_value = 3;
+    double number_value = 4;
+    string string_value = 5;
+    StringList string_list = 6;
+    IntList int_list = 7;
+  }
+}
+
+message Capability {
+  enum Support {
+    SUPPORT_UNSPECIFIED = 0;
+    SUPPORT_NATIVE = 1;
+    SUPPORT_EMULATED = 2;
+    SUPPORT_CONSTRAINED = 3;
+    SUPPORT_UNSUPPORTED = 4;
+  }
+
+  string feature_id = 1;
+  Support support = 2;
+  repeated Parameter parameters = 3;
+  repeated string constraints = 4;
+  string optional_component = 5;
+  string evidence = 6;
+}
+
+message TargetContext {
+  string target_id = 1;
+  bytes config_envelope = 2;
+  bytes credential_envelope = 3;
+  string config_fingerprint = 4;
+}
+
+message DiscoverTargetRequest {
+  TargetContext target = 1;
+}
+
+message DiscoverTargetResponse {
+  repeated Capability capabilities = 1;
+  google.protobuf.Timestamp discovered_at = 2;
+  google.protobuf.Timestamp valid_until = 3;
+  bytes override_json_schema = 4;
+  string override_schema_digest = 5;
+  bytes capacity_json = 6;
+}
+
+message CallContext {
+  string request_id = 1;
+  string operation_id = 2;
+  string invocation_id = 3;
+  string lab_instance_id = 4;
+  string logical_resource_id = 5;
+  string provider_target_id = 6;
+  string idempotency_key = 7;
+  uint64 desired_generation = 8;
+  uint64 fencing_token = 9;
+  string traceparent = 10;
+}
+
+message ProviderState {
+  SchemaVersion schema = 1;
+  string plugin_id = 2;
+  string plugin_version = 3;
+  bytes opaque = 4;
+  repeated string ownership_ids = 5;
+  bytes digest = 6;
+}
+
+message StructuredError {
+  string code = 1;
+  string error_class = 2;
+  string safe_message = 3;
+  bool retryable = 4;
+  google.protobuf.Duration retry_after = 5;
+  string field_path = 6;
+  string resource_ref = 7;
+  repeated StructuredError causes = 8;
+}
+
+message Warning {
+  string code = 1;
+  string safe_message = 2;
+  string resource_ref = 3;
+}
+
+message ValidateLabRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  bytes canonical_lab_json = 3;
+  bytes provider_override_json = 4;
+}
+
+message ValidateLabResponse {
+  repeated StructuredError errors = 1;
+  repeated Warning warnings = 2;
+  bytes provider_plan = 3;
+  string provider_plan_digest = 4;
+}
+
+message ResourceMutationInput {
+  CallContext context = 1;
+  TargetContext target = 2;
+  bytes canonical_resource_json = 3;
+  bytes provider_plan = 4;
+  ProviderState prior_state = 5;
+  repeated string ownership_tokens = 6;
+}
+
+message Progress {
+  string phase = 1;
+  optional double percent = 2;
+  string safe_message = 3;
+  string provider_task_ref = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+message ResourceResult {
+  ProviderState provider_state = 1;
+  bytes observed_state_json = 2;
+  repeated Warning warnings = 3;
+  StructuredError error = 4;
+  bool compensation_attempted = 5;
+  bool compensation_complete = 6;
+}
+
+message InvocationEvent {
+  oneof event {
+    Progress progress = 1;
+    ResourceResult result = 2;
+  }
+}
+
+message PlanResourceRequest {
+  ResourceMutationInput input = 1;
+}
+
+message PlanResourceResponse {
+  bytes provider_plan = 1;
+  string provider_plan_digest = 2;
+  repeated Warning warnings = 3;
+  StructuredError error = 4;
+}
+
+message ApplyResourceRequest {
+  ResourceMutationInput input = 1;
+}
+
+message ApplyResourceResponse {
+  InvocationEvent event = 1;
+}
+
+message ReadResourceRequest {
+  ResourceMutationInput input = 1;
+}
+
+message ReadResourceResponse {
+  ResourceResult result = 1;
+}
+
+message DestroyResourceRequest {
+  ResourceMutationInput input = 1;
+}
+
+message DestroyResourceResponse {
+  InvocationEvent event = 1;
+}
+
+enum LifecycleAction {
+  LIFECYCLE_ACTION_UNSPECIFIED = 0;
+  LIFECYCLE_ACTION_START = 1;
+  LIFECYCLE_ACTION_STOP = 2;
+  LIFECYCLE_ACTION_PAUSE = 3;
+  LIFECYCLE_ACTION_RESUME = 4;
+  LIFECYCLE_ACTION_SNAPSHOT = 5;
+  LIFECYCLE_ACTION_RESTORE = 6;
+  LIFECYCLE_ACTION_CLONE = 7;
+  LIFECYCLE_ACTION_RESET = 8;
+}
+
+message LifecycleRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  LifecycleAction action = 3;
+  ProviderState prior_state = 4;
+  bytes action_parameters_json = 5;
+}
+
+message LifecycleResponse {
+  InvocationEvent event = 1;
+}
+
+message GetInvocationRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  string invocation_id = 3;
+}
+
+message GetInvocationResponse {
+  ResourceResult result = 1;
+}
+
+message CancelInvocationRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  string invocation_id = 3;
+}
+
+message CancelInvocationResponse {
+  enum Outcome {
+    OUTCOME_UNSPECIFIED = 0;
+    OUTCOME_REQUESTED = 1;
+    OUTCOME_TOO_LATE = 2;
+    OUTCOME_NOT_FOUND = 3;
+  }
+
+  Outcome outcome = 1;
+}
+
+message MigrateStateRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  ProviderState state = 3;
+  SchemaVersion destination = 4;
+  bool dry_run = 5;
+}
+
+message MigrateStateResponse {
+  ProviderState state = 1;
+  repeated Warning warnings = 2;
+  StructuredError error = 3;
+  bool irreversible = 4;
+}
+
+message DiscoverAccessEndpointRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  ProviderState resource_state = 3;
+  string method = 4;
+}
+
+message DiscoverAccessEndpointResponse {
+  bytes opaque_connection_data = 1;
+  google.protobuf.Timestamp valid_until = 2;
+  repeated Warning warnings = 3;
+  StructuredError error = 4;
+}
+
+message ListImagesRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  string page_token = 3;
+  uint32 page_size = 4;
+}
+
+message ImageRecord {
+  string provider_image_id = 1;
+  string display_name = 2;
+  string architecture = 3;
+  string digest = 4;
+  repeated string labels = 5;
+}
+
+message ListImagesResponse {
+  repeated ImageRecord images = 1;
+  string next_page_token = 2;
+}
+
+message ImportImageRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  string artifact_digest = 3;
+  string source_provenance_digest = 4;
+  bytes import_parameters_json = 5;
+}
+
+message ImportImageResponse {
+  InvocationEvent event = 1;
+}
+
+message CreateAccessRequest {
+  CallContext context = 1;
+  string access_session_id = 2;
+  string subject_id = 3;
+  string method = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  bytes opaque_connection_data = 6;
+}
+
+message CreateAccessResponse {
+  bytes opaque_access_state = 1;
+  string launch_url = 2;
+  string one_time_token = 3;
+  google.protobuf.Timestamp valid_until = 4;
+  StructuredError error = 5;
+}
+
+message RevokeAccessRequest {
+  CallContext context = 1;
+  string access_session_id = 2;
+  bytes opaque_access_state = 3;
+}
+
+message RevokeAccessResponse {
+  bool active_connections_closed = 1;
+  StructuredError error = 2;
+}
+
+service PluginRegistrationService {
+  rpc RegisterPlugin(RegisterPluginRequest) returns (RegisterPluginResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+service PluginRuntimeService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+service ProviderService {
+  rpc DiscoverTarget(DiscoverTargetRequest) returns (DiscoverTargetResponse);
+  rpc ValidateLab(ValidateLabRequest) returns (ValidateLabResponse);
+  rpc PlanResource(PlanResourceRequest) returns (PlanResourceResponse);
+  rpc ApplyResource(ApplyResourceRequest) returns (stream ApplyResourceResponse);
+  rpc ReadResource(ReadResourceRequest) returns (ReadResourceResponse);
+  rpc DestroyResource(DestroyResourceRequest) returns (stream DestroyResourceResponse);
+  rpc Lifecycle(LifecycleRequest) returns (stream LifecycleResponse);
+  rpc GetInvocation(GetInvocationRequest) returns (GetInvocationResponse);
+  rpc CancelInvocation(CancelInvocationRequest) returns (CancelInvocationResponse);
+  rpc MigrateState(MigrateStateRequest) returns (MigrateStateResponse);
+  rpc DiscoverAccessEndpoint(DiscoverAccessEndpointRequest) returns (DiscoverAccessEndpointResponse);
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+  rpc ImportImage(ImportImageRequest) returns (stream ImportImageResponse);
+}
+
+service AccessService {
+  rpc CreateAccess(CreateAccessRequest) returns (CreateAccessResponse);
+  rpc RevokeAccess(RevokeAccessRequest) returns (RevokeAccessResponse);
+}

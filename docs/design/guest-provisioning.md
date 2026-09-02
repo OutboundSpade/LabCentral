@@ -1,0 +1,25 @@
+# Guest provisioning
+
+## Terminology and phases
+
+Template authoring declares desired workloads/configuration; bundle packaging makes content immutable; image building creates reusable VM/OCI images; rendering resolves one instance; provider realization creates infrastructure; guest provisioning configures the guest during creation/boot or later. Cloud-init and Ignition are provisioning even when injected before first boot.
+
+## v1 methods
+
+- **cloud-init:** typed meta/user/network-data inputs for suitable Linux VMs; provider delivers via its supported datasource. Raw fragments are bundle artifacts with explicit media type and bounded interpolation.
+- **Ignition:** versioned JSON/config fragment for Fedora CoreOS-like images, delivered through provider-supported mechanism.
+- **OCI config:** image, entrypoint/command/args, environment literals or SecretRefs, working directory, user, health/readiness, mounts, and bundle files.
+- **Files/service config:** destination, owner/mode, content ArtifactRef or secret source, and explicit boot/service enablement supported by the method.
+
+Provisioning specs declare supported OS family, required guest capability/image contract, timing (`firstBoot`, `everyRecreate`), and sensitivity. The rendered canonical spec includes refs/digests but not secret bytes. Providers report `injected`, `booting`, `ready`, `failed`, or `unknown` with bounded safe diagnostics.
+
+Cloudbase-Init, WinRM/PowerShell, SSH execution, Ansible, and custom guest agents are future provisioner extensions. Arbitrary control-plane SSH scripting is not the default, and guests do not require persistent inbound administrative reachability.
+
+## Container-via-VM
+
+The reusable runtime contract is documented in `provider-contract.md`. Bootstrap is one-time, versioned, and bound to installation/instance/resource/generation. It starts an unprivileged OCI workload, pulls an exact digest (tags may resolve during plan but digest is stored), attaches provided volumes/networks, emits readiness/logs through a provider-safe channel, and destroys credentials after use. Reset defaults to VM recreate from the base image; snapshot/restore carries explicit consistency and runtime-version compatibility.
+
+## Image building
+
+Builds are separate durable operations executed in isolated, disposable builders with no provider/control credentials, restricted egress, resource/time/output limits, provenance, and mandatory content digest. Bundle build contexts never execute inside `labd`. External image resolution is disabled by default pending OQ-IMAGE-001.
+
