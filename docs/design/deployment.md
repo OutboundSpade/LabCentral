@@ -28,6 +28,8 @@ The image runs as root because common Linux Docker sockets are root-owned. A rea
 
 Kubernetes manifests remain a roadmap deployment form and are not produced by the laptop slice.
 
+`TASK-PROXMOX-005` adds an opt-in native target path without changing the default Docker process. `--proxmox-plugin` selects a separately digest-pinned `lab-provider-proxmox`; `--proxmox-target-config` supplies the strict non-secret target envelope; `--proxmox-credential-file` must identify an allowlisted, non-symlink regular file with no group/world permissions; and `--proxmox-target-id` fixes the stable instance binding. Startup negotiates protocol v1.1, performs read-only discovery, and persists only redacted expiring evidence. A discovery failure leaves cached evidence authoritative and does not stop the Docker path. The shipped production Proxmox binary still reports mutation capability unsupported and refuses writes, even when these options and `mutationEnabled` are present.
+
 Production defaults: TLS (or trusted TLS-terminating proxy with strict header trust), OIDC/local auth, PostgreSQL, durable shared artifacts, separate provider credentials, management network routes/firewalls, plugin sandbox identities, encrypted backups, audit retention, metrics/traces, and deny-egress policy. Multi-replica requires PostgreSQL, shared artifacts, stable encryption/session keys, and compatible job leasing.
 
 ## Configuration and secrets

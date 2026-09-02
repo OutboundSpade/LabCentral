@@ -233,3 +233,8 @@ cases:
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-022"
     expect: {error: provider_task_failed, bounded: true, canaryOccurrences: 0, rawTaskLog: false}
+  - id: TEST-PROXMOX-023
+    title: Core target integration binds evidence, claims, dependencies, credentials, and cleanup
+    layer: T0
+    testBinding: "internal/controlplane/provider_target_integration_test.go#TestContractTESTPROXMOX023ProviderTargetPlansClaimsRoutesWorkerAndReleasesAfterAbsence"
+    expect: {protocolMinor: 1, capabilityPersisted: true, credentialScoped: true, conflictReplans: true, dependenciesCommitted: true, releaseAfterConfirmation: true, productionGateBypass: false}

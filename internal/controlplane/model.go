@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -22,6 +23,8 @@ const (
 
 type InstanceRecord struct {
 	ID                           domain.InstanceID
+	ProviderTargetID             domain.ProviderTargetID
+	ProviderOverrideJSON         []byte
 	CanonicalDigest              domain.SHA256Digest
 	CanonicalLabJSON             []byte
 	SourceYAML                   []byte
@@ -35,6 +38,18 @@ type InstanceRecord struct {
 	ErrorMessage                 string
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+}
+
+type TargetSnapshot struct {
+	ID                domain.ProviderTargetID
+	ProviderKind      string
+	ConfigFingerprint string
+	ProtocolMajor     uint32
+	ProtocolMinor     uint32
+	Features          []string
+	DiscoveryJSON     []byte
+	DiscoveredAt      time.Time
+	ValidUntil        time.Time
 }
 
 type ResourceRecord struct {
@@ -67,28 +82,32 @@ type OperationRecord struct {
 }
 
 type ResourceSeed struct {
-	ID             domain.LogicalResourceID
-	Kind           domain.ResourceKind
-	Ordinal        int
-	CanonicalJSON  []byte
-	ProviderPlan   []byte
-	OwnershipToken string
+	ID                 domain.LogicalResourceID
+	Kind               domain.ResourceKind
+	Ordinal            int
+	CanonicalJSON      []byte
+	ProviderPlan       []byte
+	ProviderPlanDigest domain.SHA256Digest
+	Allocations        []application.AllocationKey
+	OwnershipToken     string
 }
 
 type CreateInstanceRequest struct {
-	InstanceID      domain.InstanceID
-	OperationID     domain.OperationID
-	CanonicalDigest domain.SHA256Digest
-	CanonicalJSON   []byte
-	SourceYAML      []byte
-	Resources       []ResourceSeed
-	Acknowledged    bool
-	SubjectID       domain.UserID
-	IdempotencyKey  string
-	RequestDigest   domain.SHA256Digest
-	Payload         []byte
-	AuditID         string
-	EventID         string
+	InstanceID           domain.InstanceID
+	ProviderTargetID     domain.ProviderTargetID
+	ProviderOverrideJSON []byte
+	OperationID          domain.OperationID
+	CanonicalDigest      domain.SHA256Digest
+	CanonicalJSON        []byte
+	SourceYAML           []byte
+	Resources            []ResourceSeed
+	Acknowledged         bool
+	SubjectID            domain.UserID
+	IdempotencyKey       string
+	RequestDigest        domain.SHA256Digest
+	Payload              []byte
+	AuditID              string
+	EventID              string
 }
 
 type QueueDestroyRequest struct {
@@ -169,6 +188,8 @@ type FinalizeRequest struct {
 
 type Store interface {
 	CreateInstance(context.Context, CreateInstanceRequest) (EnqueueResult, error)
+	SaveTargetSnapshot(context.Context, TargetSnapshot) error
+	GetTargetSnapshot(context.Context, domain.ProviderTargetID) (TargetSnapshot, error)
 	QueueDestroy(context.Context, QueueDestroyRequest) (EnqueueResult, error)
 	GetInstance(context.Context, domain.InstanceID) (InstanceRecord, error)
 	ListInstances(context.Context) ([]InstanceRecord, error)
@@ -181,5 +202,9 @@ type Store interface {
 	SaveCoreResource(context.Context, Fence, domain.LogicalResourceID, domain.ResourcePhase, []byte) error
 	SaveResourceResult(context.Context, ResourceResultUpdate) error
 	Finalize(context.Context, FinalizeRequest) error
+	RetainClaims(context.Context, application.MutateAllocationClaimsRequest) error
+	OrphanClaims(context.Context, application.MutateAllocationClaimsRequest) error
+	ReleaseClaims(context.Context, application.ReleaseAllocationClaimsRequest) error
+	ListClaims(context.Context, domain.InstanceID) ([]application.AllocationClaim, error)
 	Close() error
 }

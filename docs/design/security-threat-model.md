@@ -66,6 +66,8 @@ Operators must use a dedicated privilege-separated, expiring token whose backing
 
 The typed plan cannot carry raw QEMU arguments, hooks, host devices/paths, arbitrary Cloud-Init, secrets, access endpoints, or force/purge flags. UPIDs, task status, provider JSON, and error sizes are bounded; task logs and upstream bodies are excluded. The executable machine catalog covers management reachability evidence, token/journal redaction, foreign VMID collision, marker mismatch, compensation failure, deletion ambiguity, and claim retention. T0 now passes; the production capability remains unsupported until credentialed T3 passes.
 
+The `TASK-PROXMOX-005` integration stores only a SHA-256 configuration fingerprint and redacted expiring discovery response. The strict target configuration remains process memory, while its API-token envelope is read from one explicitly allowlisted non-symlink file with no group/world permissions, resolved only for a bounded discovery or resource invocation scope, copied into the gRPC request, then zeroed. Instance target IDs and effective provider overrides are immutable durable inputs. A create requires fresh capability evidence bound to the registered configuration, protocol, and features; a missing, stale, mismatched, or `unsupported` snapshot fails before enqueue, and the production provider's independent hard gate remains closed.
+
 ## Future hardening
 
 Bundle/plugin signing, transparency/provenance verification, external policy modules that only constrain, isolated image importers, hardware-backed key management, and anomaly/flow monitoring are roadmap items. They do not weaken current fail-closed defaults.

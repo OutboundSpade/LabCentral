@@ -1,6 +1,6 @@
 # Proxmox QEMU mutation contract
 
-`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. `TASK-PROXMOX-004` implements the closed provider types and every T0 fake-API case behind a package-private test gate. The production constructor still refuses writes and reports `workload.vm` and every lifecycle capability as `unsupported` until `TASK-PROXMOX-005` integrates and passes the credentialed T3 gates below on the configured target.
+`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. `TASK-PROXMOX-004` implements the closed provider types and every T0 fake-API case behind a package-private test gate. `TASK-PROXMOX-005` now has the control-plane T0 target/secret/capability/allocation/dependency path, but the production constructor still refuses writes and reports `workload.vm` and every lifecycle capability as `unsupported` until the credentialed T3 gates below pass on the configured target and a separate enablement decision is accepted.
 
 ## Supported slice
 

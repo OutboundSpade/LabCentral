@@ -24,7 +24,7 @@ Reference counts alone do not authorize deletion. GC selects old unreferenced co
 
 `TASK-DOCKER-001` implements the local artifact port under `internal/adapter/filesystem`. The adapter creates a private root, keeps staging and objects on the same filesystem, persists the expected manifest beside a random upload, bounds writes by the declared byte count, measures SHA-256 while streaming, remeasures before commit, changes committed objects to mode 0400, fsyncs files/directories, and atomically renames into a `sha256/<prefix>/<digest>` key. Open re-verifies content and refuses symlink or non-regular paths. Authorization remains an application concern expressed by `AuthorizedArtifactRef`; the raw artifact tree is not served by HTTP.
 
-The local relational adapter adds a checksummed migration for instances, ordered logical resources, Operations, and invocation records on top of the job/outbox schema. Startup enables foreign keys, WAL, a busy timeout, one database connection, and a non-blocking process file lock. This adapter is intentionally single-node and implements only the Docker laptop slice, not the complete production relational model above.
+The local relational adapter adds checksummed migrations for instances, ordered logical resources, Operations, invocation records, immutable instance target/override bindings, and expiring provider-target capability snapshots on top of the job/outbox and allocation schemas. Startup enables foreign keys, WAL, a busy timeout, one database connection, and a non-blocking process file lock. Target rows persist no secret or target configuration bytes. This adapter remains intentionally single-node and does not implement the complete production relational model above.
 
 ## Backup, restore, and migration
 

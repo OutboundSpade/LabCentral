@@ -204,7 +204,7 @@ tasks:
       - Mutation remains disabled by default and unadvertised unless the local protocol/config/evidence gates pass; production support remains blocked on the later exact-target credentialed T3 qualification.
   - id: TASK-PROXMOX-005
     title: Integrate Proxmox targets and execute credentialed T3 qualification
-    status: proposed
+    status: in_progress
     dependencies: [TASK-PROXMOX-004]
     relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013]
     relatedDocuments: [providers/proxmox, internal/controlplane, internal/pluginhost, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml]

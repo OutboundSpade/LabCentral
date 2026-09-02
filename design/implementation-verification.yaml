@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T19:16:32Z"
+verifiedAt: "2026-09-02T19:52:02Z"
 result: pass
-scope: phase_2_proxmox_qemu_mutation_t0
+scope: phase_2_proxmox_target_integration_t0
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -33,6 +33,10 @@ commands:
   - buf format && buf generate && buf breaking against the retained protocol v1.0 descriptor
   - LABCENTRAL_TEST_POSTGRES_DSN=<isolated-postgresql-18-url> go test -race -count=3 -run TestPostgreSQL(Job|Allocation)Conformance ./internal/adapter/jobsdb
   - Compose real Docker create -> ready -> loopback HTTP request -> destroy -> ownership-label absence -> restart persistence check
+  - go test -race -count=1 ./... after provider-target integration
+  - go vet ./... after provider-target integration
+  - make build after provider-target integration
+  - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after provider-target integration
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -134,12 +138,27 @@ checks:
   - all_22_proxmox_t0_test_bindings
   - proxmox_mutation_canary_redaction
   - production_proxmox_mutation_constructor_gate_closed
+  - configured_provider_kind_registration_verification
+  - immutable_target_registry_and_protocol_feature_binding
+  - allowlisted_mode_protected_file_secret_resolution
+  - invocation_scoped_credential_delivery_and_zeroing
+  - redacted_expiring_target_capability_persistence
+  - capability_snapshot_config_protocol_and_feature_rebinding
+  - target_and_effective_override_instance_persistence
+  - atomic_local_plan_claim_job_and_outbox_commit
+  - deterministic_controlplane_allocation_conflict_replan
+  - worker_committed_claim_and_dependency_state_delivery
+  - unknown_or_leftover_claim_retention_and_absence_gated_release
+  - target_selecting_huma_api_without_credential_exposure
+  - test_proxmox_023_controlplane_target_integration
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
-  - Every TEST-PROXMOX-001 through TEST-PROXMOX-022 case has an executable binding. Exact-target credentialed T3 qualification remains outstanding.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-023 case has an executable T0 binding. Exact-target credentialed T3 qualification and real guest connectivity probes remain outstanding.
+  - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
+  - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
   - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - The credentialed smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.

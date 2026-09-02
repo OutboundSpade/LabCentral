@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,7 +46,7 @@ func TestLaunchUsesPrivateOneTimeHandshake(t *testing.T) {
 	defer cancel()
 	client, err := pluginhost.Launch(ctx, pluginhost.Config{
 		Executable: executable, ExecutableSHA256: digest, RuntimeParent: t.TempDir(),
-		ConfiguredPluginID: dockerprovider.PluginID, PluginInstanceID: "plugin_instance_test",
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_instance_test",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -72,10 +73,26 @@ func TestLaunchRejectsExecutableDigestMismatch(t *testing.T) {
 	}
 	_, err = pluginhost.Launch(context.Background(), pluginhost.Config{
 		Executable: executable, ExecutableSHA256: string(make([]byte, 64)), RuntimeParent: t.TempDir(),
-		ConfiguredPluginID: dockerprovider.PluginID, PluginInstanceID: "plugin_instance_test",
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_instance_test",
 	})
 	if err == nil {
 		t.Fatal("digest mismatch was accepted")
+	}
+}
+
+func TestLaunchRejectsMismatchedConfiguredProviderKind(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = pluginhost.Launch(ctx, pluginhost.Config{
+		Executable: executable, ExecutableSHA256: fileDigest(t, executable), RuntimeParent: t.TempDir(),
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "proxmox", PluginInstanceID: "plugin_instance_test",
+	})
+	if err == nil || !strings.Contains(err.Error(), "registration") {
+		t.Fatalf("provider-kind mismatch error = %v", err)
 	}
 }
 

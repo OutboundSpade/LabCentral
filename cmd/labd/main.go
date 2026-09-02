@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -20,10 +21,13 @@ import (
 	dockerlaptop "github.com/OutboundSpade/LabCentral/examples/docker-laptop"
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/localsecret"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/pluginhost"
 	"github.com/OutboundSpade/LabCentral/internal/render"
 	dockerprovider "github.com/OutboundSpade/LabCentral/providers/docker"
+	proxmoxprovider "github.com/OutboundSpade/LabCentral/providers/proxmox"
 	"github.com/OutboundSpade/LabCentral/schemas"
 	webassets "github.com/OutboundSpade/LabCentral/web"
 )
@@ -31,11 +35,16 @@ import (
 var version = "dev"
 
 type config struct {
-	listen           string
-	dataDir          string
-	dockerPlugin     string
-	dockerPluginHash string
-	unsafeNoAuth     bool
+	listen                string
+	dataDir               string
+	dockerPlugin          string
+	dockerPluginHash      string
+	proxmoxPlugin         string
+	proxmoxPluginHash     string
+	proxmoxTargetID       string
+	proxmoxTargetConfig   string
+	proxmoxCredentialFile string
+	unsafeNoAuth          bool
 }
 
 func main() {
@@ -86,6 +95,9 @@ func healthcheck() error {
 
 func run(logger *slog.Logger) error {
 	configuration := parseFlags()
+	if configuration.proxmoxPlugin == "" && (configuration.proxmoxTargetConfig != "" || configuration.proxmoxCredentialFile != "" || configuration.proxmoxPluginHash != "") {
+		return fmt.Errorf("Proxmox target options require --proxmox-plugin")
+	}
 	if err := os.MkdirAll(configuration.dataDir, 0o700); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
 	}
@@ -102,7 +114,7 @@ func run(logger *slog.Logger) error {
 	if !loopback {
 		warning = "UNSAFE: authentication is disabled on a non-loopback listener. Every reachable client has installation administrator privileges. " + warning
 	}
-	pluginHash, err := configuredPluginDigest(configuration)
+	pluginHash, err := configuredPluginDigest(configuration.dockerPlugin, configuration.dockerPluginHash, "Docker")
 	if err != nil {
 		return err
 	}
@@ -119,12 +131,30 @@ func run(logger *slog.Logger) error {
 	defer stop()
 	plugin, err := pluginhost.Launch(ctx, pluginhost.Config{
 		Executable: pluginPath, ExecutableSHA256: pluginHash, RuntimeParent: runtimeParent,
-		ConfiguredPluginID: dockerprovider.PluginID, PluginInstanceID: "plugin.local-docker",
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin.local-docker",
 	})
 	if err != nil {
 		return fmt.Errorf("launch Docker provider: %w", err)
 	}
 	defer plugin.Close()
+	targetBindings := []controlplane.TargetBinding{{
+		ID: controlplane.LocalDockerTarget, ProviderKind: "docker", Provider: plugin.Provider,
+		ProtocolMajor: plugin.SelectedProtocol.GetMajor(), ProtocolMinor: plugin.SelectedProtocol.GetMinor(), Features: plugin.Info.GetFeatures(),
+	}}
+	var proxmoxPlugin *pluginhost.Client
+	if configuration.proxmoxPlugin != "" {
+		proxmoxBinding, client, err := launchProxmoxTarget(ctx, configuration, runtimeParent)
+		if err != nil {
+			return err
+		}
+		proxmoxPlugin = client
+		defer proxmoxPlugin.Close()
+		targetBindings = append(targetBindings, proxmoxBinding)
+	}
+	targets, err := controlplane.NewTargetRegistry(targetBindings)
+	if err != nil {
+		return fmt.Errorf("construct provider target registry: %w", err)
+	}
 
 	store, err := localdb.Open(ctx, filepath.Join(configuration.dataDir, "labcentral.db"))
 	if err != nil {
@@ -141,11 +171,16 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	ids := controlplane.CryptoIDs{}
-	control, err := controlplane.NewService(renderer, store, plugin.Provider, ids)
+	control, err := controlplane.NewServiceWithTargets(renderer, store, targets, ids)
 	if err != nil {
 		return err
 	}
-	worker, err := controlplane.NewWorker(store, plugin.Provider, ids, controlplane.WorkerOptions{
+	if proxmoxPlugin != nil {
+		if err := control.RefreshTarget(ctx, domain.ProviderTargetID(configuration.proxmoxTargetID)); err != nil {
+			logger.Error("configured Proxmox target discovery failed; cached evidence remains authoritative", "error", err)
+		}
+	}
+	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
 		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
 	})
 	if err != nil {
@@ -202,6 +237,11 @@ func parseFlags() config {
 	flag.StringVar(&result.dataDir, "data-dir", "./labcentral-data", "local SQLite, artifact, and runtime directory")
 	flag.StringVar(&result.dockerPlugin, "docker-plugin", defaultPlugin, "absolute or relative path to lab-provider-docker")
 	flag.StringVar(&result.dockerPluginHash, "docker-plugin-sha256", "", "pinned Docker plugin SHA-256; defaults to <plugin>.sha256")
+	flag.StringVar(&result.proxmoxPlugin, "proxmox-plugin", "", "path to lab-provider-proxmox; empty keeps Proxmox disabled")
+	flag.StringVar(&result.proxmoxPluginHash, "proxmox-plugin-sha256", "", "pinned Proxmox plugin SHA-256; defaults to <plugin>.sha256")
+	flag.StringVar(&result.proxmoxTargetID, "proxmox-target-id", "target.local-proxmox", "stable provider target ID for the optional Proxmox target")
+	flag.StringVar(&result.proxmoxTargetConfig, "proxmox-target-config", "", "path to the strict Proxmox target-config JSON envelope")
+	flag.StringVar(&result.proxmoxCredentialFile, "proxmox-credential-file", "", "mode-0600 file containing the Proxmox credential JSON envelope")
 	flag.BoolVar(&result.unsafeNoAuth, "unsafe-listen-non-loopback-without-auth", false, "explicitly allow no-auth mode on a non-loopback listener")
 	flag.Parse()
 	return result
@@ -212,18 +252,89 @@ func listenerIsLoopback(listener net.Listener) bool {
 	return ok && tcp.IP.IsLoopback()
 }
 
-func configuredPluginDigest(configuration config) (string, error) {
-	value := strings.TrimSpace(configuration.dockerPluginHash)
+func configuredPluginDigest(pluginPath, configuredHash, label string) (string, error) {
+	value := strings.TrimSpace(configuredHash)
 	if value == "" {
-		contents, err := os.ReadFile(configuration.dockerPlugin + ".sha256")
+		contents, err := os.ReadFile(pluginPath + ".sha256")
 		if err != nil {
-			return "", fmt.Errorf("read configured Docker plugin digest: %w", err)
+			return "", fmt.Errorf("read configured %s plugin digest: %w", label, err)
 		}
 		value, _, _ = strings.Cut(strings.TrimSpace(string(contents)), " ")
 	}
 	value = strings.TrimPrefix(value, "sha256:")
 	if len(value) != 64 {
-		return "", fmt.Errorf("Docker plugin SHA-256 must contain 64 hexadecimal characters")
+		return "", fmt.Errorf("%s plugin SHA-256 must contain 64 hexadecimal characters", label)
 	}
 	return strings.ToLower(value), nil
+}
+
+func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParent string) (controlplane.TargetBinding, *pluginhost.Client, error) {
+	targetID, err := domain.NewProviderTargetID(configuration.proxmoxTargetID)
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, fmt.Errorf("invalid Proxmox target ID: %w", err)
+	}
+	if configuration.proxmoxTargetConfig == "" || configuration.proxmoxCredentialFile == "" {
+		return controlplane.TargetBinding{}, nil, fmt.Errorf("the optional Proxmox target requires --proxmox-target-config and --proxmox-credential-file")
+	}
+	pluginPath, err := filepath.Abs(configuration.proxmoxPlugin)
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, err
+	}
+	configPath, err := filepath.Abs(configuration.proxmoxTargetConfig)
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, err
+	}
+	credentialPath, err := filepath.Abs(configuration.proxmoxCredentialFile)
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, err
+	}
+	configEnvelope, err := readRegularFile(configPath, 8<<20)
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, fmt.Errorf("read Proxmox target configuration: %w", err)
+	}
+	digest, err := configuredPluginDigest(configuration.proxmoxPlugin, configuration.proxmoxPluginHash, "Proxmox")
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, err
+	}
+	client, err := pluginhost.Launch(ctx, pluginhost.Config{
+		Executable: pluginPath, ExecutableSHA256: digest, RuntimeParent: runtimeParent,
+		ConfiguredPluginID: proxmoxprovider.PluginID, ConfiguredProviderKind: "proxmox", PluginInstanceID: "plugin.local-proxmox",
+	})
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, fmt.Errorf("launch Proxmox provider: %w", err)
+	}
+	resolver, err := localsecret.NewFileResolver([]string{credentialPath}, 64<<10)
+	if err != nil {
+		_ = client.Close()
+		return controlplane.TargetBinding{}, nil, err
+	}
+	return controlplane.TargetBinding{
+		ID: targetID, ProviderKind: "proxmox", Provider: client.Provider, ConfigEnvelope: configEnvelope,
+		CredentialRef: &domain.SecretRef{Source: "file", Name: credentialPath, Key: "value"}, CredentialResolver: resolver,
+		ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures(),
+	}, client, nil
+}
+
+func readRegularFile(path string, maximumBytes int64) ([]byte, error) {
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Size() < 1 || before.Size() > maximumBytes {
+		return nil, fmt.Errorf("configured path is not a bounded regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open configured file: %w", err)
+	}
+	defer file.Close()
+	after, err := file.Stat()
+	if err != nil || !os.SameFile(before, after) {
+		return nil, fmt.Errorf("configured file identity changed")
+	}
+	contents, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read configured file: %w", err)
+	}
+	if len(contents) == 0 || int64(len(contents)) > maximumBytes {
+		return nil, fmt.Errorf("configured file is empty or exceeds its size limit")
+	}
+	return contents, nil
 }

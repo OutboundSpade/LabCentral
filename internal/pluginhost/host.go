@@ -26,14 +26,15 @@ import (
 )
 
 type Config struct {
-	Executable          string
-	ExecutableSHA256    string
-	RuntimeParent       string
-	ConfiguredPluginID  string
-	PluginInstanceID    string
-	RegistrationTimeout time.Duration
-	RPCMaxBytes         int
-	LogMaxBytes         int
+	Executable             string
+	ExecutableSHA256       string
+	RuntimeParent          string
+	ConfiguredPluginID     string
+	ConfiguredProviderKind string
+	PluginInstanceID       string
+	RegistrationTimeout    time.Duration
+	RPCMaxBytes            int
+	LogMaxBytes            int
 }
 
 type Client struct {
@@ -200,8 +201,8 @@ func validateConfig(config Config) error {
 	if len(config.ExecutableSHA256) != sha256.Size*2 {
 		return fmt.Errorf("configured plugin executable SHA-256 is required")
 	}
-	if config.ConfiguredPluginID == "" || config.PluginInstanceID == "" {
-		return fmt.Errorf("configured plugin and instance IDs are required")
+	if config.ConfiguredPluginID == "" || config.ConfiguredProviderKind == "" || config.PluginInstanceID == "" {
+		return fmt.Errorf("configured plugin, provider kind, and instance IDs are required")
 	}
 	if config.RPCMaxBytes < 1024 || config.RPCMaxBytes > 64<<20 {
 		return fmt.Errorf("plugin RPC size limit must be between 1 KiB and 64 MiB")
@@ -295,7 +296,7 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 		return nil, fmt.Errorf("plugin registration identity mismatch")
 	}
 	info := request.GetPlugin()
-	if info == nil || info.GetPluginId() != s.config.ConfiguredPluginID || !contains(info.GetCategories(), "provider") || !contains(info.GetProviderKinds(), "docker") {
+	if info == nil || info.GetPluginId() != s.config.ConfiguredPluginID || !contains(info.GetCategories(), "provider") || !contains(info.GetProviderKinds(), s.config.ConfiguredProviderKind) {
 		return nil, fmt.Errorf("plugin registration metadata mismatch")
 	}
 	selectedProtocol, ok := selectProtocol(info.GetSupportedProtocols())

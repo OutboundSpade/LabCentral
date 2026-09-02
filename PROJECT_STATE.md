@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, and the Phase 2 Proxmox discovery, QEMU mutation contract, allocation/protocol prerequisites, and gated T0 provider implementation are complete. Credentialed Proxmox target integration and multi-user control-plane work have not started.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, and the Phase 2 Proxmox discovery, QEMU mutation contract, allocation/protocol prerequisites, and gated T0 provider implementation are complete. `TASK-PROXMOX-005` target integration is in progress; credentialed exact-target T3 qualification, real guest isolation probes, and production enablement are not complete.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -40,6 +40,10 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - The T0-only executor uses exact least-privilege scopes, fresh inventory/template evidence, committed core claims, full ownership markers, optimistic PVE config digests, bounded UPID polling, durable restart recovery, read-before-action lifecycle, compensation, and absence-confirmed deletion through the explicit API allowlist.
 - Every `TEST-PROXMOX-001` through `TEST-PROXMOX-022` case now has a deterministic in-memory or HTTPS fake-API binding. Normal and race-enabled provider tests cover lost responses, every journal checkpoint, corrupt versions, foreign objects, config races, task failures, leftovers, path/UPID injection, and secret/guest/upstream canaries.
 - The separately runnable production binary advertises the new schemas but constructs only the hard-closed mutation service; it continues to report VM and lifecycle mutation unsupported. No Proxmox target or external workload was contacted.
+- `TASK-PROXMOX-005` now has an additive local provider-target registry and API routing: instances persist their target and effective override, workers reacquire that exact target after restart, plugin registration verifies the configured provider kind, and optional Proxmox startup requires a digest-pinned separate process plus strict config and mode-protected file-secret inputs.
+- Proxmox discovery credentials are resolved only for bounded invocation scopes, copied into an ephemeral target context, zeroed after the call, and never persisted. Checksummed local migration `0003_local_provider_target_binding` persists only target/config/protocol/feature/capability evidence and instance target bindings.
+- Provider allocation proposals now pass shared bounded validation, commit atomically with instance plans/jobs, and cause deterministic conflict replanning with exclusions up to eight attempts. Worker apply/destroy receives persisted committed claims and dependency plans/states; unknown and failed cleanup retains or orphans claims, while successful provider-confirmed absence releases them.
+- `TEST-PROXMOX-023`, a full in-process gRPC/SQLite target integration test, proves discovery persistence, protocol v1.1 feature binding, scoped credential delivery, allocation conflict replanning, dependency delivery, restart-safe target routing, and absence-gated release. It also proves persisted `unsupported` mutation capability evidence blocks create. The production Proxmox constructor remains hard closed, and no real Proxmox endpoint was contacted.
 
 ## Open questions and risks
 
@@ -47,7 +51,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Execute proposed `TASK-PROXMOX-005`: integrate registered Proxmox targets through the control plane and run the isolated, credentialed exact-profile T3 matrix without opening the production write gate by configuration alone.
-2. Keep production enablement and multi-user deployment gated behind their target-specific authorization, signed qualification, threat-control, cleanup, and operational acceptance criteria.
+1. Continue `TASK-PROXMOX-005` with the isolated opt-in exact-profile T3 harness and signed evidence artifact, then run it only with an explicitly supplied disposable PVE 9.x target, VMID/VLAN ranges, and negative management/cross-instance probes.
+2. Keep the separately reviewed production enablement and multi-user deployment gated behind target-specific authorization, accepted T3 evidence, threat controls, cleanup/orphan checks, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

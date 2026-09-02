@@ -82,6 +82,8 @@ Repositories expose aggregate operations with expected `ResourceVersion`, not ta
 
 `AllocationRepository` owns bounded opaque provider claims keyed by `(targetID, namespace, value)`. It reserves a whole proposed set atomically, binds it to Instance/resource/plan digest, commits accepted claims, retains unknown claims, marks leftovers orphaned, and releases only with explicit provider-absence evidence. Mutations advance a monotonic fencing token, so an older worker cannot release a claim retained by a newer owner. Callers receive the conflicting keys for bounded deterministic replan; provider plugins never receive the repository or database connection. `TASK-PROXMOX-003` implements the shared SQLite/PostgreSQL prototype and fourteen-case conformance suite.
 
+The `TASK-PROXMOX-005` local integration composes that port with instance creation and worker execution. It commits accepted claims in the same SQLite unit of work as persisted plans and the durable job, supplies committed claims and dependency state through protocol v1.1, and performs conservative fenced transitions for unknown, orphaned, compensated, and absence-confirmed outcomes. `TargetRegistry` is an application composition boundary: immutable registered target facts and copied non-secret configuration are separated from just-in-time `SecretResolver` delivery.
+
 ## External side-effect ports
 
 ```go

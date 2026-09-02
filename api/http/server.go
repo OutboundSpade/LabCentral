@@ -62,14 +62,18 @@ type Session struct {
 }
 
 type LabRequest struct {
-	Source                         string `json:"source" minLength:"1" maxLength:"8388608"`
-	AcknowledgeDockerIsolationRisk bool   `json:"acknowledgeDockerIsolationRisk"`
+	Source                         string          `json:"source" minLength:"1" maxLength:"8388608"`
+	AcknowledgeDockerIsolationRisk bool            `json:"acknowledgeDockerIsolationRisk"`
+	ProviderTargetID               string          `json:"providerTargetId,omitempty" maxLength:"128"`
+	ProviderOverride               json.RawMessage `json:"providerOverride,omitempty"`
 }
 
 type ValidationBody struct {
-	CanonicalDigest string               `json:"canonicalDigest"`
-	ResourceCount   int                  `json:"resourceCount"`
-	Warnings        []controlplane.Issue `json:"warnings"`
+	CanonicalDigest  string               `json:"canonicalDigest"`
+	ResourceCount    int                  `json:"resourceCount"`
+	ProviderTargetID string               `json:"providerTargetId"`
+	ProviderKind     string               `json:"providerKind"`
+	Warnings         []controlplane.Issue `json:"warnings"`
 }
 
 type OperationDTO struct {
@@ -93,6 +97,7 @@ type ResourceDTO struct {
 
 type InstanceDTO struct {
 	ID               string         `json:"id"`
+	ProviderTargetID string         `json:"providerTargetId"`
 	Phase            string         `json:"phase"`
 	DesiredLifecycle string         `json:"desiredLifecycle"`
 	CanonicalDigest  string         `json:"canonicalDigest"`
@@ -109,7 +114,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	huma.Get(api, "/server-info", func(context.Context, *struct{}) (*struct{ Body ServerInfo }, error) {
 		return &struct{ Body ServerInfo }{Body: ServerInfo{
 			ServerVersion: "0.1.0", APIVersion: "v1", APIBase: "/api/v1", AuthMode: "none", AuthMethods: []string{"none"},
-			EnabledProviderKinds: []string{"docker"}, NoAuthWarning: options.NoAuthWarning,
+			EnabledProviderKinds: service.ProviderKinds(), NoAuthWarning: options.NoAuthWarning,
 			UIFeatures: []string{"docker-example-a", "validate", "plan", "apply", "destroy"},
 		}}, nil
 	})
@@ -133,17 +138,19 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 
 	huma.Post(api, "/lab-validations", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body ValidationBody }, error) {
-		result, err := service.Validate(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk)
+		targetID := requestTargetID(input.Body)
+		result, err := service.ValidateTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, targetID, input.Body.ProviderOverride)
 		if err != nil {
 			return nil, apiError(err)
 		}
 		return &struct{ Body ValidationBody }{Body: ValidationBody{
-			CanonicalDigest: result.Canonical.Digest.String(), ResourceCount: len(result.Canonical.Resources), Warnings: result.Warnings,
+			CanonicalDigest: result.Canonical.Digest.String(), ResourceCount: len(result.Canonical.Resources),
+			ProviderTargetID: string(result.TargetID), ProviderKind: result.ProviderKind, Warnings: result.Warnings,
 		}}, nil
 	})
 
 	huma.Post(api, "/lab-plans", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body controlplane.PlanResult }, error) {
-		result, err := service.Plan(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk)
+		result, err := service.PlanTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, requestTargetID(input.Body), input.Body.ProviderOverride)
 		if err != nil {
 			return nil, apiError(err)
 		}
@@ -163,7 +170,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	}
 	huma.Register(api, huma.Operation{OperationID: "create-lab-instance", Method: http.MethodPost, Path: "/lab-instances", DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, input *CreateInput) (*AcceptedOutput, error) {
-			result, err := service.CreateInstance(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey)
+			result, err := service.CreateInstanceTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, requestTargetID(input.Body), input.Body.ProviderOverride)
 			if err != nil {
 				return nil, apiError(err)
 			}
@@ -260,7 +267,7 @@ func instanceDTO(source controlplane.InstanceRecord, resources []controlplane.Re
 	outputs := make(map[string]any)
 	_ = json.Unmarshal(source.OutputsJSON, &outputs)
 	result := InstanceDTO{
-		ID: string(source.ID), Phase: string(source.Phase), DesiredLifecycle: string(source.DesiredLifecycle),
+		ID: string(source.ID), ProviderTargetID: string(source.ProviderTargetID), Phase: string(source.Phase), DesiredLifecycle: string(source.DesiredLifecycle),
 		CanonicalDigest: source.CanonicalDigest.String(), ResourceVersion: uint64(source.ResourceVersion), Outputs: outputs,
 		ErrorCode: source.ErrorCode, ErrorMessage: source.ErrorMessage, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt,
 	}
@@ -268,6 +275,13 @@ func instanceDTO(source controlplane.InstanceRecord, resources []controlplane.Re
 		result.Resources = append(result.Resources, ResourceDTO{ID: string(resource.ID), Kind: string(resource.Kind), Phase: string(resource.Phase), ErrorCode: resource.ErrorCode})
 	}
 	return result
+}
+
+func requestTargetID(request LabRequest) domain.ProviderTargetID {
+	if request.ProviderTargetID == "" {
+		return controlplane.LocalDockerTarget
+	}
+	return domain.ProviderTargetID(request.ProviderTargetID)
 }
 
 func apiError(err error) error {

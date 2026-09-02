@@ -10,13 +10,14 @@ import (
 	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"google.golang.org/protobuf/proto"
 )
 
 type Worker struct {
 	store         Store
-	provider      pluginv1.ProviderServiceClient
+	targets       *TargetRegistry
 	ids           IDSource
 	owner         string
 	leaseDuration time.Duration
@@ -32,8 +33,16 @@ type WorkerOptions struct {
 }
 
 func NewWorker(store Store, provider pluginv1.ProviderServiceClient, ids IDSource, options WorkerOptions) (*Worker, error) {
-	if store == nil || provider == nil || ids == nil {
-		return nil, fmt.Errorf("worker store, provider, and ID source are required")
+	registry, err := NewDockerTargetRegistry(provider)
+	if err != nil {
+		return nil, err
+	}
+	return NewWorkerWithTargets(store, registry, ids, options)
+}
+
+func NewWorkerWithTargets(store Store, targets *TargetRegistry, ids IDSource, options WorkerOptions) (*Worker, error) {
+	if store == nil || targets == nil || ids == nil {
+		return nil, fmt.Errorf("worker store, target registry, and ID source are required")
 	}
 	if options.Owner == "" {
 		options.Owner = "local-worker"
@@ -47,7 +56,7 @@ func NewWorker(store Store, provider pluginv1.ProviderServiceClient, ids IDSourc
 	if options.OnError == nil {
 		options.OnError = func(error) {}
 	}
-	return &Worker{store: store, provider: provider, ids: ids, owner: options.Owner, leaseDuration: options.LeaseDuration, pollInterval: options.PollInterval, onError: options.OnError}, nil
+	return &Worker{store: store, targets: targets, ids: ids, owner: options.Owner, leaseDuration: options.LeaseDuration, pollInterval: options.PollInterval, onError: options.OnError}, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -143,16 +152,21 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 	for _, transition := range []struct {
 		phase   domain.InstancePhase
 		message string
-	}{{domain.InstanceValidating, "Revalidating pinned Lab"}, {domain.InstancePlanned, "Using persisted Docker plans"}, {domain.InstanceApplying, "Applying Docker resources"}} {
+	}{{domain.InstanceValidating, "Revalidating pinned Lab"}, {domain.InstancePlanned, "Using persisted provider plans"}, {domain.InstanceApplying, "Applying provider resources"}} {
 		if err := w.store.MarkInstancePhase(ctx, fence, transition.phase, transition.message); err != nil {
 			return err
 		}
 	}
+	session, err := w.targets.Acquire(ctx, instance.ProviderTargetID, application.InvocationScope{}, false)
+	if err != nil {
+		return fmt.Errorf("acquire persisted provider target: %w", err)
+	}
+	defer session.Close()
 	validationContext, cancel := context.WithTimeout(ctx, 15*time.Second)
-	validation, err := w.provider.ValidateLab(validationContext, &pluginv1.ValidateLabRequest{
-		Context: &pluginv1.CallContext{RequestId: "worker-validate", OperationId: string(fence.OperationID), LabInstanceId: string(instance.ID), ProviderTargetId: string(LocalDockerTarget)},
-		Target:  &pluginv1.TargetContext{TargetId: string(LocalDockerTarget)}, CanonicalLabJson: instance.CanonicalLabJSON,
-		ProviderOverrideJson: []byte(`{"trustedLaptopIsolationAccepted":true}`),
+	validation, err := session.Provider.ValidateLab(validationContext, &pluginv1.ValidateLabRequest{
+		Context: &pluginv1.CallContext{RequestId: "worker-validate", OperationId: string(fence.OperationID), LabInstanceId: string(instance.ID), ProviderTargetId: string(instance.ProviderTargetID)},
+		Target:  session.Context, CanonicalLabJson: instance.CanonicalLabJSON,
+		ProviderOverrideJson: instance.ProviderOverrideJSON,
 	})
 	cancel()
 	if err != nil {
@@ -177,19 +191,19 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 			observed, projectionErr := projectCoreResource(resource, resources)
 			if projectionErr != nil {
 				_ = w.store.SaveCoreResource(ctx, fence, resource.ID, domain.ResourceFailed, []byte(`{}`))
-				return w.compensateAndFinalize(ctx, fence, instance.ID, resource.ID, projectionErr)
+				return w.compensateAndFinalize(ctx, fence, instance, resource.ID, projectionErr)
 			}
 			if err := w.store.SaveCoreResource(ctx, fence, resource.ID, domain.ResourceReady, observed); err != nil {
 				return err
 			}
 			continue
 		}
-		result, callErr := w.invoke(ctx, fence, instance.ID, resource, "apply")
+		result, callErr := w.invoke(ctx, fence, instance, resource, "apply")
 		if callErr != nil {
 			return callErr
 		}
 		if result.GetError() != nil {
-			return w.compensateAndFinalize(ctx, fence, instance.ID, resource.ID, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
+			return w.compensateAndFinalize(ctx, fence, instance, resource.ID, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
 		}
 		resources, err = w.store.ListResources(ctx, instance.ID)
 		if err != nil {
@@ -202,13 +216,13 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 	}
 	outputs, err := collectOutputs(resources)
 	if err != nil {
-		return w.compensateAndFinalize(ctx, fence, instance.ID, "", err)
+		return w.compensateAndFinalize(ctx, fence, instance, "", err)
 	}
 	return w.finalize(ctx, fence, OperationApply, domain.OperationSucceeded, domain.InstanceReady, "Lab is ready", "", "", outputs)
 }
 
 func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceRecord) error {
-	if err := w.store.MarkInstancePhase(ctx, fence, domain.InstanceDestroying, "Destroying Docker resources"); err != nil {
+	if err := w.store.MarkInstancePhase(ctx, fence, domain.InstanceDestroying, "Destroying provider resources"); err != nil {
 		return err
 	}
 	resources, err := w.store.ListResources(ctx, instance.ID)
@@ -219,6 +233,9 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceReco
 	for index := len(resources) - 1; index >= 0; index-- {
 		resource := resources[index]
 		if resource.Phase == domain.ResourceDestroyed {
+			if err := w.releaseResourceClaims(ctx, fence, resource); err != nil {
+				return err
+			}
 			continue
 		}
 		if !providerManagedKind(resource.Kind) || len(resource.ProviderState) == 0 {
@@ -227,7 +244,7 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceReco
 			}
 			continue
 		}
-		result, callErr := w.invoke(ctx, fence, instance.ID, resource, "destroy")
+		result, callErr := w.invoke(ctx, fence, instance, resource, "destroy")
 		if callErr != nil {
 			leftovers = append(leftovers, string(resource.ID))
 			continue
@@ -243,8 +260,8 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceReco
 	return w.finalize(ctx, fence, OperationDestroy, domain.OperationSucceeded, domain.InstanceDestroyed, "Lab was destroyed", "", "", []byte(`{}`))
 }
 
-func (w *Worker) invoke(ctx context.Context, fence Fence, instanceID domain.InstanceID, resource ResourceRecord, action string) (*pluginv1.ResourceResult, error) {
-	requestDigest := digestBytes("labcentral.provider-invocation/v1", []byte(action), resource.CanonicalJSON, resource.ProviderPlan, resource.ProviderState)
+func (w *Worker) invoke(ctx context.Context, fence Fence, instance InstanceRecord, resource ResourceRecord, action string) (*pluginv1.ResourceResult, error) {
+	requestDigest := digestBytes("labcentral.provider-invocation/v1", []byte(action), []byte(instance.ProviderTargetID), resource.CanonicalJSON, resource.ProviderPlan, resource.ProviderState)
 	invocationValue, err := w.ids.New("inv")
 	if err != nil {
 		return nil, err
@@ -256,6 +273,14 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instanceID domain.Inst
 	if err != nil {
 		return nil, err
 	}
+	scope := application.InvocationScope{
+		InvocationID: prepared.ID, InstanceID: instance.ID, ResourceID: resource.ID, ExpiresAt: time.Now().Add(2 * time.Minute),
+	}
+	session, err := w.targets.Acquire(ctx, instance.ProviderTargetID, scope, true)
+	if err != nil {
+		return nil, fmt.Errorf("acquire provider target for invocation: %w", err)
+	}
+	defer session.Close()
 	var priorState *pluginv1.ProviderState
 	if len(resource.ProviderState) > 0 {
 		priorState = &pluginv1.ProviderState{}
@@ -266,17 +291,25 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instanceID domain.Inst
 	input := &pluginv1.ResourceMutationInput{
 		Context: &pluginv1.CallContext{
 			RequestId: string(prepared.ID), OperationId: string(fence.OperationID), InvocationId: string(prepared.ID),
-			LabInstanceId: string(instanceID), LogicalResourceId: string(resource.ID), ProviderTargetId: string(LocalDockerTarget),
+			LabInstanceId: string(instance.ID), LogicalResourceId: string(resource.ID), ProviderTargetId: string(instance.ProviderTargetID),
 			IdempotencyKey: prepared.IdempotencyKey, DesiredGeneration: uint64(fence.Generation), FencingToken: uint64(fence.Token),
 		},
-		Target: &pluginv1.TargetContext{TargetId: string(LocalDockerTarget)}, CanonicalResourceJson: resource.CanonicalJSON,
+		Target: session.Context, CanonicalResourceJson: resource.CanonicalJSON,
 		ProviderPlan: resource.ProviderPlan, PriorState: priorState, OwnershipTokens: []string{resource.OwnershipToken},
+	}
+	input.CommittedAllocations, err = w.resourceClaims(ctx, instance.ID, resource)
+	if err != nil {
+		return nil, err
+	}
+	input.Dependencies, err = w.resourceDependencies(ctx, instance.ID, resource)
+	if err != nil {
+		return nil, err
 	}
 	callContext, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	var result *pluginv1.ResourceResult
 	if action == "apply" {
-		stream, err := w.provider.ApplyResource(callContext, &pluginv1.ApplyResourceRequest{Input: input})
+		stream, err := session.Provider.ApplyResource(callContext, &pluginv1.ApplyResourceRequest{Input: input})
 		if err != nil {
 			return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, err)
 		}
@@ -293,7 +326,7 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instanceID domain.Inst
 			}
 		}
 	} else {
-		stream, err := w.provider.DestroyResource(callContext, &pluginv1.DestroyResourceRequest{Input: input})
+		stream, err := session.Provider.DestroyResource(callContext, &pluginv1.DestroyResourceRequest{Input: input})
 		if err != nil {
 			return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, err)
 		}
@@ -341,7 +374,161 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instanceID domain.Inst
 	}); err != nil {
 		return nil, err
 	}
+	if transitionErr := w.transitionClaims(ctx, fence, resource, input.CommittedAllocations, action, result); transitionErr != nil {
+		return nil, transitionErr
+	}
 	return result, nil
+}
+
+func (w *Worker) resourceClaims(ctx context.Context, instanceID domain.InstanceID, resource ResourceRecord) ([]*pluginv1.AllocationClaim, error) {
+	claims, err := w.store.ListClaims(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	planDigest := rawDigest(resource.ProviderPlan)
+	result := make([]*pluginv1.AllocationClaim, 0)
+	for _, claim := range claims {
+		if claim.Binding.ResourceID != resource.ID || claim.State == application.AllocationReleased {
+			continue
+		}
+		if claim.Binding.InstanceID != instanceID || claim.Binding.PlanDigest != planDigest {
+			return nil, fmt.Errorf("allocation binding for %s does not match its persisted provider plan", resource.ID)
+		}
+		result = append(result, &pluginv1.AllocationClaim{Namespace: claim.Key.Namespace, Value: claim.Key.Value})
+	}
+	return result, nil
+}
+
+func (w *Worker) resourceDependencies(ctx context.Context, instanceID domain.InstanceID, resource ResourceRecord) ([]*pluginv1.ResourceDependency, error) {
+	var canonical struct {
+		DependsOn []string `json:"dependsOn"`
+	}
+	if err := decodeJSON(resource.CanonicalJSON, &canonical); err != nil {
+		return nil, fmt.Errorf("decode dependencies for %s: %w", resource.ID, err)
+	}
+	if len(canonical.DependsOn) == 0 {
+		return nil, nil
+	}
+	resources, err := w.store.ListResources(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[domain.LogicalResourceID]ResourceRecord, len(resources))
+	for _, candidate := range resources {
+		byID[candidate.ID] = candidate
+	}
+	result := make([]*pluginv1.ResourceDependency, 0, len(canonical.DependsOn))
+	for _, value := range canonical.DependsOn {
+		dependencyID := domain.LogicalResourceID(value)
+		dependency, exists := byID[dependencyID]
+		if !exists {
+			return nil, fmt.Errorf("persisted dependency %s for %s is unavailable", dependencyID, resource.ID)
+		}
+		var state *pluginv1.ProviderState
+		if len(dependency.ProviderState) > 0 {
+			state = &pluginv1.ProviderState{}
+			if err := proto.Unmarshal(dependency.ProviderState, state); err != nil {
+				return nil, fmt.Errorf("decode dependency provider state for %s: %w", dependencyID, err)
+			}
+		}
+		claims, err := w.resourceClaims(ctx, instanceID, dependency)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, &pluginv1.ResourceDependency{
+			LogicalResourceId: string(dependencyID), ProviderPlan: append([]byte(nil), dependency.ProviderPlan...),
+			ProviderPlanDigest: rawDigest(dependency.ProviderPlan).Hex(), ProviderState: state,
+			ObservedStateJson: append([]byte(nil), dependency.ObservedStateJSON...), CommittedAllocations: claims,
+		})
+	}
+	return result, nil
+}
+
+func (w *Worker) transitionClaims(ctx context.Context, fence Fence, resource ResourceRecord, protocolClaims []*pluginv1.AllocationClaim, action string, result *pluginv1.ResourceResult) error {
+	if len(protocolClaims) == 0 {
+		return nil
+	}
+	claims := make([]application.AllocationKey, 0, len(protocolClaims))
+	for _, claim := range protocolClaims {
+		claims = append(claims, application.AllocationKey{TargetID: "", Namespace: claim.GetNamespace(), Value: claim.GetValue()})
+	}
+	stored, err := w.store.ListClaims(ctx, resource.InstanceID)
+	if err != nil {
+		return err
+	}
+	byIdentity := make(map[string]application.AllocationKey, len(stored))
+	for _, claim := range stored {
+		if claim.Binding.ResourceID == resource.ID && claim.State != application.AllocationReleased {
+			byIdentity[claim.Key.Namespace+"\x00"+claim.Key.Value] = claim.Key
+		}
+	}
+	for index := range claims {
+		key, exists := byIdentity[claims[index].Namespace+"\x00"+claims[index].Value]
+		if !exists {
+			return fmt.Errorf("provider claim for %s is not persisted", resource.ID)
+		}
+		claims[index] = key
+	}
+	mutation := application.MutateAllocationClaimsRequest{
+		Binding: application.AllocationBinding{InstanceID: resource.InstanceID, ResourceID: resource.ID, PlanDigest: rawDigest(resource.ProviderPlan)},
+		Claims:  claims, FencingToken: fence.Token,
+	}
+	if result.GetError() == nil {
+		if action == "apply" {
+			return nil
+		}
+		return w.store.ReleaseClaims(ctx, application.ReleaseAllocationClaimsRequest{MutateAllocationClaimsRequest: mutation, ProviderAbsenceConfirmed: true})
+	}
+	if action == "apply" && result.GetCompensationComplete() {
+		return w.store.ReleaseClaims(ctx, application.ReleaseAllocationClaimsRequest{MutateAllocationClaimsRequest: mutation, ProviderAbsenceConfirmed: true})
+	}
+	if result.GetCompensationAttempted() {
+		return w.store.OrphanClaims(ctx, mutation)
+	}
+	return w.store.RetainClaims(ctx, mutation)
+}
+
+func (w *Worker) retainResourceClaims(ctx context.Context, fence Fence, resource ResourceRecord) error {
+	claims, err := w.store.ListClaims(ctx, resource.InstanceID)
+	if err != nil {
+		return err
+	}
+	keys := make([]application.AllocationKey, 0)
+	for _, claim := range claims {
+		if claim.Binding.ResourceID == resource.ID && claim.State != application.AllocationReleased {
+			keys = append(keys, claim.Key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return w.store.RetainClaims(ctx, application.MutateAllocationClaimsRequest{
+		Binding: application.AllocationBinding{InstanceID: resource.InstanceID, ResourceID: resource.ID, PlanDigest: rawDigest(resource.ProviderPlan)},
+		Claims:  keys, FencingToken: fence.Token,
+	})
+}
+
+func (w *Worker) releaseResourceClaims(ctx context.Context, fence Fence, resource ResourceRecord) error {
+	claims, err := w.store.ListClaims(ctx, resource.InstanceID)
+	if err != nil {
+		return err
+	}
+	keys := make([]application.AllocationKey, 0)
+	for _, claim := range claims {
+		if claim.Binding.ResourceID == resource.ID && claim.State != application.AllocationReleased {
+			keys = append(keys, claim.Key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	return w.store.ReleaseClaims(ctx, application.ReleaseAllocationClaimsRequest{
+		MutateAllocationClaimsRequest: application.MutateAllocationClaimsRequest{
+			Binding: application.AllocationBinding{InstanceID: resource.InstanceID, ResourceID: resource.ID, PlanDigest: rawDigest(resource.ProviderPlan)},
+			Claims:  keys, FencingToken: fence.Token,
+		},
+		ProviderAbsenceConfirmed: true,
+	})
 }
 
 func (w *Worker) saveUnknown(ctx context.Context, fence Fence, invocationID domain.InvocationID, resource ResourceRecord, action string, cause error) error {
@@ -356,21 +543,30 @@ func (w *Worker) saveUnknown(ctx context.Context, fence Fence, invocationID doma
 	}); err != nil {
 		return err
 	}
+	if err := w.retainResourceClaims(ctx, fence, resource); err != nil {
+		return err
+	}
 	return fmt.Errorf("provider outcome for %s is unknown: %w", resource.ID, cause)
 }
 
-func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instanceID domain.InstanceID, failedResource domain.LogicalResourceID, cause error) error {
-	resources, err := w.store.ListResources(ctx, instanceID)
+func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instance InstanceRecord, failedResource domain.LogicalResourceID, cause error) error {
+	resources, err := w.store.ListResources(ctx, instance.ID)
 	if err != nil {
 		return err
 	}
 	leftovers := make([]string, 0)
 	for index := len(resources) - 1; index >= 0; index-- {
 		resource := resources[index]
+		if resource.Phase == domain.ResourceDestroyed {
+			if err := w.releaseResourceClaims(ctx, fence, resource); err != nil {
+				return err
+			}
+			continue
+		}
 		if !providerManagedKind(resource.Kind) || len(resource.ProviderState) == 0 || resource.Phase != domain.ResourceReady {
 			continue
 		}
-		result, invokeErr := w.invoke(ctx, fence, instanceID, resource, "compensate")
+		result, invokeErr := w.invoke(ctx, fence, instance, resource, "compensate")
 		if invokeErr != nil || result.GetError() != nil {
 			leftovers = append(leftovers, string(resource.ID))
 		}

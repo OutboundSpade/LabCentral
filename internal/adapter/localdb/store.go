@@ -5,22 +5,28 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
+	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 )
 
-const migrationID = "0002_local_vertical_slice"
+const (
+	migrationID       = "0002_local_vertical_slice"
+	targetMigrationID = "0003_local_provider_target_binding"
+)
 
 type Store struct {
 	db       *sql.DB
@@ -98,18 +104,24 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.jobs.Migrate(ctx); err != nil {
 		return err
 	}
-	statements := migrationStatements()
+	if err := s.applyMigration(ctx, migrationID, migrationStatements()); err != nil {
+		return err
+	}
+	return s.applyMigration(ctx, targetMigrationID, targetMigrationStatements())
+}
+
+func (s *Store) applyMigration(ctx context.Context, id string, statements []string) error {
 	checksum := checksum(statements)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin local migration: %w", err)
+		return fmt.Errorf("begin local migration %s: %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var recorded string
-	err = tx.QueryRowContext(ctx, "SELECT checksum FROM labcentral_schema_migrations WHERE id = ?", migrationID).Scan(&recorded)
+	err = tx.QueryRowContext(ctx, "SELECT checksum FROM labcentral_schema_migrations WHERE id = ?", id).Scan(&recorded)
 	switch {
 	case err == nil && recorded != checksum:
-		return fmt.Errorf("migration %s checksum mismatch", migrationID)
+		return fmt.Errorf("migration %s checksum mismatch", id)
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("read local migration record: %w", err)
 	case err == nil:
@@ -117,17 +129,38 @@ func (s *Store) Migrate(ctx context.Context) error {
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("apply migration %s: %w", migrationID, err)
+			return fmt.Errorf("apply migration %s: %w", id, err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO labcentral_schema_migrations (id, checksum, applied_at_us)
-		VALUES (?, ?, `+nowMicros()+`)`, migrationID, checksum); err != nil {
-		return fmt.Errorf("record migration %s: %w", migrationID, err)
+		VALUES (?, ?, `+nowMicros()+`)`, id, checksum); err != nil {
+		return fmt.Errorf("record migration %s: %w", id, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit migration %s: %w", migrationID, err)
+		return fmt.Errorf("commit migration %s: %w", id, err)
 	}
 	return nil
+}
+
+func targetMigrationStatements() []string {
+	return []string{
+		`ALTER TABLE labcentral_local_instances
+			ADD COLUMN provider_target_id TEXT NOT NULL DEFAULT 'target.local-docker'`,
+		`ALTER TABLE labcentral_local_instances
+			ADD COLUMN provider_override_json BLOB NOT NULL DEFAULT X''`,
+		`CREATE TABLE labcentral_local_provider_targets (
+			target_id TEXT PRIMARY KEY,
+			provider_kind TEXT NOT NULL,
+			config_fingerprint TEXT NOT NULL,
+			protocol_major INTEGER NOT NULL,
+			protocol_minor INTEGER NOT NULL,
+			features_json BLOB NOT NULL,
+			discovery_json BLOB NOT NULL,
+			discovered_at_us INTEGER NOT NULL,
+			valid_until_us INTEGER NOT NULL,
+			updated_at_us INTEGER NOT NULL
+		)`,
+	}
 }
 
 func migrationStatements() []string {
@@ -226,11 +259,15 @@ func (s *Store) CreateInstance(ctx context.Context, request controlplane.CreateI
 	if request.Acknowledged {
 		ack = 1
 	}
+	providerOverride := request.ProviderOverrideJSON
+	if providerOverride == nil {
+		providerOverride = []byte{}
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO labcentral_local_instances
-		(instance_id, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
+		(instance_id, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
 		 isolation_warning_acknowledged, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, `+nowMicros()+`, `+nowMicros()+`)`,
-		request.InstanceID, request.CanonicalDigest.Hex(), request.CanonicalJSON, request.SourceYAML,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, `+nowMicros()+`, `+nowMicros()+`)`,
+		request.InstanceID, request.ProviderTargetID, providerOverride, request.CanonicalDigest.Hex(), request.CanonicalJSON, request.SourceYAML,
 		domain.InstancePending, domain.LifecycleRunning, ack); err != nil {
 		return controlplane.EnqueueResult{}, fmt.Errorf("insert local instance: %w", err)
 	}
@@ -241,6 +278,9 @@ func (s *Store) CreateInstance(ctx context.Context, request controlplane.CreateI
 			resource.CanonicalJSON, resource.ProviderPlan, domain.ResourcePending, resource.OwnershipToken); err != nil {
 			return controlplane.EnqueueResult{}, fmt.Errorf("insert local resource %s: %w", resource.ID, err)
 		}
+	}
+	if err := commitAllocationClaims(ctx, tx, request); err != nil {
+		return controlplane.EnqueueResult{}, err
 	}
 	if err := enqueue(ctx, tx, request.InstanceID, request.OperationID, controlplane.OperationApply, request.Payload, request.SubjectID, request.AuditID, request.EventID); err != nil {
 		return controlplane.EnqueueResult{}, err
@@ -254,9 +294,169 @@ func (s *Store) CreateInstance(ctx context.Context, request controlplane.CreateI
 	return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: request.OperationID}, nil
 }
 
+func (s *Store) SaveTargetSnapshot(ctx context.Context, snapshot controlplane.TargetSnapshot) error {
+	if _, err := domain.NewProviderTargetID(string(snapshot.ID)); err != nil {
+		return err
+	}
+	if snapshot.ProviderKind == "" || !strings.HasPrefix(snapshot.ConfigFingerprint, "sha256:") || snapshot.ProtocolMajor != 1 || len(snapshot.DiscoveryJSON) == 0 || len(snapshot.DiscoveryJSON) > 8<<20 || snapshot.DiscoveredAt.IsZero() || !snapshot.ValidUntil.After(snapshot.DiscoveredAt) {
+		return fmt.Errorf("provider target snapshot is incomplete")
+	}
+	if _, err := domain.ParseSHA256Digest(strings.TrimPrefix(snapshot.ConfigFingerprint, "sha256:")); err != nil {
+		return fmt.Errorf("provider target config fingerprint is invalid: %w", err)
+	}
+	features := append([]string(nil), snapshot.Features...)
+	sort.Strings(features)
+	encodedFeatures, err := json.Marshal(features)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO labcentral_local_provider_targets
+		(target_id, provider_kind, config_fingerprint, protocol_major, protocol_minor, features_json, discovery_json,
+		 discovered_at_us, valid_until_us, updated_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, `+nowMicros()+`)
+		ON CONFLICT(target_id) DO UPDATE SET provider_kind = excluded.provider_kind,
+		 config_fingerprint = excluded.config_fingerprint, protocol_major = excluded.protocol_major,
+		 protocol_minor = excluded.protocol_minor, features_json = excluded.features_json,
+		 discovery_json = excluded.discovery_json, discovered_at_us = excluded.discovered_at_us,
+		 valid_until_us = excluded.valid_until_us, updated_at_us = `+nowMicros(),
+		snapshot.ID, snapshot.ProviderKind, snapshot.ConfigFingerprint, snapshot.ProtocolMajor, snapshot.ProtocolMinor,
+		encodedFeatures, snapshot.DiscoveryJSON, snapshot.DiscoveredAt.UnixMicro(), snapshot.ValidUntil.UnixMicro())
+	if err != nil {
+		return fmt.Errorf("persist provider target snapshot: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetTargetSnapshot(ctx context.Context, targetID domain.ProviderTargetID) (controlplane.TargetSnapshot, error) {
+	var snapshot controlplane.TargetSnapshot
+	var id string
+	var features []byte
+	var protocolMajor, protocolMinor, discoveredAt, validUntil int64
+	err := s.db.QueryRowContext(ctx, `SELECT target_id, provider_kind, config_fingerprint, protocol_major, protocol_minor,
+		features_json, discovery_json, discovered_at_us, valid_until_us
+		FROM labcentral_local_provider_targets WHERE target_id = ?`, targetID).Scan(
+		&id, &snapshot.ProviderKind, &snapshot.ConfigFingerprint, &protocolMajor, &protocolMinor,
+		&features, &snapshot.DiscoveryJSON, &discoveredAt, &validUntil,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return controlplane.TargetSnapshot{}, controlplane.ErrNotFound
+	}
+	if err != nil {
+		return controlplane.TargetSnapshot{}, err
+	}
+	if err := json.Unmarshal(features, &snapshot.Features); err != nil {
+		return controlplane.TargetSnapshot{}, fmt.Errorf("decode provider target features: %w", err)
+	}
+	snapshot.ID = domain.ProviderTargetID(id)
+	snapshot.ProtocolMajor = uint32(protocolMajor)
+	snapshot.ProtocolMinor = uint32(protocolMinor)
+	snapshot.DiscoveredAt = time.UnixMicro(discoveredAt).UTC()
+	snapshot.ValidUntil = time.UnixMicro(validUntil).UTC()
+	return snapshot, nil
+}
+
 func validateCreate(request controlplane.CreateInstanceRequest) error {
-	if request.InstanceID == "" || request.OperationID == "" || request.CanonicalDigest == "" || len(request.CanonicalJSON) == 0 || len(request.SourceYAML) == 0 || len(request.Resources) == 0 || !request.Acknowledged || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" {
-		return fmt.Errorf("local instance request is incomplete and must acknowledge Docker isolation")
+	if request.InstanceID == "" || request.ProviderTargetID == "" || request.OperationID == "" || request.CanonicalDigest == "" || len(request.CanonicalJSON) == 0 || len(request.SourceYAML) == 0 || len(request.Resources) == 0 || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" {
+		return fmt.Errorf("local instance request is incomplete")
+	}
+	if request.ProviderTargetID == controlplane.LocalDockerTarget && !request.Acknowledged {
+		return fmt.Errorf("local Docker instance request must acknowledge Docker isolation")
+	}
+	for _, resource := range request.Resources {
+		if resource.ID == "" || resource.ProviderPlanDigest == "" || len(resource.ProviderPlan) == 0 || resource.OwnershipToken == "" {
+			return fmt.Errorf("local resource request is incomplete")
+		}
+		computedPlanDigest := sha256.Sum256(resource.ProviderPlan)
+		if resource.ProviderPlanDigest.Hex() != hex.EncodeToString(computedPlanDigest[:]) {
+			return fmt.Errorf("local resource provider plan digest does not match its bytes")
+		}
+		if len(resource.Allocations) == 0 {
+			continue
+		}
+		binding := application.AllocationBinding{InstanceID: request.InstanceID, ResourceID: resource.ID, PlanDigest: resource.ProviderPlanDigest}
+		claims, err := application.ValidateAllocationClaims(binding, resource.Allocations)
+		if err != nil {
+			return fmt.Errorf("validate allocation claims for %s: %w", resource.ID, err)
+		}
+		for _, claim := range claims {
+			if claim.TargetID != request.ProviderTargetID {
+				return fmt.Errorf("allocation claim target does not match the instance target")
+			}
+		}
+	}
+	return nil
+}
+
+type committedClaim struct {
+	key     application.AllocationKey
+	binding application.AllocationBinding
+}
+
+func commitAllocationClaims(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceRequest) error {
+	claims := make([]committedClaim, 0)
+	seen := make(map[string]bool)
+	for _, resource := range request.Resources {
+		if len(resource.Allocations) == 0 {
+			continue
+		}
+		binding := application.AllocationBinding{InstanceID: request.InstanceID, ResourceID: resource.ID, PlanDigest: resource.ProviderPlanDigest}
+		validated, err := application.ValidateAllocationClaims(binding, resource.Allocations)
+		if err != nil {
+			return err
+		}
+		for _, key := range validated {
+			identity := string(key.TargetID) + "\x00" + key.Namespace + "\x00" + key.Value
+			if seen[identity] {
+				return fmt.Errorf("provider proposed one allocation claim for multiple resources")
+			}
+			seen[identity] = true
+			claims = append(claims, committedClaim{key: key, binding: binding})
+		}
+	}
+	conflicts := make([]application.AllocationKey, 0)
+	for _, candidate := range claims {
+		var instanceID, resourceID, planDigest, state string
+		err := tx.QueryRowContext(ctx, `SELECT instance_id, resource_id, plan_digest, state
+			FROM labcentral_provider_allocation_claims WHERE target_id = ? AND namespace = ? AND claim_value = ?`,
+			candidate.key.TargetID, candidate.key.Namespace, candidate.key.Value).Scan(&instanceID, &resourceID, &planDigest, &state)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("read allocation claim: %w", err)
+		}
+		sameBinding := instanceID == string(candidate.binding.InstanceID) && resourceID == string(candidate.binding.ResourceID) && planDigest == candidate.binding.PlanDigest.Hex()
+		if state != string(application.AllocationReleased) && !sameBinding {
+			conflicts = append(conflicts, candidate.key)
+		}
+	}
+	if len(conflicts) > 0 {
+		return &application.AllocationConflictError{Conflicts: conflicts}
+	}
+	for _, candidate := range claims {
+		result, err := tx.ExecContext(ctx, `UPDATE labcentral_provider_allocation_claims
+			SET instance_id = ?, resource_id = ?, plan_digest = ?, state = ?, fencing_token = 0,
+			    created_at_us = `+nowMicros()+`, updated_at_us = `+nowMicros()+`
+			WHERE target_id = ? AND namespace = ? AND claim_value = ? AND state = ?`,
+			candidate.binding.InstanceID, candidate.binding.ResourceID, candidate.binding.PlanDigest.Hex(), application.AllocationCommitted,
+			candidate.key.TargetID, candidate.key.Namespace, candidate.key.Value, application.AllocationReleased)
+		if err != nil {
+			return fmt.Errorf("reuse released allocation claim: %w", err)
+		}
+		if affected, _ := result.RowsAffected(); affected == 1 {
+			continue
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO labcentral_provider_allocation_claims
+			(target_id, namespace, claim_value, instance_id, resource_id, plan_digest, state, created_at_us, updated_at_us)
+			VALUES (?, ?, ?, ?, ?, ?, ?, `+nowMicros()+`, `+nowMicros()+`)`,
+			candidate.key.TargetID, candidate.key.Namespace, candidate.key.Value, candidate.binding.InstanceID,
+			candidate.binding.ResourceID, candidate.binding.PlanDigest.Hex(), application.AllocationCommitted)
+		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE constraint failed: labcentral_provider_allocation_claims") {
+				return &application.AllocationConflictError{Conflicts: []application.AllocationKey{candidate.key}}
+			}
+			return fmt.Errorf("insert committed allocation claim: %w", err)
+		}
 	}
 	return nil
 }
@@ -365,7 +565,7 @@ func bindIdempotency(ctx context.Context, tx *sql.Tx, subject domain.UserID, act
 }
 
 func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlplane.InstanceRecord, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT instance_id, canonical_digest, canonical_lab_json, source_yaml, phase,
+	row := s.db.QueryRowContext(ctx, `SELECT instance_id, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances WHERE instance_id = ?`, id)
@@ -373,7 +573,7 @@ func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlp
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]controlplane.InstanceRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT instance_id, canonical_digest, canonical_lab_json, source_yaml, phase,
+	rows, err := s.db.QueryContext(ctx, `SELECT instance_id, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances ORDER BY created_at_us, instance_id`)
@@ -396,9 +596,9 @@ type scanner interface{ Scan(...any) error }
 
 func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 	var record controlplane.InstanceRecord
-	var id, digest, phase, lifecycle string
+	var id, targetID, digest, phase, lifecycle string
 	var generation, resourceVersion, acknowledged, createdAt, updatedAt int64
-	err := row.Scan(&id, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
+	err := row.Scan(&id, &targetID, &record.ProviderOverrideJSON, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
 		&generation, &resourceVersion, &acknowledged, &record.OutputsJSON, &record.ErrorCode, &record.ErrorMessage, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return controlplane.InstanceRecord{}, controlplane.ErrNotFound
@@ -411,6 +611,7 @@ func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 		return controlplane.InstanceRecord{}, err
 	}
 	record.ID = domain.InstanceID(id)
+	record.ProviderTargetID = domain.ProviderTargetID(targetID)
 	record.CanonicalDigest = parsedDigest
 	record.Phase = domain.InstancePhase(phase)
 	record.DesiredLifecycle = domain.DesiredLifecycle(lifecycle)
@@ -490,6 +691,22 @@ func (s *Store) Claim(ctx context.Context, owner string, duration time.Duration)
 
 func (s *Store) Renew(ctx context.Context, fence controlplane.Fence, duration time.Duration) error {
 	return s.jobs.RenewLease(ctx, fence.OperationID, fence.LeaseOwner, fence.Token, duration)
+}
+
+func (s *Store) RetainClaims(ctx context.Context, request application.MutateAllocationClaimsRequest) error {
+	return s.jobs.RetainClaims(ctx, request)
+}
+
+func (s *Store) OrphanClaims(ctx context.Context, request application.MutateAllocationClaimsRequest) error {
+	return s.jobs.OrphanClaims(ctx, request)
+}
+
+func (s *Store) ReleaseClaims(ctx context.Context, request application.ReleaseAllocationClaimsRequest) error {
+	return s.jobs.ReleaseClaims(ctx, request)
+}
+
+func (s *Store) ListClaims(ctx context.Context, instanceID domain.InstanceID) ([]application.AllocationClaim, error) {
+	return s.jobs.ListClaims(ctx, instanceID)
 }
 
 func (s *Store) MarkInstancePhase(ctx context.Context, fence controlplane.Fence, phase domain.InstancePhase, message string) error {
