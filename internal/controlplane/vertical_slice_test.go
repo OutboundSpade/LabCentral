@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 	_ "modernc.org/sqlite"
 )
 
@@ -162,6 +163,65 @@ func TestExampleARejectsMissingDockerRiskAcknowledgement(t *testing.T) {
 	}
 }
 
+func TestCreateAssignsInstanceBeforeDependencyAwarePlanning(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := localdb.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	engine := newTestEngine()
+	dockerService, err := dockerprovider.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordingProvider{ProviderServiceServer: dockerService}
+	provider, closeProvider := testProviderClient(t, recorder)
+	defer closeProvider()
+	service, err := controlplane.NewService(testRenderer(t), store, provider, &sequenceIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateInstance(ctx, source, true, "plan-instance-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := recorder.snapshot()
+	if len(plans) == 0 {
+		t.Fatal("provider received no resource plans")
+	}
+	foundDependency := false
+	for _, plan := range plans {
+		input := plan.GetInput()
+		if input.GetContext().GetLabInstanceId() != string(created.InstanceID) {
+			t.Fatalf("plan instance ID = %q, want %q", input.GetContext().GetLabInstanceId(), created.InstanceID)
+		}
+		if len(input.GetOwnershipTokens()) != 1 || input.GetOwnershipTokens()[0] == "" {
+			t.Fatalf("plan ownership tokens = %#v", input.GetOwnershipTokens())
+		}
+		for _, dependency := range input.GetDependencies() {
+			foundDependency = true
+			if dependency.GetLogicalResourceId() == "" || len(dependency.GetProviderPlan()) == 0 || dependency.GetProviderPlanDigest() == "" {
+				t.Fatalf("incomplete dependency plan = %#v", dependency)
+			}
+		}
+	}
+	if !foundDependency {
+		t.Fatal("no dependency plan metadata reached the provider")
+	}
+}
+
 func testRenderer(t *testing.T) *render.Renderer {
 	t.Helper()
 	schema, err := os.ReadFile("../../schemas/lab-v1alpha1.schema.json")
@@ -285,6 +345,12 @@ func testProvider(t *testing.T) (pluginv1.ProviderServiceClient, *testEngine, fu
 	if err != nil {
 		t.Fatal(err)
 	}
+	client, closeProvider := testProviderClient(t, service)
+	return client, engine, closeProvider
+}
+
+func testProviderClient(t *testing.T, service pluginv1.ProviderServiceServer) (pluginv1.ProviderServiceClient, func()) {
+	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	server := grpc.NewServer()
 	pluginv1.RegisterProviderServiceServer(server, service)
@@ -297,9 +363,32 @@ func testProvider(t *testing.T) (pluginv1.ProviderServiceClient, *testEngine, fu
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pluginv1.NewProviderServiceClient(connection), engine, func() {
+	return pluginv1.NewProviderServiceClient(connection), func() {
 		_ = connection.Close()
 		server.Stop()
 		_ = listener.Close()
 	}
+}
+
+type recordingProvider struct {
+	pluginv1.ProviderServiceServer
+	mu    sync.Mutex
+	plans []*pluginv1.PlanResourceRequest
+}
+
+func (provider *recordingProvider) PlanResource(ctx context.Context, request *pluginv1.PlanResourceRequest) (*pluginv1.PlanResourceResponse, error) {
+	provider.mu.Lock()
+	provider.plans = append(provider.plans, proto.Clone(request).(*pluginv1.PlanResourceRequest))
+	provider.mu.Unlock()
+	return provider.ProviderServiceServer.PlanResource(ctx, request)
+}
+
+func (provider *recordingProvider) snapshot() []*pluginv1.PlanResourceRequest {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	result := make([]*pluginv1.PlanResourceRequest, len(provider.plans))
+	for index, request := range provider.plans {
+		result[index] = proto.Clone(request).(*pluginv1.PlanResourceRequest)
+	}
+	return result
 }

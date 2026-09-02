@@ -16,9 +16,9 @@ schemas:
   invocationJournal: {name: proxmox.invocation-journal, version: 1.0}
 requiredProtocolFeatures:
   - stable_instance_identity_before_plan
-  - opaque_target_allocation_claims
+  - opaque-allocation-claims-v1
   - excluded_claims_on_replan
-  - dependency_plans_and_states
+  - dependency-resource-input-v1
   - durable_get_invocation
 allocationClaims:
   uniqueKey: [targetID, namespace, value]

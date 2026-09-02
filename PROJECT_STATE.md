@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, read-only Phase 2 Proxmox discovery, and the first Proxmox QEMU mutation contract are complete. Allocation/protocol prerequisites, write-capable provider code, and multi-user control-plane work have not started.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, read-only Phase 2 Proxmox discovery, the QEMU mutation contract, and its allocation/protocol prerequisites are complete. Write-capable Proxmox provider code and multi-user control-plane work have not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -32,6 +32,9 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - The T0 TLS fake-API suite proves exact authorization and queries, offline/partial behavior, provider-returned path validation, deterministic inventory/capacity, credential and error-body redaction, and that every non-discovery provider RPC remains unimplemented. No real Proxmox credentials or mutations were used.
 - `TASK-PROXMOX-002` accepted ADR-0013 for core-owned opaque target allocation claims and fixed the first write design to PVE 9.x fixed-node Linux QEMU full clones with approved storage/VLAN-aware bridges, typed native IPv4 Cloud-Init networking, strong ownership, durable UPID recovery, and least-privilege scopes.
 - The machine-readable Proxmox mutation catalog maps all 18 generic provider cases to 22 target-specific T0/T3 cases. Every mutation capability remains unsupported until allocation/protocol implementation, fake-API conformance, and exact-target credentialed gates pass.
+- `TASK-PROXMOX-003` added protocol v1.1 allocation/dependency fields while retaining the original v1.0 Buf breaking baseline and Docker negotiation, then made the Proxmox process advertise both required feature bits without enabling mutation.
+- A new core allocation port and checksummed SQL migration enforce target-scoped opaque claims, plan binding, atomic batches, monotonic fences, orphan retention, and absence-gated release. Fourteen shared cases pass on SQLite and PostgreSQL, including concurrency, restart, and deterministic eight-attempt replan limits.
+- The create path now generates its stable Instance ID before provider planning, sends ownership/dependency plan metadata, validates plan digests, and fails closed if the current Docker-only control plane receives an allocation proposal it cannot persist.
 
 ## Open questions and risks
 
@@ -39,7 +42,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Start `TASK-PROXMOX-003`: implement core-owned allocation claims and the additive plugin planning/dependency protocol prerequisites, with SQLite/PostgreSQL and compatibility conformance, before any Proxmox write code.
+1. Start `TASK-PROXMOX-004`: implement the closed Proxmox QEMU plan/state/journal types and all 22 T0 fake-API mutation cases behind the disabled-by-default capability gate.
 2. Keep production providers and multi-user deployment gated behind their target-specific integration, authorization, threat-control, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

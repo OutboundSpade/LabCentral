@@ -80,6 +80,8 @@ type Repositories interface {
 
 Repositories expose aggregate operations with expected `ResourceVersion`, not table CRUD. `OperationRepository` claims jobs using database time, renews leases, and checkpoints only with matching lease owner, fencing token, desired generation, and attempt. A recovered claim explicitly directs the worker to dispatch or query an unknown invocation. `GovernanceRepository` reserves/reconciles quota within the caller’s unit of work. `EventRepository` appends aggregate-sequenced event, audit intent, and outbox atomically with state. Adapters translate duplicate/version/serialization conflicts into domain errors.
 
+`AllocationRepository` owns bounded opaque provider claims keyed by `(targetID, namespace, value)`. It reserves a whole proposed set atomically, binds it to Instance/resource/plan digest, commits accepted claims, retains unknown claims, marks leftovers orphaned, and releases only with explicit provider-absence evidence. Mutations advance a monotonic fencing token, so an older worker cannot release a claim retained by a newer owner. Callers receive the conflicting keys for bounded deterministic replan; provider plugins never receive the repository or database connection. `TASK-PROXMOX-003` implements the shared SQLite/PostgreSQL prototype and fourteen-case conformance suite.
+
 ## External side-effect ports
 
 ```go
@@ -108,6 +110,8 @@ type IDGenerator interface { New() string }
 ```
 
 `PluginInvoker` is an application port; generated gRPC messages stay inside `internal/pluginhost` adapters. `EphemeralSecret` is non-serializable by convention/API design, redacts formatting, and cannot enter Domain Events. Fake clock/ID/plugin/artifact/secret adapters make normal tests deterministic.
+
+Protocol v1.1 adds typed proposed/excluded/committed allocation claims and typed dependency plan/state input to the corresponding invocation values. v1.0 plugins still negotiate v1.0 and see no new requirement; capabilities that need these inputs require both v1.1 and its two named feature bits.
 
 ## Application command boundary
 

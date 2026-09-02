@@ -53,6 +53,9 @@ func TestLaunchUsesPrivateOneTimeHandshake(t *testing.T) {
 	if client.Info.GetPluginId() != dockerprovider.PluginID {
 		t.Fatalf("registered plugin = %q", client.Info.GetPluginId())
 	}
+	if client.SelectedProtocol.GetMajor() != 1 || client.SelectedProtocol.GetMinor() != 0 {
+		t.Fatalf("selected protocol = %v, want 1.0", client.SelectedProtocol)
+	}
 	discovery, err := client.Provider.DiscoverTarget(ctx, &pluginv1.DiscoverTargetRequest{})
 	if err != nil || len(discovery.GetCapabilities()) == 0 {
 		t.Fatalf("discovery = %#v, %v", discovery, err)

@@ -182,12 +182,23 @@ tasks:
       - A credentialed T3 test matrix and deterministic fake-API cases cover success and every provider failure window before implementation is proposed.
   - id: TASK-PROXMOX-003
     title: Implement allocation and protocol prerequisites for Proxmox mutation
-    status: proposed
+    status: complete
     dependencies: [TASK-PROXMOX-002]
     relatedAdrs: [ADR-0002, ADR-0006, ADR-0011, ADR-0012, ADR-0013]
-    relatedDocuments: [api/plugin/v1/plugin.proto, api/plugin/v1/compat, docs/design/domain-ports.md, docs/design/database-schema.md, docs/design/provider-contract.md, docs/design/proxmox-qemu-mutation.md, docs/design/reconciliation-and-jobs.md, design/contracts/proxmox-qemu-mutation.yaml]
+    relatedDocuments: [api/plugin/v1/plugin.proto, api/plugin/v1/compat, internal/application, internal/adapter/jobsdb, internal/controlplane, internal/pluginhost, pkg/plugin-sdk-go, docs/design/domain-ports.md, docs/design/database-schema.md, docs/design/plugin-system.md, docs/design/provider-contract.md, docs/design/proxmox-qemu-mutation.md, docs/design/reconciliation-and-jobs.md, docs/design/testing.md, design/contracts/allocation-claims.yaml, design/contracts/proxmox-qemu-mutation.yaml]
     acceptanceCriteria:
       - The core assigns a stable Instance ID before planning and SQLite/PostgreSQL adapters atomically enforce bounded opaque target allocation claims with held, committed, orphaned, and released states.
       - An additive plugin v1 minor feature negotiation carries instance identity, excluded claims, dependency plans/states, proposed claims, and committed claims without breaking the accepted descriptor baseline.
       - Planning conflict, job restart, unknown invocation, compensation, leftover, and destroy paths retain or release claims exactly as ADR-0013 requires.
       - Shared conformance tests prove deterministic bounded replanning, target isolation, persistence parity, protocol downgrade behavior, and absence-gated release before Proxmox write code begins.
+  - id: TASK-PROXMOX-004
+    title: Implement the gated Proxmox QEMU mutation and T0 suite
+    status: proposed
+    dependencies: [TASK-PROXMOX-003]
+    relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013]
+    relatedDocuments: [providers/proxmox, cmd/lab-provider-proxmox, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/provider-contract.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml]
+    acceptanceCriteria:
+      - Strict closed target-config v1.1, QEMU plan v1.0, provider-state v1.0, and invocation-journal v1.0 types implement only the accepted fixed-node Linux full-clone subset.
+      - Validate, plan, apply, read, destroy, GetInvocation, and start/stop/pause/resume use only the allowlisted Proxmox APIs, committed claims/dependency states, ownership markers, optimistic config digests, and bounded UPID polling.
+      - Every TEST-PROXMOX case has a deterministic fake-API binding covering response loss, restart, task/config failure, compensation, ownership refusal, redaction, and unsupported input without real credentials.
+      - Mutation remains disabled by default and unadvertised unless the local protocol/config/evidence gates pass; production support remains blocked on the later exact-target credentialed T3 qualification.

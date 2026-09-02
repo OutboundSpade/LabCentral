@@ -37,9 +37,10 @@ type Config struct {
 }
 
 type Client struct {
-	Provider pluginv1.ProviderServiceClient
-	Runtime  pluginv1.PluginRuntimeServiceClient
-	Info     *pluginv1.PluginInfo
+	Provider         pluginv1.ProviderServiceClient
+	Runtime          pluginv1.PluginRuntimeServiceClient
+	Info             *pluginv1.PluginInfo
+	SelectedProtocol *pluginv1.ProtocolVersion
 
 	connection *grpc.ClientConn
 	command    *exec.Cmd
@@ -161,18 +162,19 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 		return nil, fmt.Errorf("plugin did not become healthy: %s", health.GetSafeMessage())
 	}
 	client := &Client{
-		Provider:   pluginv1.NewProviderServiceClient(connection),
-		Runtime:    runtimeClient,
-		Info:       accepted.info,
-		connection: connection,
-		command:    command,
-		cancel:     cancel,
-		server:     server,
-		listener:   listener,
-		runtimeDir: runtimeDir,
-		done:       processDone,
-		stdout:     stdout,
-		stderr:     stderr,
+		Provider:         pluginv1.NewProviderServiceClient(connection),
+		Runtime:          runtimeClient,
+		Info:             accepted.info,
+		SelectedProtocol: accepted.selectedProtocol,
+		connection:       connection,
+		command:          command,
+		cancel:           cancel,
+		server:           server,
+		listener:         listener,
+		runtimeDir:       runtimeDir,
+		done:             processDone,
+		stdout:           stdout,
+		stderr:           stderr,
 	}
 	cleanupDir = false
 	return client, nil
@@ -259,8 +261,9 @@ func filteredEnvironment(environment []string) []string {
 }
 
 type registrationResult struct {
-	servicePath string
-	info        *pluginv1.PluginInfo
+	servicePath      string
+	info             *pluginv1.PluginInfo
+	selectedProtocol *pluginv1.ProtocolVersion
 }
 
 type registrationServer struct {
@@ -295,7 +298,8 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 	if info == nil || info.GetPluginId() != s.config.ConfiguredPluginID || !contains(info.GetCategories(), "provider") || !contains(info.GetProviderKinds(), "docker") {
 		return nil, fmt.Errorf("plugin registration metadata mismatch")
 	}
-	if !supportsV1Minor0(info.GetSupportedProtocols()) {
+	selectedProtocol, ok := selectProtocol(info.GetSupportedProtocols())
+	if !ok {
 		return nil, fmt.Errorf("plugin does not support protocol 1.0")
 	}
 	servicePath, err := confinedUnixEndpoint(request.GetServiceEndpoint(), s.runtimeDir)
@@ -304,9 +308,9 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 	}
 	infoCopy := clonePluginInfo(info)
 	s.used = true
-	s.accepted <- registrationResult{servicePath: servicePath, info: infoCopy}
+	s.accepted <- registrationResult{servicePath: servicePath, info: infoCopy, selectedProtocol: selectedProtocol}
 	return &pluginv1.RegisterPluginResponse{
-		SelectedProtocol:  &pluginv1.ProtocolVersion{Major: 1, Minor: 0},
+		SelectedProtocol:  selectedProtocol,
 		HeartbeatInterval: durationpb.New(2 * time.Second),
 		MaxRequestBytes:   uint64(s.config.RPCMaxBytes),
 		MaxResponseBytes:  uint64(s.config.RPCMaxBytes),
@@ -323,13 +327,22 @@ func (s *registrationServer) Heartbeat(_ context.Context, request *pluginv1.Hear
 	return &pluginv1.HeartbeatResponse{ReceivedAt: timestamppb.Now()}, nil
 }
 
-func supportsV1Minor0(ranges []*pluginv1.ProtocolVersionRange) bool {
+func selectProtocol(ranges []*pluginv1.ProtocolVersionRange) (*pluginv1.ProtocolVersion, bool) {
+	const hostMaxMinor uint32 = 1
+	var selected *pluginv1.ProtocolVersion
 	for _, versionRange := range ranges {
-		if versionRange.GetMajor() == 1 && versionRange.GetMinMinor() == 0 && versionRange.GetMaxMinor() >= 0 {
-			return true
+		if versionRange == nil || versionRange.GetMajor() != 1 || versionRange.GetMinMinor() > versionRange.GetMaxMinor() || versionRange.GetMinMinor() > hostMaxMinor {
+			continue
+		}
+		minor := versionRange.GetMaxMinor()
+		if minor > hostMaxMinor {
+			minor = hostMaxMinor
+		}
+		if selected == nil || minor > selected.GetMinor() {
+			selected = &pluginv1.ProtocolVersion{Major: 1, Minor: minor}
 		}
 	}
-	return false
+	return selected, selected != nil
 }
 
 func contains(values []string, expected string) bool {
@@ -381,6 +394,18 @@ func clonePluginInfo(info *pluginv1.PluginInfo) *pluginv1.PluginInfo {
 		return nil
 	}
 	return proto.Clone(info).(*pluginv1.PluginInfo)
+}
+
+func (c *Client) SupportsFeatures(minor uint32, required ...string) bool {
+	if c == nil || c.SelectedProtocol.GetMajor() != 1 || c.SelectedProtocol.GetMinor() < minor || c.Info == nil {
+		return false
+	}
+	for _, feature := range required {
+		if !contains(c.Info.GetFeatures(), feature) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) Close() error {

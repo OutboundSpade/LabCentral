@@ -220,6 +220,15 @@ def verify_plugin_cases() -> None:
                 actual = {"result": "readable"}
             else:
                 actual = {"error": "state_version_incompatible"}
+        elif kind == "feature":
+            selected = case["selectedProtocol"]
+            missing = set(case["requiredFeatures"]) - set(case["pluginFeatures"])
+            if selected["major"] != 1 or selected["minor"] < case["requiredMinor"]:
+                actual = {"error": "protocol_feature_unavailable"}
+            elif missing:
+                actual = {"error": "plugin_feature_unavailable"}
+            else:
+                actual = {"result": "accepted"}
         else:
             raise AssertionError(f"unknown plugin fixture kind: {kind}")
         assert actual == expected, f"plugin fixture mismatch: {case['id']}: {actual!r} != {expected!r}"
@@ -247,8 +256,10 @@ def verify_proto(buf: str) -> None:
             "-o",
             str(current_path),
         ])
-        assert hashlib.sha256(current_path.read_bytes()).hexdigest() == baseline["sha256"], (
-            "plugin descriptor changed; run Buf breaking against the baseline and follow ADR-0012 before refreshing it"
+        current = compatibility["currentDescriptor"]
+        assert current["protocol"] == {"major": 1, "minor": 1}, "current plugin protocol version is not 1.1"
+        assert hashlib.sha256(current_path.read_bytes()).hexdigest() == current["sha256"], (
+            "current plugin descriptor digest is stale; verify compatibility before refreshing it"
         )
         run([buf, "breaking", "api", "--against", str(baseline_path)])
 
@@ -259,6 +270,7 @@ def collect_test_ids() -> set[str]:
         ROOT / "api/plugin/v1/compat/compatibility.yaml",
         ROOT / "design/contracts/provider-conformance.yaml",
         ROOT / "design/contracts/proxmox-qemu-mutation.yaml",
+        ROOT / "design/contracts/allocation-claims.yaml",
         ROOT / "design/contracts/rendering-cases.yaml",
         ROOT / "design/contracts/job-invariants.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
@@ -292,9 +304,9 @@ def verify_proxmox_mutation_contract() -> None:
     }
     required_features = {
         "stable_instance_identity_before_plan",
-        "opaque_target_allocation_claims",
+        "opaque-allocation-claims-v1",
         "excluded_claims_on_replan",
-        "dependency_plans_and_states",
+        "dependency-resource-input-v1",
         "durable_get_invocation",
     }
     assert set(contract["requiredProtocolFeatures"]) == required_features
@@ -371,6 +383,21 @@ def verify_contract_catalogs() -> None:
         if postgresql_test:
             assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
                 f"job invariant references missing PostgreSQL test: {invariant['id']}: {postgresql_test}"
+            )
+    allocations = load_yaml(ROOT / "design/contracts/allocation-claims.yaml")
+    assert allocations["uniqueKey"] == ["targetID", "namespace", "value"]
+    assert allocations["states"] == ["held", "committed", "orphaned", "released"]
+    assert len(allocations["cases"]) >= 14, "allocation suite lost required transition coverage"
+    for case in allocations["cases"]:
+        go_test = case.get("goTest")
+        assert go_test, f"allocation case has no Go test binding: {case['id']}"
+        assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+            f"allocation case references missing Go test: {case['id']}: {go_test}"
+        )
+        postgresql_test = case.get("postgresqlGoTest")
+        if postgresql_test:
+            assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
+                f"allocation case references missing PostgreSQL test: {case['id']}: {postgresql_test}"
             )
     security = load_yaml(ROOT / "design/contracts/security-controls.yaml")
     threat_ids: set[str] = set()

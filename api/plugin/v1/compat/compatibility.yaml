@@ -7,6 +7,9 @@ descriptorBaseline:
   sha256: 7ced3c0b4a1df19d9c7919306b61b7ce3c8e8b6f9ad46d8ee4bc30f3f53f66d5
   buildFlags: [--exclude-source-info, --as-file-descriptor-set]
   breakingCategory: FILE
+currentDescriptor:
+  protocol: {major: 1, minor: 1}
+  sha256: 5880929253be436d7d914a59dcd8472bc32cb1a26784b759b2945530d12c50f8
 cases:
   - id: TEST-PLUGIN-NEGOTIATE-001
     kind: negotiate
@@ -32,6 +35,25 @@ cases:
     hostRanges: [{major: 1, minMinor: 3, maxMinor: 5}]
     pluginRanges: [{major: 1, minMinor: 0, maxMinor: 2}]
     expected: {error: protocol_incompatible}
+  - id: TEST-PLUGIN-NEGOTIATE-005
+    kind: negotiate
+    hostRanges: [{major: 1, minMinor: 0, maxMinor: 1}]
+    pluginRanges: [{major: 1, minMinor: 0, maxMinor: 1}]
+    expected: {selected: {major: 1, minor: 1}}
+  - id: TEST-PLUGIN-FEATURE-001
+    kind: feature
+    selectedProtocol: {major: 1, minor: 1}
+    requiredMinor: 1
+    pluginFeatures: [opaque-allocation-claims-v1, dependency-resource-input-v1]
+    requiredFeatures: [opaque-allocation-claims-v1, dependency-resource-input-v1]
+    expected: {result: accepted}
+  - id: TEST-PLUGIN-FEATURE-002
+    kind: feature
+    selectedProtocol: {major: 1, minor: 0}
+    requiredMinor: 1
+    pluginFeatures: [opaque-allocation-claims-v1, dependency-resource-input-v1]
+    requiredFeatures: [opaque-allocation-claims-v1, dependency-resource-input-v1]
+    expected: {error: protocol_feature_unavailable}
   - id: TEST-PLUGIN-IDENTITY-001
     kind: identity
     configuredPluginID: io.labcentral.provider.fake

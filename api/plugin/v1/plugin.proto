@@ -156,6 +156,20 @@ message ProviderState {
   bytes digest = 6;
 }
 
+message AllocationClaim {
+  string namespace = 1;
+  string value = 2;
+}
+
+message ResourceDependency {
+  string logical_resource_id = 1;
+  bytes provider_plan = 2;
+  string provider_plan_digest = 3;
+  ProviderState provider_state = 4;
+  bytes observed_state_json = 5;
+  repeated AllocationClaim committed_allocations = 6;
+}
+
 message StructuredError {
   string code = 1;
   string error_class = 2;
@@ -194,6 +208,8 @@ message ResourceMutationInput {
   bytes provider_plan = 4;
   ProviderState prior_state = 5;
   repeated string ownership_tokens = 6;
+  repeated ResourceDependency dependencies = 7;
+  repeated AllocationClaim committed_allocations = 8;
 }
 
 message Progress {
@@ -222,6 +238,7 @@ message InvocationEvent {
 
 message PlanResourceRequest {
   ResourceMutationInput input = 1;
+  repeated AllocationClaim excluded_allocations = 2;
 }
 
 message PlanResourceResponse {
@@ -229,6 +246,7 @@ message PlanResourceResponse {
   string provider_plan_digest = 2;
   repeated Warning warnings = 3;
   StructuredError error = 4;
+  repeated AllocationClaim proposed_allocations = 5;
 }
 
 message ApplyResourceRequest {

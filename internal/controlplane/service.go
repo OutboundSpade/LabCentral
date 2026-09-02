@@ -118,29 +118,55 @@ func (s *Service) Plan(ctx context.Context, source []byte, acknowledged bool) (P
 	if err != nil {
 		return PlanResult{}, err
 	}
-	result, _, err := s.planCanonical(ctx, validation)
+	previewID := domain.InstanceID("preview_" + validation.Canonical.Digest.Hex()[:24])
+	result, _, err := s.planCanonical(ctx, validation, previewID)
 	return result, err
 }
 
-func (s *Service) planCanonical(ctx context.Context, validation ValidationResult) (PlanResult, map[domain.LogicalResourceID][]byte, error) {
+func (s *Service) planCanonical(ctx context.Context, validation ValidationResult, instanceID domain.InstanceID) (PlanResult, map[domain.LogicalResourceID][]byte, error) {
+	if _, err := domain.NewInstanceID(string(instanceID)); err != nil {
+		return PlanResult{}, nil, err
+	}
 	result := PlanResult{CanonicalDigest: validation.Canonical.Digest.String(), Warnings: validation.Warnings}
 	providerPlans := make(map[domain.LogicalResourceID][]byte, len(validation.Canonical.Resources))
-	for _, resource := range validation.Canonical.Resources {
+	providerPlanDigests := make(map[domain.LogicalResourceID]string, len(validation.Canonical.Resources))
+	graph, err := render.BuildResourceGraph(validation.Canonical.Resources)
+	if err != nil {
+		return PlanResult{}, nil, err
+	}
+	for _, resource := range graph.Resources {
 		plan := ResourcePlan{ResourceID: string(resource.ID()), Kind: string(resource.Kind()), Action: "ensure"}
 		if !providerManagedKind(resource.Kind()) {
 			plan.Action = "project"
 			result.Resources = append(result.Resources, plan)
 			providerPlans[resource.ID()] = []byte(`{"action":"project"}`)
+			planDigest := sha256.Sum256(providerPlans[resource.ID()])
+			providerPlanDigests[resource.ID()] = hex.EncodeToString(planDigest[:])
 			continue
 		}
 		canonicalResource, err := render.CanonicalResource(resource)
 		if err != nil {
 			return PlanResult{}, nil, err
 		}
+		dependencies := make([]*pluginv1.ResourceDependency, 0, len(resource.Dependencies()))
+		for _, dependencyID := range resource.Dependencies() {
+			dependencyPlan, exists := providerPlans[dependencyID]
+			if !exists {
+				return PlanResult{}, nil, fmt.Errorf("dependency %s was not planned before %s", dependencyID, resource.ID())
+			}
+			dependencies = append(dependencies, &pluginv1.ResourceDependency{
+				LogicalResourceId: string(dependencyID), ProviderPlan: append([]byte(nil), dependencyPlan...),
+				ProviderPlanDigest: providerPlanDigests[dependencyID],
+			})
+		}
 		planContext, cancel := context.WithTimeout(ctx, 10*time.Second)
 		response, callErr := s.provider.PlanResource(planContext, &pluginv1.PlanResourceRequest{Input: &pluginv1.ResourceMutationInput{
-			Context: &pluginv1.CallContext{RequestId: "plan", LogicalResourceId: string(resource.ID()), ProviderTargetId: string(LocalDockerTarget)},
-			Target:  &pluginv1.TargetContext{TargetId: string(LocalDockerTarget)}, CanonicalResourceJson: canonicalResource,
+			Context: &pluginv1.CallContext{
+				RequestId: "plan", LabInstanceId: string(instanceID), LogicalResourceId: string(resource.ID()),
+				ProviderTargetId: string(LocalDockerTarget), DesiredGeneration: 1,
+			},
+			Target: &pluginv1.TargetContext{TargetId: string(LocalDockerTarget)}, CanonicalResourceJson: canonicalResource,
+			OwnershipTokens: []string{ownershipToken(instanceID, resource.ID())}, Dependencies: dependencies,
 		}})
 		cancel()
 		if callErr != nil {
@@ -149,7 +175,15 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 		if response.GetError() != nil {
 			return PlanResult{}, nil, &ValidationError{Issues: providerErrors([]*pluginv1.StructuredError{response.GetError()})}
 		}
+		if len(response.GetProposedAllocations()) > 0 {
+			return PlanResult{}, nil, fmt.Errorf("provider allocation planning is unavailable in the local Docker control plane")
+		}
 		providerPlans[resource.ID()] = append([]byte(nil), response.GetProviderPlan()...)
+		planDigest := sha256.Sum256(providerPlans[resource.ID()])
+		providerPlanDigests[resource.ID()] = hex.EncodeToString(planDigest[:])
+		if response.GetProviderPlanDigest() != providerPlanDigests[resource.ID()] {
+			return PlanResult{}, nil, fmt.Errorf("provider plan digest mismatch for %s", resource.ID())
+		}
 		plan.Warnings = providerWarnings(response.GetWarnings())
 		result.Resources = append(result.Resources, plan)
 	}
@@ -161,15 +195,15 @@ func (s *Service) CreateInstance(ctx context.Context, source []byte, acknowledge
 	if err != nil {
 		return EnqueueResult{}, err
 	}
-	_, providerPlans, err := s.planCanonical(ctx, validation)
-	if err != nil {
-		return EnqueueResult{}, err
-	}
 	instanceValue, err := s.ids.New("inst")
 	if err != nil {
 		return EnqueueResult{}, err
 	}
 	instanceID := domain.InstanceID(instanceValue)
+	_, providerPlans, err := s.planCanonical(ctx, validation, instanceID)
+	if err != nil {
+		return EnqueueResult{}, err
+	}
 	operationValue, err := s.ids.New("op")
 	if err != nil {
 		return EnqueueResult{}, err

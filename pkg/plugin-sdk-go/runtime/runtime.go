@@ -77,7 +77,7 @@ func Serve(ctx context.Context, services Services) error {
 	if err != nil {
 		return fmt.Errorf("register plugin: %w", err)
 	}
-	if response.GetSelectedProtocol().GetMajor() != 1 {
+	if !supportsProtocol(services.Info.GetSupportedProtocols(), response.GetSelectedProtocol()) {
 		return fmt.Errorf("host selected unsupported protocol")
 	}
 	heartbeatInterval := response.GetHeartbeatInterval().AsDuration()
@@ -96,6 +96,19 @@ func Serve(ctx context.Context, services Services) error {
 	case err := <-serverDone:
 		return err
 	}
+}
+
+func supportsProtocol(ranges []*pluginv1.ProtocolVersionRange, selected *pluginv1.ProtocolVersion) bool {
+	if selected == nil {
+		return false
+	}
+	for _, versionRange := range ranges {
+		if versionRange != nil && versionRange.GetMajor() == selected.GetMajor() &&
+			versionRange.GetMinMinor() <= selected.GetMinor() && selected.GetMinor() <= versionRange.GetMaxMinor() {
+			return true
+		}
+	}
+	return false
 }
 
 func heartbeatLoop(ctx context.Context, client pluginv1.PluginRegistrationServiceClient, instanceID string, interval time.Duration, done chan<- error) {

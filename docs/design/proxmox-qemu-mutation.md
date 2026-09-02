@@ -1,6 +1,6 @@
 # Proxmox QEMU mutation contract
 
-`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. It authorizes no mutation by the current provider. `workload.vm` and every lifecycle capability remain `unsupported` until the protocol/allocation prerequisites, implementation, and credentialed T3 gates below pass on the configured target.
+`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. Neither authorizes mutation by the current provider. `workload.vm` and every lifecycle capability remain `unsupported` until the provider implementation and credentialed T3 gates below pass on the configured target.
 
 ## Supported slice
 

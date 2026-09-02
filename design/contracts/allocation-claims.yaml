@@ -1,0 +1,74 @@
+formatVersion: 1
+suite: labcentral.provider-allocation-claims/v1alpha1
+maximumClaimsPerReservation: 256
+uniqueKey: [targetID, namespace, value]
+states: [held, committed, orphaned, released]
+cases:
+  - id: TEST-ALLOC-001
+    title: Batch reservation is atomic on conflict
+    goTest: TestAllocationContract001AtomicReservation
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {partialClaims: 0, conflictValuesReturned: true}
+  - id: TEST-ALLOC-002
+    title: Same plan reservation replay is idempotent
+    goTest: TestAllocationContract002IdempotentReplay
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {claimCount: 2, state: held}
+  - id: TEST-ALLOC-003
+    title: Allocation uniqueness is target scoped
+    goTest: TestAllocationContract003TargetIsolation
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {sameNamespaceAndValueOnDifferentTargets: accepted}
+  - id: TEST-ALLOC-004
+    title: Released value can bind only to a new plan
+    goTest: TestAllocationContract004ReleasedReuse
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {oldPlanReplay: conflict, newPlan: held}
+  - id: TEST-ALLOC-005
+    title: Accepted plan atomically commits its held claims
+    goTest: TestAllocationContract005Commit
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {allClaims: committed}
+  - id: TEST-ALLOC-006
+    title: Unknown invocation retains committed claims
+    goTest: TestAllocationContract006UnknownRetention
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {state: committed, availableToOtherPlan: false}
+  - id: TEST-ALLOC-007
+    title: Compensation leftover becomes orphaned and unavailable
+    goTest: TestAllocationContract007OrphanRetention
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {state: orphaned, availableToOtherPlan: false}
+  - id: TEST-ALLOC-008
+    title: Release requires positive provider absence
+    goTest: TestAllocationContract008AbsenceGatedRelease
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {withoutEvidence: provider_absence_required, withEvidence: released}
+  - id: TEST-ALLOC-009
+    title: Claims survive SQLite process restart
+    goTest: TestAllocationContract009RestartPersistence
+    expect: {bindingAndStatePreserved: true}
+  - id: TEST-ALLOC-010
+    title: Concurrent reservations have exactly one winner
+    goTest: TestAllocationContract010ConcurrentWinner
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {successes: 1, conflicts: 1}
+  - id: TEST-ALLOC-011
+    title: Claim identity and batch bounds fail closed
+    goTest: TestAllocationContract011InputBounds
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {mutations: 0}
+  - id: TEST-ALLOC-012
+    title: Stale plan binding cannot transition a claim
+    goTest: TestAllocationContract012StaleBinding
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {error: allocation_binding_mismatch, state: held}
+  - id: TEST-ALLOC-013
+    title: Conflict exclusions drive deterministic bounded replan
+    goTest: TestAllocationContract013DeterministicBoundedReplan
+    expect: {stableSortedExclusions: true, maximumAttempts: 8, retriesOtherErrors: false}
+  - id: TEST-ALLOC-014
+    title: Stale worker fence cannot release a retained claim
+    goTest: TestAllocationContract014StaleFence
+    postgresqlGoTest: TestPostgreSQLAllocationConformance
+    expect: {error: stale_allocation_fence, state: committed, retainedFence: 5}

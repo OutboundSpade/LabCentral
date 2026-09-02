@@ -249,7 +249,7 @@ func (x CancelInvocationResponse_Outcome) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CancelInvocationResponse_Outcome.Descriptor instead.
 func (CancelInvocationResponse_Outcome) EnumDescriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{40, 0}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{42, 0}
 }
 
 type ProtocolVersion struct {
@@ -1598,6 +1598,142 @@ func (x *ProviderState) GetDigest() []byte {
 	return nil
 }
 
+type AllocationClaim struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AllocationClaim) Reset() {
+	*x = AllocationClaim{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AllocationClaim) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AllocationClaim) ProtoMessage() {}
+
+func (x *AllocationClaim) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AllocationClaim.ProtoReflect.Descriptor instead.
+func (*AllocationClaim) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *AllocationClaim) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *AllocationClaim) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+type ResourceDependency struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	LogicalResourceId    string                 `protobuf:"bytes,1,opt,name=logical_resource_id,json=logicalResourceId,proto3" json:"logical_resource_id,omitempty"`
+	ProviderPlan         []byte                 `protobuf:"bytes,2,opt,name=provider_plan,json=providerPlan,proto3" json:"provider_plan,omitempty"`
+	ProviderPlanDigest   string                 `protobuf:"bytes,3,opt,name=provider_plan_digest,json=providerPlanDigest,proto3" json:"provider_plan_digest,omitempty"`
+	ProviderState        *ProviderState         `protobuf:"bytes,4,opt,name=provider_state,json=providerState,proto3" json:"provider_state,omitempty"`
+	ObservedStateJson    []byte                 `protobuf:"bytes,5,opt,name=observed_state_json,json=observedStateJson,proto3" json:"observed_state_json,omitempty"`
+	CommittedAllocations []*AllocationClaim     `protobuf:"bytes,6,rep,name=committed_allocations,json=committedAllocations,proto3" json:"committed_allocations,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ResourceDependency) Reset() {
+	*x = ResourceDependency{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResourceDependency) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResourceDependency) ProtoMessage() {}
+
+func (x *ResourceDependency) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResourceDependency.ProtoReflect.Descriptor instead.
+func (*ResourceDependency) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ResourceDependency) GetLogicalResourceId() string {
+	if x != nil {
+		return x.LogicalResourceId
+	}
+	return ""
+}
+
+func (x *ResourceDependency) GetProviderPlan() []byte {
+	if x != nil {
+		return x.ProviderPlan
+	}
+	return nil
+}
+
+func (x *ResourceDependency) GetProviderPlanDigest() string {
+	if x != nil {
+		return x.ProviderPlanDigest
+	}
+	return ""
+}
+
+func (x *ResourceDependency) GetProviderState() *ProviderState {
+	if x != nil {
+		return x.ProviderState
+	}
+	return nil
+}
+
+func (x *ResourceDependency) GetObservedStateJson() []byte {
+	if x != nil {
+		return x.ObservedStateJson
+	}
+	return nil
+}
+
+func (x *ResourceDependency) GetCommittedAllocations() []*AllocationClaim {
+	if x != nil {
+		return x.CommittedAllocations
+	}
+	return nil
+}
+
 type StructuredError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -1614,7 +1750,7 @@ type StructuredError struct {
 
 func (x *StructuredError) Reset() {
 	*x = StructuredError{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[19]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1626,7 +1762,7 @@ func (x *StructuredError) String() string {
 func (*StructuredError) ProtoMessage() {}
 
 func (x *StructuredError) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[19]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1639,7 +1775,7 @@ func (x *StructuredError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StructuredError.ProtoReflect.Descriptor instead.
 func (*StructuredError) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{19}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *StructuredError) GetCode() string {
@@ -1709,7 +1845,7 @@ type Warning struct {
 
 func (x *Warning) Reset() {
 	*x = Warning{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[20]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1721,7 +1857,7 @@ func (x *Warning) String() string {
 func (*Warning) ProtoMessage() {}
 
 func (x *Warning) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[20]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1734,7 +1870,7 @@ func (x *Warning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Warning.ProtoReflect.Descriptor instead.
 func (*Warning) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{20}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Warning) GetCode() string {
@@ -1770,7 +1906,7 @@ type ValidateLabRequest struct {
 
 func (x *ValidateLabRequest) Reset() {
 	*x = ValidateLabRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[21]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1782,7 +1918,7 @@ func (x *ValidateLabRequest) String() string {
 func (*ValidateLabRequest) ProtoMessage() {}
 
 func (x *ValidateLabRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[21]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1795,7 +1931,7 @@ func (x *ValidateLabRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateLabRequest.ProtoReflect.Descriptor instead.
 func (*ValidateLabRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{21}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ValidateLabRequest) GetContext() *CallContext {
@@ -1838,7 +1974,7 @@ type ValidateLabResponse struct {
 
 func (x *ValidateLabResponse) Reset() {
 	*x = ValidateLabResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[22]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1850,7 +1986,7 @@ func (x *ValidateLabResponse) String() string {
 func (*ValidateLabResponse) ProtoMessage() {}
 
 func (x *ValidateLabResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[22]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1863,7 +1999,7 @@ func (x *ValidateLabResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateLabResponse.ProtoReflect.Descriptor instead.
 func (*ValidateLabResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{22}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ValidateLabResponse) GetErrors() []*StructuredError {
@@ -1902,13 +2038,15 @@ type ResourceMutationInput struct {
 	ProviderPlan          []byte                 `protobuf:"bytes,4,opt,name=provider_plan,json=providerPlan,proto3" json:"provider_plan,omitempty"`
 	PriorState            *ProviderState         `protobuf:"bytes,5,opt,name=prior_state,json=priorState,proto3" json:"prior_state,omitempty"`
 	OwnershipTokens       []string               `protobuf:"bytes,6,rep,name=ownership_tokens,json=ownershipTokens,proto3" json:"ownership_tokens,omitempty"`
+	Dependencies          []*ResourceDependency  `protobuf:"bytes,7,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
+	CommittedAllocations  []*AllocationClaim     `protobuf:"bytes,8,rep,name=committed_allocations,json=committedAllocations,proto3" json:"committed_allocations,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ResourceMutationInput) Reset() {
 	*x = ResourceMutationInput{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[23]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1920,7 +2058,7 @@ func (x *ResourceMutationInput) String() string {
 func (*ResourceMutationInput) ProtoMessage() {}
 
 func (x *ResourceMutationInput) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[23]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1933,7 +2071,7 @@ func (x *ResourceMutationInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceMutationInput.ProtoReflect.Descriptor instead.
 func (*ResourceMutationInput) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{23}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ResourceMutationInput) GetContext() *CallContext {
@@ -1978,6 +2116,20 @@ func (x *ResourceMutationInput) GetOwnershipTokens() []string {
 	return nil
 }
 
+func (x *ResourceMutationInput) GetDependencies() []*ResourceDependency {
+	if x != nil {
+		return x.Dependencies
+	}
+	return nil
+}
+
+func (x *ResourceMutationInput) GetCommittedAllocations() []*AllocationClaim {
+	if x != nil {
+		return x.CommittedAllocations
+	}
+	return nil
+}
+
 type Progress struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Phase           string                 `protobuf:"bytes,1,opt,name=phase,proto3" json:"phase,omitempty"`
@@ -1991,7 +2143,7 @@ type Progress struct {
 
 func (x *Progress) Reset() {
 	*x = Progress{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[24]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2003,7 +2155,7 @@ func (x *Progress) String() string {
 func (*Progress) ProtoMessage() {}
 
 func (x *Progress) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[24]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2016,7 +2168,7 @@ func (x *Progress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Progress.ProtoReflect.Descriptor instead.
 func (*Progress) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{24}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Progress) GetPhase() string {
@@ -2068,7 +2220,7 @@ type ResourceResult struct {
 
 func (x *ResourceResult) Reset() {
 	*x = ResourceResult{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[25]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2080,7 +2232,7 @@ func (x *ResourceResult) String() string {
 func (*ResourceResult) ProtoMessage() {}
 
 func (x *ResourceResult) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[25]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2093,7 +2245,7 @@ func (x *ResourceResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceResult.ProtoReflect.Descriptor instead.
 func (*ResourceResult) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{25}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ResourceResult) GetProviderState() *ProviderState {
@@ -2151,7 +2303,7 @@ type InvocationEvent struct {
 
 func (x *InvocationEvent) Reset() {
 	*x = InvocationEvent{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[26]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2163,7 +2315,7 @@ func (x *InvocationEvent) String() string {
 func (*InvocationEvent) ProtoMessage() {}
 
 func (x *InvocationEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[26]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2176,7 +2328,7 @@ func (x *InvocationEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InvocationEvent.ProtoReflect.Descriptor instead.
 func (*InvocationEvent) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{26}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *InvocationEvent) GetEvent() isInvocationEvent_Event {
@@ -2221,15 +2373,16 @@ func (*InvocationEvent_Progress) isInvocationEvent_Event() {}
 func (*InvocationEvent_Result) isInvocationEvent_Event() {}
 
 type PlanResourceRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Input         *ResourceMutationInput `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Input               *ResourceMutationInput `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
+	ExcludedAllocations []*AllocationClaim     `protobuf:"bytes,2,rep,name=excluded_allocations,json=excludedAllocations,proto3" json:"excluded_allocations,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *PlanResourceRequest) Reset() {
 	*x = PlanResourceRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[27]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2394,7 @@ func (x *PlanResourceRequest) String() string {
 func (*PlanResourceRequest) ProtoMessage() {}
 
 func (x *PlanResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[27]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2407,7 @@ func (x *PlanResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanResourceRequest.ProtoReflect.Descriptor instead.
 func (*PlanResourceRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{27}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *PlanResourceRequest) GetInput() *ResourceMutationInput {
@@ -2264,19 +2417,27 @@ func (x *PlanResourceRequest) GetInput() *ResourceMutationInput {
 	return nil
 }
 
+func (x *PlanResourceRequest) GetExcludedAllocations() []*AllocationClaim {
+	if x != nil {
+		return x.ExcludedAllocations
+	}
+	return nil
+}
+
 type PlanResourceResponse struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	ProviderPlan       []byte                 `protobuf:"bytes,1,opt,name=provider_plan,json=providerPlan,proto3" json:"provider_plan,omitempty"`
-	ProviderPlanDigest string                 `protobuf:"bytes,2,opt,name=provider_plan_digest,json=providerPlanDigest,proto3" json:"provider_plan_digest,omitempty"`
-	Warnings           []*Warning             `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	Error              *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	ProviderPlan        []byte                 `protobuf:"bytes,1,opt,name=provider_plan,json=providerPlan,proto3" json:"provider_plan,omitempty"`
+	ProviderPlanDigest  string                 `protobuf:"bytes,2,opt,name=provider_plan_digest,json=providerPlanDigest,proto3" json:"provider_plan_digest,omitempty"`
+	Warnings            []*Warning             `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	Error               *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	ProposedAllocations []*AllocationClaim     `protobuf:"bytes,5,rep,name=proposed_allocations,json=proposedAllocations,proto3" json:"proposed_allocations,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *PlanResourceResponse) Reset() {
 	*x = PlanResourceResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[28]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2288,7 +2449,7 @@ func (x *PlanResourceResponse) String() string {
 func (*PlanResourceResponse) ProtoMessage() {}
 
 func (x *PlanResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[28]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2301,7 +2462,7 @@ func (x *PlanResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanResourceResponse.ProtoReflect.Descriptor instead.
 func (*PlanResourceResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{28}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *PlanResourceResponse) GetProviderPlan() []byte {
@@ -2332,6 +2493,13 @@ func (x *PlanResourceResponse) GetError() *StructuredError {
 	return nil
 }
 
+func (x *PlanResourceResponse) GetProposedAllocations() []*AllocationClaim {
+	if x != nil {
+		return x.ProposedAllocations
+	}
+	return nil
+}
+
 type ApplyResourceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Input         *ResourceMutationInput `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
@@ -2341,7 +2509,7 @@ type ApplyResourceRequest struct {
 
 func (x *ApplyResourceRequest) Reset() {
 	*x = ApplyResourceRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[29]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2353,7 +2521,7 @@ func (x *ApplyResourceRequest) String() string {
 func (*ApplyResourceRequest) ProtoMessage() {}
 
 func (x *ApplyResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[29]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2366,7 +2534,7 @@ func (x *ApplyResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyResourceRequest.ProtoReflect.Descriptor instead.
 func (*ApplyResourceRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{29}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ApplyResourceRequest) GetInput() *ResourceMutationInput {
@@ -2385,7 +2553,7 @@ type ApplyResourceResponse struct {
 
 func (x *ApplyResourceResponse) Reset() {
 	*x = ApplyResourceResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[30]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2397,7 +2565,7 @@ func (x *ApplyResourceResponse) String() string {
 func (*ApplyResourceResponse) ProtoMessage() {}
 
 func (x *ApplyResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[30]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2410,7 +2578,7 @@ func (x *ApplyResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyResourceResponse.ProtoReflect.Descriptor instead.
 func (*ApplyResourceResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{30}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ApplyResourceResponse) GetEvent() *InvocationEvent {
@@ -2429,7 +2597,7 @@ type ReadResourceRequest struct {
 
 func (x *ReadResourceRequest) Reset() {
 	*x = ReadResourceRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[31]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2441,7 +2609,7 @@ func (x *ReadResourceRequest) String() string {
 func (*ReadResourceRequest) ProtoMessage() {}
 
 func (x *ReadResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[31]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2454,7 +2622,7 @@ func (x *ReadResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadResourceRequest.ProtoReflect.Descriptor instead.
 func (*ReadResourceRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{31}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ReadResourceRequest) GetInput() *ResourceMutationInput {
@@ -2473,7 +2641,7 @@ type ReadResourceResponse struct {
 
 func (x *ReadResourceResponse) Reset() {
 	*x = ReadResourceResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[32]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2485,7 +2653,7 @@ func (x *ReadResourceResponse) String() string {
 func (*ReadResourceResponse) ProtoMessage() {}
 
 func (x *ReadResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[32]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2498,7 +2666,7 @@ func (x *ReadResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadResourceResponse.ProtoReflect.Descriptor instead.
 func (*ReadResourceResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{32}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ReadResourceResponse) GetResult() *ResourceResult {
@@ -2517,7 +2685,7 @@ type DestroyResourceRequest struct {
 
 func (x *DestroyResourceRequest) Reset() {
 	*x = DestroyResourceRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[33]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2529,7 +2697,7 @@ func (x *DestroyResourceRequest) String() string {
 func (*DestroyResourceRequest) ProtoMessage() {}
 
 func (x *DestroyResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[33]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2542,7 +2710,7 @@ func (x *DestroyResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyResourceRequest.ProtoReflect.Descriptor instead.
 func (*DestroyResourceRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{33}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *DestroyResourceRequest) GetInput() *ResourceMutationInput {
@@ -2561,7 +2729,7 @@ type DestroyResourceResponse struct {
 
 func (x *DestroyResourceResponse) Reset() {
 	*x = DestroyResourceResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[34]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2573,7 +2741,7 @@ func (x *DestroyResourceResponse) String() string {
 func (*DestroyResourceResponse) ProtoMessage() {}
 
 func (x *DestroyResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[34]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2586,7 +2754,7 @@ func (x *DestroyResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyResourceResponse.ProtoReflect.Descriptor instead.
 func (*DestroyResourceResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{34}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DestroyResourceResponse) GetEvent() *InvocationEvent {
@@ -2609,7 +2777,7 @@ type LifecycleRequest struct {
 
 func (x *LifecycleRequest) Reset() {
 	*x = LifecycleRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[35]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2621,7 +2789,7 @@ func (x *LifecycleRequest) String() string {
 func (*LifecycleRequest) ProtoMessage() {}
 
 func (x *LifecycleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[35]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2634,7 +2802,7 @@ func (x *LifecycleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LifecycleRequest.ProtoReflect.Descriptor instead.
 func (*LifecycleRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{35}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *LifecycleRequest) GetContext() *CallContext {
@@ -2681,7 +2849,7 @@ type LifecycleResponse struct {
 
 func (x *LifecycleResponse) Reset() {
 	*x = LifecycleResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[36]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2693,7 +2861,7 @@ func (x *LifecycleResponse) String() string {
 func (*LifecycleResponse) ProtoMessage() {}
 
 func (x *LifecycleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[36]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2706,7 +2874,7 @@ func (x *LifecycleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LifecycleResponse.ProtoReflect.Descriptor instead.
 func (*LifecycleResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{36}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *LifecycleResponse) GetEvent() *InvocationEvent {
@@ -2727,7 +2895,7 @@ type GetInvocationRequest struct {
 
 func (x *GetInvocationRequest) Reset() {
 	*x = GetInvocationRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[37]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2739,7 +2907,7 @@ func (x *GetInvocationRequest) String() string {
 func (*GetInvocationRequest) ProtoMessage() {}
 
 func (x *GetInvocationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[37]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2752,7 +2920,7 @@ func (x *GetInvocationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInvocationRequest.ProtoReflect.Descriptor instead.
 func (*GetInvocationRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{37}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetInvocationRequest) GetContext() *CallContext {
@@ -2785,7 +2953,7 @@ type GetInvocationResponse struct {
 
 func (x *GetInvocationResponse) Reset() {
 	*x = GetInvocationResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[38]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2797,7 +2965,7 @@ func (x *GetInvocationResponse) String() string {
 func (*GetInvocationResponse) ProtoMessage() {}
 
 func (x *GetInvocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[38]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2810,7 +2978,7 @@ func (x *GetInvocationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInvocationResponse.ProtoReflect.Descriptor instead.
 func (*GetInvocationResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{38}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *GetInvocationResponse) GetResult() *ResourceResult {
@@ -2831,7 +2999,7 @@ type CancelInvocationRequest struct {
 
 func (x *CancelInvocationRequest) Reset() {
 	*x = CancelInvocationRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[39]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2843,7 +3011,7 @@ func (x *CancelInvocationRequest) String() string {
 func (*CancelInvocationRequest) ProtoMessage() {}
 
 func (x *CancelInvocationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[39]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2856,7 +3024,7 @@ func (x *CancelInvocationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelInvocationRequest.ProtoReflect.Descriptor instead.
 func (*CancelInvocationRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{39}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *CancelInvocationRequest) GetContext() *CallContext {
@@ -2889,7 +3057,7 @@ type CancelInvocationResponse struct {
 
 func (x *CancelInvocationResponse) Reset() {
 	*x = CancelInvocationResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[40]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2901,7 +3069,7 @@ func (x *CancelInvocationResponse) String() string {
 func (*CancelInvocationResponse) ProtoMessage() {}
 
 func (x *CancelInvocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[40]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2914,7 +3082,7 @@ func (x *CancelInvocationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelInvocationResponse.ProtoReflect.Descriptor instead.
 func (*CancelInvocationResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{40}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CancelInvocationResponse) GetOutcome() CancelInvocationResponse_Outcome {
@@ -2937,7 +3105,7 @@ type MigrateStateRequest struct {
 
 func (x *MigrateStateRequest) Reset() {
 	*x = MigrateStateRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[41]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2949,7 +3117,7 @@ func (x *MigrateStateRequest) String() string {
 func (*MigrateStateRequest) ProtoMessage() {}
 
 func (x *MigrateStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[41]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2962,7 +3130,7 @@ func (x *MigrateStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrateStateRequest.ProtoReflect.Descriptor instead.
 func (*MigrateStateRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{41}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *MigrateStateRequest) GetContext() *CallContext {
@@ -3012,7 +3180,7 @@ type MigrateStateResponse struct {
 
 func (x *MigrateStateResponse) Reset() {
 	*x = MigrateStateResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[42]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3024,7 +3192,7 @@ func (x *MigrateStateResponse) String() string {
 func (*MigrateStateResponse) ProtoMessage() {}
 
 func (x *MigrateStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[42]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3037,7 +3205,7 @@ func (x *MigrateStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrateStateResponse.ProtoReflect.Descriptor instead.
 func (*MigrateStateResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{42}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *MigrateStateResponse) GetState() *ProviderState {
@@ -3080,7 +3248,7 @@ type DiscoverAccessEndpointRequest struct {
 
 func (x *DiscoverAccessEndpointRequest) Reset() {
 	*x = DiscoverAccessEndpointRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[43]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3092,7 +3260,7 @@ func (x *DiscoverAccessEndpointRequest) String() string {
 func (*DiscoverAccessEndpointRequest) ProtoMessage() {}
 
 func (x *DiscoverAccessEndpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[43]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3105,7 +3273,7 @@ func (x *DiscoverAccessEndpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoverAccessEndpointRequest.ProtoReflect.Descriptor instead.
 func (*DiscoverAccessEndpointRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{43}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *DiscoverAccessEndpointRequest) GetContext() *CallContext {
@@ -3148,7 +3316,7 @@ type DiscoverAccessEndpointResponse struct {
 
 func (x *DiscoverAccessEndpointResponse) Reset() {
 	*x = DiscoverAccessEndpointResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[44]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3160,7 +3328,7 @@ func (x *DiscoverAccessEndpointResponse) String() string {
 func (*DiscoverAccessEndpointResponse) ProtoMessage() {}
 
 func (x *DiscoverAccessEndpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[44]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3173,7 +3341,7 @@ func (x *DiscoverAccessEndpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoverAccessEndpointResponse.ProtoReflect.Descriptor instead.
 func (*DiscoverAccessEndpointResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{44}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DiscoverAccessEndpointResponse) GetOpaqueConnectionData() []byte {
@@ -3216,7 +3384,7 @@ type ListImagesRequest struct {
 
 func (x *ListImagesRequest) Reset() {
 	*x = ListImagesRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[45]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3228,7 +3396,7 @@ func (x *ListImagesRequest) String() string {
 func (*ListImagesRequest) ProtoMessage() {}
 
 func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[45]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3241,7 +3409,7 @@ func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesRequest.ProtoReflect.Descriptor instead.
 func (*ListImagesRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{45}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListImagesRequest) GetContext() *CallContext {
@@ -3285,7 +3453,7 @@ type ImageRecord struct {
 
 func (x *ImageRecord) Reset() {
 	*x = ImageRecord{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[46]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3297,7 +3465,7 @@ func (x *ImageRecord) String() string {
 func (*ImageRecord) ProtoMessage() {}
 
 func (x *ImageRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[46]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3310,7 +3478,7 @@ func (x *ImageRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageRecord.ProtoReflect.Descriptor instead.
 func (*ImageRecord) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{46}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ImageRecord) GetProviderImageId() string {
@@ -3358,7 +3526,7 @@ type ListImagesResponse struct {
 
 func (x *ListImagesResponse) Reset() {
 	*x = ListImagesResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[47]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3370,7 +3538,7 @@ func (x *ListImagesResponse) String() string {
 func (*ListImagesResponse) ProtoMessage() {}
 
 func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[47]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3383,7 +3551,7 @@ func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesResponse.ProtoReflect.Descriptor instead.
 func (*ListImagesResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{47}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListImagesResponse) GetImages() []*ImageRecord {
@@ -3413,7 +3581,7 @@ type ImportImageRequest struct {
 
 func (x *ImportImageRequest) Reset() {
 	*x = ImportImageRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[48]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3425,7 +3593,7 @@ func (x *ImportImageRequest) String() string {
 func (*ImportImageRequest) ProtoMessage() {}
 
 func (x *ImportImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[48]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3438,7 +3606,7 @@ func (x *ImportImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportImageRequest.ProtoReflect.Descriptor instead.
 func (*ImportImageRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{48}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ImportImageRequest) GetContext() *CallContext {
@@ -3485,7 +3653,7 @@ type ImportImageResponse struct {
 
 func (x *ImportImageResponse) Reset() {
 	*x = ImportImageResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[49]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3497,7 +3665,7 @@ func (x *ImportImageResponse) String() string {
 func (*ImportImageResponse) ProtoMessage() {}
 
 func (x *ImportImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[49]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3510,7 +3678,7 @@ func (x *ImportImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportImageResponse.ProtoReflect.Descriptor instead.
 func (*ImportImageResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{49}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ImportImageResponse) GetEvent() *InvocationEvent {
@@ -3534,7 +3702,7 @@ type CreateAccessRequest struct {
 
 func (x *CreateAccessRequest) Reset() {
 	*x = CreateAccessRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[50]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3546,7 +3714,7 @@ func (x *CreateAccessRequest) String() string {
 func (*CreateAccessRequest) ProtoMessage() {}
 
 func (x *CreateAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[50]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3559,7 +3727,7 @@ func (x *CreateAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAccessRequest.ProtoReflect.Descriptor instead.
 func (*CreateAccessRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{50}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *CreateAccessRequest) GetContext() *CallContext {
@@ -3617,7 +3785,7 @@ type CreateAccessResponse struct {
 
 func (x *CreateAccessResponse) Reset() {
 	*x = CreateAccessResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[51]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3629,7 +3797,7 @@ func (x *CreateAccessResponse) String() string {
 func (*CreateAccessResponse) ProtoMessage() {}
 
 func (x *CreateAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[51]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3642,7 +3810,7 @@ func (x *CreateAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAccessResponse.ProtoReflect.Descriptor instead.
 func (*CreateAccessResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{51}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *CreateAccessResponse) GetOpaqueAccessState() []byte {
@@ -3691,7 +3859,7 @@ type RevokeAccessRequest struct {
 
 func (x *RevokeAccessRequest) Reset() {
 	*x = RevokeAccessRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[52]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3703,7 +3871,7 @@ func (x *RevokeAccessRequest) String() string {
 func (*RevokeAccessRequest) ProtoMessage() {}
 
 func (x *RevokeAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[52]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3716,7 +3884,7 @@ func (x *RevokeAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAccessRequest.ProtoReflect.Descriptor instead.
 func (*RevokeAccessRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{52}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *RevokeAccessRequest) GetContext() *CallContext {
@@ -3750,7 +3918,7 @@ type RevokeAccessResponse struct {
 
 func (x *RevokeAccessResponse) Reset() {
 	*x = RevokeAccessResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[53]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3762,7 +3930,7 @@ func (x *RevokeAccessResponse) String() string {
 func (*RevokeAccessResponse) ProtoMessage() {}
 
 func (x *RevokeAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[53]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3775,7 +3943,7 @@ func (x *RevokeAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAccessResponse.ProtoReflect.Descriptor instead.
 func (*RevokeAccessResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{53}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *RevokeAccessResponse) GetActiveConnectionsClosed() bool {
@@ -3917,7 +4085,17 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0eplugin_version\x18\x03 \x01(\tR\rpluginVersion\x12\x16\n" +
 	"\x06opaque\x18\x04 \x01(\fR\x06opaque\x12#\n" +
 	"\rownership_ids\x18\x05 \x03(\tR\fownershipIds\x12\x16\n" +
-	"\x06digest\x18\x06 \x01(\fR\x06digest\"\xc4\x02\n" +
+	"\x06digest\x18\x06 \x01(\fR\x06digest\"E\n" +
+	"\x0fAllocationClaim\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"\xf3\x02\n" +
+	"\x12ResourceDependency\x12.\n" +
+	"\x13logical_resource_id\x18\x01 \x01(\tR\x11logicalResourceId\x12#\n" +
+	"\rprovider_plan\x18\x02 \x01(\fR\fproviderPlan\x120\n" +
+	"\x14provider_plan_digest\x18\x03 \x01(\tR\x12providerPlanDigest\x12J\n" +
+	"\x0eprovider_state\x18\x04 \x01(\v2#.labcentral.plugin.v1.ProviderStateR\rproviderState\x12.\n" +
+	"\x13observed_state_json\x18\x05 \x01(\fR\x11observedStateJson\x12Z\n" +
+	"\x15committed_allocations\x18\x06 \x03(\v2%.labcentral.plugin.v1.AllocationClaimR\x14committedAllocations\"\xc4\x02\n" +
 	"\x0fStructuredError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x1f\n" +
 	"\verror_class\x18\x02 \x01(\tR\n" +
@@ -3943,7 +4121,7 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x06errors\x18\x01 \x03(\v2%.labcentral.plugin.v1.StructuredErrorR\x06errors\x129\n" +
 	"\bwarnings\x18\x02 \x03(\v2\x1d.labcentral.plugin.v1.WarningR\bwarnings\x12#\n" +
 	"\rprovider_plan\x18\x03 \x01(\fR\fproviderPlan\x120\n" +
-	"\x14provider_plan_digest\x18\x04 \x01(\tR\x12providerPlanDigest\"\xdf\x02\n" +
+	"\x14provider_plan_digest\x18\x04 \x01(\tR\x12providerPlanDigest\"\x89\x04\n" +
 	"\x15ResourceMutationInput\x12;\n" +
 	"\acontext\x18\x01 \x01(\v2!.labcentral.plugin.v1.CallContextR\acontext\x12;\n" +
 	"\x06target\x18\x02 \x01(\v2#.labcentral.plugin.v1.TargetContextR\x06target\x126\n" +
@@ -3951,7 +4129,9 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\rprovider_plan\x18\x04 \x01(\fR\fproviderPlan\x12D\n" +
 	"\vprior_state\x18\x05 \x01(\v2#.labcentral.plugin.v1.ProviderStateR\n" +
 	"priorState\x12)\n" +
-	"\x10ownership_tokens\x18\x06 \x03(\tR\x0fownershipTokens\"\xd7\x01\n" +
+	"\x10ownership_tokens\x18\x06 \x03(\tR\x0fownershipTokens\x12L\n" +
+	"\fdependencies\x18\a \x03(\v2(.labcentral.plugin.v1.ResourceDependencyR\fdependencies\x12Z\n" +
+	"\x15committed_allocations\x18\b \x03(\v2%.labcentral.plugin.v1.AllocationClaimR\x14committedAllocations\"\xd7\x01\n" +
 	"\bProgress\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x1d\n" +
 	"\apercent\x18\x02 \x01(\x01H\x00R\apercent\x88\x01\x01\x12!\n" +
@@ -3971,14 +4151,16 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0fInvocationEvent\x12<\n" +
 	"\bprogress\x18\x01 \x01(\v2\x1e.labcentral.plugin.v1.ProgressH\x00R\bprogress\x12>\n" +
 	"\x06result\x18\x02 \x01(\v2$.labcentral.plugin.v1.ResourceResultH\x00R\x06resultB\a\n" +
-	"\x05event\"X\n" +
+	"\x05event\"\xb2\x01\n" +
 	"\x13PlanResourceRequest\x12A\n" +
-	"\x05input\x18\x01 \x01(\v2+.labcentral.plugin.v1.ResourceMutationInputR\x05input\"\xe5\x01\n" +
+	"\x05input\x18\x01 \x01(\v2+.labcentral.plugin.v1.ResourceMutationInputR\x05input\x12X\n" +
+	"\x14excluded_allocations\x18\x02 \x03(\v2%.labcentral.plugin.v1.AllocationClaimR\x13excludedAllocations\"\xbf\x02\n" +
 	"\x14PlanResourceResponse\x12#\n" +
 	"\rprovider_plan\x18\x01 \x01(\fR\fproviderPlan\x120\n" +
 	"\x14provider_plan_digest\x18\x02 \x01(\tR\x12providerPlanDigest\x129\n" +
 	"\bwarnings\x18\x03 \x03(\v2\x1d.labcentral.plugin.v1.WarningR\bwarnings\x12;\n" +
-	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"Y\n" +
+	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\x12X\n" +
+	"\x14proposed_allocations\x18\x05 \x03(\v2%.labcentral.plugin.v1.AllocationClaimR\x13proposedAllocations\"Y\n" +
 	"\x14ApplyResourceRequest\x12A\n" +
 	"\x05input\x18\x01 \x01(\v2+.labcentral.plugin.v1.ResourceMutationInputR\x05input\"T\n" +
 	"\x15ApplyResourceResponse\x12;\n" +
@@ -4134,7 +4316,7 @@ func file_plugin_v1_plugin_proto_rawDescGZIP() []byte {
 }
 
 var file_plugin_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
+var file_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 56)
 var file_plugin_v1_plugin_proto_goTypes = []any{
 	(LifecycleAction)(0),                   // 0: labcentral.plugin.v1.LifecycleAction
 	(HealthResponse_Status)(0),             // 1: labcentral.plugin.v1.HealthResponse.Status
@@ -4159,163 +4341,171 @@ var file_plugin_v1_plugin_proto_goTypes = []any{
 	(*DiscoverTargetResponse)(nil),         // 20: labcentral.plugin.v1.DiscoverTargetResponse
 	(*CallContext)(nil),                    // 21: labcentral.plugin.v1.CallContext
 	(*ProviderState)(nil),                  // 22: labcentral.plugin.v1.ProviderState
-	(*StructuredError)(nil),                // 23: labcentral.plugin.v1.StructuredError
-	(*Warning)(nil),                        // 24: labcentral.plugin.v1.Warning
-	(*ValidateLabRequest)(nil),             // 25: labcentral.plugin.v1.ValidateLabRequest
-	(*ValidateLabResponse)(nil),            // 26: labcentral.plugin.v1.ValidateLabResponse
-	(*ResourceMutationInput)(nil),          // 27: labcentral.plugin.v1.ResourceMutationInput
-	(*Progress)(nil),                       // 28: labcentral.plugin.v1.Progress
-	(*ResourceResult)(nil),                 // 29: labcentral.plugin.v1.ResourceResult
-	(*InvocationEvent)(nil),                // 30: labcentral.plugin.v1.InvocationEvent
-	(*PlanResourceRequest)(nil),            // 31: labcentral.plugin.v1.PlanResourceRequest
-	(*PlanResourceResponse)(nil),           // 32: labcentral.plugin.v1.PlanResourceResponse
-	(*ApplyResourceRequest)(nil),           // 33: labcentral.plugin.v1.ApplyResourceRequest
-	(*ApplyResourceResponse)(nil),          // 34: labcentral.plugin.v1.ApplyResourceResponse
-	(*ReadResourceRequest)(nil),            // 35: labcentral.plugin.v1.ReadResourceRequest
-	(*ReadResourceResponse)(nil),           // 36: labcentral.plugin.v1.ReadResourceResponse
-	(*DestroyResourceRequest)(nil),         // 37: labcentral.plugin.v1.DestroyResourceRequest
-	(*DestroyResourceResponse)(nil),        // 38: labcentral.plugin.v1.DestroyResourceResponse
-	(*LifecycleRequest)(nil),               // 39: labcentral.plugin.v1.LifecycleRequest
-	(*LifecycleResponse)(nil),              // 40: labcentral.plugin.v1.LifecycleResponse
-	(*GetInvocationRequest)(nil),           // 41: labcentral.plugin.v1.GetInvocationRequest
-	(*GetInvocationResponse)(nil),          // 42: labcentral.plugin.v1.GetInvocationResponse
-	(*CancelInvocationRequest)(nil),        // 43: labcentral.plugin.v1.CancelInvocationRequest
-	(*CancelInvocationResponse)(nil),       // 44: labcentral.plugin.v1.CancelInvocationResponse
-	(*MigrateStateRequest)(nil),            // 45: labcentral.plugin.v1.MigrateStateRequest
-	(*MigrateStateResponse)(nil),           // 46: labcentral.plugin.v1.MigrateStateResponse
-	(*DiscoverAccessEndpointRequest)(nil),  // 47: labcentral.plugin.v1.DiscoverAccessEndpointRequest
-	(*DiscoverAccessEndpointResponse)(nil), // 48: labcentral.plugin.v1.DiscoverAccessEndpointResponse
-	(*ListImagesRequest)(nil),              // 49: labcentral.plugin.v1.ListImagesRequest
-	(*ImageRecord)(nil),                    // 50: labcentral.plugin.v1.ImageRecord
-	(*ListImagesResponse)(nil),             // 51: labcentral.plugin.v1.ListImagesResponse
-	(*ImportImageRequest)(nil),             // 52: labcentral.plugin.v1.ImportImageRequest
-	(*ImportImageResponse)(nil),            // 53: labcentral.plugin.v1.ImportImageResponse
-	(*CreateAccessRequest)(nil),            // 54: labcentral.plugin.v1.CreateAccessRequest
-	(*CreateAccessResponse)(nil),           // 55: labcentral.plugin.v1.CreateAccessResponse
-	(*RevokeAccessRequest)(nil),            // 56: labcentral.plugin.v1.RevokeAccessRequest
-	(*RevokeAccessResponse)(nil),           // 57: labcentral.plugin.v1.RevokeAccessResponse
-	(*durationpb.Duration)(nil),            // 58: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 59: google.protobuf.Timestamp
+	(*AllocationClaim)(nil),                // 23: labcentral.plugin.v1.AllocationClaim
+	(*ResourceDependency)(nil),             // 24: labcentral.plugin.v1.ResourceDependency
+	(*StructuredError)(nil),                // 25: labcentral.plugin.v1.StructuredError
+	(*Warning)(nil),                        // 26: labcentral.plugin.v1.Warning
+	(*ValidateLabRequest)(nil),             // 27: labcentral.plugin.v1.ValidateLabRequest
+	(*ValidateLabResponse)(nil),            // 28: labcentral.plugin.v1.ValidateLabResponse
+	(*ResourceMutationInput)(nil),          // 29: labcentral.plugin.v1.ResourceMutationInput
+	(*Progress)(nil),                       // 30: labcentral.plugin.v1.Progress
+	(*ResourceResult)(nil),                 // 31: labcentral.plugin.v1.ResourceResult
+	(*InvocationEvent)(nil),                // 32: labcentral.plugin.v1.InvocationEvent
+	(*PlanResourceRequest)(nil),            // 33: labcentral.plugin.v1.PlanResourceRequest
+	(*PlanResourceResponse)(nil),           // 34: labcentral.plugin.v1.PlanResourceResponse
+	(*ApplyResourceRequest)(nil),           // 35: labcentral.plugin.v1.ApplyResourceRequest
+	(*ApplyResourceResponse)(nil),          // 36: labcentral.plugin.v1.ApplyResourceResponse
+	(*ReadResourceRequest)(nil),            // 37: labcentral.plugin.v1.ReadResourceRequest
+	(*ReadResourceResponse)(nil),           // 38: labcentral.plugin.v1.ReadResourceResponse
+	(*DestroyResourceRequest)(nil),         // 39: labcentral.plugin.v1.DestroyResourceRequest
+	(*DestroyResourceResponse)(nil),        // 40: labcentral.plugin.v1.DestroyResourceResponse
+	(*LifecycleRequest)(nil),               // 41: labcentral.plugin.v1.LifecycleRequest
+	(*LifecycleResponse)(nil),              // 42: labcentral.plugin.v1.LifecycleResponse
+	(*GetInvocationRequest)(nil),           // 43: labcentral.plugin.v1.GetInvocationRequest
+	(*GetInvocationResponse)(nil),          // 44: labcentral.plugin.v1.GetInvocationResponse
+	(*CancelInvocationRequest)(nil),        // 45: labcentral.plugin.v1.CancelInvocationRequest
+	(*CancelInvocationResponse)(nil),       // 46: labcentral.plugin.v1.CancelInvocationResponse
+	(*MigrateStateRequest)(nil),            // 47: labcentral.plugin.v1.MigrateStateRequest
+	(*MigrateStateResponse)(nil),           // 48: labcentral.plugin.v1.MigrateStateResponse
+	(*DiscoverAccessEndpointRequest)(nil),  // 49: labcentral.plugin.v1.DiscoverAccessEndpointRequest
+	(*DiscoverAccessEndpointResponse)(nil), // 50: labcentral.plugin.v1.DiscoverAccessEndpointResponse
+	(*ListImagesRequest)(nil),              // 51: labcentral.plugin.v1.ListImagesRequest
+	(*ImageRecord)(nil),                    // 52: labcentral.plugin.v1.ImageRecord
+	(*ListImagesResponse)(nil),             // 53: labcentral.plugin.v1.ListImagesResponse
+	(*ImportImageRequest)(nil),             // 54: labcentral.plugin.v1.ImportImageRequest
+	(*ImportImageResponse)(nil),            // 55: labcentral.plugin.v1.ImportImageResponse
+	(*CreateAccessRequest)(nil),            // 56: labcentral.plugin.v1.CreateAccessRequest
+	(*CreateAccessResponse)(nil),           // 57: labcentral.plugin.v1.CreateAccessResponse
+	(*RevokeAccessRequest)(nil),            // 58: labcentral.plugin.v1.RevokeAccessRequest
+	(*RevokeAccessResponse)(nil),           // 59: labcentral.plugin.v1.RevokeAccessResponse
+	(*durationpb.Duration)(nil),            // 60: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 61: google.protobuf.Timestamp
 }
 var file_plugin_v1_plugin_proto_depIdxs = []int32{
-	5,  // 0: labcentral.plugin.v1.PluginInfo.supported_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
-	6,  // 1: labcentral.plugin.v1.PluginInfo.schemas:type_name -> labcentral.plugin.v1.SchemaVersion
-	7,  // 2: labcentral.plugin.v1.RegisterPluginRequest.plugin:type_name -> labcentral.plugin.v1.PluginInfo
-	4,  // 3: labcentral.plugin.v1.RegisterPluginResponse.selected_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
-	58, // 4: labcentral.plugin.v1.RegisterPluginResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	59, // 5: labcentral.plugin.v1.HeartbeatRequest.sent_at:type_name -> google.protobuf.Timestamp
-	59, // 6: labcentral.plugin.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
-	1,  // 7: labcentral.plugin.v1.HealthResponse.status:type_name -> labcentral.plugin.v1.HealthResponse.Status
-	14, // 8: labcentral.plugin.v1.Parameter.string_list:type_name -> labcentral.plugin.v1.StringList
-	15, // 9: labcentral.plugin.v1.Parameter.int_list:type_name -> labcentral.plugin.v1.IntList
-	2,  // 10: labcentral.plugin.v1.Capability.support:type_name -> labcentral.plugin.v1.Capability.Support
-	16, // 11: labcentral.plugin.v1.Capability.parameters:type_name -> labcentral.plugin.v1.Parameter
-	18, // 12: labcentral.plugin.v1.DiscoverTargetRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	17, // 13: labcentral.plugin.v1.DiscoverTargetResponse.capabilities:type_name -> labcentral.plugin.v1.Capability
-	59, // 14: labcentral.plugin.v1.DiscoverTargetResponse.discovered_at:type_name -> google.protobuf.Timestamp
-	59, // 15: labcentral.plugin.v1.DiscoverTargetResponse.valid_until:type_name -> google.protobuf.Timestamp
-	6,  // 16: labcentral.plugin.v1.ProviderState.schema:type_name -> labcentral.plugin.v1.SchemaVersion
-	58, // 17: labcentral.plugin.v1.StructuredError.retry_after:type_name -> google.protobuf.Duration
-	23, // 18: labcentral.plugin.v1.StructuredError.causes:type_name -> labcentral.plugin.v1.StructuredError
-	21, // 19: labcentral.plugin.v1.ValidateLabRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 20: labcentral.plugin.v1.ValidateLabRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	23, // 21: labcentral.plugin.v1.ValidateLabResponse.errors:type_name -> labcentral.plugin.v1.StructuredError
-	24, // 22: labcentral.plugin.v1.ValidateLabResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	21, // 23: labcentral.plugin.v1.ResourceMutationInput.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 24: labcentral.plugin.v1.ResourceMutationInput.target:type_name -> labcentral.plugin.v1.TargetContext
-	22, // 25: labcentral.plugin.v1.ResourceMutationInput.prior_state:type_name -> labcentral.plugin.v1.ProviderState
-	59, // 26: labcentral.plugin.v1.Progress.occurred_at:type_name -> google.protobuf.Timestamp
-	22, // 27: labcentral.plugin.v1.ResourceResult.provider_state:type_name -> labcentral.plugin.v1.ProviderState
-	24, // 28: labcentral.plugin.v1.ResourceResult.warnings:type_name -> labcentral.plugin.v1.Warning
-	23, // 29: labcentral.plugin.v1.ResourceResult.error:type_name -> labcentral.plugin.v1.StructuredError
-	28, // 30: labcentral.plugin.v1.InvocationEvent.progress:type_name -> labcentral.plugin.v1.Progress
-	29, // 31: labcentral.plugin.v1.InvocationEvent.result:type_name -> labcentral.plugin.v1.ResourceResult
-	27, // 32: labcentral.plugin.v1.PlanResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	24, // 33: labcentral.plugin.v1.PlanResourceResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	23, // 34: labcentral.plugin.v1.PlanResourceResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	27, // 35: labcentral.plugin.v1.ApplyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	30, // 36: labcentral.plugin.v1.ApplyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	27, // 37: labcentral.plugin.v1.ReadResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	29, // 38: labcentral.plugin.v1.ReadResourceResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
-	27, // 39: labcentral.plugin.v1.DestroyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	30, // 40: labcentral.plugin.v1.DestroyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	21, // 41: labcentral.plugin.v1.LifecycleRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 42: labcentral.plugin.v1.LifecycleRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	0,  // 43: labcentral.plugin.v1.LifecycleRequest.action:type_name -> labcentral.plugin.v1.LifecycleAction
-	22, // 44: labcentral.plugin.v1.LifecycleRequest.prior_state:type_name -> labcentral.plugin.v1.ProviderState
-	30, // 45: labcentral.plugin.v1.LifecycleResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	21, // 46: labcentral.plugin.v1.GetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 47: labcentral.plugin.v1.GetInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	29, // 48: labcentral.plugin.v1.GetInvocationResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
-	21, // 49: labcentral.plugin.v1.CancelInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 50: labcentral.plugin.v1.CancelInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	3,  // 51: labcentral.plugin.v1.CancelInvocationResponse.outcome:type_name -> labcentral.plugin.v1.CancelInvocationResponse.Outcome
-	21, // 52: labcentral.plugin.v1.MigrateStateRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 53: labcentral.plugin.v1.MigrateStateRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	22, // 54: labcentral.plugin.v1.MigrateStateRequest.state:type_name -> labcentral.plugin.v1.ProviderState
-	6,  // 55: labcentral.plugin.v1.MigrateStateRequest.destination:type_name -> labcentral.plugin.v1.SchemaVersion
-	22, // 56: labcentral.plugin.v1.MigrateStateResponse.state:type_name -> labcentral.plugin.v1.ProviderState
-	24, // 57: labcentral.plugin.v1.MigrateStateResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	23, // 58: labcentral.plugin.v1.MigrateStateResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21, // 59: labcentral.plugin.v1.DiscoverAccessEndpointRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 60: labcentral.plugin.v1.DiscoverAccessEndpointRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	22, // 61: labcentral.plugin.v1.DiscoverAccessEndpointRequest.resource_state:type_name -> labcentral.plugin.v1.ProviderState
-	59, // 62: labcentral.plugin.v1.DiscoverAccessEndpointResponse.valid_until:type_name -> google.protobuf.Timestamp
-	24, // 63: labcentral.plugin.v1.DiscoverAccessEndpointResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	23, // 64: labcentral.plugin.v1.DiscoverAccessEndpointResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21, // 65: labcentral.plugin.v1.ListImagesRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 66: labcentral.plugin.v1.ListImagesRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	50, // 67: labcentral.plugin.v1.ListImagesResponse.images:type_name -> labcentral.plugin.v1.ImageRecord
-	21, // 68: labcentral.plugin.v1.ImportImageRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18, // 69: labcentral.plugin.v1.ImportImageRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	30, // 70: labcentral.plugin.v1.ImportImageResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	21, // 71: labcentral.plugin.v1.CreateAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	59, // 72: labcentral.plugin.v1.CreateAccessRequest.expires_at:type_name -> google.protobuf.Timestamp
-	59, // 73: labcentral.plugin.v1.CreateAccessResponse.valid_until:type_name -> google.protobuf.Timestamp
-	23, // 74: labcentral.plugin.v1.CreateAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21, // 75: labcentral.plugin.v1.RevokeAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	23, // 76: labcentral.plugin.v1.RevokeAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	8,  // 77: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:input_type -> labcentral.plugin.v1.RegisterPluginRequest
-	10, // 78: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:input_type -> labcentral.plugin.v1.HeartbeatRequest
-	12, // 79: labcentral.plugin.v1.PluginRuntimeService.Health:input_type -> labcentral.plugin.v1.HealthRequest
-	19, // 80: labcentral.plugin.v1.ProviderService.DiscoverTarget:input_type -> labcentral.plugin.v1.DiscoverTargetRequest
-	25, // 81: labcentral.plugin.v1.ProviderService.ValidateLab:input_type -> labcentral.plugin.v1.ValidateLabRequest
-	31, // 82: labcentral.plugin.v1.ProviderService.PlanResource:input_type -> labcentral.plugin.v1.PlanResourceRequest
-	33, // 83: labcentral.plugin.v1.ProviderService.ApplyResource:input_type -> labcentral.plugin.v1.ApplyResourceRequest
-	35, // 84: labcentral.plugin.v1.ProviderService.ReadResource:input_type -> labcentral.plugin.v1.ReadResourceRequest
-	37, // 85: labcentral.plugin.v1.ProviderService.DestroyResource:input_type -> labcentral.plugin.v1.DestroyResourceRequest
-	39, // 86: labcentral.plugin.v1.ProviderService.Lifecycle:input_type -> labcentral.plugin.v1.LifecycleRequest
-	41, // 87: labcentral.plugin.v1.ProviderService.GetInvocation:input_type -> labcentral.plugin.v1.GetInvocationRequest
-	43, // 88: labcentral.plugin.v1.ProviderService.CancelInvocation:input_type -> labcentral.plugin.v1.CancelInvocationRequest
-	45, // 89: labcentral.plugin.v1.ProviderService.MigrateState:input_type -> labcentral.plugin.v1.MigrateStateRequest
-	47, // 90: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:input_type -> labcentral.plugin.v1.DiscoverAccessEndpointRequest
-	49, // 91: labcentral.plugin.v1.ProviderService.ListImages:input_type -> labcentral.plugin.v1.ListImagesRequest
-	52, // 92: labcentral.plugin.v1.ProviderService.ImportImage:input_type -> labcentral.plugin.v1.ImportImageRequest
-	54, // 93: labcentral.plugin.v1.AccessService.CreateAccess:input_type -> labcentral.plugin.v1.CreateAccessRequest
-	56, // 94: labcentral.plugin.v1.AccessService.RevokeAccess:input_type -> labcentral.plugin.v1.RevokeAccessRequest
-	9,  // 95: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:output_type -> labcentral.plugin.v1.RegisterPluginResponse
-	11, // 96: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:output_type -> labcentral.plugin.v1.HeartbeatResponse
-	13, // 97: labcentral.plugin.v1.PluginRuntimeService.Health:output_type -> labcentral.plugin.v1.HealthResponse
-	20, // 98: labcentral.plugin.v1.ProviderService.DiscoverTarget:output_type -> labcentral.plugin.v1.DiscoverTargetResponse
-	26, // 99: labcentral.plugin.v1.ProviderService.ValidateLab:output_type -> labcentral.plugin.v1.ValidateLabResponse
-	32, // 100: labcentral.plugin.v1.ProviderService.PlanResource:output_type -> labcentral.plugin.v1.PlanResourceResponse
-	34, // 101: labcentral.plugin.v1.ProviderService.ApplyResource:output_type -> labcentral.plugin.v1.ApplyResourceResponse
-	36, // 102: labcentral.plugin.v1.ProviderService.ReadResource:output_type -> labcentral.plugin.v1.ReadResourceResponse
-	38, // 103: labcentral.plugin.v1.ProviderService.DestroyResource:output_type -> labcentral.plugin.v1.DestroyResourceResponse
-	40, // 104: labcentral.plugin.v1.ProviderService.Lifecycle:output_type -> labcentral.plugin.v1.LifecycleResponse
-	42, // 105: labcentral.plugin.v1.ProviderService.GetInvocation:output_type -> labcentral.plugin.v1.GetInvocationResponse
-	44, // 106: labcentral.plugin.v1.ProviderService.CancelInvocation:output_type -> labcentral.plugin.v1.CancelInvocationResponse
-	46, // 107: labcentral.plugin.v1.ProviderService.MigrateState:output_type -> labcentral.plugin.v1.MigrateStateResponse
-	48, // 108: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:output_type -> labcentral.plugin.v1.DiscoverAccessEndpointResponse
-	51, // 109: labcentral.plugin.v1.ProviderService.ListImages:output_type -> labcentral.plugin.v1.ListImagesResponse
-	53, // 110: labcentral.plugin.v1.ProviderService.ImportImage:output_type -> labcentral.plugin.v1.ImportImageResponse
-	55, // 111: labcentral.plugin.v1.AccessService.CreateAccess:output_type -> labcentral.plugin.v1.CreateAccessResponse
-	57, // 112: labcentral.plugin.v1.AccessService.RevokeAccess:output_type -> labcentral.plugin.v1.RevokeAccessResponse
-	95, // [95:113] is the sub-list for method output_type
-	77, // [77:95] is the sub-list for method input_type
-	77, // [77:77] is the sub-list for extension type_name
-	77, // [77:77] is the sub-list for extension extendee
-	0,  // [0:77] is the sub-list for field type_name
+	5,   // 0: labcentral.plugin.v1.PluginInfo.supported_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
+	6,   // 1: labcentral.plugin.v1.PluginInfo.schemas:type_name -> labcentral.plugin.v1.SchemaVersion
+	7,   // 2: labcentral.plugin.v1.RegisterPluginRequest.plugin:type_name -> labcentral.plugin.v1.PluginInfo
+	4,   // 3: labcentral.plugin.v1.RegisterPluginResponse.selected_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
+	60,  // 4: labcentral.plugin.v1.RegisterPluginResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	61,  // 5: labcentral.plugin.v1.HeartbeatRequest.sent_at:type_name -> google.protobuf.Timestamp
+	61,  // 6: labcentral.plugin.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
+	1,   // 7: labcentral.plugin.v1.HealthResponse.status:type_name -> labcentral.plugin.v1.HealthResponse.Status
+	14,  // 8: labcentral.plugin.v1.Parameter.string_list:type_name -> labcentral.plugin.v1.StringList
+	15,  // 9: labcentral.plugin.v1.Parameter.int_list:type_name -> labcentral.plugin.v1.IntList
+	2,   // 10: labcentral.plugin.v1.Capability.support:type_name -> labcentral.plugin.v1.Capability.Support
+	16,  // 11: labcentral.plugin.v1.Capability.parameters:type_name -> labcentral.plugin.v1.Parameter
+	18,  // 12: labcentral.plugin.v1.DiscoverTargetRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	17,  // 13: labcentral.plugin.v1.DiscoverTargetResponse.capabilities:type_name -> labcentral.plugin.v1.Capability
+	61,  // 14: labcentral.plugin.v1.DiscoverTargetResponse.discovered_at:type_name -> google.protobuf.Timestamp
+	61,  // 15: labcentral.plugin.v1.DiscoverTargetResponse.valid_until:type_name -> google.protobuf.Timestamp
+	6,   // 16: labcentral.plugin.v1.ProviderState.schema:type_name -> labcentral.plugin.v1.SchemaVersion
+	22,  // 17: labcentral.plugin.v1.ResourceDependency.provider_state:type_name -> labcentral.plugin.v1.ProviderState
+	23,  // 18: labcentral.plugin.v1.ResourceDependency.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	60,  // 19: labcentral.plugin.v1.StructuredError.retry_after:type_name -> google.protobuf.Duration
+	25,  // 20: labcentral.plugin.v1.StructuredError.causes:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 21: labcentral.plugin.v1.ValidateLabRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 22: labcentral.plugin.v1.ValidateLabRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	25,  // 23: labcentral.plugin.v1.ValidateLabResponse.errors:type_name -> labcentral.plugin.v1.StructuredError
+	26,  // 24: labcentral.plugin.v1.ValidateLabResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	21,  // 25: labcentral.plugin.v1.ResourceMutationInput.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 26: labcentral.plugin.v1.ResourceMutationInput.target:type_name -> labcentral.plugin.v1.TargetContext
+	22,  // 27: labcentral.plugin.v1.ResourceMutationInput.prior_state:type_name -> labcentral.plugin.v1.ProviderState
+	24,  // 28: labcentral.plugin.v1.ResourceMutationInput.dependencies:type_name -> labcentral.plugin.v1.ResourceDependency
+	23,  // 29: labcentral.plugin.v1.ResourceMutationInput.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	61,  // 30: labcentral.plugin.v1.Progress.occurred_at:type_name -> google.protobuf.Timestamp
+	22,  // 31: labcentral.plugin.v1.ResourceResult.provider_state:type_name -> labcentral.plugin.v1.ProviderState
+	26,  // 32: labcentral.plugin.v1.ResourceResult.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 33: labcentral.plugin.v1.ResourceResult.error:type_name -> labcentral.plugin.v1.StructuredError
+	30,  // 34: labcentral.plugin.v1.InvocationEvent.progress:type_name -> labcentral.plugin.v1.Progress
+	31,  // 35: labcentral.plugin.v1.InvocationEvent.result:type_name -> labcentral.plugin.v1.ResourceResult
+	29,  // 36: labcentral.plugin.v1.PlanResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	23,  // 37: labcentral.plugin.v1.PlanResourceRequest.excluded_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	26,  // 38: labcentral.plugin.v1.PlanResourceResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 39: labcentral.plugin.v1.PlanResourceResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	23,  // 40: labcentral.plugin.v1.PlanResourceResponse.proposed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	29,  // 41: labcentral.plugin.v1.ApplyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	32,  // 42: labcentral.plugin.v1.ApplyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	29,  // 43: labcentral.plugin.v1.ReadResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	31,  // 44: labcentral.plugin.v1.ReadResourceResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
+	29,  // 45: labcentral.plugin.v1.DestroyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	32,  // 46: labcentral.plugin.v1.DestroyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	21,  // 47: labcentral.plugin.v1.LifecycleRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 48: labcentral.plugin.v1.LifecycleRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	0,   // 49: labcentral.plugin.v1.LifecycleRequest.action:type_name -> labcentral.plugin.v1.LifecycleAction
+	22,  // 50: labcentral.plugin.v1.LifecycleRequest.prior_state:type_name -> labcentral.plugin.v1.ProviderState
+	32,  // 51: labcentral.plugin.v1.LifecycleResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	21,  // 52: labcentral.plugin.v1.GetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 53: labcentral.plugin.v1.GetInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	31,  // 54: labcentral.plugin.v1.GetInvocationResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
+	21,  // 55: labcentral.plugin.v1.CancelInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 56: labcentral.plugin.v1.CancelInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	3,   // 57: labcentral.plugin.v1.CancelInvocationResponse.outcome:type_name -> labcentral.plugin.v1.CancelInvocationResponse.Outcome
+	21,  // 58: labcentral.plugin.v1.MigrateStateRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 59: labcentral.plugin.v1.MigrateStateRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	22,  // 60: labcentral.plugin.v1.MigrateStateRequest.state:type_name -> labcentral.plugin.v1.ProviderState
+	6,   // 61: labcentral.plugin.v1.MigrateStateRequest.destination:type_name -> labcentral.plugin.v1.SchemaVersion
+	22,  // 62: labcentral.plugin.v1.MigrateStateResponse.state:type_name -> labcentral.plugin.v1.ProviderState
+	26,  // 63: labcentral.plugin.v1.MigrateStateResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 64: labcentral.plugin.v1.MigrateStateResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 65: labcentral.plugin.v1.DiscoverAccessEndpointRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 66: labcentral.plugin.v1.DiscoverAccessEndpointRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	22,  // 67: labcentral.plugin.v1.DiscoverAccessEndpointRequest.resource_state:type_name -> labcentral.plugin.v1.ProviderState
+	61,  // 68: labcentral.plugin.v1.DiscoverAccessEndpointResponse.valid_until:type_name -> google.protobuf.Timestamp
+	26,  // 69: labcentral.plugin.v1.DiscoverAccessEndpointResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 70: labcentral.plugin.v1.DiscoverAccessEndpointResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 71: labcentral.plugin.v1.ListImagesRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 72: labcentral.plugin.v1.ListImagesRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	52,  // 73: labcentral.plugin.v1.ListImagesResponse.images:type_name -> labcentral.plugin.v1.ImageRecord
+	21,  // 74: labcentral.plugin.v1.ImportImageRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 75: labcentral.plugin.v1.ImportImageRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	32,  // 76: labcentral.plugin.v1.ImportImageResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	21,  // 77: labcentral.plugin.v1.CreateAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	61,  // 78: labcentral.plugin.v1.CreateAccessRequest.expires_at:type_name -> google.protobuf.Timestamp
+	61,  // 79: labcentral.plugin.v1.CreateAccessResponse.valid_until:type_name -> google.protobuf.Timestamp
+	25,  // 80: labcentral.plugin.v1.CreateAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 81: labcentral.plugin.v1.RevokeAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	25,  // 82: labcentral.plugin.v1.RevokeAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	8,   // 83: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:input_type -> labcentral.plugin.v1.RegisterPluginRequest
+	10,  // 84: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:input_type -> labcentral.plugin.v1.HeartbeatRequest
+	12,  // 85: labcentral.plugin.v1.PluginRuntimeService.Health:input_type -> labcentral.plugin.v1.HealthRequest
+	19,  // 86: labcentral.plugin.v1.ProviderService.DiscoverTarget:input_type -> labcentral.plugin.v1.DiscoverTargetRequest
+	27,  // 87: labcentral.plugin.v1.ProviderService.ValidateLab:input_type -> labcentral.plugin.v1.ValidateLabRequest
+	33,  // 88: labcentral.plugin.v1.ProviderService.PlanResource:input_type -> labcentral.plugin.v1.PlanResourceRequest
+	35,  // 89: labcentral.plugin.v1.ProviderService.ApplyResource:input_type -> labcentral.plugin.v1.ApplyResourceRequest
+	37,  // 90: labcentral.plugin.v1.ProviderService.ReadResource:input_type -> labcentral.plugin.v1.ReadResourceRequest
+	39,  // 91: labcentral.plugin.v1.ProviderService.DestroyResource:input_type -> labcentral.plugin.v1.DestroyResourceRequest
+	41,  // 92: labcentral.plugin.v1.ProviderService.Lifecycle:input_type -> labcentral.plugin.v1.LifecycleRequest
+	43,  // 93: labcentral.plugin.v1.ProviderService.GetInvocation:input_type -> labcentral.plugin.v1.GetInvocationRequest
+	45,  // 94: labcentral.plugin.v1.ProviderService.CancelInvocation:input_type -> labcentral.plugin.v1.CancelInvocationRequest
+	47,  // 95: labcentral.plugin.v1.ProviderService.MigrateState:input_type -> labcentral.plugin.v1.MigrateStateRequest
+	49,  // 96: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:input_type -> labcentral.plugin.v1.DiscoverAccessEndpointRequest
+	51,  // 97: labcentral.plugin.v1.ProviderService.ListImages:input_type -> labcentral.plugin.v1.ListImagesRequest
+	54,  // 98: labcentral.plugin.v1.ProviderService.ImportImage:input_type -> labcentral.plugin.v1.ImportImageRequest
+	56,  // 99: labcentral.plugin.v1.AccessService.CreateAccess:input_type -> labcentral.plugin.v1.CreateAccessRequest
+	58,  // 100: labcentral.plugin.v1.AccessService.RevokeAccess:input_type -> labcentral.plugin.v1.RevokeAccessRequest
+	9,   // 101: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:output_type -> labcentral.plugin.v1.RegisterPluginResponse
+	11,  // 102: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:output_type -> labcentral.plugin.v1.HeartbeatResponse
+	13,  // 103: labcentral.plugin.v1.PluginRuntimeService.Health:output_type -> labcentral.plugin.v1.HealthResponse
+	20,  // 104: labcentral.plugin.v1.ProviderService.DiscoverTarget:output_type -> labcentral.plugin.v1.DiscoverTargetResponse
+	28,  // 105: labcentral.plugin.v1.ProviderService.ValidateLab:output_type -> labcentral.plugin.v1.ValidateLabResponse
+	34,  // 106: labcentral.plugin.v1.ProviderService.PlanResource:output_type -> labcentral.plugin.v1.PlanResourceResponse
+	36,  // 107: labcentral.plugin.v1.ProviderService.ApplyResource:output_type -> labcentral.plugin.v1.ApplyResourceResponse
+	38,  // 108: labcentral.plugin.v1.ProviderService.ReadResource:output_type -> labcentral.plugin.v1.ReadResourceResponse
+	40,  // 109: labcentral.plugin.v1.ProviderService.DestroyResource:output_type -> labcentral.plugin.v1.DestroyResourceResponse
+	42,  // 110: labcentral.plugin.v1.ProviderService.Lifecycle:output_type -> labcentral.plugin.v1.LifecycleResponse
+	44,  // 111: labcentral.plugin.v1.ProviderService.GetInvocation:output_type -> labcentral.plugin.v1.GetInvocationResponse
+	46,  // 112: labcentral.plugin.v1.ProviderService.CancelInvocation:output_type -> labcentral.plugin.v1.CancelInvocationResponse
+	48,  // 113: labcentral.plugin.v1.ProviderService.MigrateState:output_type -> labcentral.plugin.v1.MigrateStateResponse
+	50,  // 114: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:output_type -> labcentral.plugin.v1.DiscoverAccessEndpointResponse
+	53,  // 115: labcentral.plugin.v1.ProviderService.ListImages:output_type -> labcentral.plugin.v1.ListImagesResponse
+	55,  // 116: labcentral.plugin.v1.ProviderService.ImportImage:output_type -> labcentral.plugin.v1.ImportImageResponse
+	57,  // 117: labcentral.plugin.v1.AccessService.CreateAccess:output_type -> labcentral.plugin.v1.CreateAccessResponse
+	59,  // 118: labcentral.plugin.v1.AccessService.RevokeAccess:output_type -> labcentral.plugin.v1.RevokeAccessResponse
+	101, // [101:119] is the sub-list for method output_type
+	83,  // [83:101] is the sub-list for method input_type
+	83,  // [83:83] is the sub-list for extension type_name
+	83,  // [83:83] is the sub-list for extension extendee
+	0,   // [0:83] is the sub-list for field type_name
 }
 
 func init() { file_plugin_v1_plugin_proto_init() }
@@ -4331,8 +4521,8 @@ func file_plugin_v1_plugin_proto_init() {
 		(*Parameter_StringList)(nil),
 		(*Parameter_IntList)(nil),
 	}
-	file_plugin_v1_plugin_proto_msgTypes[24].OneofWrappers = []any{}
-	file_plugin_v1_plugin_proto_msgTypes[26].OneofWrappers = []any{
+	file_plugin_v1_plugin_proto_msgTypes[26].OneofWrappers = []any{}
+	file_plugin_v1_plugin_proto_msgTypes[28].OneofWrappers = []any{
 		(*InvocationEvent_Progress)(nil),
 		(*InvocationEvent_Result)(nil),
 	}
@@ -4342,7 +4532,7 @@ func file_plugin_v1_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_v1_plugin_proto_rawDesc), len(file_plugin_v1_plugin_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   54,
+			NumMessages:   56,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

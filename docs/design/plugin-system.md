@@ -48,6 +48,8 @@ Provider and access services share the transport handshake and envelope, but adv
 
 The accepted v1 wire baseline is [`api/plugin/v1/plugin.proto`](../../api/plugin/v1/plugin.proto). [`api/plugin/v1/compat/compatibility.yaml`](../../api/plugin/v1/compat/compatibility.yaml) defines negotiation/deadline/cancellation/state cases and pins a compact descriptor used by Buf `FILE` breaking checks. Field numbers/names are reserved rather than reused after deletion. See ADR-0002 and ADR-0012.
 
+`TASK-PROXMOX-003` evolves the current descriptor additively to protocol v1.1 while retaining the original v1.0 descriptor as the Buf breaking baseline. `AllocationClaim` carries bounded opaque namespace/value pairs; `ResourceDependency` carries a dependency's plan digest/bytes, provider state, observation, and committed claims. Planning receives excluded claims and returns proposed claims; mutation input receives committed claims and dependencies. The host selects the highest supported minor through 1.1 and requires the `opaque-allocation-claims-v1` and `dependency-resource-input-v1` feature bits before a capability depends on these fields. Docker remains a v1.0 plugin.
+
 ## Implemented local launch subset
 
 `TASK-DOCKER-001` generates Go bindings from the accepted descriptor and implements the shared launch/runtime helpers plus the `labd` plugin host. Before execution, the host resolves and SHA-256 verifies the configured executable. It creates a mode-0700 runtime directory, exposes a private registration Unix socket, issues a one-time token, checks configured plugin and instance identities, negotiates protocol v1, performs health checks, consumes heartbeats, and bounds captured child logs.

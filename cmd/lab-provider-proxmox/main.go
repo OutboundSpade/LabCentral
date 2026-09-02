@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	plugincontract "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/contract"
 	pluginruntime "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/runtime"
 	"github.com/OutboundSpade/LabCentral/providers/proxmox"
 )
@@ -26,7 +27,7 @@ func main() {
 		PluginVersion: proxmox.PluginVersion,
 		BuildDigest:   executableDigest(),
 		SupportedProtocols: []*pluginv1.ProtocolVersionRange{
-			{Major: 1, MinMinor: 0, MaxMinor: 0},
+			{Major: 1, MinMinor: 0, MaxMinor: 1},
 		},
 		Categories:    []string{"provider"},
 		ProviderKinds: []string{"proxmox"},
@@ -35,7 +36,12 @@ func main() {
 			{Name: "proxmox.api-token-credentials", Major: 1, Minor: 0},
 			{Name: "proxmox.capacity", Major: 1, Minor: 0},
 		},
-		Features: []string{"read-only-target-discovery", "target-scoped-api-token"},
+		Features: []string{
+			"read-only-target-discovery",
+			"target-scoped-api-token",
+			plugincontract.FeatureOpaqueAllocationClaimsV1,
+			plugincontract.FeatureDependencyResourceInputV1,
+		},
 	}
 	if err := pluginruntime.Serve(ctx, pluginruntime.Services{Info: info, Runtime: service, Provider: service}); err != nil {
 		logger.Error("serve Proxmox provider plugin", "error", err)

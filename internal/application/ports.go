@@ -21,6 +21,7 @@ type Repositories interface {
 	Instances() InstanceRepository
 	Operations() OperationRepository
 	Governance() GovernanceRepository
+	Allocations() AllocationRepository
 	Events() EventRepository
 }
 
@@ -92,6 +93,67 @@ type GovernanceRepository interface {
 	ReleaseReservation(context.Context, string, domain.FencingToken) error
 }
 
+type AllocationClaimState string
+
+const (
+	AllocationHeld      AllocationClaimState = "held"
+	AllocationCommitted AllocationClaimState = "committed"
+	AllocationOrphaned  AllocationClaimState = "orphaned"
+	AllocationReleased  AllocationClaimState = "released"
+)
+
+type AllocationKey struct {
+	TargetID  domain.ProviderTargetID
+	Namespace string
+	Value     string
+}
+
+type AllocationBinding struct {
+	InstanceID domain.InstanceID
+	ResourceID domain.LogicalResourceID
+	PlanDigest domain.SHA256Digest
+}
+
+type AllocationClaim struct {
+	Key          AllocationKey
+	Binding      AllocationBinding
+	State        AllocationClaimState
+	FencingToken domain.FencingToken
+}
+
+type ReserveAllocationClaimsRequest struct {
+	Binding AllocationBinding
+	Claims  []AllocationKey
+}
+
+type MutateAllocationClaimsRequest struct {
+	Binding      AllocationBinding
+	Claims       []AllocationKey
+	FencingToken domain.FencingToken
+}
+
+type ReleaseAllocationClaimsRequest struct {
+	MutateAllocationClaimsRequest
+	ProviderAbsenceConfirmed bool
+}
+
+type AllocationConflictError struct {
+	Conflicts []AllocationKey
+}
+
+func (e *AllocationConflictError) Error() string {
+	return "one or more target allocation claims conflict"
+}
+
+type AllocationRepository interface {
+	ReserveClaims(context.Context, ReserveAllocationClaimsRequest) error
+	CommitClaims(context.Context, MutateAllocationClaimsRequest) error
+	RetainClaims(context.Context, MutateAllocationClaimsRequest) error
+	OrphanClaims(context.Context, MutateAllocationClaimsRequest) error
+	ReleaseClaims(context.Context, ReleaseAllocationClaimsRequest) error
+	ListClaims(context.Context, domain.InstanceID) ([]AllocationClaim, error)
+}
+
 type AuditIntent struct {
 	ActorID       domain.UserID
 	Action        string
@@ -151,14 +213,25 @@ type ProviderValidation struct {
 
 type PlanInvocation struct {
 	TargetInvocation
-	InstanceID domain.InstanceID
-	Resource   domain.LogicalResource
+	InstanceID          domain.InstanceID
+	Resource            domain.LogicalResource
+	ExcludedAllocations []AllocationKey
+	Dependencies        []ProviderDependency
 }
 
 type ProviderPlan struct {
-	ResourceID domain.LogicalResourceID
-	Summary    string
-	Warnings   []domain.ReportIssue
+	ResourceID          domain.LogicalResourceID
+	Summary             string
+	Warnings            []domain.ReportIssue
+	ProposedAllocations []AllocationKey
+}
+
+type ProviderDependency struct {
+	ResourceID           domain.LogicalResourceID
+	Plan                 ProviderPlan
+	ProviderState        *domain.ProviderStateEnvelope
+	Observation          domain.ResourceObservation
+	CommittedAllocations []AllocationKey
 }
 
 type MutationKind string
@@ -181,6 +254,8 @@ type MutationInvocation struct {
 	Resource      domain.LogicalResource
 	ProviderState *domain.ProviderStateEnvelope
 	Generation    domain.Generation
+	Dependencies  []ProviderDependency
+	Allocations   []AllocationKey
 }
 
 type InvocationProgress struct {

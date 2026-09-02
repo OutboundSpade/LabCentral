@@ -2,6 +2,8 @@
 
 `TASK-PROXMOX-001` implements the first bounded Phase 2 slice as the separate `lab-provider-proxmox` process. It performs target-scoped, read-only discovery only. It is not wired into the Phase 1 single-Docker-target `labd`, and it implements no validation, planning, apply, read, destroy, lifecycle, image, invocation, or access RPC. Those RPCs return gRPC `Unimplemented`; their portable capabilities remain `unsupported`.
 
+After `TASK-PROXMOX-003`, the process can negotiate protocol v1.1 and advertises the allocation-claim and dependency-input wire feature bits. This reports message compatibility only: the target-config/capacity schemas remain v1.0, no mutation schema or RPC is implemented, and no mutation capability follows from a protocol feature.
+
 ## Versioned envelopes
 
 The plugin advertises `proxmox.target-config` v1.0, `proxmox.api-token-credentials` v1.0, and `proxmox.capacity` v1.0. JSON envelopes reject unknown or duplicate fields, trailing JSON values, empty input, and oversized input.

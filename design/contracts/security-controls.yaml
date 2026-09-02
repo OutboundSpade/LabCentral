@@ -45,7 +45,7 @@ threats:
     title: Provider tag spoof causes adoption or destructive cleanup
     owners: [core, provider, operator]
     controls: [CTRL-OWNERSHIP-ID-AND-TOKEN, CTRL-OWNERSHIP-NO-NAME-DELETE, CTRL-OWNERSHIP-AUDIT-ALERT]
-    tests: [TEST-PROVIDER-003, TEST-PROVIDER-018, TEST-PROXMOX-004, TEST-PROXMOX-013]
+    tests: [TEST-PROVIDER-003, TEST-PROVIDER-018, TEST-PROXMOX-004, TEST-PROXMOX-013, TEST-ALLOC-006, TEST-ALLOC-007]
   - id: THREAT-ACCESS-001
     title: Browser console or tunnel token leaks
     owners: [core, accessPlugin, deployment]
@@ -65,7 +65,7 @@ threats:
     title: Replay, race, or stale worker performs destructive action
     owners: [core, provider]
     controls: [CTRL-DELETE-ETAG-GENERATION, CTRL-JOB-FENCING, CTRL-IDEMPOTENCY, CTRL-OWNERSHIP-ID-AND-TOKEN]
-    tests: [TEST-JOB-002, TEST-JOB-004, TEST-JOB-006, TEST-PROVIDER-002, TEST-PROVIDER-018, TEST-PROXMOX-009, TEST-PROXMOX-013, TEST-PROXMOX-014]
+    tests: [TEST-JOB-002, TEST-JOB-004, TEST-JOB-006, TEST-PROVIDER-002, TEST-PROVIDER-018, TEST-PROXMOX-009, TEST-PROXMOX-013, TEST-PROXMOX-014, TEST-ALLOC-008, TEST-ALLOC-012, TEST-ALLOC-014]
   - id: THREAT-SUPPLY-001
     title: Compromised dependency, build, bundle, or plugin artifact
     owners: [core, deployment, operator]

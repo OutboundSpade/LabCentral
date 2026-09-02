@@ -46,6 +46,8 @@ The core persists the response before unlocking. Plugin-local journals are manda
 
 Target-global scarce values cannot be assigned safely by hashing and provider plugins do not access the control-plane database. Under ADR-0013, a provider proposes bounded opaque `(namespace, value)` claims and the core enforces uniqueness by target. The core creates the Instance ID before planning, atomically commits the accepted plan and claims, and supplies committed dependency plans/states to later resources. Conflicts cause bounded replan with exclusions. A claim is not provider ownership; externally occupied values still fail closed. Claims remain held for unknown outcomes, leftovers, and orphaned resources and are released only after provider absence is confirmed.
 
+The v1.1 protocol and repository prerequisites are implemented by `TASK-PROXMOX-003`: v1.0 remains negotiable, the accepted v1.0 descriptor remains the breaking baseline, and the new current descriptor is independently pinned. The laptop create path now generates its stable Instance ID before planning and sends already-planned dependency metadata. Because it has no allocation-aware product surface, it explicitly rejects proposed claims instead of persisting them incompletely.
+
 ## Ownership metadata
 
 Where tags exist: `labcentral.installation`, `target`, `organization/project`, `instance`, `logicalResource`, `generation`, and `managed=true`. Where tags are limited, store a collision-resistant composite token plus full IDs in provider state. Destroy requires both the recorded immutable provider ID and matching ownership token; mismatch stops with `partial_cleanup` and emits an audit alert.

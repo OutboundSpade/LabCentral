@@ -7,7 +7,10 @@ import (
 	"fmt"
 )
 
-const migrationID = "0001_jobs_outbox_prototype"
+const (
+	migrationID           = "0001_jobs_outbox_prototype"
+	allocationMigrationID = "0002_provider_allocation_claims"
+)
 
 func (s *Store) Migrate(ctx context.Context) error {
 	if s == nil || s.db == nil {
@@ -27,32 +30,42 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, statements[0]); err != nil {
 		return fmt.Errorf("create migration table: %w", err)
 	}
-	checksum := migrationChecksum(statements[1:])
+	if err := s.applyMigration(ctx, tx, migrationID, statements[1:]); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, tx, allocationMigrationID, s.allocationMigrationStatements()); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit jobs migrations: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) applyMigration(ctx context.Context, tx *sql.Tx, id string, statements []string) error {
+	checksum := migrationChecksum(statements)
 	var recorded string
-	err = tx.QueryRowContext(ctx, s.bind("SELECT checksum FROM labcentral_schema_migrations WHERE id = ?"), migrationID).Scan(&recorded)
+	err := tx.QueryRowContext(ctx, s.bind("SELECT checksum FROM labcentral_schema_migrations WHERE id = ?"), id).Scan(&recorded)
 	switch {
 	case err == nil && recorded != checksum:
-		return fmt.Errorf("migration %s checksum mismatch", migrationID)
+		return fmt.Errorf("migration %s checksum mismatch", id)
 	case err != nil && err != sql.ErrNoRows:
 		return fmt.Errorf("read migration record: %w", err)
 	case err == nil:
-		return tx.Commit()
+		return nil
 	}
-	for _, statement := range statements[1:] {
+	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("apply migration %s: %w", migrationID, err)
+			return fmt.Errorf("apply migration %s: %w", id, err)
 		}
 	}
 	if _, err := tx.ExecContext(
 		ctx,
 		s.bind("INSERT INTO labcentral_schema_migrations (id, checksum, applied_at_us) VALUES (?, ?, "+s.nowMicros()+")"),
-		migrationID,
+		id,
 		checksum,
 	); err != nil {
-		return fmt.Errorf("record migration %s: %w", migrationID, err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit migration %s: %w", migrationID, err)
+		return fmt.Errorf("record migration %s: %w", id, err)
 	}
 	return nil
 }
@@ -155,5 +168,25 @@ func (s *Store) migrationStatements() []string {
 			expires_at_us BIGINT NOT NULL,
 			reconciliation_required INTEGER NOT NULL DEFAULT 0 CHECK (reconciliation_required IN (0, 1))
 		)`,
+	}
+}
+
+func (s *Store) allocationMigrationStatements() []string {
+	return []string{
+		`CREATE TABLE labcentral_provider_allocation_claims (
+			target_id TEXT NOT NULL,
+			namespace TEXT NOT NULL,
+			claim_value TEXT NOT NULL,
+			instance_id TEXT NOT NULL,
+			resource_id TEXT NOT NULL,
+			plan_digest TEXT NOT NULL,
+			state TEXT NOT NULL CHECK (state IN ('held', 'committed', 'orphaned', 'released')),
+			fencing_token BIGINT NOT NULL DEFAULT 0 CHECK (fencing_token >= 0),
+			created_at_us BIGINT NOT NULL,
+			updated_at_us BIGINT NOT NULL,
+			PRIMARY KEY (target_id, namespace, claim_value)
+		)`,
+		`CREATE INDEX labcentral_provider_allocation_owner_idx
+			ON labcentral_provider_allocation_claims(instance_id, resource_id, state, target_id, namespace, claim_value)`,
 	}
 }
