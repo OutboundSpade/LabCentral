@@ -157,6 +157,8 @@ documents:
     status: complete
   - path: tools/proxmox-probe-agent
     status: complete
+  - path: tools/provider-testenv
+    status: complete
   - path: examples
     status: complete
 openQuestions:

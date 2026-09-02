@@ -49,6 +49,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - `TEST-PROXMOX-025` adds a package-test-only real-HTTPS smoke runner plus a closed profile schema. It requires the exact destructive sentinel and target confirmation, rejects partial activation, verifies the one expected disposable VMID/VLAN before apply, exercises create and every supported lifecycle transition, performs owned reverse cleanup with an independent timeout, and confirms absence. Normal CI skips before any provider call; no credentialed run was performed.
 - `TEST-PROXMOX-026` adds closed Draft 2020-12 request/response schemas, a qualification-only guest agent, a pinned-mTLS runner client, and direct mapping into signed probe evidence. The TLS 1.3 agent accepts exactly three ordered, distinct IPv4 TCP destinations with bounded attempts/time, permits one run at a time, has no shell or provider API, and returns only nonce-bound aggregate observations and endpoint/transcript digests. Local synthetic tests prove both sides of mTLS and fail-closed response binding; the agent has not run in a Proxmox guest.
 - `TEST-PROXMOX-027` adds a separate closed isolation profile and package-test-only executor. Normal CI proves exact planning for source/peer guests on one VLAN and a distinct-instance guest on another, with three preconfirmed VMIDs, two preconfirmed VLANs, six distinct protected inputs, direct probe-evidence mapping, reverse owned cleanup, and fresh absence reads. The default path skips before external access; this runner has not been credentialed or executed.
+- The bare-metal qualification host now has an idempotent libvirt/KVM harness under `tools/provider-testenv`, with verified pinned Debian 13 and Proxmox VE 9.2 media, a private management network, an IP-less isolated trunk, disposable cloud profiles, and an ownership-gated deletion path. A temporary guest proved DHCP, SSH-key injection, an unaddressed trunk NIC, nested VT-x, and complete disposal; the staged powered-off `lc-pve` VM reached the signed ISO installer. This is environment readiness only and records no T3 case outcome.
 
 ## Open questions and risks
 
@@ -56,8 +57,8 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Prepare the digest-pinned qualification template and dedicated short-lived probe PKI, then run the guarded lifecycle smoke and source/peer/cross isolation executor using explicitly supplied mode-protected inputs on a disposable PVE 9.x target.
-2. Extend the executor through the remaining target-applicable failure/recovery cases and assemble, sign, and independently verify the complete exact-target evidence document.
-3. Keep the separately reviewed production enablement and multi-user deployment gated behind target-specific authorization, accepted T3 evidence, threat controls, cleanup/orphan checks, and operational acceptance criteria.
+1. Complete the staged disposable PVE 9.2 installation, configure its dedicated storage and VLAN-aware lab bridge, then prepare the digest-pinned qualification template and short-lived probe PKI.
+2. Run the guarded lifecycle smoke and source/peer/cross isolation executor using explicitly supplied mode-protected inputs, then extend the executor through the remaining target-applicable failure/recovery cases.
+3. Assemble, sign, and independently verify the complete exact-target evidence document; keep production enablement gated behind accepted T3 evidence and a separate review.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).
