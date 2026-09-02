@@ -25,6 +25,52 @@ allocationClaims:
   namespaces: [proxmox.qemu.vmid, proxmox.network.vlan]
   states: [held, committed, orphaned, released]
   releaseCondition: provider_absence_confirmed
+qualificationEvidence:
+  status: verifier_implemented_t3_not_executed
+  evidenceSchema: labcentral.proxmox-qualification-evidence/v1
+  envelopeSchema: labcentral.proxmox-qualification-envelope/v1
+  canonicalization: RFC_8785
+  signature:
+    algorithm: Ed25519
+    encoding: unpadded_base64url
+    domainSeparated: true
+  exactBindings:
+    - target_id
+    - installation_id
+    - target_configuration_sha256
+    - capability_sha256
+    - inventory_sha256
+    - policy_sha256
+    - pve_manager_release_and_build
+    - provider_binary_and_source_tree_sha256
+    - negotiated_protocol_and_features
+    - destination_node_storage_bridge_permissions_template_and_disposable_ranges
+  requiredT3Cases:
+    - TEST-PROXMOX-003
+    - TEST-PROXMOX-004
+    - TEST-PROXMOX-005
+    - TEST-PROXMOX-007
+    - TEST-PROXMOX-008
+    - TEST-PROXMOX-009
+    - TEST-PROXMOX-010
+    - TEST-PROXMOX-011
+    - TEST-PROXMOX-012
+    - TEST-PROXMOX-013
+    - TEST-PROXMOX-014
+    - TEST-PROXMOX-015
+    - TEST-PROXMOX-017
+    - TEST-PROXMOX-018
+    - TEST-PROXMOX-019
+    - TEST-PROXMOX-022
+  isolationProbes:
+    requiredOrder: [intended_segment, management, cross_instance]
+    minimumAttempts: 3
+    passCondition: intended_all_succeed_and_negative_all_fail
+    transcriptStorage: sha256_digest_only
+  cleanup:
+    qualifyingCondition: provider_absence_confirmed_and_no_leftovers_and_all_claims_released
+    failureCondition: retain_or_orphan_claims_and_block_capability
+  productionEnablement: separate_accepted_adr_and_implementation_required
 capabilityGate:
   requiredFacts:
     - supported_pve_9_release
@@ -238,3 +284,8 @@ cases:
     layer: T0
     testBinding: "internal/controlplane/provider_target_integration_test.go#TestContractTESTPROXMOX023ProviderTargetPlansClaimsRoutesWorkerAndReleasesAfterAbsence"
     expect: {protocolMinor: 1, capabilityPersisted: true, credentialScoped: true, conflictReplans: true, dependenciesCommitted: true, releaseAfterConfirmation: true, productionGateBypass: false}
+  - id: TEST-PROXMOX-024
+    title: Signed exact-target qualification evidence fails closed
+    layer: T0
+    testBinding: "tools/proxmox-qualification/qualification/evidence_test.go#TestContractTESTPROXMOX024SignedQualificationEvidenceFailsClosed"
+    expect: {canonical: true, signed: true, exactTargetBound: true, completeT3MatrixRequired: true, isolationFailureBlocks: true, cleanupAmbiguityBlocks: true, claimsRetained: true, productionGateBypass: false}

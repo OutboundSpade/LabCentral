@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T19:52:02Z"
+verifiedAt: "2026-09-02T20:12:04Z"
 result: pass
-scope: phase_2_proxmox_target_integration_t0
+scope: phase_2_proxmox_t3_evidence_boundary_t0
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -37,6 +37,10 @@ commands:
   - go vet ./... after provider-target integration
   - make build after provider-target integration
   - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after provider-target integration
+  - go test -race -count=1 ./... after the signed Proxmox qualification-evidence boundary
+  - go vet ./... after the signed Proxmox qualification-evidence boundary
+  - make build-proxmox-qualification
+  - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the signed Proxmox qualification-evidence boundary
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -151,13 +155,24 @@ checks:
   - unknown_or_leftover_claim_retention_and_absence_gated_release
   - target_selecting_huma_api_without_credential_exposure
   - test_proxmox_023_controlplane_target_integration
+  - closed_bounded_proxmox_qualification_evidence_v1
+  - rfc_8785_domain_separated_ed25519_qualification_signature
+  - qualification_exact_target_installation_config_and_provider_build_binding
+  - complete_ordered_t3_case_matrix_and_guest_probe_evidence
+  - nonqualifying_failed_expired_tampered_or_mismatched_evidence
+  - cleanup_absence_leftover_and_claim_release_qualification_gate
+  - mode_protected_non_symlink_qualification_signing_key
+  - qualification_tool_has_no_provider_execution_or_enablement_action
+  - test_proxmox_024_signed_evidence_boundary
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
-  - Every TEST-PROXMOX-001 through TEST-PROXMOX-023 case has an executable T0 binding. Exact-target credentialed T3 qualification and real guest connectivity probes remain outstanding.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-024 case has an executable T0 binding. Exact-target credentialed T3 execution and real guest connectivity probes remain outstanding.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
+  - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
+  - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or capability-enablement command and is not included in the production release artifacts.
   - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
   - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.

@@ -1,6 +1,6 @@
 # Proxmox QEMU mutation contract
 
-`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. `TASK-PROXMOX-004` implements the closed provider types and every T0 fake-API case behind a package-private test gate. `TASK-PROXMOX-005` now has the control-plane T0 target/secret/capability/allocation/dependency path, but the production constructor still refuses writes and reports `workload.vm` and every lifecycle capability as `unsupported` until the credentialed T3 gates below pass on the configured target and a separate enablement decision is accepted.
+`TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. `TASK-PROXMOX-004` implements the closed provider types and every T0 fake-API case behind a package-private test gate. `TASK-PROXMOX-005` now has the control-plane T0 target/secret/capability/allocation/dependency path and the signed qualification-evidence boundary, but the production constructor still refuses writes and reports `workload.vm` and every lifecycle capability as `unsupported` until the credentialed T3 gates below pass on the configured target and a separate enablement decision is accepted.
 
 ## Supported slice
 
@@ -91,3 +91,13 @@ T0 fake-API tests deterministically cover every case in [`proxmox-qemu-mutation.
 - marker mismatch, compensation failure, leftover retention, task failure/redaction, and clean reverse destroy.
 
 No target combination is enabled merely because another combination passed. T4 later covers upgrade, load, and production-like failure rehearsal.
+
+## Signed qualification evidence boundary
+
+An isolated T3 runner emits the closed `labcentral.proxmox-qualification-evidence/v1` document defined by the machine contract. It records the stable run/target/installation IDs; exact target configuration, capability, inventory, and policy digests; full `pve-manager` release/build; provider binary/source-tree digests; negotiated protocol/features; destination node; `dir`/qcow2 or `lvmthin`/raw storage; VLAN-aware bridge and ranges; template VMID/config/content digests; effective ACL paths; disposable VMID ranges; every required T3 case outcome; and cleanup claim disposition. It contains only bounded identifiers and SHA-256 transcript/endpoint/agent-image digests, never an API token, raw upstream body, task log, guest secret, management address, or arbitrary test output.
+
+`TEST-PROXMOX-024` implements normal-CI validation of the evidence boundary. The signer uses RFC 8785 canonical evidence bytes, a schema-version domain separator, Ed25519, an explicit key ID, and unpadded base64url. Verification requires a configured trusted public key and exact expected target/installation IDs, target-configuration/capability/inventory/policy digests, PVE release/build, and provider binary/source-tree digests. Evidence validity is at most 30 days; a consuming deployment may require less.
+
+The three probe records are ordered and measured from a designated guest agent: all intended-segment attempts must succeed, while all management and cross-instance attempts must fail. Each has at least three attempts and binds the source VMID, endpoint digest, probe-agent image digest, and transcript digest. A signed document remains an auditable artifact when a case or probe fails, cleanup is ambiguous, a leftover exists, or a claim is retained/orphaned, but verification returns `qualifies=false`. Only provider-confirmed absence, zero leftovers, and every disposable claim marked released can qualify.
+
+`go run ./tools/proxmox-qualification sign ...` signs a completed unsigned artifact using a mode-protected, non-symlink Ed25519 private-key file. Its `verify` command is the fail-closed CI/review primitive. The tool never connects to Proxmox, executes a test, changes a claim, or opens the provider gate. The credentialed executor and a separate production-enablement ADR/implementation remain outstanding; the latter must consume verified evidence rather than a target-config boolean or the package-private T0 constructor.

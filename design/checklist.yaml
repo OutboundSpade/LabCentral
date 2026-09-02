@@ -207,7 +207,7 @@ tasks:
     status: in_progress
     dependencies: [TASK-PROXMOX-004]
     relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013]
-    relatedDocuments: [providers/proxmox, internal/controlplane, internal/pluginhost, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml]
+    relatedDocuments: [providers/proxmox, internal/controlplane, internal/pluginhost, tools/proxmox-qualification, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml]
     acceptanceCriteria:
       - Provider-target registration, secret-backed credential delivery, supervision, protocol v1.1 negotiation, capability persistence, allocation commits, and dependency states drive the Proxmox provider without weakening the Docker slice.
       - Isolated opt-in T3 runs record exact PVE 9.x, storage, bridge, permission, template, VMID, and VLAN evidence and pass every applicable TEST-PROXMOX case with automatic owned cleanup.

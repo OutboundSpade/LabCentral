@@ -1,4 +1,4 @@
-.PHONY: build build-proxmox-provider web test run release image compose-config clean
+.PHONY: build build-proxmox-provider build-proxmox-qualification web test run release image compose-config clean
 
 GO ?= go
 BUN ?= bun
@@ -19,6 +19,10 @@ build: web
 build-proxmox-provider:
 	mkdir -p bin
 	$(GO) build -trimpath -o bin/lab-provider-proxmox ./cmd/lab-provider-proxmox
+
+build-proxmox-qualification:
+	mkdir -p bin
+	$(GO) build -trimpath -o bin/lab-proxmox-qualification ./tools/proxmox-qualification
 
 web:
 	cd web && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) install --frozen-lockfile && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) run check && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) run build

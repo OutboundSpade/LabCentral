@@ -312,6 +312,35 @@ def verify_proxmox_mutation_contract() -> None:
     assert set(contract["requiredProtocolFeatures"]) == required_features
     assert contract["allocationClaims"]["uniqueKey"] == ["targetID", "namespace", "value"]
     assert contract["allocationClaims"]["releaseCondition"] == "provider_absence_confirmed"
+    qualification = contract["qualificationEvidence"]
+    assert qualification["status"] == "verifier_implemented_t3_not_executed"
+    assert qualification["evidenceSchema"] == "labcentral.proxmox-qualification-evidence/v1"
+    assert qualification["envelopeSchema"] == "labcentral.proxmox-qualification-envelope/v1"
+    assert qualification["canonicalization"] == "RFC_8785"
+    assert qualification["signature"] == {
+        "algorithm": "Ed25519",
+        "encoding": "unpadded_base64url",
+        "domainSeparated": True,
+    }
+    assert qualification["requiredT3Cases"] == [
+        "TEST-PROXMOX-003",
+        "TEST-PROXMOX-004",
+        "TEST-PROXMOX-005",
+        "TEST-PROXMOX-007",
+        "TEST-PROXMOX-008",
+        "TEST-PROXMOX-009",
+        "TEST-PROXMOX-010",
+        "TEST-PROXMOX-011",
+        "TEST-PROXMOX-012",
+        "TEST-PROXMOX-013",
+        "TEST-PROXMOX-014",
+        "TEST-PROXMOX-015",
+        "TEST-PROXMOX-017",
+        "TEST-PROXMOX-018",
+        "TEST-PROXMOX-019",
+        "TEST-PROXMOX-022",
+    ]
+    assert qualification["productionEnablement"] == "separate_accepted_adr_and_implementation_required"
 
     allowed_methods = {"GET", "POST", "DELETE"}
     allowed_paths = {
