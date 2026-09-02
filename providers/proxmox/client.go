@@ -26,7 +26,7 @@ const (
 	maximumNodes           = 64
 )
 
-var tokenIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}@[A-Za-z0-9][A-Za-z0-9_.-]{0,63}![A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+var tokenIDPattern = regexp.MustCompile(`^[^\s/:@!]{1,128}@[A-Za-z][A-Za-z0-9._-]{0,63}![A-Za-z][A-Za-z0-9._-]{0,127}$`)
 var tokenSecretPattern = regexp.MustCompile(`^[A-Za-z0-9._~-]{1,512}$`)
 
 type DiscoveryClient interface {

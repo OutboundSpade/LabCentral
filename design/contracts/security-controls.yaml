@@ -5,7 +5,7 @@ threats:
     title: Guest reaches control plane or provider management API
     owners: [core, provider, deployment, operator]
     controls: [CTRL-NET-DEFAULT-DENY, CTRL-NET-MANAGEMENT-DENY, CTRL-NET-SEPARATE-MANAGEMENT]
-    tests: [TEST-RENDER-006, TEST-PROVIDER-011, TEST-SEC-NET-001]
+    tests: [TEST-RENDER-006, TEST-PROVIDER-011, TEST-PROXMOX-018, TEST-SEC-NET-001]
   - id: THREAT-TENANT-001
     title: Cross-tenant enumeration, access, or traffic
     owners: [core, provider, deployment]
@@ -40,12 +40,12 @@ threats:
     title: Malicious plugin steals credentials or corrupts state
     owners: [core, deployment, operator]
     controls: [CTRL-PLUGIN-PROCESS-ISOLATION, CTRL-PLUGIN-DIGEST, CTRL-PLUGIN-SCOPED-CREDENTIAL, CTRL-PLUGIN-RESPONSE-VALIDATION]
-    tests: [TEST-PLUGIN-IDENTITY-001, TEST-PLUGIN-TOKEN-001, TEST-PROVIDER-014]
+    tests: [TEST-PLUGIN-IDENTITY-001, TEST-PLUGIN-TOKEN-001, TEST-PROVIDER-014, TEST-PROXMOX-011, TEST-PROXMOX-016]
   - id: THREAT-OWNERSHIP-001
     title: Provider tag spoof causes adoption or destructive cleanup
     owners: [core, provider, operator]
     controls: [CTRL-OWNERSHIP-ID-AND-TOKEN, CTRL-OWNERSHIP-NO-NAME-DELETE, CTRL-OWNERSHIP-AUDIT-ALERT]
-    tests: [TEST-PROVIDER-003, TEST-PROVIDER-018]
+    tests: [TEST-PROVIDER-003, TEST-PROVIDER-018, TEST-PROXMOX-004, TEST-PROXMOX-013]
   - id: THREAT-ACCESS-001
     title: Browser console or tunnel token leaks
     owners: [core, accessPlugin, deployment]
@@ -60,12 +60,12 @@ threats:
     title: Secret value leaks into durable or telemetry sinks
     owners: [core, provider, accessPlugin, deployment]
     controls: [CTRL-SECRET-REF-ONLY, CTRL-SECRET-JIT, CTRL-SECRET-TAINT-REDACTION]
-    tests: [TEST-SCHEMA-INVALID-004, TEST-RENDER-003, TEST-PROVIDER-014]
+    tests: [TEST-SCHEMA-INVALID-004, TEST-RENDER-003, TEST-PROVIDER-014, TEST-PROXMOX-016]
   - id: THREAT-DELETE-001
     title: Replay, race, or stale worker performs destructive action
     owners: [core, provider]
     controls: [CTRL-DELETE-ETAG-GENERATION, CTRL-JOB-FENCING, CTRL-IDEMPOTENCY, CTRL-OWNERSHIP-ID-AND-TOKEN]
-    tests: [TEST-JOB-002, TEST-JOB-004, TEST-JOB-006, TEST-PROVIDER-002, TEST-PROVIDER-018]
+    tests: [TEST-JOB-002, TEST-JOB-004, TEST-JOB-006, TEST-PROVIDER-002, TEST-PROVIDER-018, TEST-PROXMOX-009, TEST-PROXMOX-013, TEST-PROXMOX-014]
   - id: THREAT-SUPPLY-001
     title: Compromised dependency, build, bundle, or plugin artifact
     owners: [core, deployment, operator]
@@ -86,4 +86,3 @@ testDefinitions:
   - {id: TEST-SEC-SESSION-001, layer: http, assertion: mutation rejects missing or invalid CSRF and untrusted Origin}
   - {id: TEST-SEC-OIDC-001, layer: http, assertion: state nonce PKCE issuer audience and redirect are all verified}
   - {id: TEST-SEC-SUPPLY-001, layer: release, assertion: release provenance SBOM and configured checksums verify before execution}
-

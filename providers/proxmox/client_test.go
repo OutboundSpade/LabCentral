@@ -131,6 +131,11 @@ func TestClientRejectsUnsafeConfiguration(t *testing.T) {
 	if _, err := NewClient(TargetConfig{Endpoint: "https://pve.example:8006"}, APITokenCredentials{TokenID: "invalid", TokenSecret: testTokenSecret}); err == nil {
 		t.Fatal("invalid token ID accepted")
 	}
+	client, err := NewClient(TargetConfig{Endpoint: "https://pve.example:8006"}, APITokenCredentials{TokenID: "lab+automation@pve!discovery", TokenSecret: testTokenSecret})
+	if err != nil {
+		t.Fatalf("valid Proxmox user name was rejected: %v", err)
+	}
+	client.CloseIdleConnections()
 	if _, err := NewClient(TargetConfig{Endpoint: "https://pve.example:8006"}, APITokenCredentials{TokenID: testTokenID, TokenSecret: "bad\r\nheader"}); err == nil {
 		t.Fatal("invalid token secret accepted")
 	}

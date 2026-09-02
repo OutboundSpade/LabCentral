@@ -40,7 +40,11 @@ on failure: compensate primitives created by this attempt
 return success OR error + every known primitive + compensation result
 ```
 
-The core persists the response before unlocking. Plugin-local temporary journals are recommended for crash windows but core invocation/provider state is authoritative. A plugin must never adopt a name collision. Adoption, if later supported, is an explicit privileged operation with a resource identity proof.
+The core persists the response before unlocking. Plugin-local journals are mandatory when an upstream async task can outlive the RPC or process; they bridge the pre-response crash window and make `GetInvocation` durable, while committed core invocation/provider state remains authoritative. Journals are versioned, checksummed, bounded, and secret-free. A plugin must never adopt a name collision. Adoption, if later supported, is an explicit privileged operation with a resource identity proof.
+
+## Provider allocation claims
+
+Target-global scarce values cannot be assigned safely by hashing and provider plugins do not access the control-plane database. Under ADR-0013, a provider proposes bounded opaque `(namespace, value)` claims and the core enforces uniqueness by target. The core creates the Instance ID before planning, atomically commits the accepted plan and claims, and supplies committed dependency plans/states to later resources. Conflicts cause bounded replan with exclusions. A claim is not provider ownership; externally occupied values still fail closed. Claims remain held for unknown outcomes, leftovers, and orphaned resources and are released only after provider absence is confirmed.
 
 ## Ownership metadata
 
@@ -69,3 +73,7 @@ Physical object names and labels are deterministic. Deletion first inspects the 
 `TASK-PROXMOX-001` adds the separately runnable `lab-provider-proxmox` process and only implements runtime health plus `DiscoverTarget`. Strict versioned JSON envelopes carry an HTTPS origin/private CA and an ephemeral target API token. The client disables proxies and redirects, verifies TLS, bounds time/responses/inventory, sends only `GET`, validates provider-returned node identifiers before using them in paths, and redacts configuration, credential, transport, and upstream-body details from gRPC errors.
 
 The deterministic capacity document returns typed version, node, QEMU/template, storage/format, bridge/VLAN-awareness, and partial-issue facts with an inventory digest. Its evidence expires after five minutes. Portable mutation, snapshot, firewall, access, reservation, and placement capabilities remain unsupported; provider-specific discovery features are diagnostic only. The complete contract, operator permissions, and release boundary are in [`proxmox-provider.md`](proxmox-provider.md).
+
+## Proxmox QEMU mutation design gate
+
+`TASK-PROXMOX-002` defines, but does not implement, the first write slice: fixed-node PVE 9.x Linux QEMU full clones, approved storage, core-claimed VMIDs/VLANs, approved VLAN-aware bridges, PVE-native typed IPv4 Cloud-Init networking, and bounded start/stop/pause/resume. The plan, ownership marker, durable invocation journal, UPID polling/recovery, compensation, least-privilege scopes, and T0/T3 cases are closed contracts. Mutation stays unsupported until every prerequisite and target-specific gate in [`proxmox-qemu-mutation.md`](proxmox-qemu-mutation.md) and [`proxmox-qemu-mutation.yaml`](../../design/contracts/proxmox-qemu-mutation.yaml) passes.

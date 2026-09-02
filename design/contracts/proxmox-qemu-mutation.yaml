@@ -1,0 +1,213 @@
+formatVersion: 1
+suite: labcentral.proxmox-qemu-mutation/v1alpha1
+status: design_gate
+provider: proxmox
+initialRelease:
+  pveRange: ">=9.0.0 <10.0.0"
+  architecture: amd64
+  workload: linux_qemu_full_clone
+  placement: fixed_node
+  networks: approved_vlan_aware_linux_bridge
+  addressFamily: ipv4_static
+schemas:
+  targetConfig: {name: proxmox.target-config, version: 1.1}
+  plan: {name: proxmox.qemu-plan, version: 1.0}
+  providerState: {name: proxmox.qemu-state, version: 1.0}
+  invocationJournal: {name: proxmox.invocation-journal, version: 1.0}
+requiredProtocolFeatures:
+  - stable_instance_identity_before_plan
+  - opaque_target_allocation_claims
+  - excluded_claims_on_replan
+  - dependency_plans_and_states
+  - durable_get_invocation
+allocationClaims:
+  uniqueKey: [targetID, namespace, value]
+  namespaces: [proxmox.qemu.vmid, proxmox.network.vlan]
+  states: [held, committed, orphaned, released]
+  releaseCondition: provider_absence_confirmed
+capabilityGate:
+  requiredFacts:
+    - supported_pve_9_release
+    - effective_permissions_match_configured_scopes
+    - template_config_and_operator_digest_match
+    - fixed_node_online
+    - storage_profile_and_format_match
+    - vlan_aware_bridge_profile_matches
+    - management_isolation_attested_and_probed
+    - core_allocation_protocol_negotiated
+    - durable_journal_healthy
+    - exact_target_matrix_passed_t3
+  beforeGate:
+    workload.vm: unsupported
+    lifecycle.start: unsupported
+    lifecycle.stop: unsupported
+    lifecycle.pause: unsupported
+    lifecycle.resume: unsupported
+  neverImplied:
+    - lifecycle.clone
+    - lifecycle.snapshot
+    - lifecycle.restore
+    - lifecycle.reset
+    - access.browser
+    - placement.dynamic
+allowedApi:
+  - {method: GET, path: /access/permissions, purpose: effective_permission_gate}
+  - {method: GET, path: /cluster/nextid, purpose: advisory_collision_preflight}
+  - {method: GET, path: "/nodes/{node}/qemu/{vmid}/config", purpose: template_ownership_and_drift_read}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/clone", purpose: full_clone}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/config", purpose: safe_managed_configuration}
+  - {method: GET, path: "/nodes/{node}/qemu/{vmid}/status/current", purpose: lifecycle_observation}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/status/start", purpose: start}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/status/shutdown", purpose: graceful_stop}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/status/suspend", purpose: pause_without_disk_state}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/status/resume", purpose: resume}
+  - {method: POST, path: "/nodes/{node}/qemu/{vmid}/agent/ping", purpose: bounded_readiness_probe}
+  - {method: GET, path: "/nodes/{node}/tasks/{upid}/status", purpose: async_task_status}
+  - {method: DELETE, path: "/nodes/{node}/qemu/{vmid}", purpose: owned_vm_cleanup}
+forbiddenInputs:
+  - generic_maps
+  - qemu_args
+  - hookscripts
+  - host_pci_or_usb_passthrough
+  - virtiofs_or_host_paths
+  - raw_disks_or_physical_interfaces
+  - arbitrary_cloud_init_or_cicustom
+  - ignition_or_author_files
+  - guest_passwords_or_secrets
+  - volumes_or_mounts
+  - external_networks_or_trunks
+  - ipv6_or_provider_managed_ipam
+  - snapshots_restore_reset_or_user_clone
+  - force_skiplock_purge_or_destroy_unreferenced
+permissions:
+  required:
+    - VM.Audit
+    - VM.Clone
+    - VM.Allocate
+    - VM.Config.CPU
+    - VM.Config.Memory
+    - VM.Config.Network
+    - VM.Config.Cloudinit
+    - VM.Config.Options
+    - VM.PowerMgmt
+    - VM.GuestAgent.Audit
+    - Datastore.Audit
+    - Datastore.AllocateSpace
+    - SDN.Use
+    - Sys.Audit
+  forbiddenBroadening:
+    - VM.GuestAgent.Unrestricted
+    - Sys.Modify
+    - direct_datastore_delete
+    - cluster_administrator
+covers:
+  TEST-PROVIDER-001: [TEST-PROXMOX-001, TEST-PROXMOX-005, TEST-PROXMOX-006]
+  TEST-PROVIDER-002: [TEST-PROXMOX-002]
+  TEST-PROVIDER-003: [TEST-PROXMOX-004, TEST-PROXMOX-013]
+  TEST-PROVIDER-004: [TEST-PROXMOX-005, TEST-PROXMOX-011]
+  TEST-PROVIDER-005: [TEST-PROXMOX-005, TEST-PROXMOX-012]
+  TEST-PROVIDER-006: [TEST-PROXMOX-007, TEST-PROXMOX-008]
+  TEST-PROVIDER-007: [TEST-PROXMOX-009]
+  TEST-PROVIDER-008: [TEST-PROXMOX-009, TEST-PROXMOX-014]
+  TEST-PROVIDER-009: [TEST-PROXMOX-011]
+  TEST-PROVIDER-010: [TEST-PROXMOX-011]
+  TEST-PROVIDER-011: [TEST-PROXMOX-002, TEST-PROXMOX-003, TEST-PROXMOX-019]
+  TEST-PROVIDER-012: [TEST-PROXMOX-007]
+  TEST-PROVIDER-013: [TEST-PROXMOX-012]
+  TEST-PROVIDER-014: [TEST-PROXMOX-016, TEST-PROXMOX-022]
+  TEST-PROVIDER-015: [TEST-PROXMOX-001]
+  TEST-PROVIDER-016: [TEST-PROXMOX-011, TEST-PROXMOX-012]
+  TEST-PROVIDER-017: [TEST-PROXMOX-014]
+  TEST-PROVIDER-018: [TEST-PROXMOX-013]
+cases:
+  - id: TEST-PROXMOX-001
+    title: Deterministic typed plan binds committed claims
+    layer: T0
+    expect: {identicalPlanBytes: true, claimsUnique: true, applyUsesCommittedClaimsOnly: true, mutations: 0}
+  - id: TEST-PROXMOX-002
+    title: Stale capability or target configuration rejects apply
+    layer: T0
+    expect: {error: stale_plan, mutations: 0, claimsRetained: true}
+  - id: TEST-PROXMOX-003
+    title: Template digest or forbidden-device drift rejects apply
+    layer: T0_T3
+    expect: {error: template_drift, mutations: 0}
+  - id: TEST-PROXMOX-004
+    title: Claimed VMID occupied by foreign VM is never adopted
+    layer: T0_T3
+    expect: {error: ownership_mismatch, cloneCalls: 0, adopted: false, claimsRetained: true}
+  - id: TEST-PROXMOX-005
+    title: Lost clone response finds matching marker and resumes
+    layer: T0_T3
+    fault: clone_response_lost_after_commit
+    expect: {cloneCalls: 1, duplicateVMs: 0, resumesTaskOrConfig: true}
+  - id: TEST-PROXMOX-006
+    title: Lost clone response with absent VM retries same invocation
+    layer: T0
+    fault: clone_response_lost_before_commit
+    expect: {safeRetry: true, finalCloneCount: 1}
+  - id: TEST-PROXMOX-007
+    title: Clone task failure before VM creation is terminal and clean
+    layer: T0_T3
+    expect: {operationState: failed, leftovers: [], vmidClaimReleasedAfterAbsence: true}
+  - id: TEST-PROXMOX-008
+    title: Configuration failure compensates exactly owned VM
+    layer: T0_T3
+    expect: {deleteCalls: 1, ownershipChecked: true, absenceConfirmed: true, leftovers: []}
+  - id: TEST-PROXMOX-009
+    title: Compensation delete failure reports leftover and retains claims
+    layer: T0_T3
+    expect: {operationState: partial, leftovers: [ownedVM], claimsRetained: true}
+  - id: TEST-PROXMOX-010
+    title: PVE config digest race never overwrites drift
+    layer: T0_T3
+    expect: {desiredReadbackMayComplete: true, conflictingDriftFails: true, blindOverwrite: false}
+  - id: TEST-PROXMOX-011
+    title: Durable journal survives restart and rejects corrupt versions
+    layer: T0_T3
+    fault: plugin_restart_at_every_checkpoint
+    expect: {sameInvocation: true, duplicateMutation: false, corruptJournalFailsClosed: true}
+  - id: TEST-PROXMOX-012
+    title: Lost start response reconciles task and VM state
+    layer: T0_T3
+    expect: {startCalls: 1, finalState: running, duplicateMutation: false}
+  - id: TEST-PROXMOX-013
+    title: Destroy refuses ownership marker mismatch
+    layer: T0_T3
+    expect: {error: ownership_mismatch, deleteCalls: 0, auditAlert: true, claimsRetained: true}
+  - id: TEST-PROXMOX-014
+    title: Lost destroy response releases claims only after absence
+    layer: T0_T3
+    expect: {deleteCalls: 1, absenceConfirmed: true, releaseAfterConfirmation: true}
+  - id: TEST-PROXMOX-015
+    title: Lifecycle operations are read-before-action idempotent
+    layer: T0_T3
+    expect: {duplicateActions: 0, forceFlags: false, pauseToDisk: false}
+  - id: TEST-PROXMOX-016
+    title: Credential and guest-data canaries are absent from every sink
+    layer: T0
+    expect: {canaryOccurrences: 0, taskLogsReturned: false, upstreamBodiesReturned: false}
+  - id: TEST-PROXMOX-017
+    title: Concurrent VLAN claims are unique and safely retained
+    layer: T0_T3
+    expect: {duplicateClaims: 0, conflictReplans: true, orphanClaimReleased: false}
+  - id: TEST-PROXMOX-018
+    title: Management and cross-instance isolation are proved positively and negatively
+    layer: T3
+    expect: {intendedSegmentReachable: true, managementReachable: false, otherInstanceReachable: false}
+  - id: TEST-PROXMOX-019
+    title: Missing or mis-scoped effective privilege blocks capability
+    layer: T0_T3
+    expect: {workloadVm: unsupported, mutations: 0, missingScopesReportedSafely: true}
+  - id: TEST-PROXMOX-020
+    title: Unsupported artifact mount and snapshot requests never mutate
+    layer: T0
+    expect: {errors: [unsupported_guest_artifact, unsupported_volume, unsupported_snapshot], mutations: 0}
+  - id: TEST-PROXMOX-021
+    title: Malformed or mismatched UPID is rejected
+    layer: T0
+    expect: {error: invalid_task_identity, successInferred: false, followupMutation: false}
+  - id: TEST-PROXMOX-022
+    title: Task failure and oversized diagnostics stay bounded and redacted
+    layer: T0_T3
+    expect: {error: provider_task_failed, bounded: true, canaryOccurrences: 0, rawTaskLog: false}

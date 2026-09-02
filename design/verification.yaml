@@ -1,5 +1,5 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T03:41:20Z"
+verifiedAt: "2026-09-02T17:43:47Z"
 result: pass
 scope: design_only_phase_0
 command: "BUFBIN=/tmp/labcentral-buf python3 tools/verify_phase0.py"
@@ -17,7 +17,8 @@ checks:
   - plugin_behavior_fixtures
   - protobuf_format_lint_breaking_baseline
   - provider_job_security_contract_catalogs
+  - proxmox_qemu_mutation_design_contract
   - documentation_links_and_project_state
 notes:
   - No provider was contacted and no lab workload was executed.
-  - Runtime Go domain, database, and fake-provider tests begin in the next implementation phase.
+  - The Proxmox mutation catalog is a design gate; every mutation capability remains unsupported.

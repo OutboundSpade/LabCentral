@@ -258,6 +258,7 @@ def collect_test_ids() -> set[str]:
     sources = [
         ROOT / "api/plugin/v1/compat/compatibility.yaml",
         ROOT / "design/contracts/provider-conformance.yaml",
+        ROOT / "design/contracts/proxmox-qemu-mutation.yaml",
         ROOT / "design/contracts/rendering-cases.yaml",
         ROOT / "design/contracts/job-invariants.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
@@ -277,6 +278,62 @@ def collect_test_ids() -> set[str]:
         assert test_id not in ids, f"duplicate test ID: {test_id}"
         ids.add(test_id)
     return ids
+
+
+def verify_proxmox_mutation_contract() -> None:
+    contract = load_yaml(ROOT / "design/contracts/proxmox-qemu-mutation.yaml")
+    assert contract["suite"] == "labcentral.proxmox-qemu-mutation/v1alpha1"
+    assert contract["status"] == "design_gate", "mutation contract must not claim implementation readiness"
+    assert contract["schemas"] == {
+        "targetConfig": {"name": "proxmox.target-config", "version": 1.1},
+        "plan": {"name": "proxmox.qemu-plan", "version": 1.0},
+        "providerState": {"name": "proxmox.qemu-state", "version": 1.0},
+        "invocationJournal": {"name": "proxmox.invocation-journal", "version": 1.0},
+    }
+    required_features = {
+        "stable_instance_identity_before_plan",
+        "opaque_target_allocation_claims",
+        "excluded_claims_on_replan",
+        "dependency_plans_and_states",
+        "durable_get_invocation",
+    }
+    assert set(contract["requiredProtocolFeatures"]) == required_features
+    assert contract["allocationClaims"]["uniqueKey"] == ["targetID", "namespace", "value"]
+    assert contract["allocationClaims"]["releaseCondition"] == "provider_absence_confirmed"
+
+    allowed_methods = {"GET", "POST", "DELETE"}
+    allowed_paths = {
+        "/access/permissions",
+        "/cluster/nextid",
+        "/nodes/{node}/qemu/{vmid}/config",
+        "/nodes/{node}/qemu/{vmid}/clone",
+        "/nodes/{node}/qemu/{vmid}/status/current",
+        "/nodes/{node}/qemu/{vmid}/status/start",
+        "/nodes/{node}/qemu/{vmid}/status/shutdown",
+        "/nodes/{node}/qemu/{vmid}/status/suspend",
+        "/nodes/{node}/qemu/{vmid}/status/resume",
+        "/nodes/{node}/qemu/{vmid}/agent/ping",
+        "/nodes/{node}/tasks/{upid}/status",
+        "/nodes/{node}/qemu/{vmid}",
+    }
+    for call in contract["allowedApi"]:
+        assert call["method"] in allowed_methods, f"unexpected Proxmox mutation method: {call}"
+        assert call["path"] in allowed_paths, f"unexpected Proxmox mutation path: {call}"
+
+    provider_ids = {
+        case["id"] for case in load_yaml(ROOT / "design/contracts/provider-conformance.yaml")["requiredCases"]
+    }
+    assert set(contract["covers"]) == provider_ids, "Proxmox contract must map every generic provider case"
+    cases = contract["cases"]
+    case_ids = [case["id"] for case in cases]
+    assert len(cases) >= 20, "Proxmox mutation contract lost required failure-window coverage"
+    assert len(case_ids) == len(set(case_ids)), "duplicate Proxmox mutation test ID"
+    referenced = {test_id for mapped in contract["covers"].values() for test_id in mapped}
+    assert referenced <= set(case_ids), "Proxmox generic coverage references an undefined case"
+
+    before_gate = contract["capabilityGate"]["beforeGate"]
+    assert before_gate, "Proxmox mutation capability gate is empty"
+    assert set(before_gate.values()) == {"unsupported"}, "mutation capabilities must stay unsupported before gates"
 
 
 def verify_contract_catalogs() -> None:
@@ -382,6 +439,7 @@ def main() -> int:
         ("plugin behavior fixtures", verify_plugin_cases),
         ("Protobuf format/lint/breaking baseline", lambda: verify_proto(buf)),
         ("provider/job/security contract catalogs", verify_contract_catalogs),
+        ("Proxmox QEMU mutation design contract", verify_proxmox_mutation_contract),
         ("documentation links and project state", verify_markdown_links_and_state),
     ]
     for label, check in checks:

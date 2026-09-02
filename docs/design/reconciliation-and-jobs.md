@@ -51,6 +51,8 @@ flowchart LR
 
 ## Quotas and reservations
 
+Provider allocation claims are separate from capacity quota reservations. Under ADR-0013 the core persists a bounded opaque `(targetID, namespace, value)` unique claim together with its plan. Planning conflicts trigger bounded replan with exclusions. `held` becomes `committed` at plan acceptance; an unknown invocation, compensation failure, leftover, or destroy failure retains the claim as unavailable rather than recycling it. Only positive provider absence permits `released`. Claim writes use the same operation/instance locks and fencing checks as plan and provider-state checkpoints.
+
 Limits compose from platform, organization, project, team, user, target; the tightest applicable remaining limit wins. Before scheduling/apply, a serializable transaction creates an expiring reservation for instances, VM/container count, CPU, memory, storage, public IPs, published ports, lifetime, snapshots, and provider-specific cost units. Successful realization commits planned to observed usage; variance over reservation pauses additional work and raises quota review. Failures release uncommitted portions after outcome/cleanup is known. Destroy releases only after absence is confirmed; orphaned resources retain usage.
 
 ## Events and audit

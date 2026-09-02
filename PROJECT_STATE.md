@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, and the read-only Phase 2 Proxmox discovery foundation are complete. Mutating production-provider and multi-user control-plane work has not started.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, read-only Phase 2 Proxmox discovery, and the first Proxmox QEMU mutation contract are complete. Allocation/protocol prerequisites, write-capable provider code, and multi-user control-plane work have not started.
 **Updated:** 2026-09-02
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -12,7 +12,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 ## Latest completed work
 
 - Interpreted requirements and traceable architecture baseline.
-- Accepted ADR-0001 through ADR-0012.
+- Accepted ADR-0001 through ADR-0013.
 - Domain, declarative format, capability model, jobs, API, RBAC, access, persistence, deployment, testing, threat model, and provider roadmap documented.
 - Three example bundles, an executable authoring JSON Schema, strict parser/invalid fixtures, and canonical JCS golden vectors added.
 - Plugin registration direction and per-major negotiation finalized; v1 Protobuf descriptor baseline and behavior fixtures accepted.
@@ -30,6 +30,8 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - The Compose distribution passed the real Example A apply/access/destroy gate with separate live `labd` and provider processes, zero ownership-labeled leftovers, and SQLite state retained across a control-plane restart. The image contained no Go, Bun, shell, or package-manager runtime.
 - `TASK-PROXMOX-001` added a separately runnable, GET-only Proxmox provider with strict versioned HTTPS/API-token envelopes, verified TLS, refused redirects/proxies, bounded deterministic inventory, expiring evidence, and typed partial failures.
 - The T0 TLS fake-API suite proves exact authorization and queries, offline/partial behavior, provider-returned path validation, deterministic inventory/capacity, credential and error-body redaction, and that every non-discovery provider RPC remains unimplemented. No real Proxmox credentials or mutations were used.
+- `TASK-PROXMOX-002` accepted ADR-0013 for core-owned opaque target allocation claims and fixed the first write design to PVE 9.x fixed-node Linux QEMU full clones with approved storage/VLAN-aware bridges, typed native IPv4 Cloud-Init networking, strong ownership, durable UPID recovery, and least-privilege scopes.
+- The machine-readable Proxmox mutation catalog maps all 18 generic provider cases to 22 target-specific T0/T3 cases. Every mutation capability remains unsupported until allocation/protocol implementation, fake-API conformance, and exact-target credentialed gates pass.
 
 ## Open questions and risks
 
@@ -37,7 +39,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Complete proposed `TASK-PROXMOX-002`: specify the exact Linux QEMU template-clone mutation, ownership, async-task, least-privilege, and credentialed integration contracts before implementation.
+1. Start `TASK-PROXMOX-003`: implement core-owned allocation claims and the additive plugin planning/dependency protocol prerequisites, with SQLite/PostgreSQL and compatibility conformance, before any Proxmox write code.
 2. Keep production providers and multi-user deployment gated behind their target-specific integration, authorization, threat-control, and operational acceptance criteria.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

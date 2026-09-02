@@ -19,6 +19,8 @@ The core does not model DHCP, DNS, routes, NAT, firewalls, VPNs, or routing prot
 | Fly network | Custom 6PN per lab or isolation scope, private IPv6/DNS and Fly services. Reject arbitrary L2, custom MAC/CIDR, multi-NIC, and router topology. |
 | AWS network | VPC/subnet (shared or dedicated policy), route table, ENIs, security groups and optional NACL/NAT/IGW/public address. Subnet is one AZ and L3 semantics; router appliances require explicit source/destination-check and route validation. |
 
+The first Proxmox mutation contract narrows its mapping to an existing administrator-approved VLAN-aware Linux bridge plus one core-claimed VLAN per isolated logical Network. The Network provider state records that binding; dependent VM plans consume it. It does not create or reconfigure bridges, SDN, routes, firewall, DHCP, or NAT. IPv4 static addressing is rendered into typed PVE `ipconfigN`; IPv6, external networks, trunks, and provider-managed IPAM fail validation. Capability remains unsupported until management-path and cross-instance negative connectivity tests pass on the exact target profile.
+
 ## Docker laptop degradation
 
 The `TASK-DOCKER-001` baseline uses only version-negotiated Docker Engine image/container/volume/network APIs. Every published port is bound explicitly to `127.0.0.1`; a provider-selected host port is read back from Engine state before the instance becomes ready, and published TCP ports must accept a bounded loopback connection. Containers drop all Linux capabilities, set `no-new-privileges`, and receive declared CPU/memory limits. These controls reduce exposure but do not turn containers into a hostile-workload boundary.

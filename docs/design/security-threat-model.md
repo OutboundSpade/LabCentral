@@ -60,6 +60,12 @@ The `TASK-PROXMOX-001` provider receives a target API token only in the invocati
 
 Operators must use a dedicated privilege-separated, expiring token whose backing user and token have only audit access required for the target inventory. The provider must reach the Proxmox management origin, but lab guests must not; management-plane routing/firewall separation remains the deployment control for `THREAT-NET-001`. This discovery-only process has no mutation RPC and should not receive mutation privileges. A later mutating provider requires a new threat/control/test review for ownership fencing, asynchronous task ambiguity, cleanup, and least-privilege write ACLs.
 
+## Proxmox mutation boundary
+
+`TASK-PROXMOX-002` supplies that review without enabling writes. The first mutation capability is gated on exact effective-permission scopes, a fixed-node/template/storage/bridge allowlist, core-unique VMID/VLAN claims, negative management/cross-instance connectivity tests, and a durable secret-free invocation journal. A clone receives its full ownership marker at creation; every read, lifecycle action, compensation, and destroy uses the recorded node/VMID and requires the marker token to match. Unknown outcomes and cleanup failures retain claims and report leftovers.
+
+The typed plan cannot carry raw QEMU arguments, hooks, host devices/paths, arbitrary Cloud-Init, secrets, access endpoints, or force/purge flags. UPIDs, task status, provider JSON, and error sizes are bounded; task logs and upstream bodies are excluded. The machine catalog adds target-specific cases for management reachability, token/journal redaction, foreign VMID collision, marker mismatch, compensation failure, deletion ambiguity, and claim retention. The capability remains unsupported until those T0 and credentialed T3 gates pass.
+
 ## Future hardening
 
 Bundle/plugin signing, transparency/provenance verification, external policy modules that only constrain, isolated image importers, hardware-backed key management, and anomaly/flow monitoring are roadmap items. They do not weaken current fail-closed defaults.

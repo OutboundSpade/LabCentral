@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T17:24:05Z"
+verifiedAt: "2026-09-02T17:43:47Z"
 result: pass
-scope: phase_2_proxmox_discovery_foundation
+scope: phase_2_proxmox_mutation_contract
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -28,6 +28,7 @@ commands:
   - go test -race -count=1 ./...
   - go vet ./...
   - make build-proxmox-provider
+  - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the Proxmox mutation contract
   - Compose real Docker create -> ready -> loopback HTTP request -> destroy -> ownership-label absence -> restart persistence check
 checks:
   - typed_identity_and_digest_validation
@@ -99,7 +100,12 @@ checks:
   - proxmox_partial_and_offline_inventory_classification
   - proxmox_credential_upstream_body_and_fingerprint_redaction
   - proxmox_non_discovery_rpcs_unimplemented
+  - all_18_generic_provider_cases_mapped_to_22_proxmox_mutation_cases
+  - proxmox_mutation_capabilities_remain_unsupported_before_gates
+  - core_owned_allocation_claim_contract
+  - proxmox_username_api_token_syntax
 notes:
+  - The mutation contract verification contacted no Proxmox target and performed no mutation; it defines prerequisites and future T0/T3 cases only.
   - The Proxmox foundation used only local TLS fake APIs and synthetic token canaries; it contacted no Proxmox target and performed no mutation.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - The credentialed smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.

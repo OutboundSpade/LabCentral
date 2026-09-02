@@ -13,6 +13,8 @@ Template authoring declares desired workloads/configuration; bundle packaging ma
 
 Provisioning specs declare supported OS family, required guest capability/image contract, timing (`firstBoot`, `everyRecreate`), and sensitivity. The rendered canonical spec includes refs/digests but not secret bytes. Providers report `injected`, `booting`, `ready`, `failed`, or `unknown` with bounded safe diagnostics.
 
+The first Proxmox QEMU mutation is intentionally smaller than the portable Cloud-Init model. It accepts only PVE-native IPv4 `ipconfigN` values derived from typed NIC addresses and logical CIDRs, sets `ciupgrade=0`, and requires an operator-validated template with an existing Cloud-Init drive and QEMU guest agent. It rejects raw user/meta/network data, `cicustom`, author files, passwords, secrets, Ignition, and bundle artifacts before mutation. Artifact transport and richer provisioning require a later versioned protocol and threat review.
+
 Cloudbase-Init, WinRM/PowerShell, SSH execution, Ansible, and custom guest agents are future provisioner extensions. Arbitrary control-plane SSH scripting is not the default, and guests do not require persistent inbound administrative reachability.
 
 ## Container-via-VM
@@ -22,4 +24,3 @@ The reusable runtime contract is documented in `provider-contract.md`. Bootstrap
 ## Image building
 
 Builds are separate durable operations executed in isolated, disposable builders with no provider/control credentials, restricted egress, resource/time/output limits, provenance, and mandatory content digest. Bundle build contexts never execute inside `labd`. External image resolution is disabled by default pending OQ-IMAGE-001.
-
