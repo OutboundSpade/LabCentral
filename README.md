@@ -22,3 +22,10 @@ go test ./...
 go test -race ./...
 go vet ./...
 ```
+
+The default suite runs job/outbox conformance on SQLite. Run the same eight invariants against an isolated PostgreSQL database with:
+
+```sh
+LABCENTRAL_TEST_POSTGRES_DSN='postgres://user:password@127.0.0.1:5432/labcentral_test?sslmode=disable' \
+  go test -count=1 -run TestPostgreSQLJobConformance ./internal/adapter/jobsdb
+```

@@ -293,6 +293,18 @@ def verify_contract_catalogs() -> None:
         assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
             f"rendering case references missing Go test: {case['id']}: {go_test}"
         )
+    jobs = load_yaml(ROOT / "design/contracts/job-invariants.yaml")
+    for invariant in jobs["invariants"]:
+        go_test = invariant.get("goTest")
+        assert go_test, f"job invariant has no Go test binding: {invariant['id']}"
+        assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+            f"job invariant references missing Go test: {invariant['id']}: {go_test}"
+        )
+        postgresql_test = invariant.get("postgresqlGoTest")
+        if postgresql_test:
+            assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
+                f"job invariant references missing PostgreSQL test: {invariant['id']}: {postgresql_test}"
+            )
     security = load_yaml(ROOT / "design/contracts/security-controls.yaml")
     threat_ids: set[str] = set()
     for threat in security["threats"]:

@@ -104,6 +104,8 @@ documents:
     status: complete
   - path: internal/render
     status: complete
+  - path: internal/adapter/jobsdb
+    status: complete
   - path: examples
     status: complete
 openQuestions:
@@ -138,7 +140,7 @@ completedTasks:
   - TASK-CONTRACT-001
   - TASK-DOMAIN-001
   - TASK-RENDER-001
+  - TASK-JOBS-001
 currentTasks: []
 nextRecommendedTasks:
-  - TASK-JOBS-001
   - TASK-PROVIDER-001

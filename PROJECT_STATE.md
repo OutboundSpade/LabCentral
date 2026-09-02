@@ -21,6 +21,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - Current official provider behavior recorded with primary sources retrieved 2026-09-02.
 - `TASK-DOMAIN-001` implemented the minimal Go module, sealed typed logical resources, validated value contracts, lifecycle transitions, application ports, secret redaction, and recursive import-boundary tests.
 - `TASK-RENDER-001` implemented bounded strict YAML parsing, Draft 2020-12 validation, typed inputs/components/resources, bounded CEL, two-stage typed reference resolution, stable dependency ordering, native RFC 8785 canonicalization, framed digests, and executable example/contract fixtures.
+- `TASK-JOBS-001` implemented a checksummed transactional job/outbox prototype, database-time leases, monotonic fencing, unknown-invocation recovery, idempotency binding, quota/leftover safeguards, and one shared eight-case conformance suite proven on SQLite and PostgreSQL.
 
 ## Open questions and risks
 
@@ -28,8 +29,7 @@ Five questions remain under documented temporary defaults: Windows timing, trust
 
 ## Next concrete actions
 
-1. Implement `TASK-JOBS-001`: SQLite/PostgreSQL repository conformance tests for the accepted lease/outbox invariants.
-2. Implement `TASK-PROVIDER-001`: fake provider and shared contract runner from `design/contracts/provider-conformance.yaml`.
-3. After those gates pass, start the thin Docker local vertical slice; do not start a real production provider earlier.
+1. Implement `TASK-PROVIDER-001`: fake provider and shared contract runner from `design/contracts/provider-conformance.yaml`.
+2. After that gate passes, start the thin Docker local vertical slice; do not start a real production provider earlier.
 
 Authoritative index: [`design/state.yaml`](design/state.yaml), [`design/checklist.yaml`](design/checklist.yaml), [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/adr/`](docs/adr/), and [`docs/references.md`](docs/references.md).

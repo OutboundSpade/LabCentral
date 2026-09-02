@@ -51,11 +51,21 @@ type InstanceRepository interface {
 type OperationClaim struct {
 	Operation domain.Operation
 	Token     domain.FencingToken
+	Action    ClaimAction
 }
+
+type ClaimAction string
+
+const (
+	ClaimDispatch      ClaimAction = "dispatch"
+	ClaimGetInvocation ClaimAction = "get_invocation"
+)
 
 type OperationCheckpoint struct {
 	OperationID domain.OperationID
+	LeaseOwner  string
 	Token       domain.FencingToken
+	Generation  domain.Generation
 	State       domain.OperationState
 	Attempt     uint32
 	Payload     []byte
@@ -64,8 +74,8 @@ type OperationCheckpoint struct {
 type OperationRepository interface {
 	Get(context.Context, domain.OperationID) (domain.Operation, error)
 	Enqueue(context.Context, domain.Operation, string) error
-	Claim(context.Context, string, time.Time, time.Duration) (OperationClaim, error)
-	RenewLease(context.Context, domain.OperationID, domain.FencingToken, time.Time) error
+	Claim(context.Context, string, time.Duration) (OperationClaim, error)
+	RenewLease(context.Context, domain.OperationID, string, domain.FencingToken, time.Duration) error
 	Checkpoint(context.Context, OperationCheckpoint) error
 }
 

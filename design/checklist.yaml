@@ -125,7 +125,7 @@ tasks:
       - Go canonical bytes and framed SHA-256 digests match every golden vector independently of the JavaScript oracle.
   - id: TASK-JOBS-001
     title: Prototype database lease and outbox invariants
-    status: proposed
+    status: complete
     dependencies: [TASK-DOMAIN-001]
     relatedAdrs: [ADR-0006, ADR-0011]
     relatedDocuments: [docs/design/reconciliation-and-jobs.md, docs/design/database-schema.md, design/contracts/job-invariants.yaml]

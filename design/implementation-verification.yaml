@@ -1,13 +1,14 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T04:32:51Z"
+verifiedAt: "2026-09-02T04:47:15Z"
 result: pass
-scope: foundation_through_TASK-RENDER-001
+scope: foundation_through_TASK-JOBS-001
 toolchain:
   go: "1.27.1"
 commands:
   - go test -count=1 ./...
   - go test -race -count=1 ./...
   - go vet ./...
+  - LABCENTRAL_TEST_POSTGRES_DSN=<isolated-test-url> go test -race -count=3 ./internal/adapter/jobsdb
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -23,5 +24,15 @@ checks:
   - typed_reference_graph_and_reverse_destroy_order
   - rfc_8785_canonical_bytes_and_framed_digests
   - deterministic_example_and_render_contract_fixtures
+  - sqlite_single_writer_claims
+  - postgresql_skip_locked_claims
+  - database_time_leases_and_monotonic_fencing
+  - atomic_state_audit_event_and_outbox
+  - unknown_invocation_recovery_without_redispatch
+  - request_digest_idempotency_binding
+  - unknown_outcome_quota_retention
+  - leftover_aware_destroy_finalization
+  - stable_at_least_once_outbox_redelivery
 notes:
-  - No runtime service, database adapter, provider, or lab workload was started.
+  - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
+  - No runtime service, provider, or lab workload was started.

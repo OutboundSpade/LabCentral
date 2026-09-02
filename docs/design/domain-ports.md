@@ -78,7 +78,7 @@ type Repositories interface {
 }
 ```
 
-Repositories expose aggregate operations with expected `ResourceVersion`, not table CRUD. `OperationRepository` claims jobs, renews leases, checkpoints steps, and commits only with matching fencing token. `GovernanceRepository` reserves/reconciles quota within the caller’s unit of work. `EventRepository` appends aggregate-sequenced event, audit intent, and outbox atomically with state. Adapters translate duplicate/version/serialization conflicts into domain errors.
+Repositories expose aggregate operations with expected `ResourceVersion`, not table CRUD. `OperationRepository` claims jobs using database time, renews leases, and checkpoints only with matching lease owner, fencing token, desired generation, and attempt. A recovered claim explicitly directs the worker to dispatch or query an unknown invocation. `GovernanceRepository` reserves/reconciles quota within the caller’s unit of work. `EventRepository` appends aggregate-sequenced event, audit intent, and outbox atomically with state. Adapters translate duplicate/version/serialization conflicts into domain errors.
 
 ## External side-effect ports
 
