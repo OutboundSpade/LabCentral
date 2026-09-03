@@ -1,6 +1,6 @@
 formatVersion: 1
 suite: labcentral.proxmox-qemu-mutation/v1alpha1
-status: production_authorizer_implemented_packaging_in_progress
+status: single_operator_production_release_candidate_verified
 provider: proxmox
 initialRelease:
   pveRange: ">=9.0.0 <10.0.0"
@@ -26,7 +26,7 @@ allocationClaims:
   states: [held, committed, orphaned, released]
   releaseCondition: provider_absence_confirmed
 qualificationEvidence:
-  status: testbed_signed_and_verified_ready_for_independent_review
+  status: exact_release_testbed_signed_and_verified
   evidenceSchema: labcentral.proxmox-qualification-evidence/v1
   envelopeSchema: labcentral.proxmox-qualification-envelope/v1
   canonicalization: RFC_8785
@@ -70,7 +70,7 @@ qualificationEvidence:
   cleanup:
     qualifyingCondition: provider_absence_confirmed_and_no_leftovers_and_all_claims_released
     failureCondition: retain_or_orphan_claims_and_block_capability
-  productionEnablement: adr_0014_authorizer_implemented_exact_release_requalification_required
+  productionEnablement: adr_0014_authorizer_implemented_exact_release_candidate_verified
 productionAuthorization:
   status: implemented_fail_closed
   decision: ADR-0014
@@ -105,7 +105,7 @@ credentialedSmokeHarness:
   defaultBehavior: skipped_with_zero_provider_calls
   qualifyingEvidence: false
 credentialedFailureRecoveryHarness:
-  status: implemented_executed_once
+  status: implemented_executed_exact_release
   profileSchema: labcentral.proxmox-t3-smoke-profile/v1
   profileSchemaFile: design/contracts/proxmox-t3-smoke-profile.schema.json
   activation:
@@ -157,7 +157,7 @@ qualificationProbe:
     canonicalTranscriptDigest: sha256
   productionRole: none_qualification_fixture_only
 credentialedIsolationHarness:
-  status: implemented_executed_evidence_grade
+  status: implemented_executed_exact_release
   profileSchema: labcentral.proxmox-t3-isolation-profile/v1
   profileSchemaFile: design/contracts/proxmox-t3-isolation-profile.schema.json
   activation:

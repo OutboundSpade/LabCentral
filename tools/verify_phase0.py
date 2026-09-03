@@ -316,7 +316,7 @@ def collect_test_ids() -> set[str]:
 def verify_proxmox_mutation_contract() -> None:
     contract = load_yaml(ROOT / "design/contracts/proxmox-qemu-mutation.yaml")
     assert contract["suite"] == "labcentral.proxmox-qemu-mutation/v1alpha1"
-    assert contract["status"] == "production_authorizer_implemented_packaging_in_progress"
+    assert contract["status"] == "single_operator_production_release_candidate_verified"
     assert contract["schemas"] == {
         "targetConfig": {"name": "proxmox.target-config", "version": 1.1},
         "plan": {"name": "proxmox.qemu-plan", "version": 1.0},
@@ -334,7 +334,7 @@ def verify_proxmox_mutation_contract() -> None:
     assert contract["allocationClaims"]["uniqueKey"] == ["targetID", "namespace", "value"]
     assert contract["allocationClaims"]["releaseCondition"] == "provider_absence_confirmed"
     qualification = contract["qualificationEvidence"]
-    assert qualification["status"] == "testbed_signed_and_verified_ready_for_independent_review"
+    assert qualification["status"] == "exact_release_testbed_signed_and_verified"
     assert qualification["evidenceSchema"] == "labcentral.proxmox-qualification-evidence/v1"
     assert qualification["envelopeSchema"] == "labcentral.proxmox-qualification-envelope/v1"
     assert qualification["canonicalization"] == "RFC_8785"
@@ -361,7 +361,7 @@ def verify_proxmox_mutation_contract() -> None:
         "TEST-PROXMOX-019",
         "TEST-PROXMOX-022",
     ]
-    assert qualification["productionEnablement"] == "adr_0014_authorizer_implemented_exact_release_requalification_required"
+    assert qualification["productionEnablement"] == "adr_0014_authorizer_implemented_exact_release_candidate_verified"
     assert contract["productionAuthorization"] == {
         "status": "implemented_fail_closed",
         "decision": "ADR-0014",
@@ -403,7 +403,7 @@ def verify_proxmox_mutation_contract() -> None:
     }
     failure_recovery = contract["credentialedFailureRecoveryHarness"]
     assert failure_recovery == {
-        "status": "implemented_executed_once",
+        "status": "implemented_executed_exact_release",
         "profileSchema": "labcentral.proxmox-t3-smoke-profile/v1",
         "profileSchemaFile": "design/contracts/proxmox-t3-smoke-profile.schema.json",
         "activation": {
@@ -485,7 +485,7 @@ def verify_proxmox_mutation_contract() -> None:
     }
     isolation = contract["credentialedIsolationHarness"]
     assert isolation == {
-        "status": "implemented_executed_evidence_grade",
+        "status": "implemented_executed_exact_release",
         "profileSchema": "labcentral.proxmox-t3-isolation-profile/v1",
         "profileSchemaFile": "design/contracts/proxmox-t3-isolation-profile.schema.json",
         "activation": {

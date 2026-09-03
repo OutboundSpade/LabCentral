@@ -216,7 +216,7 @@ tasks:
       - A separate reviewed production-enablement decision consumes signed qualification evidence; no configuration-only or test-constructor bypass can open writes.
   - id: TASK-PROXMOX-006
     title: Harden, package, and verify the single-operator Proxmox production deployment
-    status: in_progress
+    status: complete
     dependencies: [TASK-PROXMOX-005, TASK-RELEASE-001]
     relatedAdrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0006, ADR-0008, ADR-0011, ADR-0014]
     relatedDocuments: [cmd/labd, cmd/lab-provider-proxmox, internal/controlplane, internal/pluginhost, providers/proxmox, tools/release, tools/proxmox-qualification, deploy/proxmox, docs/operations/proxmox-deployment.md, docs/design/deployment.md, docs/design/plugin-system.md, docs/design/proxmox-provider.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qualification-trust.schema.json]

@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-03T19:59:03Z"
+verifiedAt: "2026-09-03T21:43:37Z"
 result: pass
-scope: phase_2_proxmox_production_authorizer_and_packaging_in_progress
+scope: phase_2_proxmox_single_operator_production_complete
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -64,6 +64,12 @@ commands:
   - go vet ./... after the ADR-0014 production authorization boundary
   - bun run check && bun run build after the target-aware UI and status API
   - python3 tools/verify_phase0.py after the trust-policy schema and packaging contract
+  - build clean-tree VERSION=0.2.0-rc5 native archives twice in independent output directories with SOURCE_DATE_EPOCH=1788470152; compare compressed bytes
+  - extract VERSION=0.2.0-rc5; verify archive SHA256SUMS, provider/source checksums, manifests, SBOM/provenance, and packaged executable help
+  - systemd-analyze verify and systemd-analyze security on the extracted Proxmox service unit
+  - exact af33267 packaged-provider TestCredentialedProxmoxT3Smoke, TestCredentialedProxmoxT3FailureRecovery, and TestCredentialedProxmoxT3Isolation on the disposable PVE 9.2.2 target
+  - lab-proxmox-qualification sign and verify against exact af33267 binary/source/target/live-profile expectations
+  - extracted labd Proxmox-only target status, HTTP validate/plan/create, durable ready-state restart, destroy, and independent PVE VMID/storage/task absence checks
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -228,6 +234,11 @@ checks:
   - terminal_provider_child_failure_is_observable_by_labd
   - target_specific_api_and_ui_authoring_examples
   - protected_non_overwriting_reviewer_key_generation
+  - exact_release_archive_byte_reproducibility_and_extracted_checksums
+  - extracted_systemd_unit_syntax_and_security_review
+  - exact_release_full_credentialed_t3_matrix
+  - exact_release_signed_evidence_qualifies_without_reasons
+  - packaged_public_api_create_restart_destroy_and_independent_absence
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
@@ -248,7 +259,10 @@ notes:
   - TEST-PROXMOX-028 skipped before journal access in normal CI. Protected qualification.upgrade-20260903-r1 used no provider client and read three checksummed v1.0 journals produced by the earlier 99fb78f candidate, including Network state, VM state, and a destroyed tombstone.
   - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
   - The default Proxmox constructor has no path that opens mutation execution. The only exported write-capable constructor requires a non-nil ADR-0014 authorizer and rechecks signed exact-target evidence against fresh inventory before capability advertisement and each apply, destroy, or lifecycle operation.
-  - The current source tree passed normal, race-enabled, vet, web type/build, and design-contract verification. Clean-tree archive determinism and fresh exact-build disposable-target qualification remain pending TASK-PROXMOX-006 gates and are not claimed here.
+  - The af33267 source tree passed normal, race-enabled, vet, web type/build, and design-contract verification. Two clean-tree 0.2.0-rc5 Linux/amd64 archives were byte-identical at sha256:ca955fc1bed3603ad87a7452ebc5912f9bb701599e3277e0d171357179e10cb2; every extracted checksum verified and systemd-analyze rated the unit 3.0 OK.
+  - The exact packaged provider sha256:b13dfd384c6a8f6e161bb4fda7fb50329b8f61b938426f32641651b68a7e5aea and source-tree sha256:48ab5886257c83bf907c9cfeb61065fd4f19bb8ee0eae524a8a65f93be1b76be passed the final disposable-target smoke, complete failure/recovery, and isolation runs. Isolation observed intended 3/3, management 0/3, and cross-instance 0/3 with transcript sha256:fb42e390da8368f1458df150d29436bbc95c3b2f84d743f8ef98aadb4062b033.
+  - The final signed artifact verified qualifies=true with no reasons and canonical evidence sha256:3922dfbb1c439f294015b1c1ec71d91a40efbc3a59f8c3fa2c9c4faf1dccf0ff. Its disposable reviewer trust is evidence for the testbed only and is not transferable to another deployment.
+  - The extracted package reported the exact target fresh and workload.vm native, passed HTTP validation/planning, created a ready instance, preserved identical state across a full labd restart, destroyed all resources, and passed a second independent PVE absence check. The retained API transcript checksum manifest is sha256:eaab0ecba7cd4bdd6b5f03acb660490dc388e016fda2b89a140cde6c32b14511.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - The credentialed Docker smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.
   - Example A reached ready at a provider-selected 127.0.0.1 port and returned {"service":"LabCentral Example A","visits":1} before destroy succeeded.
