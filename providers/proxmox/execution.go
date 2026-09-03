@@ -25,7 +25,7 @@ import (
 
 const (
 	maximumTaskPolls         = 192
-	maximumTaskReadErrors    = 3
+	maximumTaskReadErrors    = 8
 	maximumReadinessPolls    = 8
 	maximumLifecycleAttempts = 3
 )

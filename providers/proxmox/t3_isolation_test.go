@@ -290,7 +290,11 @@ func TestCredentialedProxmoxT3Isolation(t *testing.T) {
 	if len(cleanupErrors) != 0 {
 		t.Fatalf("T3 isolation cleanup failed: %v", cleanupErrors[0])
 	}
-	t.Logf("credentialed T3 guest isolation passed for target %s VMIDs %v VLANs %v transcript %s; the remaining T3 matrix is still required", profile.TargetID, profile.ExpectedVMIDs, profile.ExpectedVLANs, transcriptDigest)
+	encodedEvidence, err := json.Marshal(probeEvidence)
+	if err != nil {
+		t.Fatalf("encode bounded probe evidence: %v", err)
+	}
+	t.Logf("credentialed T3 guest isolation passed for target %s VMIDs %v VLANs %v transcript %s probeEvidence=%s", profile.TargetID, profile.ExpectedVMIDs, profile.ExpectedVLANs, transcriptDigest, encodedEvidence)
 }
 
 func readT3IsolationActivation(getenv func(string) string) (t3IsolationActivation, error) {
