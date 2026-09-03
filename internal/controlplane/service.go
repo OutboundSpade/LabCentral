@@ -291,6 +291,19 @@ func (s *Service) CreateInstance(ctx context.Context, source []byte, acknowledge
 }
 
 func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+	return s.CreateInstanceTargetFor(ctx, LocalAdminID, "project.local", application.OwnerUser, string(LocalAdminID), source, acknowledged, idempotencyKey, targetID, providerOverride)
+}
+
+func (s *Service) CreateInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+	if _, err := domain.NewUserID(string(subjectID)); err != nil {
+		return EnqueueResult{}, err
+	}
+	if _, err := domain.NewProjectID(string(projectID)); err != nil {
+		return EnqueueResult{}, err
+	}
+	if !validOwner(ownerKind, ownerID) {
+		return EnqueueResult{}, fmt.Errorf("instance owner is invalid")
+	}
 	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride)
 	if err != nil {
 		return EnqueueResult{}, err
@@ -298,7 +311,7 @@ func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, ackno
 	if validation.ProviderKind == "proxmox" {
 		// Refresh is read-only. If it fails, a still-valid persisted snapshot may
 		// remain usable; the binding check below is the sole scheduling gate.
-		_ = s.RefreshTarget(ctx, targetID)
+		_ = s.RefreshTargetAs(ctx, subjectID, targetID)
 		if err := s.requireNativeCapability(ctx, targetID, "workload.vm"); err != nil {
 			return EnqueueResult{}, err
 		}
@@ -314,7 +327,7 @@ func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, ackno
 	}
 	operationID := domain.OperationID(operationValue)
 	payload, _ := json.Marshal(jobPayload{Version: jobPayloadVersion, Kind: OperationApply, InstanceID: instanceID})
-	requestDigest := digestBytes("labcentral.http.create-instance/v1", source, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+	requestDigest := digestBytes("labcentral.http.create-instance/v1", []byte(projectID), []byte(ownerKind), []byte(ownerID), source, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
 	auditID, err := s.ids.New("audit")
 	if err != nil {
 		return EnqueueResult{}, err
@@ -343,10 +356,11 @@ func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, ackno
 			})
 		}
 		result, createErr := s.store.CreateInstance(ctx, CreateInstanceRequest{
-			InstanceID: instanceID, ProviderTargetID: targetID, ProviderOverrideJSON: validation.EffectiveOverride,
+			InstanceID: instanceID, ProjectID: projectID, OwnerKind: ownerKind, OwnerID: ownerID, CreatedBy: subjectID,
+			ProviderTargetID: targetID, ProviderOverrideJSON: validation.EffectiveOverride,
 			OperationID: operationID, CanonicalDigest: validation.Canonical.Digest,
 			CanonicalJSON: validation.Canonical.CanonicalBytes, SourceYAML: source, Resources: resources, Acknowledged: acknowledged,
-			SubjectID: LocalAdminID, IdempotencyKey: idempotencyKey, RequestDigest: requestDigest, Payload: payload,
+			SubjectID: subjectID, IdempotencyKey: idempotencyKey, RequestDigest: requestDigest, Payload: payload,
 			AuditID: auditID, EventID: eventID,
 		})
 		if createErr == nil {
@@ -364,6 +378,13 @@ func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, ackno
 }
 
 func (s *Service) DestroyInstance(ctx context.Context, instanceID domain.InstanceID, idempotencyKey string) (EnqueueResult, error) {
+	return s.DestroyInstanceAs(ctx, LocalAdminID, instanceID, idempotencyKey)
+}
+
+func (s *Service) DestroyInstanceAs(ctx context.Context, subjectID domain.UserID, instanceID domain.InstanceID, idempotencyKey string) (EnqueueResult, error) {
+	if _, err := domain.NewUserID(string(subjectID)); err != nil {
+		return EnqueueResult{}, err
+	}
 	if _, err := s.store.GetInstance(ctx, instanceID); err != nil {
 		return EnqueueResult{}, err
 	}
@@ -382,9 +403,24 @@ func (s *Service) DestroyInstance(ctx context.Context, instanceID domain.Instanc
 		return EnqueueResult{}, err
 	}
 	return s.store.QueueDestroy(ctx, QueueDestroyRequest{
-		InstanceID: instanceID, OperationID: domain.OperationID(operationID), SubjectID: LocalAdminID,
+		InstanceID: instanceID, OperationID: domain.OperationID(operationID), SubjectID: subjectID,
 		IdempotencyKey: idempotencyKey, RequestDigest: requestDigest, Payload: payload, AuditID: auditID, EventID: eventID,
 	})
+}
+
+func validOwner(kind application.OwnerKind, id string) bool {
+	var err error
+	switch kind {
+	case application.OwnerUser:
+		_, err = domain.NewUserID(id)
+	case application.OwnerTeam:
+		_, err = domain.NewTeamID(id)
+	case application.OwnerProject:
+		_, err = domain.NewProjectID(id)
+	default:
+		return false
+	}
+	return err == nil
 }
 
 func (s *Service) GetInstance(ctx context.Context, id domain.InstanceID) (InstanceRecord, []ResourceRecord, error) {
@@ -398,6 +434,10 @@ func (s *Service) GetInstance(ctx context.Context, id domain.InstanceID) (Instan
 
 func (s *Service) ListInstances(ctx context.Context) ([]InstanceRecord, error) {
 	return s.store.ListInstances(ctx)
+}
+
+func (s *Service) ListInstancesByID(ctx context.Context, ids []domain.InstanceID) ([]InstanceRecord, error) {
+	return s.store.ListInstancesByID(ctx, ids)
 }
 
 func (s *Service) ProviderKinds() []string {
@@ -438,6 +478,13 @@ func (s *Service) ListProviderTargets(ctx context.Context) ([]ProviderTargetStat
 }
 
 func (s *Service) RefreshTarget(ctx context.Context, targetID domain.ProviderTargetID) error {
+	return s.RefreshTargetAs(ctx, LocalAdminID, targetID)
+}
+
+func (s *Service) RefreshTargetAs(ctx context.Context, subjectID domain.UserID, targetID domain.ProviderTargetID) error {
+	if _, err := domain.NewUserID(string(subjectID)); err != nil {
+		return err
+	}
 	invocationID, err := s.ids.New("inv")
 	if err != nil {
 		return err
@@ -446,7 +493,7 @@ func (s *Service) RefreshTarget(ctx context.Context, targetID domain.ProviderTar
 		InvocationID: domain.InvocationID(invocationID), InstanceID: "inst_target-discovery",
 		ResourceID: "vm.target-discovery", ExpiresAt: time.Now().Add(45 * time.Second),
 	}
-	session, err := s.targets.Acquire(ctx, targetID, scope, true)
+	session, err := s.targets.AcquireForSubject(ctx, targetID, subjectID, scope, true)
 	if err != nil {
 		return fmt.Errorf("acquire provider target for discovery: %w", err)
 	}

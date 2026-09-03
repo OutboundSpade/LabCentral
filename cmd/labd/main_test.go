@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	httpapi "github.com/OutboundSpade/LabCentral/api/http"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
 )
 
 func TestDeploymentModeStorageContract(t *testing.T) {
@@ -17,6 +21,7 @@ func TestDeploymentModeStorageContract(t *testing.T) {
 		deploymentMode: deploymentModeSingleNode,
 		replicaID:      "local-worker",
 		artifactMode:   artifactModeLocal,
+		authMode:       httpapi.AuthModeNone,
 	}
 	if err := validateConfig(base); err != nil {
 		t.Fatalf("valid single-node configuration: %v", err)
@@ -34,6 +39,11 @@ func TestDeploymentModeStorageContract(t *testing.T) {
 	multi.replicaID = "labd-0"
 	multi.artifactMode = artifactModeShared
 	multi.artifactDir = "/var/lib/labcentral-artifacts"
+	multi.authMode = httpapi.AuthModeLocal
+	multi.publicOrigin = "https://labs.example.test"
+	multi.sessionKeyringFile = "/run/secrets/session-keys"
+	multi.tlsCertificateFile = "/run/secrets/tls-cert"
+	multi.tlsKeyFile = "/run/secrets/tls-key"
 	if err := validateConfig(multi); err != nil {
 		t.Fatalf("valid multi-replica configuration: %v", err)
 	}
@@ -43,7 +53,7 @@ func TestDeploymentModeStorageContract(t *testing.T) {
 		"default replica":    func(candidate *config) { candidate.replicaID = "local-worker" },
 		"local artifacts":    func(candidate *config) { candidate.artifactMode = artifactModeLocal },
 		"relative artifacts": func(candidate *config) { candidate.artifactDir = "artifacts" },
-		"Proxmox journal":     func(candidate *config) { candidate.proxmoxPlugin = "/opt/labcentral/lab-provider-proxmox" },
+		"Proxmox journal":    func(candidate *config) { candidate.proxmoxPlugin = "/opt/labcentral/lab-provider-proxmox" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := multi
@@ -111,6 +121,105 @@ func TestNoAuthListenerClassification(t *testing.T) {
 				t.Fatalf("listenerIsLoopback(%s) = %t, want %t", testCase.ip, got, testCase.want)
 			}
 		})
+	}
+}
+
+func TestAuthenticationStartupContract(t *testing.T) {
+	base := config{
+		deploymentMode: deploymentModeSingleNode, replicaID: "local-worker", artifactMode: artifactModeLocal,
+		authMode: httpapi.AuthModeLocal, publicOrigin: "https://labs.example.test", sessionKeyringFile: "/run/secrets/session-keys",
+	}
+	if err := validateConfig(base); err != nil {
+		t.Fatalf("valid local authentication config: %v", err)
+	}
+	for name, mutate := range map[string]func(*config){
+		"missing origin":  func(candidate *config) { candidate.publicOrigin = "" },
+		"HTTP origin":     func(candidate *config) { candidate.publicOrigin = "http://labs.example.test" },
+		"origin path":     func(candidate *config) { candidate.publicOrigin = "https://labs.example.test/path" },
+		"missing keyring": func(candidate *config) { candidate.sessionKeyringFile = "" },
+		"OIDC confusion":  func(candidate *config) { candidate.oidcIssuer = "https://issuer.example.test" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := base
+			mutate(&candidate)
+			if err := validateConfig(candidate); err == nil {
+				t.Fatal("unsafe authentication configuration was accepted")
+			}
+		})
+	}
+	oidc := base
+	oidc.authMode = httpapi.AuthModeOIDC
+	oidc.oidcIssuer = "https://issuer.example.test"
+	oidc.oidcClientID = "labcentral"
+	oidc.oidcClientSecretFile = "/run/secrets/oidc"
+	if err := validateConfig(oidc); err != nil {
+		t.Fatalf("valid OIDC configuration: %v", err)
+	}
+
+	if err := validateListenerSecurity(config{authMode: httpapi.AuthModeNone}, false); err == nil {
+		t.Fatal("non-loopback no-auth listener was accepted")
+	}
+	if err := validateListenerSecurity(base, false); err == nil {
+		t.Fatal("non-loopback authenticated listener without TLS was accepted")
+	}
+	if err := validateListenerSecurity(base, true); err == nil {
+		t.Fatal("authenticated cleartext listener without a trusted proxy was accepted")
+	}
+	proxied := base
+	proxied.trustedProxyCIDRs = "127.0.0.1/32"
+	if err := validateListenerSecurity(proxied, true); err != nil {
+		t.Fatalf("trusted loopback proxy configuration: %v", err)
+	}
+	directTLS := base
+	directTLS.tlsCertificateFile, directTLS.tlsKeyFile = "/cert.pem", "/key.pem"
+	if err := validateListenerSecurity(directTLS, false); err != nil {
+		t.Fatalf("direct TLS listener configuration: %v", err)
+	}
+	if _, err := parseTrustedProxyCIDRs("10.0.0.0/8,127.0.0.1/32"); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{"0.0.0.0/0", "10.1.0.0/8", "10.0.0.0/8, 127.0.0.1/32", "10.0.0.0/8,10.0.0.0/8"} {
+		if _, err := parseTrustedProxyCIDRs(invalid); err == nil {
+			t.Fatalf("unsafe proxy CIDRs %q were accepted", invalid)
+		}
+	}
+}
+
+func TestFirstLocalStartupBootstrapsExactlyOnceFromPrivateFiles(t *testing.T) {
+	directory := t.TempDir()
+	keyringPath := filepath.Join(directory, "session-keys.json")
+	passwordPath := filepath.Join(directory, "bootstrap-password")
+	material := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
+	if err := os.WriteFile(keyringPath, []byte(`{"schemaVersion":"labcentral.session-keys/v1","currentKeyId":"current","keys":[{"id":"current","material":"`+material+`"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(passwordPath, []byte("a-production-length-password\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := localdb.Open(context.Background(), filepath.Join(directory, "control-plane.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	configuration := config{
+		authMode: httpapi.AuthModeLocal, publicOrigin: "https://labs.example.test", sessionKeyringFile: keyringPath,
+		bootstrapUserID: "user.bootstrap-admin", bootstrapUsername: "bootstrap-admin", bootstrapDisplayName: "Bootstrap administrator",
+		bootstrapPasswordFile: passwordPath,
+	}
+	options, err := configureHTTPAuthentication(context.Background(), configuration, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Mode != httpapi.AuthModeLocal || options.Manager == nil || options.Authorizer == nil {
+		t.Fatalf("authentication options = %#v", options)
+	}
+	user, err := store.UserByUsername(context.Background(), "bootstrap-admin")
+	if err != nil || user.ID != "user.bootstrap-admin" {
+		t.Fatalf("bootstrap user = %#v, %v", user, err)
+	}
+	configuration.bootstrapPasswordFile = ""
+	if _, err := configureHTTPAuthentication(context.Background(), configuration, store); err != nil {
+		t.Fatalf("restart required bootstrap secret again: %v", err)
 	}
 }
 

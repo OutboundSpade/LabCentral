@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -24,6 +25,8 @@ import (
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localsecret"
+	"github.com/OutboundSpade/LabCentral/internal/authentication"
+	"github.com/OutboundSpade/LabCentral/internal/authorization"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/pluginhost"
@@ -62,7 +65,20 @@ type config struct {
 	proxmoxCredentialFile        string
 	proxmoxQualificationDocument string
 	proxmoxQualificationTrust    string
-	unsafeNoAuth                 bool
+	authMode                     string
+	publicOrigin                 string
+	tlsCertificateFile           string
+	tlsKeyFile                   string
+	trustedProxyCIDRs            string
+	sessionKeyringFile           string
+	bootstrapUserID              string
+	bootstrapUsername            string
+	bootstrapDisplayName         string
+	bootstrapPasswordFile        string
+	bootstrapOIDCSubject         string
+	oidcIssuer                   string
+	oidcClientID                 string
+	oidcClientSecretFile         string
 }
 
 func main() {
@@ -134,13 +150,10 @@ func run(logger *slog.Logger) error {
 	}
 	defer listener.Close()
 	loopback := listenerIsLoopback(listener)
-	if !loopback && !configuration.unsafeNoAuth {
-		return fmt.Errorf("no-auth mode refuses non-loopback listener %s; use --unsafe-listen-non-loopback-without-auth only after accepting the exposure", listener.Addr())
+	if err := validateListenerSecurity(configuration, loopback); err != nil {
+		return fmt.Errorf("listener %s: %w", listener.Addr(), err)
 	}
 	warning := httpapi.NoAuthWarning
-	if !loopback {
-		warning = "UNSAFE: authentication is disabled on a non-loopback listener. Every reachable client has installation administrator privileges. " + warning
-	}
 	runtimeParent := filepath.Join(configuration.dataDir, "run")
 	if err := ensurePrivateDirectory(runtimeParent); err != nil {
 		return fmt.Errorf("prepare plugin runtime parent: %w", err)
@@ -202,6 +215,10 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	defer store.Close()
+	authenticationOptions, err := configureHTTPAuthentication(ctx, configuration, store)
+	if err != nil {
+		return err
+	}
 	artifactDirectory := configuration.artifactDir
 	if artifactDirectory == "" {
 		artifactDirectory = filepath.Join(configuration.dataDir, "artifacts")
@@ -234,7 +251,7 @@ func run(logger *slog.Logger) error {
 	defer cancelRefresh()
 	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger)
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
-		Owner:   configuration.replicaID,
+		Owner: configuration.replicaID, Authorizer: authenticationOptions.Authorizer,
 		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
 	})
 	if err != nil {
@@ -246,7 +263,7 @@ func run(logger *slog.Logger) error {
 	go func() { workerDone <- worker.Run(workerContext) }()
 
 	apiServer, err := httpapi.New(control, dockerlaptop.LabYAML(), webassets.FS(), httpapi.Options{
-		NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples,
+		NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples, Authentication: authenticationOptions,
 	})
 	if err != nil {
 		return err
@@ -259,8 +276,19 @@ func run(logger *slog.Logger) error {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 	}
+	tlsConfiguration, err := loadTLSConfiguration(configuration)
+	if err != nil {
+		return err
+	}
+	server.TLSConfig = tlsConfiguration
 	serveDone := make(chan error, 1)
-	go func() { serveDone <- server.Serve(listener) }()
+	go func() {
+		if tlsConfiguration == nil {
+			serveDone <- server.Serve(listener)
+			return
+		}
+		serveDone <- server.ServeTLS(listener, "", "")
+	}()
 	providerFailure := make(chan error, 2)
 	monitorProvider := func(label string, client *pluginhost.Client) {
 		if client == nil {
@@ -277,7 +305,11 @@ func run(logger *slog.Logger) error {
 	}
 	monitorProvider("Docker", dockerPlugin)
 	monitorProvider("Proxmox", proxmoxPlugin)
-	logger.Warn("LabCentral started in no-auth trusted-laptop mode", "listen", listener.Addr().String(), "version", version, "warning", warning)
+	if configuration.authMode == httpapi.AuthModeNone {
+		logger.Warn("LabCentral started in no-auth development mode", "listen", listener.Addr().String(), "version", version, "warning", warning)
+	} else {
+		logger.Info("LabCentral started", "listen", listener.Addr().String(), "version", version, "authMode", configuration.authMode, "publicOrigin", configuration.publicOrigin, "directTLS", tlsConfiguration != nil)
+	}
 
 	select {
 	case <-ctx.Done():
@@ -353,7 +385,20 @@ func parseFlags() config {
 	flag.StringVar(&result.proxmoxCredentialFile, "proxmox-credential-file", "", "mode-0600 file containing the Proxmox credential JSON envelope")
 	flag.StringVar(&result.proxmoxQualificationDocument, "proxmox-qualification-document", "", "signed exact-target qualification evidence; requires the trust policy")
 	flag.StringVar(&result.proxmoxQualificationTrust, "proxmox-qualification-trust", "", "reviewer trust policy for signed exact-target qualification evidence")
-	flag.BoolVar(&result.unsafeNoAuth, "unsafe-listen-non-loopback-without-auth", false, "explicitly allow no-auth mode on a non-loopback listener")
+	flag.StringVar(&result.authMode, "auth-mode", httpapi.AuthModeNone, "authentication mode: none, local, or oidc")
+	flag.StringVar(&result.publicOrigin, "public-origin", "", "exact public HTTPS origin, for example https://labs.example.edu")
+	flag.StringVar(&result.tlsCertificateFile, "tls-certificate-file", "", "protected PEM certificate chain for direct HTTPS")
+	flag.StringVar(&result.tlsKeyFile, "tls-key-file", "", "owner-only PEM private key for direct HTTPS")
+	flag.StringVar(&result.trustedProxyCIDRs, "trusted-proxy-cidrs", "", "comma-separated proxy network CIDRs allowed to assert HTTPS")
+	flag.StringVar(&result.sessionKeyringFile, "session-keyring-file", "", "owner-only versioned session keyring JSON")
+	flag.StringVar(&result.bootstrapUserID, "bootstrap-user-id", "user.bootstrap-admin", "initial administrator user ID")
+	flag.StringVar(&result.bootstrapUsername, "bootstrap-username", "bootstrap-admin", "initial administrator username")
+	flag.StringVar(&result.bootstrapDisplayName, "bootstrap-display-name", "Bootstrap administrator", "initial administrator display name")
+	flag.StringVar(&result.bootstrapPasswordFile, "bootstrap-password-file", "", "owner-only initial local administrator password file")
+	flag.StringVar(&result.bootstrapOIDCSubject, "bootstrap-oidc-subject", "", "initial administrator's exact pre-linked OIDC subject")
+	flag.StringVar(&result.oidcIssuer, "oidc-issuer", "", "exact HTTPS OIDC issuer")
+	flag.StringVar(&result.oidcClientID, "oidc-client-id", "", "OIDC client ID")
+	flag.StringVar(&result.oidcClientSecretFile, "oidc-client-secret-file", "", "owner-only OIDC client secret file")
 	flag.Parse()
 	return result
 }
@@ -383,16 +428,193 @@ func validateConfig(configuration config) error {
 		if configuration.proxmoxPlugin != "" {
 			return fmt.Errorf("multi-replica mode does not yet support the process-local Proxmox invocation journal")
 		}
+		if configuration.authMode == httpapi.AuthModeNone {
+			return fmt.Errorf("multi-replica mode requires local or OIDC authentication")
+		}
 	default:
 		return fmt.Errorf("unsupported --deployment-mode %q", configuration.deploymentMode)
 	}
 	if !replicaIDPattern.MatchString(configuration.replicaID) {
 		return fmt.Errorf("--replica-id must be DNS-label-like")
 	}
+	if (configuration.tlsCertificateFile == "") != (configuration.tlsKeyFile == "") {
+		return fmt.Errorf("--tls-certificate-file and --tls-key-file must be configured together")
+	}
+	switch configuration.authMode {
+	case httpapi.AuthModeNone:
+		if configuration.publicOrigin != "" || configuration.sessionKeyringFile != "" || configuration.bootstrapPasswordFile != "" || configuration.bootstrapOIDCSubject != "" || configuration.oidcIssuer != "" || configuration.oidcClientID != "" || configuration.oidcClientSecretFile != "" || configuration.trustedProxyCIDRs != "" {
+			return fmt.Errorf("authentication and trusted-proxy options require --auth-mode=local or oidc")
+		}
+	case httpapi.AuthModeLocal, httpapi.AuthModeOIDC:
+		if configuration.publicOrigin == "" || configuration.sessionKeyringFile == "" {
+			return fmt.Errorf("authenticated mode requires --public-origin and --session-keyring-file")
+		}
+		parsed, err := url.Parse(configuration.publicOrigin)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.String() != configuration.publicOrigin {
+			return fmt.Errorf("--public-origin must be an exact HTTPS origin without path, query, user information, or fragment")
+		}
+		if configuration.authMode == httpapi.AuthModeLocal && (configuration.bootstrapOIDCSubject != "" || configuration.oidcIssuer != "" || configuration.oidcClientID != "" || configuration.oidcClientSecretFile != "") {
+			return fmt.Errorf("OIDC options require --auth-mode=oidc")
+		}
+		if configuration.authMode == httpapi.AuthModeOIDC && (configuration.oidcIssuer == "" || configuration.oidcClientID == "" || configuration.oidcClientSecretFile == "" || configuration.bootstrapPasswordFile != "") {
+			return fmt.Errorf("OIDC mode requires issuer, client ID, client secret file, and no local bootstrap password")
+		}
+	default:
+		return fmt.Errorf("unsupported --auth-mode %q", configuration.authMode)
+	}
+	if _, err := parseTrustedProxyCIDRs(configuration.trustedProxyCIDRs); err != nil {
+		return err
+	}
 	return nil
 }
 
-func openControlPlaneStore(ctx context.Context, configuration config) (controlplane.Store, error) {
+func configureHTTPAuthentication(ctx context.Context, configuration config, store *localdb.Store) (httpapi.AuthenticationOptions, error) {
+	if configuration.authMode == httpapi.AuthModeNone {
+		return httpapi.AuthenticationOptions{Mode: httpapi.AuthModeNone}, nil
+	}
+	keyringBytes, err := readPrivateRegularFile(configuration.sessionKeyringFile, 64<<10)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, fmt.Errorf("read session keyring: %w", err)
+	}
+	keyring, err := authentication.ParseKeyring(keyringBytes)
+	clear(keyringBytes)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, err
+	}
+	manager, err := authentication.NewManager(store, keyring, authentication.ManagerOptions{})
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, err
+	}
+	var oidcService *authentication.OIDCService
+	if configuration.authMode == httpapi.AuthModeOIDC {
+		secretBytes, err := readPrivateRegularFile(configuration.oidcClientSecretFile, 16<<10)
+		if err != nil {
+			return httpapi.AuthenticationOptions{}, fmt.Errorf("read OIDC client secret: %w", err)
+		}
+		secretBytes = trimOneLineEnding(secretBytes)
+		clientSecret := string(secretBytes)
+		clear(secretBytes)
+		oidcService, err = authentication.NewOIDCService(ctx, store, manager, keyring, authentication.OIDCConfig{
+			Issuer: configuration.oidcIssuer, ClientID: configuration.oidcClientID, ClientSecret: clientSecret,
+			RedirectURL: configuration.publicOrigin + "/api/v1/auth/oidc/callback",
+		})
+		if err != nil {
+			return httpapi.AuthenticationOptions{}, err
+		}
+	}
+	if configuration.deploymentMode == deploymentModeMultiReplica {
+		if err := store.EnsureAuthenticationMode(ctx, configuration.authMode); err != nil {
+			return httpapi.AuthenticationOptions{}, err
+		}
+	}
+	hasUsers, err := store.HasUsers(ctx)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, fmt.Errorf("inspect authentication bootstrap state: %w", err)
+	}
+	bootstrapUserID, err := domain.NewUserID(configuration.bootstrapUserID)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, fmt.Errorf("invalid bootstrap user ID: %w", err)
+	}
+	if !hasUsers {
+		switch configuration.authMode {
+		case httpapi.AuthModeLocal:
+			if configuration.bootstrapPasswordFile == "" {
+				return httpapi.AuthenticationOptions{}, fmt.Errorf("the first local-authentication startup requires --bootstrap-password-file")
+			}
+			password, err := readPrivateRegularFile(configuration.bootstrapPasswordFile, 2048)
+			if err != nil {
+				return httpapi.AuthenticationOptions{}, fmt.Errorf("read bootstrap password: %w", err)
+			}
+			password = trimOneLineEnding(password)
+			err = manager.BootstrapLocalAdministrator(ctx, bootstrapUserID, configuration.bootstrapUsername, configuration.bootstrapDisplayName, password)
+			clear(password)
+			if err != nil {
+				return httpapi.AuthenticationOptions{}, fmt.Errorf("bootstrap local administrator: %w", err)
+			}
+		case httpapi.AuthModeOIDC:
+			if configuration.bootstrapOIDCSubject == "" {
+				return httpapi.AuthenticationOptions{}, fmt.Errorf("the first OIDC startup requires --bootstrap-oidc-subject")
+			}
+			if err := manager.BootstrapOIDCAdministrator(ctx, bootstrapUserID, configuration.bootstrapUsername, configuration.bootstrapDisplayName, configuration.oidcIssuer, configuration.bootstrapOIDCSubject); err != nil {
+				return httpapi.AuthenticationOptions{}, fmt.Errorf("bootstrap OIDC administrator: %w", err)
+			}
+		}
+	}
+	evaluator, err := authorization.New(store)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, err
+	}
+	trustedProxies, err := parseTrustedProxyCIDRs(configuration.trustedProxyCIDRs)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, err
+	}
+	result := httpapi.AuthenticationOptions{
+		Mode: configuration.authMode, Manager: manager, Repository: store, Authorizer: evaluator,
+		PublicOrigin: configuration.publicOrigin, SecureCookies: true, TrustedProxies: trustedProxies, OIDC: oidcService, OIDCIssuer: configuration.oidcIssuer,
+	}
+	return result, nil
+}
+
+func parseTrustedProxyCIDRs(value string) ([]*net.IPNet, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	result := make([]*net.IPNet, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		if part == "" || strings.TrimSpace(part) != part {
+			return nil, fmt.Errorf("--trusted-proxy-cidrs must contain clean comma-separated CIDRs")
+		}
+		ip, network, err := net.ParseCIDR(part)
+		if err != nil || !ip.Equal(network.IP) || network.String() != part || seen[part] {
+			return nil, fmt.Errorf("trusted proxy CIDR %q is invalid, non-canonical, or duplicated", part)
+		}
+		ones, bits := network.Mask.Size()
+		if ones <= 0 || bits == 0 {
+			return nil, fmt.Errorf("trusted proxy CIDR %q is too broad", part)
+		}
+		seen[part] = true
+		result = append(result, network)
+	}
+	return result, nil
+}
+
+func loadTLSConfiguration(configuration config) (*tls.Config, error) {
+	if configuration.tlsCertificateFile == "" {
+		return nil, nil
+	}
+	certificateBytes, err := readRegularFile(configuration.tlsCertificateFile, 4<<20)
+	if err != nil {
+		return nil, fmt.Errorf("read TLS certificate: %w", err)
+	}
+	privateKeyBytes, err := readPrivateRegularFile(configuration.tlsKeyFile, 4<<20)
+	if err != nil {
+		return nil, fmt.Errorf("read TLS private key: %w", err)
+	}
+	pair, err := tls.X509KeyPair(certificateBytes, privateKeyBytes)
+	clear(privateKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse TLS certificate and key: %w", err)
+	}
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{pair},
+		NextProtos:   []string{"h2", "http/1.1"},
+	}, nil
+}
+
+func trimOneLineEnding(value []byte) []byte {
+	if len(value) > 0 && value[len(value)-1] == '\n' {
+		value = value[:len(value)-1]
+		if len(value) > 0 && value[len(value)-1] == '\r' {
+			value = value[:len(value)-1]
+		}
+	}
+	return value
+}
+
+func openControlPlaneStore(ctx context.Context, configuration config) (*localdb.Store, error) {
 	if configuration.deploymentMode == deploymentModeSingleNode {
 		return localdb.Open(ctx, filepath.Join(configuration.dataDir, "labcentral.db"))
 	}
@@ -431,6 +653,22 @@ func validateProductionPostgreSQLDSN(dsn string) error {
 func listenerIsLoopback(listener net.Listener) bool {
 	tcp, ok := listener.Addr().(*net.TCPAddr)
 	return ok && tcp.IP.IsLoopback()
+}
+
+func validateListenerSecurity(configuration config, loopback bool) error {
+	if configuration.authMode == httpapi.AuthModeNone {
+		if !loopback {
+			return fmt.Errorf("no-auth mode is development-only and loopback-only")
+		}
+		return nil
+	}
+	if !loopback && configuration.tlsCertificateFile == "" {
+		return fmt.Errorf("authenticated non-loopback listeners require direct TLS")
+	}
+	if configuration.tlsCertificateFile == "" && configuration.trustedProxyCIDRs == "" {
+		return fmt.Errorf("authenticated mode requires direct TLS or an explicitly trusted loopback reverse proxy")
+	}
+	return nil
 }
 
 func configuredPluginDigest(pluginPath, configuredHash, label string) (string, error) {

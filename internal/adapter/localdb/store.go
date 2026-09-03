@@ -29,6 +29,7 @@ import (
 const (
 	migrationID       = "0002_local_vertical_slice"
 	targetMigrationID = "0003_local_provider_target_binding"
+	authMigrationID   = "0004_identity_tenancy_rbac"
 	migrationLockID   = int64(0x4c616243656e7472)
 )
 
@@ -163,7 +164,10 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, migrationID, s.migrationStatements()); err != nil {
 		return err
 	}
-	return s.applyMigration(ctx, targetMigrationID, s.targetMigrationStatements())
+	if err := s.applyMigration(ctx, targetMigrationID, s.targetMigrationStatements()); err != nil {
+		return err
+	}
+	return s.applyMigration(ctx, authMigrationID, s.authMigrationStatements())
 }
 
 func (s *Store) lockMigrations(ctx context.Context) (func(), error) {
@@ -388,6 +392,140 @@ func (s *Store) migrationStatements() []string {
 	}
 }
 
+func authMigrationStatements(blobType, integerType string) []string {
+	return []string{
+		`CREATE TABLE labcentral_installation_settings (
+			setting_key TEXT PRIMARY KEY,
+			setting_value TEXT NOT NULL,
+			updated_at_us ` + integerType + ` NOT NULL
+		)`,
+		`CREATE TABLE labcentral_users (
+			user_id TEXT PRIMARY KEY,
+			username TEXT NOT NULL UNIQUE,
+			display_name TEXT NOT NULL,
+			password_hash TEXT NOT NULL DEFAULT '',
+			disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
+			created_at_us ` + integerType + ` NOT NULL,
+			updated_at_us ` + integerType + ` NOT NULL
+		)`,
+		`CREATE TABLE labcentral_auth_identities (
+			issuer TEXT NOT NULL,
+			subject TEXT NOT NULL,
+			user_id TEXT NOT NULL REFERENCES labcentral_users(user_id),
+			created_at_us ` + integerType + ` NOT NULL,
+			PRIMARY KEY (issuer, subject),
+			UNIQUE (issuer, user_id)
+		)`,
+		`CREATE TABLE labcentral_sessions (
+			session_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES labcentral_users(user_id),
+			token_hash TEXT NOT NULL UNIQUE,
+			csrf_hash TEXT NOT NULL,
+			key_id TEXT NOT NULL,
+			expires_at_us ` + integerType + ` NOT NULL,
+			rotated_from_id TEXT NOT NULL DEFAULT '',
+			revoked_at_us ` + integerType + ` NOT NULL DEFAULT 0,
+			created_at_us ` + integerType + ` NOT NULL
+		)`,
+		`CREATE INDEX labcentral_sessions_user_expiry_idx ON labcentral_sessions(user_id, expires_at_us)`,
+		`CREATE TABLE labcentral_password_recovery_tokens (
+			token_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES labcentral_users(user_id),
+			token_hash TEXT NOT NULL UNIQUE,
+			key_id TEXT NOT NULL,
+			expires_at_us ` + integerType + ` NOT NULL,
+			consumed_at_us ` + integerType + ` NOT NULL DEFAULT 0,
+			created_at_us ` + integerType + ` NOT NULL
+		)`,
+		`CREATE TABLE labcentral_organizations (
+			organization_id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0),
+			created_at_us ` + integerType + ` NOT NULL,
+			updated_at_us ` + integerType + ` NOT NULL
+		)`,
+		`CREATE TABLE labcentral_projects (
+			project_id TEXT PRIMARY KEY,
+			organization_id TEXT NOT NULL REFERENCES labcentral_organizations(organization_id),
+			name TEXT NOT NULL,
+			resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0),
+			created_at_us ` + integerType + ` NOT NULL,
+			updated_at_us ` + integerType + ` NOT NULL,
+			UNIQUE (organization_id, name),
+			UNIQUE (project_id, organization_id)
+		)`,
+		`CREATE TABLE labcentral_teams (
+			team_id TEXT PRIMARY KEY,
+			organization_id TEXT NOT NULL REFERENCES labcentral_organizations(organization_id),
+			name TEXT NOT NULL,
+			resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0),
+			created_at_us ` + integerType + ` NOT NULL,
+			updated_at_us ` + integerType + ` NOT NULL,
+			UNIQUE (organization_id, name),
+			UNIQUE (team_id, organization_id)
+		)`,
+		`CREATE TABLE labcentral_memberships (
+			membership_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES labcentral_users(user_id),
+			organization_id TEXT NOT NULL REFERENCES labcentral_organizations(organization_id),
+			team_id TEXT,
+			valid_from_us ` + integerType + ` NOT NULL,
+			valid_until_us ` + integerType + ` NOT NULL DEFAULT 0,
+			created_at_us ` + integerType + ` NOT NULL,
+			FOREIGN KEY (team_id, organization_id) REFERENCES labcentral_teams(team_id, organization_id)
+		)`,
+		`CREATE UNIQUE INDEX labcentral_memberships_unique_idx ON labcentral_memberships(user_id, organization_id, COALESCE(team_id, ''))`,
+		`CREATE TABLE labcentral_role_assignments (
+			assignment_id TEXT PRIMARY KEY,
+			subject_kind TEXT NOT NULL CHECK (subject_kind IN ('user', 'team')),
+			subject_id TEXT NOT NULL,
+			scope_kind TEXT NOT NULL CHECK (scope_kind IN ('platform', 'organization', 'project', 'team')),
+			scope_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			valid_from_us ` + integerType + ` NOT NULL,
+			valid_until_us ` + integerType + ` NOT NULL DEFAULT 0,
+			created_at_us ` + integerType + ` NOT NULL,
+			UNIQUE (subject_kind, subject_id, scope_kind, scope_id, role)
+		)`,
+		`CREATE INDEX labcentral_role_assignments_subject_idx ON labcentral_role_assignments(subject_kind, subject_id, valid_from_us, valid_until_us)`,
+		`CREATE TABLE labcentral_provider_target_grants (
+			grant_id TEXT PRIMARY KEY,
+			target_id TEXT NOT NULL,
+			scope_kind TEXT NOT NULL CHECK (scope_kind IN ('platform', 'organization', 'project', 'team')),
+			scope_id TEXT NOT NULL,
+			valid_from_us ` + integerType + ` NOT NULL,
+			valid_until_us ` + integerType + ` NOT NULL DEFAULT 0,
+			created_at_us ` + integerType + ` NOT NULL,
+			UNIQUE (target_id, scope_kind, scope_id)
+		)`,
+		`ALTER TABLE labcentral_local_instances ADD COLUMN project_id TEXT NOT NULL DEFAULT 'project.local'`,
+		`ALTER TABLE labcentral_local_instances ADD COLUMN owner_kind TEXT NOT NULL DEFAULT 'user' CHECK (owner_kind IN ('user', 'team', 'project'))`,
+		`ALTER TABLE labcentral_local_instances ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'local-admin'`,
+		`ALTER TABLE labcentral_local_instances ADD COLUMN created_by TEXT NOT NULL DEFAULT 'local-admin'`,
+		`CREATE INDEX labcentral_local_instances_scope_idx ON labcentral_local_instances(project_id, owner_kind, owner_id, created_at_us, instance_id)`,
+		`ALTER TABLE labcentral_local_operations ADD COLUMN actor_id TEXT NOT NULL DEFAULT 'local-admin'`,
+		`CREATE TABLE labcentral_oidc_flows (
+			flow_id TEXT PRIMARY KEY,
+			state_hash TEXT NOT NULL UNIQUE,
+			browser_hash TEXT NOT NULL,
+			nonce_hash TEXT NOT NULL,
+			pkce_verifier ` + blobType + ` NOT NULL,
+			key_id TEXT NOT NULL,
+			redirect_path TEXT NOT NULL,
+			expires_at_us ` + integerType + ` NOT NULL,
+			consumed_at_us ` + integerType + ` NOT NULL DEFAULT 0,
+			created_at_us ` + integerType + ` NOT NULL
+		)`,
+	}
+}
+
+func (s *Store) authMigrationStatements() []string {
+	if s.dialect == jobsdb.DialectPostgreSQL {
+		return authMigrationStatements("BYTEA", "BIGINT")
+	}
+	return authMigrationStatements("BLOB", "INTEGER")
+}
+
 func checksum(statements []string) string {
 	hash := sha256.New()
 	for _, statement := range statements {
@@ -454,6 +592,9 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 		}
 		return controlplane.EnqueueResult{InstanceID: domain.InstanceID(instanceID), OperationID: domain.OperationID(existing), Replay: true}, tx.Commit()
 	}
+	if err := s.validateInstanceScope(ctx, tx, request); err != nil {
+		return controlplane.EnqueueResult{}, err
+	}
 	ack := 0
 	if request.Acknowledged {
 		ack = 1
@@ -463,10 +604,11 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 		providerOverride = []byte{}
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_instances
-		(instance_id, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
+		(instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
 		 isolation_warning_acknowledged, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`),
-		request.InstanceID, request.ProviderTargetID, providerOverride, request.CanonicalDigest.Hex(), request.CanonicalJSON, request.SourceYAML,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`),
+		request.InstanceID, request.ProjectID, request.OwnerKind, request.OwnerID, request.CreatedBy,
+		request.ProviderTargetID, providerOverride, request.CanonicalDigest.Hex(), request.CanonicalJSON, request.SourceYAML,
 		domain.InstancePending, domain.LifecycleRunning, ack); err != nil {
 		return controlplane.EnqueueResult{}, fmt.Errorf("insert local instance: %w", err)
 	}
@@ -491,6 +633,50 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 		return controlplane.EnqueueResult{}, err
 	}
 	return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: request.OperationID}, nil
+}
+
+func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceRequest) error {
+	if request.ProjectID == "project.local" && request.OwnerKind == application.OwnerUser && request.OwnerID == string(controlplane.LocalAdminID) && request.CreatedBy == controlplane.LocalAdminID {
+		return nil
+	}
+	var organizationID string
+	if err := tx.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), request.ProjectID).Scan(&organizationID); errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("instance project scope is unavailable")
+	} else if err != nil {
+		return fmt.Errorf("load instance project scope: %w", err)
+	}
+	var creatorExists int
+	if err := tx.QueryRowContext(ctx, s.bind(`SELECT 1 FROM labcentral_users WHERE user_id = ? AND disabled = 0`), request.CreatedBy).Scan(&creatorExists); errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("instance creator is unavailable")
+	} else if err != nil {
+		return fmt.Errorf("load instance creator: %w", err)
+	}
+	switch request.OwnerKind {
+	case application.OwnerUser:
+		var ownerExists int
+		query := `SELECT 1 FROM labcentral_memberships
+			WHERE user_id = ? AND organization_id = ? AND valid_from_us <= ` + s.nowMicros() + `
+			AND (valid_until_us = 0 OR valid_until_us > ` + s.nowMicros() + `) LIMIT 1`
+		if err := tx.QueryRowContext(ctx, s.bind(query), request.OwnerID, organizationID).Scan(&ownerExists); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("instance user owner is outside the project organization")
+		} else if err != nil {
+			return fmt.Errorf("load instance user owner: %w", err)
+		}
+	case application.OwnerTeam:
+		var ownerOrganizationID string
+		if err := tx.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_teams WHERE team_id = ?`), request.OwnerID).Scan(&ownerOrganizationID); errors.Is(err, sql.ErrNoRows) || ownerOrganizationID != organizationID {
+			return fmt.Errorf("instance team owner is outside the project organization")
+		} else if err != nil {
+			return fmt.Errorf("load instance team owner: %w", err)
+		}
+	case application.OwnerProject:
+		if request.OwnerID != string(request.ProjectID) {
+			return fmt.Errorf("instance project owner does not match the project scope")
+		}
+	default:
+		return fmt.Errorf("instance owner kind is invalid")
+	}
+	return nil
 }
 
 func (s *Store) SaveTargetSnapshot(ctx context.Context, snapshot controlplane.TargetSnapshot) error {
@@ -555,8 +741,17 @@ func (s *Store) GetTargetSnapshot(ctx context.Context, targetID domain.ProviderT
 }
 
 func validateCreate(request controlplane.CreateInstanceRequest) error {
-	if request.InstanceID == "" || request.ProviderTargetID == "" || request.OperationID == "" || request.CanonicalDigest == "" || len(request.CanonicalJSON) == 0 || len(request.SourceYAML) == 0 || len(request.Resources) == 0 || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" {
+	if request.InstanceID == "" || request.ProjectID == "" || request.OwnerKind == "" || request.OwnerID == "" || request.CreatedBy == "" || request.ProviderTargetID == "" || request.OperationID == "" || request.CanonicalDigest == "" || len(request.CanonicalJSON) == 0 || len(request.SourceYAML) == 0 || len(request.Resources) == 0 || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" {
 		return fmt.Errorf("local instance request is incomplete")
+	}
+	if request.SubjectID != request.CreatedBy {
+		return fmt.Errorf("instance creator must match the idempotency subject")
+	}
+	if _, err := domain.NewProjectID(string(request.ProjectID)); err != nil {
+		return err
+	}
+	if err := validateInstanceOwner(request.OwnerKind, request.OwnerID); err != nil {
+		return err
 	}
 	if request.ProviderTargetID == controlplane.LocalDockerTarget && !request.Acknowledged {
 		return fmt.Errorf("local Docker instance request must acknowledge Docker isolation")
@@ -584,6 +779,22 @@ func validateCreate(request controlplane.CreateInstanceRequest) error {
 		}
 	}
 	return nil
+}
+
+func validateInstanceOwner(kind application.OwnerKind, id string) error {
+	switch kind {
+	case application.OwnerUser:
+		_, err := domain.NewUserID(id)
+		return err
+	case application.OwnerTeam:
+		_, err := domain.NewTeamID(id)
+		return err
+	case application.OwnerProject:
+		_, err := domain.NewProjectID(id)
+		return err
+	default:
+		return fmt.Errorf("instance owner kind is invalid")
+	}
 }
 
 type committedClaim struct {
@@ -729,8 +940,8 @@ func (s *Store) enqueue(ctx context.Context, tx *sql.Tx, instanceID domain.Insta
 		return fmt.Errorf("insert local job: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_operations
-		(operation_id, instance_id, kind, message, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`), operationID, instanceID, kind, "Queued"); err != nil {
+		(operation_id, instance_id, actor_id, kind, message, created_at_us, updated_at_us)
+		VALUES (?, ?, ?, ?, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`), operationID, instanceID, subjectID, kind, "Queued"); err != nil {
 		return fmt.Errorf("insert local operation: %w", err)
 	}
 	var sequence int64
@@ -792,7 +1003,7 @@ func (s *Store) bindIdempotency(ctx context.Context, tx *sql.Tx, subject domain.
 }
 
 func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlplane.InstanceRecord, error) {
-	row := s.db.QueryRowContext(ctx, s.bind(`SELECT instance_id, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+	row := s.db.QueryRowContext(ctx, s.bind(`SELECT instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances WHERE instance_id = ?`), id)
@@ -800,7 +1011,7 @@ func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlp
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]controlplane.InstanceRecord, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT instance_id, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances ORDER BY created_at_us, instance_id`))
@@ -819,13 +1030,49 @@ func (s *Store) ListInstances(ctx context.Context) ([]controlplane.InstanceRecor
 	return result, rows.Err()
 }
 
+func (s *Store) ListInstancesByID(ctx context.Context, ids []domain.InstanceID) ([]controlplane.InstanceRecord, error) {
+	if len(ids) == 0 {
+		return []controlplane.InstanceRecord{}, nil
+	}
+	if len(ids) > 10000 {
+		return nil, fmt.Errorf("authorized instance filter exceeds its limit")
+	}
+	arguments := make([]any, 0, len(ids))
+	placeholders := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, err := domain.NewInstanceID(string(id)); err != nil {
+			return nil, err
+		}
+		arguments = append(arguments, id)
+		placeholders = append(placeholders, "?")
+	}
+	query := `SELECT instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
+		error_code, error_message, created_at_us, updated_at_us
+		FROM labcentral_local_instances WHERE instance_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY created_at_us, instance_id`
+	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]controlplane.InstanceRecord, 0, len(ids))
+	for rows.Next() {
+		record, err := scanInstance(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, record)
+	}
+	return result, rows.Err()
+}
+
 type scanner interface{ Scan(...any) error }
 
 func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 	var record controlplane.InstanceRecord
-	var id, targetID, digest, phase, lifecycle string
+	var id, projectID, ownerKind, createdBy, targetID, digest, phase, lifecycle string
 	var generation, resourceVersion, acknowledged, createdAt, updatedAt int64
-	err := row.Scan(&id, &targetID, &record.ProviderOverrideJSON, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
+	err := row.Scan(&id, &projectID, &ownerKind, &record.OwnerID, &createdBy, &targetID, &record.ProviderOverrideJSON, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
 		&generation, &resourceVersion, &acknowledged, &record.OutputsJSON, &record.ErrorCode, &record.ErrorMessage, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return controlplane.InstanceRecord{}, controlplane.ErrNotFound
@@ -838,6 +1085,9 @@ func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 		return controlplane.InstanceRecord{}, err
 	}
 	record.ID = domain.InstanceID(id)
+	record.ProjectID = domain.ProjectID(projectID)
+	record.OwnerKind = application.OwnerKind(ownerKind)
+	record.CreatedBy = domain.UserID(createdBy)
 	record.ProviderTargetID = domain.ProviderTargetID(targetID)
 	record.CanonicalDigest = parsedDigest
 	record.Phase = domain.InstancePhase(phase)
@@ -883,10 +1133,10 @@ func (s *Store) GetOperation(ctx context.Context, id domain.OperationID) (contro
 	var record controlplane.OperationRecord
 	var operationID, instanceID, kind, state string
 	var generation, attempt, createdAt, updatedAt int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT operation.operation_id, operation.instance_id, operation.kind, job.state,
+	err := s.db.QueryRowContext(ctx, s.bind(`SELECT operation.operation_id, operation.instance_id, operation.actor_id, operation.kind, job.state,
 		job.desired_generation, job.attempt, operation.message, operation.error_code, operation.created_at_us, operation.updated_at_us
 		FROM labcentral_local_operations operation JOIN labcentral_jobs job ON job.operation_id = operation.operation_id
-		WHERE operation.operation_id = ?`), id).Scan(&operationID, &instanceID, &kind, &state, &generation, &attempt,
+		WHERE operation.operation_id = ?`), id).Scan(&operationID, &instanceID, &record.ActorID, &kind, &state, &generation, &attempt,
 		&record.Message, &record.ErrorCode, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return controlplane.OperationRecord{}, controlplane.ErrNotFound
@@ -1058,6 +1308,9 @@ func (s *Store) Finalize(ctx context.Context, request controlplane.FinalizeReque
 	if !request.State.Terminal() {
 		return fmt.Errorf("final operation state must be terminal")
 	}
+	if _, err := domain.NewUserID(string(request.ActorID)); err != nil {
+		return fmt.Errorf("final operation actor is invalid")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1096,7 +1349,7 @@ func (s *Store) Finalize(ctx context.Context, request controlplane.FinalizeReque
 	}
 	eventPayload := []byte(fmt.Sprintf(`{"operationId":%q,"kind":%q,"state":%q,"instancePhase":%q}`, request.Fence.OperationID, request.OperationKind, request.State, request.InstancePhase))
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_audit_intents
-		(audit_id, aggregate_id, actor_id, action, created_at_us) VALUES (?, ?, 'local-admin', ?, `+s.nowMicros()+`)`), request.AuditID, instanceID, request.OperationKind+".complete"); err != nil {
+		(audit_id, aggregate_id, actor_id, action, created_at_us) VALUES (?, ?, ?, ?, `+s.nowMicros()+`)`), request.AuditID, instanceID, request.ActorID, request.OperationKind+".complete"); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_job_events

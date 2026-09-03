@@ -130,6 +130,10 @@ func NewDockerTargetRegistry(provider pluginv1.ProviderServiceClient) (*TargetRe
 }
 
 func (registry *TargetRegistry) Acquire(ctx context.Context, targetID domain.ProviderTargetID, scope application.InvocationScope, includeCredential bool) (*TargetSession, error) {
+	return registry.AcquireForSubject(ctx, targetID, LocalAdminID, scope, includeCredential)
+}
+
+func (registry *TargetRegistry) AcquireForSubject(ctx context.Context, targetID domain.ProviderTargetID, subjectID domain.UserID, scope application.InvocationScope, includeCredential bool) (*TargetSession, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("target registry is unavailable")
 	}
@@ -149,13 +153,16 @@ func (registry *TargetRegistry) Acquire(ctx context.Context, targetID domain.Pro
 	if !includeCredential {
 		return session, nil
 	}
+	if _, err := domain.NewUserID(string(subjectID)); err != nil {
+		return nil, fmt.Errorf("provider target credential subject is invalid")
+	}
 	if binding.credentialResolver == nil || binding.credentialRef == nil {
 		return session, nil
 	}
 	if scope.InvocationID == "" || scope.InstanceID == "" || scope.ResourceID == "" || scope.ExpiresAt.IsZero() || !scope.ExpiresAt.After(time.Now()) {
 		return nil, fmt.Errorf("provider target %s credential scope is invalid", targetID)
 	}
-	secret, err := binding.credentialResolver.Resolve(ctx, application.AuthorizedSecretRef{Reference: *binding.credentialRef, SubjectID: LocalAdminID}, scope)
+	secret, err := binding.credentialResolver.Resolve(ctx, application.AuthorizedSecretRef{Reference: *binding.credentialRef, SubjectID: subjectID}, scope)
 	if err != nil {
 		return nil, fmt.Errorf("resolve provider target %s credential", targetID)
 	}

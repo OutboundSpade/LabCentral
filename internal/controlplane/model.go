@@ -23,6 +23,10 @@ const (
 
 type InstanceRecord struct {
 	ID                           domain.InstanceID
+	ProjectID                    domain.ProjectID
+	OwnerKind                    application.OwnerKind
+	OwnerID                      string
+	CreatedBy                    domain.UserID
 	ProviderTargetID             domain.ProviderTargetID
 	ProviderOverrideJSON         []byte
 	CanonicalDigest              domain.SHA256Digest
@@ -84,6 +88,7 @@ type ResourceRecord struct {
 type OperationRecord struct {
 	ID         domain.OperationID
 	InstanceID domain.InstanceID
+	ActorID    domain.UserID
 	Kind       OperationKind
 	State      domain.OperationState
 	Generation domain.Generation
@@ -107,6 +112,10 @@ type ResourceSeed struct {
 
 type CreateInstanceRequest struct {
 	InstanceID           domain.InstanceID
+	ProjectID            domain.ProjectID
+	OwnerKind            application.OwnerKind
+	OwnerID              string
+	CreatedBy            domain.UserID
 	ProviderTargetID     domain.ProviderTargetID
 	ProviderOverrideJSON []byte
 	OperationID          domain.OperationID
@@ -188,6 +197,7 @@ type ResourceResultUpdate struct {
 
 type FinalizeRequest struct {
 	Fence         Fence
+	ActorID       domain.UserID
 	OperationKind OperationKind
 	State         domain.OperationState
 	InstancePhase domain.InstancePhase
@@ -206,6 +216,7 @@ type Store interface {
 	QueueDestroy(context.Context, QueueDestroyRequest) (EnqueueResult, error)
 	GetInstance(context.Context, domain.InstanceID) (InstanceRecord, error)
 	ListInstances(context.Context) ([]InstanceRecord, error)
+	ListInstancesByID(context.Context, []domain.InstanceID) ([]InstanceRecord, error)
 	ListResources(context.Context, domain.InstanceID) ([]ResourceRecord, error)
 	GetOperation(context.Context, domain.OperationID) (OperationRecord, error)
 	Claim(context.Context, string, time.Duration) (WorkClaim, error)

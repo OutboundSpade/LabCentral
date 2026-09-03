@@ -19,6 +19,8 @@ import (
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/application"
+	"github.com/OutboundSpade/LabCentral/internal/authorization"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/render"
@@ -145,7 +147,7 @@ func TestPostgreSQLMultiReplicaFencingAndCrashRecovery(t *testing.T) {
 	}
 
 	finalize := controlplane.FinalizeRequest{
-		Fence: newFence, OperationKind: controlplane.OperationApply, State: domain.OperationSucceeded,
+		Fence: newFence, ActorID: controlplane.LocalAdminID, OperationKind: controlplane.OperationApply, State: domain.OperationSucceeded,
 		InstancePhase: domain.InstanceReady, Message: "Ready", OutputsJSON: []byte(`{}`),
 		AuditID: "audit.multi-replica-final", EventID: "event.multi-replica-final",
 	}
@@ -490,6 +492,90 @@ func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB)
 	}
 }
 
+func TestWorkerReauthorizesQueuedActorBeforeProviderAccess(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:worker-reauthorization?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := localdb.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for _, apply := range []func() error{
+		func() error {
+			return store.PutUser(ctx, application.UserRecord{ID: "user.actor", Username: "actor", DisplayName: "Actor"})
+		},
+		func() error {
+			return store.PutOrganization(ctx, application.OrganizationRecord{ID: "org.alpha", Name: "alpha"})
+		},
+		func() error {
+			return store.PutProject(ctx, application.ProjectRecord{ID: "project.alpha", OrganizationID: "org.alpha", Name: "classroom"})
+		},
+		func() error {
+			return store.PutMembership(ctx, application.MembershipRecord{ID: "membership.actor", UserID: "user.actor", OrganizationID: "org.alpha", ValidFrom: now.Add(-time.Hour)})
+		},
+		func() error {
+			return store.PutRoleAssignment(ctx, application.RoleAssignmentRecord{ID: "role.actor", SubjectKind: application.SubjectUser, SubjectID: "user.actor", ScopeKind: application.ScopeProject, ScopeID: "project.alpha", Role: application.RoleInstructor, ValidFrom: now.Add(-time.Hour)})
+		},
+		func() error {
+			return store.PutTargetGrant(ctx, application.TargetGrantRecord{ID: "grant.actor", TargetID: controlplane.LocalDockerTarget, ScopeKind: application.ScopeProject, ScopeID: "project.alpha", ValidFrom: now.Add(-time.Hour)})
+		},
+	} {
+		if err := apply(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newTestEngine()
+	dockerService, err := dockerprovider.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordingProvider{ProviderServiceServer: dockerService}
+	provider, closeProvider := testProviderClient(t, recorder)
+	defer closeProvider()
+	ids := &sequenceIDs{}
+	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateInstanceTargetFor(ctx, "user.actor", "project.alpha", application.OwnerUser, "user.actor", source, true, "reauthorize-actor", controlplane.LocalDockerTarget, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validationsBefore := recorder.validationCount()
+	if err := store.PutUser(ctx, application.UserRecord{ID: "user.actor", Username: "actor", DisplayName: "Actor", Disabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	evaluator, err := authorization.New(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{Authorizer: evaluator})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.RunOnce(ctx); !errors.Is(err, authorization.ErrDenied) {
+		t.Fatalf("disabled queued actor returned %v", err)
+	}
+	if recorder.validationCount() != validationsBefore || engine.objectCount() != 0 {
+		t.Fatalf("provider was reached after revocation: validations %d -> %d, objects %d", validationsBefore, recorder.validationCount(), engine.objectCount())
+	}
+	instance, err := store.GetInstance(ctx, created.InstanceID)
+	if err != nil || instance.Phase != domain.InstancePending {
+		t.Fatalf("denied work changed instance: %#v, %v", instance, err)
+	}
+}
+
 func TestExampleARejectsMissingDockerRiskAcknowledgement(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -730,8 +816,16 @@ func testProviderClient(t *testing.T, service pluginv1.ProviderServiceServer) (p
 
 type recordingProvider struct {
 	pluginv1.ProviderServiceServer
-	mu    sync.Mutex
-	plans []*pluginv1.PlanResourceRequest
+	mu          sync.Mutex
+	plans       []*pluginv1.PlanResourceRequest
+	validations int
+}
+
+func (provider *recordingProvider) ValidateLab(ctx context.Context, request *pluginv1.ValidateLabRequest) (*pluginv1.ValidateLabResponse, error) {
+	provider.mu.Lock()
+	provider.validations++
+	provider.mu.Unlock()
+	return provider.ProviderServiceServer.ValidateLab(ctx, request)
 }
 
 func (provider *recordingProvider) PlanResource(ctx context.Context, request *pluginv1.PlanResourceRequest) (*pluginv1.PlanResourceResponse, error) {
@@ -749,4 +843,10 @@ func (provider *recordingProvider) snapshot() []*pluginv1.PlanResourceRequest {
 		result[index] = proto.Clone(request).(*pluginv1.PlanResourceRequest)
 	}
 	return result
+}
+
+func (provider *recordingProvider) validationCount() int {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return provider.validations
 }

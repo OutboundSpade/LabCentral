@@ -25,6 +25,7 @@ type Worker struct {
 	leaseDuration time.Duration
 	pollInterval  time.Duration
 	onError       func(error)
+	authorizer    application.Authorizer
 }
 
 type WorkerOptions struct {
@@ -32,6 +33,7 @@ type WorkerOptions struct {
 	LeaseDuration time.Duration
 	PollInterval  time.Duration
 	OnError       func(error)
+	Authorizer    application.Authorizer
 }
 
 func NewWorker(store Store, provider pluginv1.ProviderServiceClient, ids IDSource, options WorkerOptions) (*Worker, error) {
@@ -58,7 +60,7 @@ func NewWorkerWithTargets(store Store, targets *TargetRegistry, ids IDSource, op
 	if options.OnError == nil {
 		options.OnError = func(error) {}
 	}
-	return &Worker{store: store, targets: targets, ids: ids, owner: options.Owner, leaseDuration: options.LeaseDuration, pollInterval: options.PollInterval, onError: options.OnError}, nil
+	return &Worker{store: store, targets: targets, ids: ids, owner: options.Owner, leaseDuration: options.LeaseDuration, pollInterval: options.PollInterval, onError: options.OnError, authorizer: options.Authorizer}, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -140,17 +142,66 @@ func (w *Worker) process(ctx context.Context, fence Fence, payloadBytes []byte) 
 	if payload.InstanceID != instance.ID {
 		return fmt.Errorf("job instance identity mismatch")
 	}
+	operation, err := w.store.GetOperation(ctx, fence.OperationID)
+	if err != nil || operation.InstanceID != instance.ID || operation.ActorID == "" {
+		return fmt.Errorf("load queued operation actor: %w", err)
+	}
+	if operation.Kind != payload.Kind {
+		return fmt.Errorf("queued operation kind does not match its payload")
+	}
+	if err := w.authorizeOperation(ctx, operation, instance); err != nil {
+		return err
+	}
 	switch payload.Kind {
 	case OperationApply:
-		return w.apply(ctx, fence, instance)
+		return w.apply(ctx, fence, operation.ActorID, instance)
 	case OperationDestroy:
-		return w.destroy(ctx, fence, instance)
+		return w.destroy(ctx, fence, operation.ActorID, instance)
 	default:
 		return fmt.Errorf("unsupported local operation kind %q", payload.Kind)
 	}
 }
 
-func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord) error {
+func (w *Worker) authorizeOperation(ctx context.Context, operation OperationRecord, instance InstanceRecord) error {
+	if w.authorizer == nil {
+		return nil
+	}
+	var action application.PermissionAction
+	switch operation.Kind {
+	case OperationApply:
+		action = application.ActionInstanceCreate
+	case OperationDestroy:
+		action = application.ActionInstanceDestroy
+	default:
+		return fmt.Errorf("queued operation kind is invalid")
+	}
+	if err := w.authorizer.Authorize(ctx, application.AuthorizationRequest{
+		SubjectID: operation.ActorID, Action: action, ScopeKind: application.ScopeProject, ScopeID: string(instance.ProjectID),
+		TargetID: instance.ProviderTargetID, OwnerKind: instance.OwnerKind, OwnerID: instance.OwnerID,
+	}); err != nil {
+		return fmt.Errorf("queued operation authorization is no longer valid: %w", err)
+	}
+	return nil
+}
+
+func (w *Worker) authorizeActor(ctx context.Context, actorID domain.UserID, providerAction string, instance InstanceRecord) error {
+	if w.authorizer == nil {
+		return nil
+	}
+	action := application.ActionInstanceDestroy
+	if providerAction == "apply" {
+		action = application.ActionInstanceCreate
+	}
+	if err := w.authorizer.Authorize(ctx, application.AuthorizationRequest{
+		SubjectID: actorID, Action: action, ScopeKind: application.ScopeProject, ScopeID: string(instance.ProjectID),
+		TargetID: instance.ProviderTargetID, OwnerKind: instance.OwnerKind, OwnerID: instance.OwnerID,
+	}); err != nil {
+		return fmt.Errorf("provider credential authorization is no longer valid: %w", err)
+	}
+	return nil
+}
+
+func (w *Worker) apply(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord) error {
 	for _, transition := range []struct {
 		phase   domain.InstancePhase
 		message string
@@ -176,7 +227,7 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 	}
 	if len(validation.GetErrors()) > 0 {
 		first := validation.GetErrors()[0]
-		return w.finalize(ctx, fence, OperationApply, domain.OperationFailed, domain.InstanceFailed, "Provider validation failed", first.GetCode(), first.GetSafeMessage(), nil)
+		return w.finalize(ctx, fence, actorID, OperationApply, domain.OperationFailed, domain.InstanceFailed, "Provider validation failed", first.GetCode(), first.GetSafeMessage(), nil)
 	}
 	resources, err := w.store.ListResources(ctx, instance.ID)
 	if err != nil {
@@ -193,19 +244,19 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 			observed, projectionErr := projectCoreResource(resource, resources)
 			if projectionErr != nil {
 				_ = w.store.SaveCoreResource(ctx, fence, resource.ID, domain.ResourceFailed, []byte(`{}`))
-				return w.compensateAndFinalize(ctx, fence, instance, resource.ID, nil, projectionErr)
+				return w.compensateAndFinalize(ctx, fence, actorID, instance, resource.ID, nil, projectionErr)
 			}
 			if err := w.store.SaveCoreResource(ctx, fence, resource.ID, domain.ResourceReady, observed); err != nil {
 				return err
 			}
 			continue
 		}
-		result, callErr := w.invoke(ctx, fence, instance, resource, "apply")
+		result, callErr := w.invoke(ctx, fence, actorID, instance, resource, "apply")
 		if callErr != nil {
 			return callErr
 		}
 		if result.GetError() != nil {
-			return w.compensateAndFinalize(ctx, fence, instance, resource.ID, result, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
+			return w.compensateAndFinalize(ctx, fence, actorID, instance, resource.ID, result, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
 		}
 		resources, err = w.store.ListResources(ctx, instance.ID)
 		if err != nil {
@@ -218,12 +269,12 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 	}
 	outputs, err := collectOutputs(resources)
 	if err != nil {
-		return w.compensateAndFinalize(ctx, fence, instance, "", nil, err)
+		return w.compensateAndFinalize(ctx, fence, actorID, instance, "", nil, err)
 	}
-	return w.finalize(ctx, fence, OperationApply, domain.OperationSucceeded, domain.InstanceReady, "Lab is ready", "", "", outputs)
+	return w.finalize(ctx, fence, actorID, OperationApply, domain.OperationSucceeded, domain.InstanceReady, "Lab is ready", "", "", outputs)
 }
 
-func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceRecord) error {
+func (w *Worker) destroy(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord) error {
 	if err := w.store.MarkInstancePhase(ctx, fence, domain.InstanceDestroying, "Destroying provider resources"); err != nil {
 		return err
 	}
@@ -246,7 +297,7 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceReco
 			}
 			continue
 		}
-		result, callErr := w.invoke(ctx, fence, instance, resource, "destroy")
+		result, callErr := w.invoke(ctx, fence, actorID, instance, resource, "destroy")
 		if callErr != nil {
 			leftovers = append(leftovers, string(resource.ID))
 			continue
@@ -256,13 +307,16 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, instance InstanceReco
 		}
 	}
 	if len(leftovers) > 0 {
-		return w.finalize(ctx, fence, OperationDestroy, domain.OperationPartial, domain.InstanceDegraded,
+		return w.finalize(ctx, fence, actorID, OperationDestroy, domain.OperationPartial, domain.InstanceDegraded,
 			"Destroy completed with owned leftovers", "partial_cleanup", "Cleanup failed for: "+strings.Join(leftovers, ", "), nil)
 	}
-	return w.finalize(ctx, fence, OperationDestroy, domain.OperationSucceeded, domain.InstanceDestroyed, "Lab was destroyed", "", "", []byte(`{}`))
+	return w.finalize(ctx, fence, actorID, OperationDestroy, domain.OperationSucceeded, domain.InstanceDestroyed, "Lab was destroyed", "", "", []byte(`{}`))
 }
 
-func (w *Worker) invoke(ctx context.Context, fence Fence, instance InstanceRecord, resource ResourceRecord, action string) (*pluginv1.ResourceResult, error) {
+func (w *Worker) invoke(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, resource ResourceRecord, action string) (*pluginv1.ResourceResult, error) {
+	if err := w.authorizeActor(ctx, actorID, action, instance); err != nil {
+		return nil, err
+	}
 	requestDigest := digestBytes("labcentral.provider-invocation/v1", []byte(action), []byte(instance.ProviderTargetID), resource.CanonicalJSON, resource.ProviderPlan, resource.ProviderState)
 	invocationValue, err := w.ids.New("inv")
 	if err != nil {
@@ -278,7 +332,7 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instance InstanceRecor
 	scope := application.InvocationScope{
 		InvocationID: prepared.ID, InstanceID: instance.ID, ResourceID: resource.ID, ExpiresAt: time.Now().Add(providerInvocationTimeout + time.Minute),
 	}
-	session, err := w.targets.Acquire(ctx, instance.ProviderTargetID, scope, true)
+	session, err := w.targets.AcquireForSubject(ctx, instance.ProviderTargetID, actorID, scope, true)
 	if err != nil {
 		return nil, fmt.Errorf("acquire provider target for invocation: %w", err)
 	}
@@ -551,7 +605,7 @@ func (w *Worker) saveUnknown(ctx context.Context, fence Fence, invocationID doma
 	return fmt.Errorf("provider outcome for %s is unknown: %w", resource.ID, cause)
 }
 
-func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instance InstanceRecord, failedResource domain.LogicalResourceID, failedResult *pluginv1.ResourceResult, cause error) error {
+func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, failedResource domain.LogicalResourceID, failedResult *pluginv1.ResourceResult, cause error) error {
 	resources, err := w.store.ListResources(ctx, instance.ID)
 	if err != nil {
 		return err
@@ -571,7 +625,7 @@ func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instanc
 		if !providerManagedKind(resource.Kind) || len(resource.ProviderState) == 0 || resource.Phase != domain.ResourceReady {
 			continue
 		}
-		result, invokeErr := w.invoke(ctx, fence, instance, resource, "compensate")
+		result, invokeErr := w.invoke(ctx, fence, actorID, instance, resource, "compensate")
 		if invokeErr != nil || result.GetError() != nil {
 			leftovers = append(leftovers, string(resource.ID))
 		}
@@ -589,7 +643,7 @@ func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instanc
 	if failedResource != "" {
 		message += " (failed at " + string(failedResource) + ")"
 	}
-	return w.finalize(ctx, fence, OperationApply, state, phase, message, errorCode, cause.Error(), nil)
+	return w.finalize(ctx, fence, actorID, OperationApply, state, phase, message, errorCode, cause.Error(), nil)
 }
 
 func resultHasOwnedLeftovers(result *pluginv1.ResourceResult) bool {
@@ -605,7 +659,7 @@ func resultHasOwnedLeftovers(result *pluginv1.ResourceResult) bool {
 	return json.Unmarshal(result.GetObservedStateJson(), &observed) == nil && len(observed.Leftovers) > 0
 }
 
-func (w *Worker) finalize(ctx context.Context, fence Fence, kind OperationKind, state domain.OperationState, phase domain.InstancePhase, message, errorCode, errorMessage string, outputs []byte) error {
+func (w *Worker) finalize(ctx context.Context, fence Fence, actorID domain.UserID, kind OperationKind, state domain.OperationState, phase domain.InstancePhase, message, errorCode, errorMessage string, outputs []byte) error {
 	auditID, err := w.ids.New("audit")
 	if err != nil {
 		return err
@@ -615,7 +669,7 @@ func (w *Worker) finalize(ctx context.Context, fence Fence, kind OperationKind, 
 		return err
 	}
 	return w.store.Finalize(ctx, FinalizeRequest{
-		Fence: fence, OperationKind: kind, State: state, InstancePhase: phase, Message: message,
+		Fence: fence, ActorID: actorID, OperationKind: kind, State: state, InstancePhase: phase, Message: message,
 		ErrorCode: errorCode, ErrorMessage: errorMessage, OutputsJSON: outputs, AuditID: auditID, EventID: eventID,
 	})
 }
