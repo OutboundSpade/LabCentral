@@ -42,7 +42,7 @@ var (
 	pveVersionPattern     = regexp.MustCompile(`^pve-manager/9\.[0-9]+\.[0-9]+/[0-9A-Fa-f]{8,64}$`)
 	privilegePattern      = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9.]{0,63}$`)
 	claimValuePattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
-	permissionPathPattern = regexp.MustCompile(`^/((nodes|pool|storage|vms)/[A-Za-z0-9][A-Za-z0-9_.-]{0,254}|sdn/zones/localnetwork/[A-Za-z0-9][A-Za-z0-9_.-]{0,254})$`)
+	permissionPathPattern = regexp.MustCompile(`^/(vms|(nodes|pool|storage|vms)/[A-Za-z0-9][A-Za-z0-9_.-]{0,254}|sdn/zones/localnetwork/[A-Za-z0-9][A-Za-z0-9_.-]{0,254})$`)
 )
 
 var requiredT3Cases = []string{

@@ -26,7 +26,7 @@ allocationClaims:
   states: [held, committed, orphaned, released]
   releaseCondition: provider_absence_confirmed
 qualificationEvidence:
-  status: verifier_implemented_t3_executed_unsigned
+  status: testbed_signed_and_verified_ready_for_independent_review
   evidenceSchema: labcentral.proxmox-qualification-evidence/v1
   envelopeSchema: labcentral.proxmox-qualification-envelope/v1
   canonicalization: RFC_8785
@@ -142,7 +142,7 @@ qualificationProbe:
     canonicalTranscriptDigest: sha256
   productionRole: none_qualification_fixture_only
 credentialedIsolationHarness:
-  status: implemented_executed_once
+  status: implemented_executed_evidence_grade
   profileSchema: labcentral.proxmox-t3-isolation-profile/v1
   profileSchemaFile: design/contracts/proxmox-t3-isolation-profile.schema.json
   activation:
@@ -164,6 +164,21 @@ credentialedIsolationHarness:
     vmAbsenceRechecked: true
   defaultBehavior: skipped_with_zero_provider_calls
   qualifyingEvidence: false
+upgradeReadabilityHarness:
+  status: implemented_executed_read_only
+  activation:
+    exactSentinel: I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T4_READ_ONLY_UPGRADE
+    absoluteJournalDirectory: required
+    exactTargetID: required
+    priorBuildInvocationIDs: 3_to_32_distinct
+  coverage:
+    - checksummed_invocation_journal_v1_0
+    - network_provider_state_v1_0
+    - vm_provider_state_v1_0
+    - destroyed_tombstone
+  providerClientConstructed: false
+  mutationPath: none
+  defaultBehavior: skipped_before_journal_access
 capabilityGate:
   requiredFacts:
     - supported_pve_9_release
@@ -417,3 +432,9 @@ cases:
     testBinding: "providers/proxmox/t3_isolation_test.go#TestContractTESTPROXMOX027CredentialedIsolationRunnerBindsExactTopologyAndProbeInputs"
     credentialedBinding: "providers/proxmox/t3_isolation_test.go#TestCredentialedProxmoxT3Isolation"
     expect: {defaultMutations: 0, exactInputPaths: 6, sourceGuests: 2, crossInstanceGuests: 1, distinctVMIDs: 3, distinctVLANs: 2, guestProbeBound: true, reverseCleanup: true, vmAbsenceRechecked: true, qualifiesByItself: false, productionGateBypass: false}
+  - id: TEST-PROXMOX-028
+    title: Current provider reads prior-build state and journals without mutation
+    layer: T0_T4
+    testBinding: "providers/proxmox/upgrade_rehearsal_test.go#TestContractTESTPROXMOX028UpgradeReadabilityRunnerIsExplicitAndReadOnly"
+    credentialedBinding: "providers/proxmox/upgrade_rehearsal_test.go#TestProxmoxT4UpgradeReadability"
+    expect: {defaultMutations: 0, priorJournalChecksumsValidated: true, networkStateV10Readable: true, vmStateV10Readable: true, destroyTombstoneReadable: true, providerClientConstructed: false}

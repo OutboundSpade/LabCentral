@@ -334,7 +334,7 @@ def verify_proxmox_mutation_contract() -> None:
     assert contract["allocationClaims"]["uniqueKey"] == ["targetID", "namespace", "value"]
     assert contract["allocationClaims"]["releaseCondition"] == "provider_absence_confirmed"
     qualification = contract["qualificationEvidence"]
-    assert qualification["status"] == "verifier_implemented_t3_executed_unsigned"
+    assert qualification["status"] == "testbed_signed_and_verified_ready_for_independent_review"
     assert qualification["evidenceSchema"] == "labcentral.proxmox-qualification-evidence/v1"
     assert qualification["envelopeSchema"] == "labcentral.proxmox-qualification-envelope/v1"
     assert qualification["canonicalization"] == "RFC_8785"
@@ -412,6 +412,25 @@ def verify_proxmox_mutation_contract() -> None:
         "defaultBehavior": "skipped_with_zero_provider_calls",
         "qualifyingEvidence": False,
     }
+    upgrade = contract["upgradeReadabilityHarness"]
+    assert upgrade == {
+        "status": "implemented_executed_read_only",
+        "activation": {
+            "exactSentinel": "I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T4_READ_ONLY_UPGRADE",
+            "absoluteJournalDirectory": "required",
+            "exactTargetID": "required",
+            "priorBuildInvocationIDs": "3_to_32_distinct",
+        },
+        "coverage": [
+            "checksummed_invocation_journal_v1_0",
+            "network_provider_state_v1_0",
+            "vm_provider_state_v1_0",
+            "destroyed_tombstone",
+        ],
+        "providerClientConstructed": False,
+        "mutationPath": "none",
+        "defaultBehavior": "skipped_before_journal_access",
+    }
     qualification_probe = contract["qualificationProbe"]
     assert qualification_probe == {
         "status": "protocol_agent_and_client_executed_on_guest",
@@ -449,7 +468,7 @@ def verify_proxmox_mutation_contract() -> None:
     }
     isolation = contract["credentialedIsolationHarness"]
     assert isolation == {
-        "status": "implemented_executed_once",
+        "status": "implemented_executed_evidence_grade",
         "profileSchema": "labcentral.proxmox-t3-isolation-profile/v1",
         "profileSchemaFile": "design/contracts/proxmox-t3-isolation-profile.schema.json",
         "activation": {

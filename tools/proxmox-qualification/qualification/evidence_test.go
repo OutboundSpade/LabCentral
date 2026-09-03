@@ -115,6 +115,17 @@ func TestContractTESTPROXMOX024SignedQualificationEvidenceFailsClosed(t *testing
 	})
 }
 
+func TestQualificationPermissionPathAcceptsExactVMRootAndRejectsOtherRoots(t *testing.T) {
+	if !validPermissionPath("/vms") {
+		t.Fatal("exact Proxmox /vms ACL root was rejected")
+	}
+	for _, path := range []string{"/", "/nodes", "/pool", "/storage", "/sdn/zones/localnetwork"} {
+		if validPermissionPath(path) {
+			t.Fatalf("unscoped permission root %q was accepted", path)
+		}
+	}
+}
+
 func passingEvidence() Evidence {
 	started := "2026-09-02T18:00:00Z"
 	completed := "2026-09-02T18:01:00Z"

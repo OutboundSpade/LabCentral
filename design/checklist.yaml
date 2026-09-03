@@ -212,4 +212,5 @@ tasks:
       - Provider-target registration, secret-backed credential delivery, supervision, protocol v1.1 negotiation, capability persistence, allocation commits, and dependency states drive the Proxmox provider without weakening the Docker slice.
       - Isolated opt-in T3 runs record exact PVE 9.x, storage, bridge, permission, template, VMID, and VLAN evidence and pass every applicable TEST-PROXMOX case with automatic owned cleanup.
       - Positive intended-segment and negative management/cross-instance connectivity probes are measured on real guests, and failed or ambiguous cleanup retains claims and blocks capability advertisement.
+      - The closed exact-target artifact verifies all expected bindings, and the current reader accepts prior-build journal/state v1.0 records without mutation, before production-enablement review begins.
       - A separate reviewed production-enablement decision consumes signed qualification evidence; no configuration-only or test-constructor bypass can open writes.
