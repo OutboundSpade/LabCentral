@@ -1,6 +1,6 @@
 formatVersion: 1
 suite: labcentral.proxmox-qemu-mutation/v1alpha1
-status: t0_implemented
+status: production_authorizer_implemented_packaging_in_progress
 provider: proxmox
 initialRelease:
   pveRange: ">=9.0.0 <10.0.0"
@@ -70,7 +70,22 @@ qualificationEvidence:
   cleanup:
     qualifyingCondition: provider_absence_confirmed_and_no_leftovers_and_all_claims_released
     failureCondition: retain_or_orphan_claims_and_block_capability
-  productionEnablement: separate_accepted_adr_and_implementation_required
+  productionEnablement: adr_0014_authorizer_implemented_exact_release_requalification_required
+productionAuthorization:
+  status: implemented_fail_closed
+  decision: ADR-0014
+  trustSchema: labcentral.proxmox-qualification-trust/v1
+  trustSchemaFile: design/contracts/proxmox-qualification-trust.schema.json
+  defaultConstructor: discovery_only
+  writeConstructor: requires_non_nil_mutation_authorizer
+  checks:
+    - active_non_revoked_reviewer_key_and_deployment_maximum_age
+    - complete_passing_signed_case_probe_and_cleanup_evidence
+    - exact_target_installation_configuration_capability_inventory_and_policy
+    - exact_pve_release_build_provider_binary_and_source_tree
+    - exact_protocol_plugin_and_normalized_live_profile
+  evaluationPoints: [capability_discovery, apply, destroy, lifecycle]
+  failureBehavior: unsupported_or_qualification_gate_closed_before_write
 credentialedSmokeHarness:
   status: implemented_executed_two_storage_profiles
   profileSchema: labcentral.proxmox-t3-smoke-profile/v1

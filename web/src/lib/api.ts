@@ -3,7 +3,20 @@ export type ServerInfo = {
   apiVersion: string;
   authMode: string;
   enabledProviderKinds: string[];
+  defaultProviderTargetId: string;
   noAuthWarning: string;
+};
+export type ProviderTarget = {
+  id: string;
+  providerKind: string;
+  protocolMajor: number;
+  protocolMinor: number;
+  features: string[];
+  status: 'fresh' | 'stale' | 'undiscovered';
+  example?: { source: string; providerOverride?: Record<string, unknown> };
+  discovery?: { capabilities?: Array<{ feature_id?: string; featureId?: string; support?: string; evidence?: string }> };
+  discoveredAt?: string;
+  validUntil?: string;
 };
 export type Operation = {
   id: string;

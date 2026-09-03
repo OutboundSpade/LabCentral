@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, terminal, type Instance, type Operation, type ServerInfo } from '$lib/api';
+  import { api, terminal, type Instance, type Operation, type ProviderTarget, type ServerInfo } from '$lib/api';
 
   let server = $state<ServerInfo | null>(null);
   let source = $state('');
@@ -10,13 +10,21 @@
   let activeOperation = $state<Operation | null>(null);
   let busy = $state(false);
   let error = $state('');
+  let targets = $state<ProviderTarget[]>([]);
+  let selectedTargetId = $state('');
+  let providerOverride = $state('');
+
+  let selectedTarget = $derived(targets.find((target) => target.id === selectedTargetId));
+  let dockerSelected = $derived(selectedTarget?.providerKind === 'docker');
 
   onMount(async () => {
     try {
-      [server, source] = await Promise.all([
+      [server, source, targets] = await Promise.all([
         api<ServerInfo>('/server-info'),
-        api<{ source: string }>('/examples/docker-laptop').then((value) => value.source)
+        api<{ source: string }>('/examples/docker-laptop').then((value) => value.source),
+        api<{ items: ProviderTarget[] }>('/provider-targets').then((value) => value.items)
       ]);
+      chooseTarget(server.defaultProviderTargetId || targets[0]?.id || '', source);
       await refreshInstances();
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
@@ -28,12 +36,30 @@
     instances = response.items;
   }
 
+  function chooseTarget(targetId: string, fallbackSource = '') {
+    selectedTargetId = targetId;
+    const example = targets.find((target) => target.id === targetId)?.example;
+    source = example?.source || fallbackSource || source;
+    providerOverride = example?.providerOverride ? JSON.stringify(example.providerOverride, null, 2) : '';
+    acknowledged = false;
+    plan = null;
+  }
+
+  function labRequest() {
+    return {
+      source,
+      acknowledgeDockerIsolationRisk: acknowledged,
+      providerTargetId: selectedTargetId,
+      ...(providerOverride.trim() ? { providerOverride: JSON.parse(providerOverride) } : {})
+    };
+  }
+
   async function preview() {
     busy = true;
     error = '';
     try {
       const response = await api<{ resources: Array<{ resourceId: string; kind: string; action: string }> }>('/lab-plans', {
-        method: 'POST', body: JSON.stringify({ source, acknowledgeDockerIsolationRisk: acknowledged })
+        method: 'POST', body: JSON.stringify(labRequest())
       });
       plan = response.resources;
     } catch (cause) {
@@ -50,7 +76,7 @@
       const response = await api<{ operation: Operation }>('/lab-instances', {
         method: 'POST',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
-        body: JSON.stringify({ source, acknowledgeDockerIsolationRisk: acknowledged })
+        body: JSON.stringify(labRequest())
       });
       activeOperation = response.operation;
       await poll(response.operation.id);
@@ -87,7 +113,7 @@
   }
 </script>
 
-<svelte:head><title>LabCentral · Docker laptop</title></svelte:head>
+<svelte:head><title>LabCentral</title></svelte:head>
 
 <main class="mx-auto min-h-screen max-w-7xl p-5 md:p-10">
   <header class="mb-8 flex items-center justify-between">
@@ -95,7 +121,7 @@
       <p class="font-mono text-xs tracking-[0.28em] text-primary uppercase">Local control plane</p>
       <h1 class="mt-2 text-3xl font-semibold tracking-tight md:text-5xl">LabCentral</h1>
     </div>
-    <div class="badge badge-outline badge-primary gap-2 py-3 font-mono">Docker · loopback</div>
+    <div class="badge badge-outline badge-primary gap-2 py-3 font-mono">{selectedTarget?.providerKind ?? 'provider'} · loopback</div>
   </header>
 
   {#if server}
@@ -115,19 +141,42 @@
   <div class="grid gap-7 lg:grid-cols-[1.25fr_0.75fr]">
     <section class="card border border-base-300 bg-base-200/80 shadow-2xl backdrop-blur">
       <div class="card-body gap-5">
+        <label class="form-control w-full">
+          <span class="label-text mb-2 text-xs font-semibold tracking-widest text-primary uppercase">Provider target</span>
+          <select class="select select-bordered w-full bg-base-100" value={selectedTargetId} onchange={(event) => chooseTarget(event.currentTarget.value)} disabled={busy}>
+            {#each targets as target}
+              <option value={target.id}>{target.id} · {target.providerKind} · {target.status}</option>
+            {/each}
+          </select>
+        </label>
+        {#if selectedTarget}
+          <div class="flex flex-wrap items-center gap-2 text-xs text-base-content/60">
+            <span class:badge-success={selectedTarget.status === 'fresh'} class:badge-warning={selectedTarget.status !== 'fresh'} class="badge badge-sm badge-outline">{selectedTarget.status}</span>
+            <span>Protocol {selectedTarget.protocolMajor}.{selectedTarget.protocolMinor}</span>
+            {#if selectedTarget.validUntil}<span>Evidence valid until {new Date(selectedTarget.validUntil).toLocaleString()}</span>{/if}
+          </div>
+        {/if}
         <div>
-          <p class="text-xs font-semibold tracking-widest text-primary uppercase">Example A</p>
-          <h2 class="card-title mt-1 text-2xl">Two-container SQLite web lab</h2>
-          <p class="mt-2 text-sm text-base-content/65">A private Docker network, persistent volume, Python/SQLite web service, client, shell endpoint, and loopback URL.</p>
+          <p class="text-xs font-semibold tracking-widest text-primary uppercase">Lab declaration</p>
+          <h2 class="card-title mt-1 text-2xl">{dockerSelected ? 'Two-container SQLite web lab' : 'Qualified VM lab'}</h2>
+          <p class="mt-2 text-sm text-base-content/65">{dockerSelected ? 'A private Docker network, persistent volume, Python/SQLite web service, client, shell endpoint, and loopback URL.' : 'The selected Proxmox target accepts only its signed, administrator-approved VM, storage, and network profiles.'}</p>
         </div>
         <textarea class="textarea h-72 w-full resize-y bg-base-100 font-mono text-xs leading-relaxed" bind:value={source} spellcheck="false" aria-label="Lab YAML"></textarea>
-        <label class="label cursor-pointer items-start justify-start gap-3 rounded-box border border-warning/35 bg-warning/10 p-4">
-          <input class="checkbox checkbox-warning mt-0.5" type="checkbox" bind:checked={acknowledged} />
-          <span class="label-text leading-relaxed">I understand ordinary Docker containers are not safe for arbitrary hostile workloads and accept trusted-laptop mode for this lab.</span>
-        </label>
+        {#if !dockerSelected}
+          <label class="form-control w-full">
+            <span class="label-text mb-2 text-xs font-semibold tracking-widest text-primary uppercase">Approved provider profiles</span>
+            <textarea class="textarea h-28 w-full resize-y bg-base-100 font-mono text-xs leading-relaxed" bind:value={providerOverride} spellcheck="false" aria-label="Provider override JSON"></textarea>
+          </label>
+        {/if}
+        {#if dockerSelected}
+          <label class="label cursor-pointer items-start justify-start gap-3 rounded-box border border-warning/35 bg-warning/10 p-4">
+            <input class="checkbox checkbox-warning mt-0.5" type="checkbox" bind:checked={acknowledged} />
+            <span class="label-text leading-relaxed">I understand ordinary Docker containers are not safe for arbitrary hostile workloads and accept trusted-laptop mode for this lab.</span>
+          </label>
+        {/if}
         <div class="card-actions justify-end">
           <button class="btn btn-ghost" disabled={busy || !source} onclick={preview}>Preview plan</button>
-          <button class="btn btn-primary" disabled={busy || !source || !acknowledged} onclick={launch}>{busy ? 'Working…' : 'Launch lab'}</button>
+          <button class="btn btn-primary" disabled={busy || !source || !selectedTargetId || (dockerSelected && !acknowledged)} onclick={launch}>{busy ? 'Working…' : 'Launch lab'}</button>
         </div>
       </div>
     </section>
@@ -172,7 +221,7 @@
       <button class="btn btn-sm btn-ghost" onclick={refreshInstances}>Refresh</button>
     </div>
     {#if instances.length === 0}
-      <div class="rounded-box border border-dashed border-base-300 p-10 text-center text-sm text-base-content/50">Launch Example A to see its resource graph here.</div>
+      <div class="rounded-box border border-dashed border-base-300 p-10 text-center text-sm text-base-content/50">Launch a lab to see its resource graph here.</div>
     {:else}
       <div class="grid gap-4 md:grid-cols-2">
         {#each instances as instance}

@@ -9,6 +9,7 @@ WEB_VERSION ?= dev
 RELEASE_GOOS ?= $(shell $(GO) env GOOS)
 RELEASE_GOARCH ?= $(shell $(GO) env GOARCH)
 IMAGE ?= labcentral:$(VERSION)
+PROXMOX_SOURCE_TREE_DIGEST ?= sha256:$(shell git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)
 
 build: web
 	mkdir -p bin
@@ -18,7 +19,8 @@ build: web
 
 build-proxmox-provider:
 	mkdir -p bin
-	$(GO) build -trimpath -o bin/lab-provider-proxmox ./cmd/lab-provider-proxmox
+	$(GO) build -trimpath -ldflags "-X main.sourceTreeDigest=$(PROXMOX_SOURCE_TREE_DIGEST)" -o bin/lab-provider-proxmox ./cmd/lab-provider-proxmox
+	sha256sum bin/lab-provider-proxmox | cut -d' ' -f1 > bin/lab-provider-proxmox.sha256
 
 build-proxmox-qualification:
 	mkdir -p bin

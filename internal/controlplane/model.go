@@ -52,6 +52,19 @@ type TargetSnapshot struct {
 	ValidUntil        time.Time
 }
 
+type ProviderTargetStatus struct {
+	ID                domain.ProviderTargetID
+	ProviderKind      string
+	ConfigFingerprint string
+	ProtocolMajor     uint32
+	ProtocolMinor     uint32
+	Features          []string
+	Status            string
+	DiscoveryJSON     []byte
+	DiscoveredAt      time.Time
+	ValidUntil        time.Time
+}
+
 type ResourceRecord struct {
 	InstanceID        domain.InstanceID
 	ID                domain.LogicalResourceID

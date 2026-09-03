@@ -27,15 +27,17 @@ func TestOpenAPIContainsLocalVerticalSlice(t *testing.T) {
 		t.Fatalf("OpenAPI version = %q", document.OpenAPI)
 	}
 	expected := map[string][]string{
-		"/server-info":                        {"get"},
-		"/session":                            {"get"},
-		"/examples/docker-laptop":             {"get"},
-		"/lab-validations":                    {"post"},
-		"/lab-plans":                          {"post"},
-		"/lab-instances":                      {"get", "post"},
-		"/lab-instances/{id}":                 {"get"},
-		"/lab-instances/{id}/actions/destroy": {"post"},
-		"/operations/{id}":                    {"get"},
+		"/server-info":                           {"get"},
+		"/session":                               {"get"},
+		"/examples/docker-laptop":                {"get"},
+		"/provider-targets":                      {"get"},
+		"/provider-targets/{id}/actions/refresh": {"post"},
+		"/lab-validations":                       {"post"},
+		"/lab-plans":                             {"post"},
+		"/lab-instances":                         {"get", "post"},
+		"/lab-instances/{id}":                    {"get"},
+		"/lab-instances/{id}/actions/destroy":    {"post"},
+		"/operations/{id}":                       {"get"},
 	}
 	for path, methods := range expected {
 		operations := document.Paths[path]
@@ -63,8 +65,17 @@ func TestBootstrapAndStaticAssetsCarrySecurityWarnings(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil {
 		t.Fatal(err)
 	}
-	if info.AuthMode != "none" || info.NoAuthWarning == "" {
+	if info.AuthMode != "none" || info.NoAuthWarning == "" || info.DefaultProviderTargetID != "target.local-docker" {
 		t.Fatalf("server info did not expose no-auth warning: %#v", info)
+	}
+
+	response = httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/provider-targets", nil))
+	var targets struct {
+		Items []ProviderTargetDTO `json:"items"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &targets) != nil || targets.Items == nil || len(targets.Items) != 0 {
+		t.Fatalf("empty provider-target response = %d %q", response.Code, response.Body.String())
 	}
 
 	response = httptest.NewRecorder()
@@ -82,7 +93,7 @@ func TestBootstrapAndStaticAssetsCarrySecurityWarnings(t *testing.T) {
 func testServer(t *testing.T) *Server {
 	t.Helper()
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
-	server, err := New(new(controlplane.Service), []byte("example"), static, Options{})
+	server, err := New(new(controlplane.Service), []byte("example"), static, Options{DefaultProviderTargetID: "target.local-docker"})
 	if err != nil {
 		t.Fatal(err)
 	}

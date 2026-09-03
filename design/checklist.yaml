@@ -204,9 +204,9 @@ tasks:
       - Mutation remains disabled by default and unadvertised unless the local protocol/config/evidence gates pass; production support remains blocked on the later exact-target credentialed T3 qualification.
   - id: TASK-PROXMOX-005
     title: Integrate Proxmox targets and execute credentialed T3 qualification
-    status: in_progress
+    status: complete
     dependencies: [TASK-PROXMOX-004]
-    relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013]
+    relatedAdrs: [ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0007, ADR-0013, ADR-0014]
     relatedDocuments: [providers/proxmox, internal/controlplane, internal/pluginhost, tools/proxmox-qualification, tools/proxmox-probe-agent, tools/provider-testenv, docs/design/proxmox-provider.md, docs/design/proxmox-qemu-mutation.md, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qemu-mutation.yaml, design/contracts/proxmox-t3-smoke-profile.schema.json, design/contracts/proxmox-t3-isolation-profile.schema.json, design/contracts/proxmox-qualification-probe-request.schema.json, design/contracts/proxmox-qualification-probe-response.schema.json]
     acceptanceCriteria:
       - Provider-target registration, secret-backed credential delivery, supervision, protocol v1.1 negotiation, capability persistence, allocation commits, and dependency states drive the Proxmox provider without weakening the Docker slice.
@@ -214,3 +214,54 @@ tasks:
       - Positive intended-segment and negative management/cross-instance connectivity probes are measured on real guests, and failed or ambiguous cleanup retains claims and blocks capability advertisement.
       - The closed exact-target artifact verifies all expected bindings, and the current reader accepts prior-build journal/state v1.0 records without mutation, before production-enablement review begins.
       - A separate reviewed production-enablement decision consumes signed qualification evidence; no configuration-only or test-constructor bypass can open writes.
+  - id: TASK-PROXMOX-006
+    title: Harden, package, and verify the single-operator Proxmox production deployment
+    status: in_progress
+    dependencies: [TASK-PROXMOX-005, TASK-RELEASE-001]
+    relatedAdrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0006, ADR-0008, ADR-0011, ADR-0014]
+    relatedDocuments: [cmd/labd, cmd/lab-provider-proxmox, internal/controlplane, internal/pluginhost, providers/proxmox, tools/release, tools/proxmox-qualification, deploy/proxmox, docs/operations/proxmox-deployment.md, docs/design/deployment.md, docs/design/plugin-system.md, docs/design/proxmox-provider.md, docs/design/security-threat-model.md, docs/design/testing.md, design/contracts/proxmox-qualification-trust.schema.json]
+    acceptanceCriteria:
+      - The only exported production mutation constructor requires a signed-evidence authorizer that rebinds active non-revoked reviewer trust, evidence age, exact target/configuration/PVE/build facts, and fresh normalized live profile before capability advertisement and every apply, destroy, or lifecycle write.
+      - Proxmox-only startup, two-minute target refresh, redacted target status API/UI, protected target/credential inputs, and an immutable checksum-verified plugin execution snapshot work without Docker authority; terminal child failure causes the service manager to restart the whole single-node deployment.
+      - A clean-tree deterministic native release contains both providers, the qualification verifier, binary/source checksums, manifests, SBOM/provenance, strict examples, a hardened service unit, and an operator runbook; all contents and service syntax are verified after extraction.
+      - The current release candidate passes normal/race/static/design suites and a fresh exact-build disposable-target qualification, signed artifact verification, authorized start/status/create/lifecycle/destroy, restart recovery, and independent absence checks.
+  - id: TASK-PROD-001
+    title: Implement the PostgreSQL production control-plane store and multi-replica fencing
+    status: proposed
+    dependencies: [TASK-PROXMOX-006, TASK-JOBS-001]
+    relatedAdrs: [ADR-0001, ADR-0006, ADR-0011, ADR-0013]
+    relatedDocuments: [internal/application, internal/adapter/jobsdb, internal/adapter/localdb, internal/controlplane, docs/design/database-schema.md, docs/design/persistence-and-artifacts.md, docs/design/reconciliation-and-jobs.md, docs/design/testing.md]
+    acceptanceCriteria:
+      - PostgreSQL implements every durable control-plane Store transaction and migration used by instances, resources, plans, operations, target snapshots, claims, idempotency, audit, events, outbox, quotas, and jobs with parity against SQLite conformance.
+      - Multiple control-plane workers preserve database-time leasing, monotonic fencing, single terminal finalization, allocation uniqueness, and unknown-outcome recovery under crash, delay, and network-partition tests.
+      - Startup selects SQLite only for local single-node mode and requires PostgreSQL plus shared durable artifacts for multi-replica mode; backup and restore compatibility are tested.
+  - id: TASK-PROD-002
+    title: Implement HTTPS, local and OIDC authentication, tenancy, and scope-aware RBAC
+    status: proposed
+    dependencies: [TASK-PROD-001]
+    relatedAdrs: [ADR-0009, ADR-0010, ADR-0011]
+    relatedDocuments: [api/http, internal/application, internal/controlplane, web, docs/design/auth-tenancy-rbac.md, docs/design/http-api.md, docs/design/security-threat-model.md, docs/design/testing.md]
+    acceptanceCriteria:
+      - TLS configuration, trusted-proxy handling, secure cookies, CSRF protection, local password hashing/recovery, OIDC authorization-code/PKCE/state/nonce validation, session rotation/revocation, and secret-key rotation are implemented and adversarially tested.
+      - Organizations, projects, teams, memberships, role assignments, and target grants are durably scoped; handlers authorize every read and mutation through application policy before data access or secret resolution.
+      - No-auth remains an explicit loopback-only development mode, while production startup refuses non-loopback operation without TLS and an authenticated mode.
+  - id: TASK-PROD-003
+    title: Implement classroom governance, reusable templates, expiration, audit, and controlled access
+    status: proposed
+    dependencies: [TASK-PROD-002]
+    relatedAdrs: [ADR-0004, ADR-0006, ADR-0008, ADR-0009, ADR-0010]
+    relatedDocuments: [api/http, internal/controlplane, web, docs/design/access-sessions.md, docs/design/auth-tenancy-rbac.md, docs/design/http-api.md, docs/design/reconciliation-and-jobs.md, docs/design/security-threat-model.md]
+    acceptanceCriteria:
+      - Versioned Lab Templates/revisions and classroom batch instantiation support 20-100 concurrent isolated instances with per-scope quotas, reservations, expiration, renewal, and safe cleanup/orphan review.
+      - Append-only audit/event records cover authentication, authorization, target, template, operation, access, and administrator actions with bounded redacted retention/export.
+      - A separate access plugin issues short-lived ownership-bound SSH/console sessions without exposing provider credentials or management endpoints and supports revocation plus authorization recheck.
+  - id: TASK-PROD-004
+    title: Validate and package the supported classroom production topology
+    status: proposed
+    dependencies: [TASK-PROD-003]
+    relatedAdrs: [ADR-0001, ADR-0002, ADR-0006, ADR-0008, ADR-0011]
+    relatedDocuments: [deploy, tools/release, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md]
+    acceptanceCriteria:
+      - Supported native and Kubernetes deployment assets include PostgreSQL, shared artifact storage, TLS/identity secrets, dedicated provider identities, network policy, disruption/upgrade strategy, encrypted backup/restore, metrics, traces, alerts, and documented key/token rotation.
+      - Load, soak, chaos, upgrade, restore, credential-revocation, evidence-expiry, and disaster-recovery tests meet documented service objectives at the 100-instance classroom target without cross-tenant access or leaked secrets.
+      - Reproducible signed release artifacts, compatibility matrix, SBOM/provenance, vulnerability response, operator runbook, and clean install/upgrade/rollback evidence are independently reviewed before the production milestone is complete.

@@ -789,7 +789,7 @@ func runT3RestartCheckpoints(t *testing.T, ctx context.Context, base t3SmokeProf
 		input := proto.Clone(fixture.vmInput).(*pluginv1.ResourceMutationInput)
 		input.Context = t3Call(fixture.profile, "restart-"+phase, fixture.profile.VMResourceID)
 		preparing := newT3FaultService(control)
-		prepared, failure := preparing.prepareExecution(input, "apply")
+		prepared, failure := preparing.prepareExecution(ctx, input, "apply")
 		if failure != nil {
 			t.Fatalf("prepare checkpoint %s: %#v", phase, failure.GetError())
 		}
@@ -830,7 +830,7 @@ func runT3RestartCheckpoints(t *testing.T, ctx context.Context, base t3SmokeProf
 	destroyInput.Context = t3Call(fixture.profile, "restart-destroy-submitted", fixture.profile.VMResourceID)
 	destroyInput.PriorState = recoveredState
 	preparing := newT3FaultService(control)
-	prepared, failure := preparing.prepareExecution(destroyInput, "destroy")
+	prepared, failure := preparing.prepareExecution(ctx, destroyInput, "destroy")
 	if failure != nil {
 		t.Fatalf("prepare destroy checkpoint: %#v", failure.GetError())
 	}
@@ -859,7 +859,7 @@ func runT3RestartCheckpoints(t *testing.T, ctx context.Context, base t3SmokeProf
 
 	corruptInput := proto.Clone(fixture.vmInput).(*pluginv1.ResourceMutationInput)
 	corruptInput.Context = t3Call(fixture.profile, "restart-corrupt-version", fixture.profile.VMResourceID)
-	corruptPrepared, failure := newT3FaultService(control).prepareExecution(corruptInput, "apply")
+	corruptPrepared, failure := newT3FaultService(control).prepareExecution(ctx, corruptInput, "apply")
 	if failure != nil {
 		t.Fatalf("prepare corrupt checkpoint: %#v", failure.GetError())
 	}

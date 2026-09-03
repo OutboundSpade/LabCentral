@@ -1,5 +1,5 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T19:16:32Z"
+verifiedAt: "2026-09-03T19:59:03Z"
 result: pass
 scope: design_only_phase_0
 command: "BUFBIN=/tmp/labcentral-buf python3 tools/verify_phase0.py"
@@ -23,4 +23,4 @@ checks:
   - documentation_links_and_project_state
 notes:
   - No provider was contacted and no lab workload was executed.
-  - The Proxmox mutation catalog has executable T0 bindings; the production constructor still reports every mutation capability unsupported.
+  - The Proxmox mutation catalog has executable T0 bindings; the default constructor remains discovery-only, while the production constructor requires ADR-0014 signed authorization bound to fresh exact-target evidence.

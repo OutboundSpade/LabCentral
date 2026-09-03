@@ -316,7 +316,7 @@ def collect_test_ids() -> set[str]:
 def verify_proxmox_mutation_contract() -> None:
     contract = load_yaml(ROOT / "design/contracts/proxmox-qemu-mutation.yaml")
     assert contract["suite"] == "labcentral.proxmox-qemu-mutation/v1alpha1"
-    assert contract["status"] == "t0_implemented", "mutation contract must retain its implemented T0 gate"
+    assert contract["status"] == "production_authorizer_implemented_packaging_in_progress"
     assert contract["schemas"] == {
         "targetConfig": {"name": "proxmox.target-config", "version": 1.1},
         "plan": {"name": "proxmox.qemu-plan", "version": 1.0},
@@ -361,7 +361,24 @@ def verify_proxmox_mutation_contract() -> None:
         "TEST-PROXMOX-019",
         "TEST-PROXMOX-022",
     ]
-    assert qualification["productionEnablement"] == "separate_accepted_adr_and_implementation_required"
+    assert qualification["productionEnablement"] == "adr_0014_authorizer_implemented_exact_release_requalification_required"
+    assert contract["productionAuthorization"] == {
+        "status": "implemented_fail_closed",
+        "decision": "ADR-0014",
+        "trustSchema": "labcentral.proxmox-qualification-trust/v1",
+        "trustSchemaFile": "design/contracts/proxmox-qualification-trust.schema.json",
+        "defaultConstructor": "discovery_only",
+        "writeConstructor": "requires_non_nil_mutation_authorizer",
+        "checks": [
+            "active_non_revoked_reviewer_key_and_deployment_maximum_age",
+            "complete_passing_signed_case_probe_and_cleanup_evidence",
+            "exact_target_installation_configuration_capability_inventory_and_policy",
+            "exact_pve_release_build_provider_binary_and_source_tree",
+            "exact_protocol_plugin_and_normalized_live_profile",
+        ],
+        "evaluationPoints": ["capability_discovery", "apply", "destroy", "lifecycle"],
+        "failureBehavior": "unsupported_or_qualification_gate_closed_before_write",
+    }
     smoke = contract["credentialedSmokeHarness"]
     assert smoke == {
         "status": "implemented_executed_two_storage_profiles",

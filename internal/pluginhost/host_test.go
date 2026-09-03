@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -37,10 +38,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestLaunchUsesPrivateOneTimeHandshake(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	executable := protectedTestExecutable(t)
 	digest := fileDigest(t, executable)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -64,13 +62,16 @@ func TestLaunchUsesPrivateOneTimeHandshake(t *testing.T) {
 	if err := client.Close(); err != nil {
 		t.Fatalf("close plugin: %v", err)
 	}
+	select {
+	case <-client.Done():
+	case <-time.After(time.Second):
+		t.Fatal("plugin process exit was not observable")
+	}
 }
 
 func TestLaunchRejectsExecutableDigestMismatch(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	executable := protectedTestExecutable(t)
+	var err error
 	_, err = pluginhost.Launch(context.Background(), pluginhost.Config{
 		Executable: executable, ExecutableSHA256: string(make([]byte, 64)), RuntimeParent: t.TempDir(),
 		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_instance_test",
@@ -81,18 +82,62 @@ func TestLaunchRejectsExecutableDigestMismatch(t *testing.T) {
 }
 
 func TestLaunchRejectsMismatchedConfiguredProviderKind(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	executable := protectedTestExecutable(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err = pluginhost.Launch(ctx, pluginhost.Config{
+	_, err := pluginhost.Launch(ctx, pluginhost.Config{
 		Executable: executable, ExecutableSHA256: fileDigest(t, executable), RuntimeParent: t.TempDir(),
 		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "proxmox", PluginInstanceID: "plugin_instance_test",
 	})
 	if err == nil || !strings.Contains(err.Error(), "registration") {
 		t.Fatalf("provider-kind mismatch error = %v", err)
+	}
+}
+
+func TestLaunchRejectsUnboundedPluginArguments(t *testing.T) {
+	executable := protectedTestExecutable(t)
+	base := pluginhost.Config{
+		Executable: executable, ExecutableSHA256: fileDigest(t, executable), RuntimeParent: t.TempDir(),
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_instance_test",
+	}
+	tooMany := base
+	tooMany.Args = make([]string, 17)
+	for index := range tooMany.Args {
+		tooMany.Args[index] = "argument"
+	}
+	if _, err := pluginhost.Launch(context.Background(), tooMany); err == nil || !strings.Contains(err.Error(), "count") {
+		t.Fatalf("excess argument count error = %v", err)
+	}
+	tooLong := base
+	tooLong.Args = []string{strings.Repeat("x", 4097)}
+	if _, err := pluginhost.Launch(context.Background(), tooLong); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("oversized argument error = %v", err)
+	}
+}
+
+func TestLaunchRejectsMutableOrIndirectPluginExecutable(t *testing.T) {
+	directory := t.TempDir()
+	executable := filepath.Join(directory, "provider")
+	if err := os.WriteFile(executable, []byte("not executed"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	configuration := pluginhost.Config{
+		Executable: executable, ExecutableSHA256: fileDigest(t, executable), RuntimeParent: directory,
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_instance_test",
+	}
+	if _, err := pluginhost.Launch(context.Background(), configuration); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("writable executable error = %v", err)
+	}
+	if err := os.Chmod(executable, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "provider-link")
+	if err := os.Symlink(executable, link); err != nil {
+		t.Fatal(err)
+	}
+	configuration.Executable = link
+	if _, err := pluginhost.Launch(context.Background(), configuration); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("symlink executable error = %v", err)
 	}
 }
 
@@ -108,6 +153,26 @@ func fileDigest(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func protectedTestExecutable(t *testing.T) string {
+	t.Helper()
+	source, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "pluginhost-test")
+	if err := os.WriteFile(destination, contents, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(destination, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	return destination
 }
 
 type helperEngine struct{}

@@ -407,6 +407,36 @@ func (s *Service) ProviderKinds() []string {
 	return s.targets.ProviderKinds()
 }
 
+func (s *Service) ListProviderTargets(ctx context.Context) ([]ProviderTargetStatus, error) {
+	if s == nil || s.targets == nil || s.store == nil {
+		return []ProviderTargetStatus{}, nil
+	}
+	registered := s.targets.RegisteredTargets()
+	result := make([]ProviderTargetStatus, 0, len(registered))
+	now := time.Now()
+	for _, target := range registered {
+		status := ProviderTargetStatus{
+			ID: target.ID, ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
+			ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,
+			Features: append([]string(nil), target.Features...), Status: "undiscovered",
+		}
+		snapshot, err := s.store.GetTargetSnapshot(ctx, target.ID)
+		if err == nil {
+			status.DiscoveryJSON = append([]byte(nil), snapshot.DiscoveryJSON...)
+			status.DiscoveredAt = snapshot.DiscoveredAt
+			status.ValidUntil = snapshot.ValidUntil
+			status.Status = "fresh"
+			if !snapshot.ValidUntil.After(now) || snapshot.ProviderKind != target.ProviderKind || snapshot.ConfigFingerprint != target.ConfigFingerprint || snapshot.ProtocolMajor != target.ProtocolMajor || snapshot.ProtocolMinor != target.ProtocolMinor || !equalFeatureSets(snapshot.Features, target.Features) {
+				status.Status = "stale"
+			}
+		} else if !errors.Is(err, ErrNotFound) {
+			return nil, err
+		}
+		result = append(result, status)
+	}
+	return result, nil
+}
+
 func (s *Service) RefreshTarget(ctx context.Context, targetID domain.ProviderTargetID) error {
 	invocationID, err := s.ids.New("inv")
 	if err != nil {

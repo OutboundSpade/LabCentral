@@ -27,11 +27,12 @@ type Service struct {
 	pluginv1.UnimplementedProviderServiceServer
 	pluginv1.UnimplementedPluginRuntimeServiceServer
 
-	factory         ClientFactory
-	now             func() time.Time
-	sleep           func(time.Duration)
-	allowT0Mutation bool
-	executionMu     sync.Mutex
+	factory            ClientFactory
+	now                func() time.Time
+	sleep              func(time.Duration)
+	allowT0Mutation    bool
+	mutationAuthorizer MutationAuthorizer
+	executionMu        sync.Mutex
 }
 
 func NewService() *Service {
@@ -199,7 +200,11 @@ func (service *Service) mutationCapabilityGate(ctx context.Context, target *plug
 	if _, err := OpenInvocationJournal(config.JournalDirectory); err != nil {
 		return false, "durable invocation journal is unavailable"
 	}
-	return true, "fixed-node PVE 9.x QEMU full-clone T0 qualification gates passed with mutation inventory " + mutationDigest + "; exact-target production T3 remains required"
+	authorization, err := service.authorizeMutation(ctx, target, config, inventory, mutationDigest)
+	if err != nil {
+		return false, "signed exact-target production qualification is unavailable or stale"
+	}
+	return true, "fixed-node PVE 9.x QEMU full-clone qualification gates passed with mutation inventory " + mutationDigest + "; " + authorization
 }
 
 func inventorySupportsConfiguredProfiles(config TargetConfig, inventory Inventory) bool {
@@ -235,7 +240,7 @@ func enableMutationCapabilities(capabilities []*pluginv1.Capability, evidence st
 			value.Support = pluginv1.Capability_SUPPORT_NATIVE
 			value.Evidence = strings.ReplaceAll(value.Evidence, "; mutation qualification gate is closed", "")
 			value.Evidence += "; " + evidence
-			value.Constraints = []string{"fixed node", "Linux amd64", "full clone", "approved storage and VLAN-aware bridge", "static IPv4", "T0 only"}
+			value.Constraints = []string{"fixed node", "Linux amd64", "full clone", "approved storage and VLAN-aware bridge", "static IPv4", "signed exact-target qualification"}
 		}
 	}
 }

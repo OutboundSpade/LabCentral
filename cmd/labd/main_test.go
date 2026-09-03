@@ -5,6 +5,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +54,64 @@ func TestHealthcheckRejectsWrongVersion(t *testing.T) {
 	t.Setenv("LABCENTRAL_HEALTHCHECK_URL", server.URL)
 	if err := healthcheck(); err == nil {
 		t.Fatal("healthcheck accepted an unexpected API version")
+	}
+}
+
+func TestConfiguredPublicInputRejectsWritableOrIndirectFiles(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "target.json")
+	if err := os.WriteFile(path, []byte(`{"schemaVersion":"test"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := readRegularFile(path, 1024); err != nil || len(contents) == 0 {
+		t.Fatalf("protected input was rejected: %q, %v", contents, err)
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRegularFile(path, 1024); err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("writable input error = %v", err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "target-link.json")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRegularFile(link, 1024); err == nil {
+		t.Fatal("symlink input was accepted")
+	}
+}
+
+func TestPrivateDataDirectoryPermissions(t *testing.T) {
+	private := filepath.Join(t.TempDir(), "private")
+	if err := ensurePrivateDirectory(private); err != nil {
+		t.Fatal(err)
+	}
+	open := filepath.Join(t.TempDir(), "open")
+	if err := os.Mkdir(open, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensurePrivateDirectory(open); err == nil {
+		t.Fatal("group-readable data directory was accepted")
+	}
+}
+
+func TestProxmoxAuthoringExampleUsesOnlyApprovedAliasesAndDigest(t *testing.T) {
+	example, err := proxmoxAuthoringExample([]byte(`{
+		"templates":[{"alias":"debian","contentDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],
+		"storages":[{"alias":"primary"}],
+		"networks":[{"alias":"isolated"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(example.Source, "labcentral/proxmox/debian@sha256:"+strings.Repeat("a", 64)) {
+		t.Fatalf("example source = %q", example.Source)
+	}
+	if string(example.ProviderOverride) != `{"networkAlias":"isolated","storageAlias":"primary","templateAlias":"debian"}` {
+		t.Fatalf("provider override = %s", example.ProviderOverride)
 	}
 }
 

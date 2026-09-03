@@ -42,7 +42,7 @@ func (service *Service) ApplyResource(request *pluginv1.ApplyResourceRequest, st
 	service.executionMu.Lock()
 	defer service.executionMu.Unlock()
 	input := request.GetInput()
-	prepared, failure := service.prepareExecution(input, "apply")
+	prepared, failure := service.prepareExecution(stream.Context(), input, "apply")
 	if failure != nil {
 		return stream.Send(&pluginv1.ApplyResourceResponse{Event: resultInvocationEvent(failure)})
 	}
@@ -119,7 +119,7 @@ func (service *Service) DestroyResource(request *pluginv1.DestroyResourceRequest
 	service.executionMu.Lock()
 	defer service.executionMu.Unlock()
 	input := request.GetInput()
-	prepared, failure := service.prepareExecution(input, "destroy")
+	prepared, failure := service.prepareExecution(stream.Context(), input, "destroy")
 	if failure != nil {
 		return stream.Send(&pluginv1.DestroyResourceResponse{Event: resultInvocationEvent(failure)})
 	}
@@ -286,6 +286,17 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 		return executionFailure("mutation_client_unavailable", "provider_unavailable", "Proxmox mutation client is unavailable", false, resourceID)
 	}
 	defer client.CloseIdleConnections()
+	inventory, err := client.Discover(ctx)
+	if err != nil || inventory.normalize() != nil {
+		return executionFailure("qualification_gate_closed", "policy_denied", "Proxmox lifecycle execution requires fresh target qualification", false, resourceID)
+	}
+	mutationDigest, err := inventory.MutationDigest()
+	if err != nil {
+		return executionFailure("qualification_gate_closed", "policy_denied", "Proxmox lifecycle execution requires fresh target qualification", false, resourceID)
+	}
+	if _, err := service.authorizeMutation(ctx, request.GetTarget(), config, inventory, mutationDigest); err != nil {
+		return executionFailure("qualification_gate_closed", "policy_denied", "Proxmox lifecycle execution requires fresh target qualification", false, resourceID)
+	}
 	if record.Phase == "lifecycle-submitted" {
 		upid, parseErr := ParseUPID(record.TaskUPID)
 		if parseErr != nil || upid.validateObject(state.Node, state.VMID, allowedType) != nil {
@@ -460,7 +471,7 @@ type preparedExecution struct {
 	ownershipText string
 }
 
-func (service *Service) prepareExecution(input *pluginv1.ResourceMutationInput, action string) (*preparedExecution, *pluginv1.ResourceResult) {
+func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.ResourceMutationInput, action string) (*preparedExecution, *pluginv1.ResourceResult) {
 	resourceID := ""
 	if input != nil && input.GetContext() != nil {
 		resourceID = input.GetContext().GetLogicalResourceId()
@@ -501,6 +512,20 @@ func (service *Service) prepareExecution(input *pluginv1.ResourceMutationInput, 
 	if !ok {
 		created.CloseIdleConnections()
 		return nil, executionFailure("mutation_client_unavailable", "provider_unavailable", "Proxmox mutation client is unavailable", false, resourceID)
+	}
+	inventory, err := client.Discover(ctx)
+	if err != nil || inventory.normalize() != nil {
+		client.CloseIdleConnections()
+		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
+	}
+	mutationDigest, err := inventory.MutationDigest()
+	if err != nil || mutationDigest != config.Qualification.InventoryDigest {
+		client.CloseIdleConnections()
+		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
+	}
+	if _, err := service.authorizeMutation(ctx, input.GetTarget(), config, inventory, mutationDigest); err != nil {
+		client.CloseIdleConnections()
+		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
 	ownershipText := input.GetOwnershipTokens()[0]
 	if plan.Ownership != nil {

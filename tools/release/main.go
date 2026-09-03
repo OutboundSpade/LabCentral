@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	pluginID      = "io.labcentral.provider.docker"
-	pluginVersion = "0.1.0"
+	dockerPluginID  = "io.labcentral.provider.docker"
+	proxmoxPluginID = "io.labcentral.provider.proxmox"
+	pluginVersion   = "0.1.0"
 )
 
 type config struct {
@@ -77,6 +78,9 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if source.Dirty {
+		return errors.New("production release requires a clean Git worktree so source provenance matches the built binaries")
+	}
 	goVersion, err := commandOutput(ctx, cfg.goBinary, "version")
 	if err != nil {
 		return fmt.Errorf("read Go version: %w", err)
@@ -93,7 +97,13 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer os.RemoveAll(temporary)
 	root := filepath.Join(temporary, baseName)
-	if err := os.MkdirAll(filepath.Join(root, "plugins"), 0o755); err != nil {
+	for _, directory := range []string{"plugins", "deploy", "docs"} {
+		if err := os.MkdirAll(filepath.Join(root, directory), 0o755); err != nil {
+			return err
+		}
+	}
+	proxmoxSourceDigest, err := gitArchiveDigest(ctx)
+	if err != nil {
 		return err
 	}
 
@@ -102,27 +112,48 @@ func run(ctx context.Context, args []string) error {
 		extension = ".exe"
 	}
 	labdName := "labd" + extension
-	providerName := "lab-provider-docker" + extension
+	dockerProviderName := "lab-provider-docker" + extension
+	proxmoxProviderName := "lab-provider-proxmox" + extension
+	qualificationName := "lab-proxmox-qualification" + extension
 	if err := buildBinary(ctx, cfg, "./cmd/labd", filepath.Join(root, labdName), "-X=main.version="+cfg.version); err != nil {
 		return err
 	}
-	if err := buildBinary(ctx, cfg, "./cmd/lab-provider-docker", filepath.Join(root, providerName), ""); err != nil {
+	if err := buildBinary(ctx, cfg, "./cmd/lab-provider-docker", filepath.Join(root, dockerProviderName), ""); err != nil {
+		return err
+	}
+	if err := buildBinary(ctx, cfg, "./cmd/lab-provider-proxmox", filepath.Join(root, proxmoxProviderName), "-X=main.sourceTreeDigest="+proxmoxSourceDigest); err != nil {
+		return err
+	}
+	if err := buildBinary(ctx, cfg, "./tools/proxmox-qualification", filepath.Join(root, qualificationName), ""); err != nil {
 		return err
 	}
 	labdDigest, err := fileSHA256(filepath.Join(root, labdName))
 	if err != nil {
 		return err
 	}
-	providerDigest, err := fileSHA256(filepath.Join(root, providerName))
+	dockerProviderDigest, err := fileSHA256(filepath.Join(root, dockerProviderName))
 	if err != nil {
 		return err
 	}
-	if err := writeFile(filepath.Join(root, providerName+".sha256"), []byte(providerDigest+"  "+providerName+"\n"), 0o644); err != nil {
+	proxmoxProviderDigest, err := fileSHA256(filepath.Join(root, proxmoxProviderName))
+	if err != nil {
+		return err
+	}
+	qualificationDigest, err := fileSHA256(filepath.Join(root, qualificationName))
+	if err != nil {
+		return err
+	}
+	for name, digest := range map[string]string{dockerProviderName: dockerProviderDigest, proxmoxProviderName: proxmoxProviderDigest} {
+		if err := writeFile(filepath.Join(root, name+".sha256"), []byte(digest+"  "+name+"\n"), 0o644); err != nil {
+			return err
+		}
+	}
+	if err := writeFile(filepath.Join(root, proxmoxProviderName+".source.sha256"), []byte(proxmoxSourceDigest+"\n"), 0o644); err != nil {
 		return err
 	}
 
 	created := time.Unix(cfg.epoch, 0).UTC()
-	manifest := struct {
+	type pluginManifest struct {
 		APIVersion           string   `json:"apiVersion"`
 		ID                   string   `json:"id"`
 		Version              string   `json:"version"`
@@ -136,18 +167,33 @@ func run(ctx context.Context, args []string) error {
 		OperatingSystems     []string `json:"operatingSystems"`
 		Architectures        []string `json:"architectures"`
 		RequestedPermissions []string `json:"requestedPermissions"`
-	}{
-		APIVersion: "labcentral.io/plugin-manifest/v1", ID: pluginID, Version: pluginVersion,
-		Executable: "../" + providerName, SHA256: providerDigest, Categories: []string{"provider"},
+	}
+	dockerManifest := pluginManifest{
+		APIVersion: "labcentral.io/plugin-manifest/v1", ID: dockerPluginID, Version: pluginVersion,
+		Executable: "../" + dockerProviderName, SHA256: dockerProviderDigest, Categories: []string{"provider"},
 		ProviderKinds: []string{"docker"}, ProtocolMajor: 1, MinimumProtocolMinor: 0, MaximumProtocolMinor: 0,
 		OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch},
 		RequestedPermissions: []string{"docker-engine-endpoint"},
 	}
-	if err := writeJSON(filepath.Join(root, "plugins", "docker.json"), manifest); err != nil {
+	if err := writeJSON(filepath.Join(root, "plugins", "docker.json"), dockerManifest); err != nil {
+		return err
+	}
+	proxmoxManifest := pluginManifest{
+		APIVersion: "labcentral.io/plugin-manifest/v1", ID: proxmoxPluginID, Version: pluginVersion,
+		Executable: "../" + proxmoxProviderName, SHA256: proxmoxProviderDigest, Categories: []string{"provider"},
+		ProviderKinds: []string{"proxmox"}, ProtocolMajor: 1, MinimumProtocolMinor: 0, MaximumProtocolMinor: 1,
+		OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch},
+		RequestedPermissions: []string{"proxmox-api-endpoint", "qualification-evidence-read", "invocation-journal-write"},
+	}
+	if err := writeJSON(filepath.Join(root, "plugins", "proxmox.json"), proxmoxManifest); err != nil {
 		return err
 	}
 
-	sbom := makeSBOM(cfg, created, modules, labdName, labdDigest, providerName, providerDigest)
+	sbom := makeSBOM(cfg, created, modules, labdName, labdDigest, []subject{
+		{Name: dockerProviderName, SHA256: dockerProviderDigest},
+		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
+		{Name: qualificationName, SHA256: qualificationDigest},
+	})
 	if err := writeJSON(filepath.Join(root, "sbom.cdx.json"), sbom); err != nil {
 		return err
 	}
@@ -169,14 +215,31 @@ func run(ctx context.Context, args []string) error {
 	provenance.Builder.GoVersion = goVersion
 	provenance.Target.OS = cfg.goos
 	provenance.Target.Architecture = cfg.goarch
-	provenance.Subjects = []subject{{Name: labdName, SHA256: labdDigest}, {Name: providerName, SHA256: providerDigest}}
+	provenance.Subjects = []subject{
+		{Name: labdName, SHA256: labdDigest},
+		{Name: dockerProviderName, SHA256: dockerProviderDigest},
+		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
+		{Name: qualificationName, SHA256: qualificationDigest},
+	}
 	if err := writeJSON(filepath.Join(root, "provenance.json"), provenance); err != nil {
 		return err
 	}
 
-	readme := releaseReadme(cfg.version, cfg.goos, cfg.goarch, labdName, providerName)
+	readme := releaseReadme(cfg.version, cfg.goos, cfg.goarch, labdName, dockerProviderName, proxmoxProviderName)
 	if err := writeFile(filepath.Join(root, "README.md"), []byte(readme), 0o644); err != nil {
 		return err
+	}
+	for sourcePath, destination := range map[string]string{
+		"deploy/proxmox/labcentral.service":              "deploy/labcentral.service",
+		"deploy/proxmox/environment.example":             "deploy/environment.example",
+		"deploy/proxmox/proxmox-target.json.example":     "deploy/proxmox-target.json.example",
+		"deploy/proxmox/proxmox-credential.json.example": "deploy/proxmox-credential.json.example",
+		"deploy/proxmox/proxmox-trust.json.example":      "deploy/proxmox-trust.json.example",
+		"docs/operations/proxmox-deployment.md":          "docs/proxmox-deployment.md",
+	} {
+		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
+			return err
+		}
 	}
 	files, err := inventory(root)
 	if err != nil {
@@ -329,7 +392,7 @@ func listModules(ctx context.Context, goBinary string) ([]module, error) {
 	return modules, nil
 }
 
-func makeSBOM(cfg config, created time.Time, modules []module, labdName, labdDigest, providerName, providerDigest string) any {
+func makeSBOM(cfg config, created time.Time, modules []module, labdName, labdDigest string, applications []subject) any {
 	type hash struct {
 		Algorithm string `json:"alg"`
 		Content   string `json:"content"`
@@ -346,7 +409,10 @@ func makeSBOM(cfg config, created time.Time, modules []module, labdName, labdDig
 		Hashes     []hash     `json:"hashes,omitempty"`
 		Properties []property `json:"properties,omitempty"`
 	}
-	components := []component{{Type: "application", Name: providerName, Version: pluginVersion, Hashes: []hash{{"SHA-256", providerDigest}}}}
+	components := make([]component, 0, len(applications)+len(modules))
+	for _, application := range applications {
+		components = append(components, component{Type: "application", Name: application.Name, Version: pluginVersion, Hashes: []hash{{"SHA-256", application.SHA256}}})
+	}
 	for _, dependency := range modules {
 		path, version, sum := dependency.Path, dependency.Version, dependency.Sum
 		properties := []property(nil)
@@ -387,21 +453,26 @@ func goPURL(path, version string) string {
 	return "pkg:golang/" + strings.ReplaceAll(path, "%", "%25") + "@" + url.PathEscape(version)
 }
 
-func releaseReadme(version, goos, goarch, labdName, providerName string) string {
+func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName string) string {
 	return fmt.Sprintf(`# LabCentral %s (%s/%s)
 
-This archive is the trusted-laptop distribution. Keep %s, %s, and
-%s.sha256 together. The control plane verifies the provider digest before
-launching it as a separate process.
+This archive contains the trusted-laptop Docker distribution and the
+qualification-gated Proxmox distribution. Keep %s, %s, %s, and their adjacent
+checksum/source-provenance files together. The control plane verifies each
+provider digest and snapshots the protected executable before launching it as
+a separate process.
 
-Run:
+For the local Docker example, run:
 
     ./%s --listen 127.0.0.1:8080 --data-dir ./labcentral-data
 
 The Docker provider uses DOCKER_HOST, or the platform's default Docker Engine
 endpoint when it is unset. Access to a Docker socket is effectively host-level
 control. LabCentral has no authentication in this slice, refuses non-loopback
-listeners by default, and is not a sandbox for hostile workloads.
+listeners by default, and is not a sandbox for hostile workloads. For Proxmox,
+follow docs/proxmox-deployment.md. Production VM mutation remains closed unless
+signed exact-target evidence matches the installed provider build and fresh
+live target inventory.
 
 Verify every packaged file with:
 
@@ -409,7 +480,24 @@ Verify every packaged file with:
 
 The CycloneDX inventory is sbom.cdx.json. provenance.json records source and
 build facts but is not a signature or a SLSA attestation.
-`, version, goos, goarch, labdName, providerName, providerName, labdName)
+`, version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, labdName)
+}
+
+func copyReleaseFile(source, destination string) error {
+	contents, err := os.ReadFile(source)
+	if err != nil {
+		return fmt.Errorf("read release asset %s: %w", source, err)
+	}
+	return writeFile(destination, contents, 0o644)
+}
+
+func gitArchiveDigest(ctx context.Context) (string, error) {
+	output, err := exec.CommandContext(ctx, "git", "archive", "--format=tar", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("compute Proxmox source-tree digest: %w", err)
+	}
+	digest := sha256.Sum256(output)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
 func inventory(root string) ([]subject, error) {

@@ -25,7 +25,14 @@ type Server struct {
 }
 
 type Options struct {
-	NoAuthWarning string
+	NoAuthWarning           string
+	DefaultProviderTargetID string
+	ProviderExamples        map[string]ProviderExample
+}
+
+type ProviderExample struct {
+	Source           string          `json:"source"`
+	ProviderOverride json.RawMessage `json:"providerOverride,omitempty"`
 }
 
 func New(service *controlplane.Service, exampleSource []byte, static fs.FS, options Options) (*Server, error) {
@@ -45,14 +52,15 @@ func New(service *controlplane.Service, exampleSource []byte, static fs.FS, opti
 }
 
 type ServerInfo struct {
-	ServerVersion        string   `json:"serverVersion"`
-	APIVersion           string   `json:"apiVersion"`
-	APIBase              string   `json:"apiBase"`
-	AuthMode             string   `json:"authMode"`
-	AuthMethods          []string `json:"authMethods"`
-	EnabledProviderKinds []string `json:"enabledProviderKinds"`
-	NoAuthWarning        string   `json:"noAuthWarning"`
-	UIFeatures           []string `json:"uiFeatures"`
+	ServerVersion           string   `json:"serverVersion"`
+	APIVersion              string   `json:"apiVersion"`
+	APIBase                 string   `json:"apiBase"`
+	AuthMode                string   `json:"authMode"`
+	AuthMethods             []string `json:"authMethods"`
+	EnabledProviderKinds    []string `json:"enabledProviderKinds"`
+	DefaultProviderTargetID string   `json:"defaultProviderTargetId"`
+	NoAuthWarning           string   `json:"noAuthWarning"`
+	UIFeatures              []string `json:"uiFeatures"`
 }
 
 type Session struct {
@@ -66,6 +74,20 @@ type LabRequest struct {
 	AcknowledgeDockerIsolationRisk bool            `json:"acknowledgeDockerIsolationRisk"`
 	ProviderTargetID               string          `json:"providerTargetId,omitempty" maxLength:"128"`
 	ProviderOverride               json.RawMessage `json:"providerOverride,omitempty"`
+}
+
+type ProviderTargetDTO struct {
+	ID                string           `json:"id"`
+	ProviderKind      string           `json:"providerKind"`
+	ConfigFingerprint string           `json:"configFingerprint"`
+	ProtocolMajor     uint32           `json:"protocolMajor"`
+	ProtocolMinor     uint32           `json:"protocolMinor"`
+	Features          []string         `json:"features"`
+	Status            string           `json:"status"`
+	Discovery         json.RawMessage  `json:"discovery,omitempty"`
+	Example           *ProviderExample `json:"example,omitempty"`
+	DiscoveredAt      *time.Time       `json:"discoveredAt,omitempty"`
+	ValidUntil        *time.Time       `json:"validUntil,omitempty"`
 }
 
 type ValidationBody struct {
@@ -114,9 +136,70 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	huma.Get(api, "/server-info", func(context.Context, *struct{}) (*struct{ Body ServerInfo }, error) {
 		return &struct{ Body ServerInfo }{Body: ServerInfo{
 			ServerVersion: "0.1.0", APIVersion: "v1", APIBase: "/api/v1", AuthMode: "none", AuthMethods: []string{"none"},
-			EnabledProviderKinds: service.ProviderKinds(), NoAuthWarning: options.NoAuthWarning,
-			UIFeatures: []string{"docker-example-a", "validate", "plan", "apply", "destroy"},
+			EnabledProviderKinds: service.ProviderKinds(), DefaultProviderTargetID: options.DefaultProviderTargetID, NoAuthWarning: options.NoAuthWarning,
+			UIFeatures: []string{"docker-example-a", "provider-targets", "validate", "plan", "apply", "destroy"},
 		}}, nil
+	})
+
+	huma.Get(api, "/provider-targets", func(ctx context.Context, _ *struct{}) (*struct {
+		Body struct {
+			Items []ProviderTargetDTO `json:"items"`
+		}
+	}, error) {
+		targets, err := service.ListProviderTargets(ctx)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct {
+			Body struct {
+				Items []ProviderTargetDTO `json:"items"`
+			}
+		}{}
+		output.Body.Items = make([]ProviderTargetDTO, 0, len(targets))
+		for _, target := range targets {
+			item := ProviderTargetDTO{
+				ID: string(target.ID), ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
+				ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,
+				Features: append([]string(nil), target.Features...), Status: target.Status,
+			}
+			item.Example = providerExample(options, string(target.ID))
+			if len(target.DiscoveryJSON) > 0 {
+				item.Discovery = append(json.RawMessage(nil), target.DiscoveryJSON...)
+				discoveredAt, validUntil := target.DiscoveredAt, target.ValidUntil
+				item.DiscoveredAt, item.ValidUntil = &discoveredAt, &validUntil
+			}
+			output.Body.Items = append(output.Body.Items, item)
+		}
+		return output, nil
+	})
+
+	type RefreshTargetInput struct {
+		ID string `path:"id"`
+	}
+	huma.Post(api, "/provider-targets/{id}/actions/refresh", func(ctx context.Context, input *RefreshTargetInput) (*struct{ Body ProviderTargetDTO }, error) {
+		id, err := domain.NewProviderTargetID(input.ID)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Provider target ID is invalid")
+		}
+		if err := service.RefreshTarget(ctx, id); err != nil {
+			return nil, huma.Error503ServiceUnavailable("Provider target discovery failed")
+		}
+		targets, err := service.ListProviderTargets(ctx)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		for _, target := range targets {
+			if target.ID == id {
+				discoveredAt, validUntil := target.DiscoveredAt, target.ValidUntil
+				return &struct{ Body ProviderTargetDTO }{Body: ProviderTargetDTO{
+					ID: string(target.ID), ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
+					ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,
+					Features: target.Features, Status: target.Status, Discovery: append(json.RawMessage(nil), target.DiscoveryJSON...),
+					Example: providerExample(options, string(target.ID)), DiscoveredAt: &discoveredAt, ValidUntil: &validUntil,
+				}}, nil
+			}
+		}
+		return nil, huma.Error404NotFound("Provider target was not found")
 	})
 
 	huma.Get(api, "/session", func(context.Context, *struct{}) (*struct{ Body Session }, error) {
@@ -138,7 +221,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 
 	huma.Post(api, "/lab-validations", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body ValidationBody }, error) {
-		targetID := requestTargetID(input.Body)
+		targetID := requestTargetID(input.Body, options.DefaultProviderTargetID)
 		result, err := service.ValidateTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, targetID, input.Body.ProviderOverride)
 		if err != nil {
 			return nil, apiError(err)
@@ -150,7 +233,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 
 	huma.Post(api, "/lab-plans", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body controlplane.PlanResult }, error) {
-		result, err := service.PlanTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, requestTargetID(input.Body), input.Body.ProviderOverride)
+		result, err := service.PlanTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, requestTargetID(input.Body, options.DefaultProviderTargetID), input.Body.ProviderOverride)
 		if err != nil {
 			return nil, apiError(err)
 		}
@@ -170,7 +253,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	}
 	huma.Register(api, huma.Operation{OperationID: "create-lab-instance", Method: http.MethodPost, Path: "/lab-instances", DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, input *CreateInput) (*AcceptedOutput, error) {
-			result, err := service.CreateInstanceTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, requestTargetID(input.Body), input.Body.ProviderOverride)
+			result, err := service.CreateInstanceTarget(ctx, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, requestTargetID(input.Body, options.DefaultProviderTargetID), input.Body.ProviderOverride)
 			if err != nil {
 				return nil, apiError(err)
 			}
@@ -259,6 +342,18 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 }
 
+func providerExample(options Options, targetID string) *ProviderExample {
+	example, exists := options.ProviderExamples[targetID]
+	if !exists || example.Source == "" {
+		return nil
+	}
+	result := &ProviderExample{Source: example.Source}
+	if len(example.ProviderOverride) > 0 {
+		result.ProviderOverride = append(json.RawMessage(nil), example.ProviderOverride...)
+	}
+	return result
+}
+
 func operationDTO(source controlplane.OperationRecord) OperationDTO {
 	return OperationDTO{ID: string(source.ID), InstanceID: string(source.InstanceID), Kind: string(source.Kind), State: string(source.State), Message: source.Message, ErrorCode: source.ErrorCode, Attempt: source.Attempt, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt}
 }
@@ -277,8 +372,11 @@ func instanceDTO(source controlplane.InstanceRecord, resources []controlplane.Re
 	return result
 }
 
-func requestTargetID(request LabRequest) domain.ProviderTargetID {
+func requestTargetID(request LabRequest, configuredDefault string) domain.ProviderTargetID {
 	if request.ProviderTargetID == "" {
+		if configuredDefault != "" {
+			return domain.ProviderTargetID(configuredDefault)
+		}
 		return controlplane.LocalDockerTarget
 	}
 	return domain.ProviderTargetID(request.ProviderTargetID)

@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-03T00:42:39Z"
+verifiedAt: "2026-09-03T19:59:03Z"
 result: pass
-scope: phase_2_proxmox_testbed_evidence_verified_review_ready
+scope: phase_2_proxmox_production_authorizer_and_packaging_in_progress
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -60,6 +60,10 @@ commands:
   - independent PVE VMID, local-lvm/raw, local/qcow2, and completed-task cleanup reads
   - lab-proxmox-qualification sign followed by exact-expectation verify
   - protected runner TestProxmoxT4UpgradeReadability over three prior-build terminal journals
+  - go test -race -count=1 ./... after the ADR-0014 production authorization boundary
+  - go vet ./... after the ADR-0014 production authorization boundary
+  - bun run check && bun run build after the target-aware UI and status API
+  - python3 tools/verify_phase0.py after the trust-policy schema and packaging contract
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -216,6 +220,13 @@ checks:
   - exact_vms_root_qualification_permission_path
   - test_proxmox_028_prior_build_state_and_journal_readability
   - testbed_signed_exact_target_evidence_qualifies_without_reasons
+  - closed_reviewer_trust_policy_rotation_revocation_and_age_limits
+  - production_authorizer_exact_target_live_profile_and_build_rebinding
+  - production_authorization_before_capability_and_every_mutation_operation
+  - proxmox_only_startup_periodic_refresh_and_redacted_target_status
+  - protected_target_configuration_and_immutable_plugin_execution_snapshot
+  - terminal_provider_child_failure_is_observable_by_labd
+  - target_specific_api_and_ui_authoring_examples
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
@@ -224,7 +235,7 @@ notes:
   - Every TEST-PROXMOX-001 through TEST-PROXMOX-028 case has an executable normal-CI binding. The required target-applicable credentialed T3 cases, real guest probes, signed artifact assembly, and read-only prior-build state/journal rehearsal passed on the disposable testbed.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
-  - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or capability-enablement command and is not included in the production release artifacts.
+  - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or self-approval command; the native release now includes it so operators can verify or sign independently assembled evidence.
   - TEST-PROXMOX-025 exercised its activation guard, closed profile, and exact synthetic claim planning only. No T3 environment variables, target profile, or credential file were configured, so the destructive smoke skipped before any provider call.
   - The credentialed Proxmox lifecycle, isolation, and failure/recovery runners are package-test-only, use the existing private mutation constructor, and cannot be invoked by the production provider binary. They do not emit signed passing evidence individually.
   - TEST-PROXMOX-026 used only synthetic TCP outcomes and local TLS servers. It proved dedicated client and server trust, closed schemas, response/evidence binding, redaction, and effort bounds but contacted no Proxmox endpoint and did not execute inside a guest.
@@ -235,7 +246,8 @@ notes:
   - Testbed artifact qualification.proxmox-t3-20260903-r1 verified qualifies=true with no reasons and canonical evidence digest sha256:6943002263b2b2f35f04aeec21ec45bb91b1eab30aaba50d01e1903dbc62244d. Its disposable signer is not a production trust decision.
   - TEST-PROXMOX-028 skipped before journal access in normal CI. Protected qualification.upgrade-20260903-r1 used no provider client and read three checksummed v1.0 journals produced by the earlier 99fb78f candidate, including Network state, VM state, and a destroyed tombstone.
   - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
-  - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
+  - The default Proxmox constructor has no path that opens mutation execution. The only exported write-capable constructor requires a non-nil ADR-0014 authorizer and rechecks signed exact-target evidence against fresh inventory before capability advertisement and each apply, destroy, or lifecycle operation.
+  - The current source tree passed normal, race-enabled, vet, web type/build, and design-contract verification. Clean-tree archive determinism and fresh exact-build disposable-target qualification remain pending TASK-PROXMOX-006 gates and are not claimed here.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
   - The credentialed Docker smoke test used Docker Engine 29.7.2 / API 1.55 on Linux amd64 and the two immutable Example A image digests.
   - Example A reached ready at a provider-selected 127.0.0.1 port and returned {"service":"LabCentral Example A","visits":1} before destroy succeeded.

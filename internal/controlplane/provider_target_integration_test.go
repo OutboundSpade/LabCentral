@@ -175,6 +175,10 @@ func TestContractTESTPROXMOX023ProviderTargetPlansClaimsRoutesWorkerAndReleasesA
 	if err := service.RefreshTarget(ctx, targetID); err != nil {
 		t.Fatal(err)
 	}
+	statuses, err := service.ListProviderTargets(ctx)
+	if err != nil || len(statuses) != 1 || statuses[0].ID != targetID || statuses[0].Status != "fresh" || len(statuses[0].DiscoveryJSON) == 0 {
+		t.Fatalf("provider target status = %#v, %v", statuses, err)
+	}
 	snapshot, err := store.GetTargetSnapshot(ctx, targetID)
 	if err != nil || snapshot.ProviderKind != "proxmox" || snapshot.ProtocolMinor != 1 || !snapshot.ValidUntil.After(time.Now()) {
 		t.Fatalf("persisted target snapshot = %#v, %v", snapshot, err)

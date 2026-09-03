@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"google.golang.org/grpc/metadata"
@@ -466,6 +467,44 @@ func TestProductionConstructorKeepsMutationGateClosed(t *testing.T) {
 	}
 }
 
+type mutationAuthorizerFunc func(context.Context, MutationAuthorizationInput) (MutationAuthorization, error)
+
+func (authorize mutationAuthorizerFunc) AuthorizeMutation(ctx context.Context, input MutationAuthorizationInput) (MutationAuthorization, error) {
+	return authorize(ctx, input)
+}
+
+func TestProductionMutationRequiresAuthorizerOnDiscoveryAndExecution(t *testing.T) {
+	fake := newFakeMutationAPI()
+	authorized := true
+	calls := 0
+	service, err := NewProductionService(mutationAuthorizerFunc(func(_ context.Context, input MutationAuthorizationInput) (MutationAuthorization, error) {
+		calls++
+		if input.Target.GetTargetId() != "target.proxmox" || input.Config.InstallationID != "installation.test" || input.MutationInventoryDigest == "" {
+			t.Fatalf("authorizer received incomplete binding: %#v", input)
+		}
+		if !authorized {
+			return MutationAuthorization{}, errors.New("reviewer key revoked")
+		}
+		return MutationAuthorization{Evidence: "signed exact-target test evidence"}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.factory = ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) { return fake, nil })
+	service.sleep = func(time.Duration) {}
+	target := mutationTestTarget(t)
+
+	discovery, err := service.DiscoverTarget(context.Background(), &pluginv1.DiscoverTargetRequest{Target: target})
+	if err != nil || findCapability(t, discovery, "workload.vm").GetSupport() != pluginv1.Capability_SUPPORT_NATIVE || calls != 1 {
+		t.Fatalf("authorized discovery = %#v, calls=%d, err=%v", discovery, calls, err)
+	}
+	authorized = false
+	discovery, err = service.DiscoverTarget(context.Background(), &pluginv1.DiscoverTargetRequest{Target: target})
+	if err != nil || findCapability(t, discovery, "workload.vm").GetSupport() != pluginv1.Capability_SUPPORT_UNSUPPORTED || calls != 2 {
+		t.Fatalf("revoked discovery = %#v, calls=%d, err=%v", discovery, calls, err)
+	}
+}
+
 func TestClosedMutationStateAndCommittedClaimBoundaries(t *testing.T) {
 	fixture := newExecutionFixture(t)
 
@@ -504,7 +543,7 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 	for _, phase := range []string{"prepared", "clone-submitted", "clone-complete", "config-submitted", "configured", "lifecycle-submitted"} {
 		t.Run(phase, func(t *testing.T) {
 			fixture := newExecutionFixture(t)
-			prepared, failure := fixture.service.prepareExecution(fixture.vmInput, "apply")
+			prepared, failure := fixture.service.prepareExecution(context.Background(), fixture.vmInput, "apply")
 			if failure != nil {
 				t.Fatal(failure.GetError())
 			}
@@ -563,7 +602,7 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 		input := cloneMutationInput(fixture.vmInput)
 		input.Context = completeCall("restart-destroy", "vm.lab", fixture.target.GetTargetId())
 		input.PriorState = applied.GetProviderState()
-		prepared, failure := fixture.service.prepareExecution(input, "destroy")
+		prepared, failure := fixture.service.prepareExecution(context.Background(), input, "destroy")
 		if failure != nil {
 			t.Fatal(failure.GetError())
 		}

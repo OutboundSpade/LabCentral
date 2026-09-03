@@ -36,6 +36,15 @@ type TargetRegistry struct {
 	bindings map[domain.ProviderTargetID]targetBinding
 }
 
+type RegisteredTarget struct {
+	ID                domain.ProviderTargetID
+	ProviderKind      string
+	ConfigFingerprint string
+	ProtocolMajor     uint32
+	ProtocolMinor     uint32
+	Features          []string
+}
+
 type targetBinding struct {
 	id                 domain.ProviderTargetID
 	providerKind       string
@@ -190,6 +199,28 @@ func (registry *TargetRegistry) ProviderKinds() []string {
 		result = append(result, kind)
 	}
 	sort.Strings(result)
+	return result
+}
+
+func (registry *TargetRegistry) RegisteredTargets() []RegisteredTarget {
+	if registry == nil {
+		return nil
+	}
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+	result := make([]RegisteredTarget, 0, len(registry.bindings))
+	for _, binding := range registry.bindings {
+		features := make([]string, 0, len(binding.features))
+		for feature := range binding.features {
+			features = append(features, feature)
+		}
+		sort.Strings(features)
+		result = append(result, RegisteredTarget{
+			ID: binding.id, ProviderKind: binding.providerKind, ConfigFingerprint: binding.configFingerprint,
+			ProtocolMajor: binding.protocolMajor, ProtocolMinor: binding.protocolMinor, Features: features,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result
 }
 

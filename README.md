@@ -2,7 +2,7 @@
 
 LabCentral is a modular client-server platform for declarative virtual labs, with cybersecurity classrooms as its primary production use case. Its design-only Phase 0, architecture-foundation Phase 0B, and packaged Docker laptop vertical slice are complete. The repository now includes the typed Go core, strict renderer, durable SQLite operations, a separately supervised Docker provider, the Huma/OpenAPI API, a content-addressed filesystem artifact adapter, an embedded static SvelteKit/DaisyUI interface, and native/Docker/Compose laptop distributions.
 
-Phase 2 has a separate read-only Proxmox discovery foundation. Build it with `make build-proxmox-provider`. It verifies TLS and performs bounded API-token-authenticated inventory `GET` requests, but it is not yet selected by the current single-Docker-target `labd` and exposes no mutation path. See [`docs/design/proxmox-provider.md`](docs/design/proxmox-provider.md).
+Phase 2 now includes an optional Proxmox target, fixed-node QEMU full-clone execution, and a production mutation gate. Proxmox writes require signed evidence for the exact target configuration, live mutation inventory, PVE build, provider binary/source tree, reviewed topology, permissions, T3 case matrix, and cleanup record; configuration alone cannot enable them. The native release includes the Proxmox provider, review utility, hardened systemd unit, configuration examples, and a complete [deployment runbook](docs/operations/proxmox-deployment.md).
 
 Start with [`PROJECT_STATE.md`](PROJECT_STATE.md), then follow [`AGENTS.md`](AGENTS.md). The architecture baseline is in [`docs/design/architecture.md`](docs/design/architecture.md), accepted decisions are in [`docs/adr/`](docs/adr/), and machine-readable progress is in [`design/state.yaml`](design/state.yaml) and [`design/checklist.yaml`](design/checklist.yaml).
 
@@ -26,7 +26,7 @@ make release VERSION=0.1.0
 sha256sum -c dist/labcentral-0.1.0-$(go env GOOS)-$(go env GOARCH).tar.gz.sha256
 ```
 
-The archive includes both executables, the provider checksum and manifest, an archive-wide checksum file, a CycloneDX SBOM, and source/build provenance. Set `SOURCE_DATE_EPOCH` to reproduce a prior build timestamp; otherwise the tool uses the current Git commit time. Provenance is descriptive metadata, not a signature or SLSA attestation.
+The archive includes `labd`, both official providers, the Proxmox qualification utility, provider checksums/manifests, the Proxmox source-tree binding, deployment assets, an archive-wide checksum file, a CycloneDX SBOM, and source/build provenance. Releases require a clean Git worktree so the embedded source binding describes the built provider. Set `SOURCE_DATE_EPOCH` to reproduce a prior build timestamp; otherwise the tool uses the current Git commit time. Provenance is descriptive metadata, not a signature or SLSA attestation.
 
 For the supported Linux Docker path, start the minimal image with Compose:
 

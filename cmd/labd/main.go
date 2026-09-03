@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -33,18 +34,21 @@ import (
 )
 
 var version = "dev"
+var authoringAliasPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 type config struct {
-	listen                string
-	dataDir               string
-	dockerPlugin          string
-	dockerPluginHash      string
-	proxmoxPlugin         string
-	proxmoxPluginHash     string
-	proxmoxTargetID       string
-	proxmoxTargetConfig   string
-	proxmoxCredentialFile string
-	unsafeNoAuth          bool
+	listen                       string
+	dataDir                      string
+	dockerPlugin                 string
+	dockerPluginHash             string
+	proxmoxPlugin                string
+	proxmoxPluginHash            string
+	proxmoxTargetID              string
+	proxmoxTargetConfig          string
+	proxmoxCredentialFile        string
+	proxmoxQualificationDocument string
+	proxmoxQualificationTrust    string
+	unsafeNoAuth                 bool
 }
 
 func main() {
@@ -95,11 +99,17 @@ func healthcheck() error {
 
 func run(logger *slog.Logger) error {
 	configuration := parseFlags()
-	if configuration.proxmoxPlugin == "" && (configuration.proxmoxTargetConfig != "" || configuration.proxmoxCredentialFile != "" || configuration.proxmoxPluginHash != "") {
+	if configuration.dockerPlugin == "" && configuration.dockerPluginHash != "" {
+		return fmt.Errorf("--docker-plugin-sha256 requires --docker-plugin")
+	}
+	if configuration.proxmoxPlugin == "" && (configuration.proxmoxTargetConfig != "" || configuration.proxmoxCredentialFile != "" || configuration.proxmoxPluginHash != "" || configuration.proxmoxQualificationDocument != "" || configuration.proxmoxQualificationTrust != "") {
 		return fmt.Errorf("Proxmox target options require --proxmox-plugin")
 	}
-	if err := os.MkdirAll(configuration.dataDir, 0o700); err != nil {
-		return fmt.Errorf("create data directory: %w", err)
+	if (configuration.proxmoxQualificationDocument == "") != (configuration.proxmoxQualificationTrust == "") {
+		return fmt.Errorf("Proxmox qualification document and trust policy must be configured together")
+	}
+	if err := ensurePrivateDirectory(configuration.dataDir); err != nil {
+		return fmt.Errorf("prepare data directory: %w", err)
 	}
 	listener, err := net.Listen("tcp", configuration.listen)
 	if err != nil {
@@ -114,46 +124,60 @@ func run(logger *slog.Logger) error {
 	if !loopback {
 		warning = "UNSAFE: authentication is disabled on a non-loopback listener. Every reachable client has installation administrator privileges. " + warning
 	}
-	pluginHash, err := configuredPluginDigest(configuration.dockerPlugin, configuration.dockerPluginHash, "Docker")
-	if err != nil {
-		return err
-	}
-	pluginPath, err := filepath.Abs(configuration.dockerPlugin)
-	if err != nil {
-		return err
-	}
 	runtimeParent := filepath.Join(configuration.dataDir, "run")
-	if err := os.MkdirAll(runtimeParent, 0o700); err != nil {
-		return fmt.Errorf("create plugin runtime parent: %w", err)
+	if err := ensurePrivateDirectory(runtimeParent); err != nil {
+		return fmt.Errorf("prepare plugin runtime parent: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	plugin, err := pluginhost.Launch(ctx, pluginhost.Config{
-		Executable: pluginPath, ExecutableSHA256: pluginHash, RuntimeParent: runtimeParent,
-		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin.local-docker",
-	})
-	if err != nil {
-		return fmt.Errorf("launch Docker provider: %w", err)
+	targetBindings := make([]controlplane.TargetBinding, 0, 2)
+	providerExamples := make(map[string]httpapi.ProviderExample, 2)
+	var dockerPlugin *pluginhost.Client
+	if configuration.dockerPlugin != "" {
+		pluginHash, err := configuredPluginDigest(configuration.dockerPlugin, configuration.dockerPluginHash, "Docker")
+		if err != nil {
+			return err
+		}
+		pluginPath, err := filepath.Abs(configuration.dockerPlugin)
+		if err != nil {
+			return err
+		}
+		dockerPlugin, err = pluginhost.Launch(ctx, pluginhost.Config{
+			Executable: pluginPath, ExecutableSHA256: pluginHash, RuntimeParent: runtimeParent,
+			ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin.local-docker",
+		})
+		if err != nil {
+			return fmt.Errorf("launch Docker provider: %w", err)
+		}
+		defer dockerPlugin.Close()
+		targetBindings = append(targetBindings, controlplane.TargetBinding{
+			ID: controlplane.LocalDockerTarget, ProviderKind: "docker", Provider: dockerPlugin.Provider,
+			ProtocolMajor: dockerPlugin.SelectedProtocol.GetMajor(), ProtocolMinor: dockerPlugin.SelectedProtocol.GetMinor(), Features: dockerPlugin.Info.GetFeatures(),
+		})
+		providerExamples[string(controlplane.LocalDockerTarget)] = httpapi.ProviderExample{Source: string(dockerlaptop.LabYAML())}
 	}
-	defer plugin.Close()
-	targetBindings := []controlplane.TargetBinding{{
-		ID: controlplane.LocalDockerTarget, ProviderKind: "docker", Provider: plugin.Provider,
-		ProtocolMajor: plugin.SelectedProtocol.GetMajor(), ProtocolMinor: plugin.SelectedProtocol.GetMinor(), Features: plugin.Info.GetFeatures(),
-	}}
 	var proxmoxPlugin *pluginhost.Client
 	if configuration.proxmoxPlugin != "" {
-		proxmoxBinding, client, err := launchProxmoxTarget(ctx, configuration, runtimeParent)
+		proxmoxBinding, client, example, err := launchProxmoxTarget(ctx, configuration, runtimeParent)
 		if err != nil {
 			return err
 		}
 		proxmoxPlugin = client
 		defer proxmoxPlugin.Close()
 		targetBindings = append(targetBindings, proxmoxBinding)
+		providerExamples[string(proxmoxBinding.ID)] = example
+	}
+	if len(targetBindings) == 0 {
+		return fmt.Errorf("at least one provider target must be configured")
 	}
 	targets, err := controlplane.NewTargetRegistry(targetBindings)
 	if err != nil {
 		return fmt.Errorf("construct provider target registry: %w", err)
+	}
+	defaultTargetID := string(targetBindings[0].ID)
+	if dockerPlugin != nil {
+		defaultTargetID = string(controlplane.LocalDockerTarget)
 	}
 
 	store, err := localdb.Open(ctx, filepath.Join(configuration.dataDir, "labcentral.db"))
@@ -175,11 +199,14 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if proxmoxPlugin != nil {
-		if err := control.RefreshTarget(ctx, domain.ProviderTargetID(configuration.proxmoxTargetID)); err != nil {
-			logger.Error("configured Proxmox target discovery failed; cached evidence remains authoritative", "error", err)
+	for _, target := range targets.IDs() {
+		if err := control.RefreshTarget(ctx, target); err != nil {
+			logger.Error("configured provider target discovery failed; cached evidence remains authoritative", "target", target, "error", err)
 		}
 	}
+	refreshContext, cancelRefresh := context.WithCancel(ctx)
+	defer cancelRefresh()
+	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger)
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
 		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
 	})
@@ -191,7 +218,9 @@ func run(logger *slog.Logger) error {
 	workerDone := make(chan error, 1)
 	go func() { workerDone <- worker.Run(workerContext) }()
 
-	apiServer, err := httpapi.New(control, dockerlaptop.LabYAML(), webassets.FS(), httpapi.Options{NoAuthWarning: warning})
+	apiServer, err := httpapi.New(control, dockerlaptop.LabYAML(), webassets.FS(), httpapi.Options{
+		NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples,
+	})
 	if err != nil {
 		return err
 	}
@@ -205,6 +234,22 @@ func run(logger *slog.Logger) error {
 	}
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- server.Serve(listener) }()
+	providerFailure := make(chan error, 2)
+	monitorProvider := func(label string, client *pluginhost.Client) {
+		if client == nil {
+			return
+		}
+		go func() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-client.Done():
+				providerFailure <- fmt.Errorf("%s provider process exited: %v", label, client.ExitError())
+			}
+		}()
+	}
+	monitorProvider("Docker", dockerPlugin)
+	monitorProvider("Proxmox", proxmoxPlugin)
 	logger.Warn("LabCentral started in no-auth trusted-laptop mode", "listen", listener.Addr().String(), "version", version, "warning", warning)
 
 	select {
@@ -226,6 +271,38 @@ func run(logger *slog.Logger) error {
 		return err
 	case err := <-workerDone:
 		return fmt.Errorf("durable worker stopped: %w", err)
+	case err := <-providerFailure:
+		if ctx.Err() != nil {
+			return nil
+		}
+		stop()
+		cancelWorker()
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if shutdownErr := server.Shutdown(shutdownContext); shutdownErr != nil {
+			return errors.Join(err, shutdownErr)
+		}
+		if workerErr := <-workerDone; workerErr != nil {
+			return errors.Join(err, workerErr)
+		}
+		return err
+	}
+}
+
+func refreshProviderTargets(ctx context.Context, control *controlplane.Service, targets []domain.ProviderTargetID, logger *slog.Logger) {
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, target := range targets {
+				if err := control.RefreshTarget(ctx, target); err != nil {
+					logger.Error("provider target refresh failed; cached evidence remains authoritative", "target", target, "error", err)
+				}
+			}
+		}
 	}
 }
 
@@ -235,13 +312,15 @@ func parseFlags() config {
 	var result config
 	flag.StringVar(&result.listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	flag.StringVar(&result.dataDir, "data-dir", "./labcentral-data", "local SQLite, artifact, and runtime directory")
-	flag.StringVar(&result.dockerPlugin, "docker-plugin", defaultPlugin, "absolute or relative path to lab-provider-docker")
+	flag.StringVar(&result.dockerPlugin, "docker-plugin", defaultPlugin, "path to lab-provider-docker; empty disables Docker")
 	flag.StringVar(&result.dockerPluginHash, "docker-plugin-sha256", "", "pinned Docker plugin SHA-256; defaults to <plugin>.sha256")
 	flag.StringVar(&result.proxmoxPlugin, "proxmox-plugin", "", "path to lab-provider-proxmox; empty keeps Proxmox disabled")
 	flag.StringVar(&result.proxmoxPluginHash, "proxmox-plugin-sha256", "", "pinned Proxmox plugin SHA-256; defaults to <plugin>.sha256")
 	flag.StringVar(&result.proxmoxTargetID, "proxmox-target-id", "target.local-proxmox", "stable provider target ID for the optional Proxmox target")
 	flag.StringVar(&result.proxmoxTargetConfig, "proxmox-target-config", "", "path to the strict Proxmox target-config JSON envelope")
 	flag.StringVar(&result.proxmoxCredentialFile, "proxmox-credential-file", "", "mode-0600 file containing the Proxmox credential JSON envelope")
+	flag.StringVar(&result.proxmoxQualificationDocument, "proxmox-qualification-document", "", "signed exact-target qualification evidence; requires the trust policy")
+	flag.StringVar(&result.proxmoxQualificationTrust, "proxmox-qualification-trust", "", "reviewer trust policy for signed exact-target qualification evidence")
 	flag.BoolVar(&result.unsafeNoAuth, "unsafe-listen-non-loopback-without-auth", false, "explicitly allow no-auth mode on a non-loopback listener")
 	flag.Parse()
 	return result
@@ -268,57 +347,124 @@ func configuredPluginDigest(pluginPath, configuredHash, label string) (string, e
 	return strings.ToLower(value), nil
 }
 
-func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParent string) (controlplane.TargetBinding, *pluginhost.Client, error) {
+func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParent string) (controlplane.TargetBinding, *pluginhost.Client, httpapi.ProviderExample, error) {
 	targetID, err := domain.NewProviderTargetID(configuration.proxmoxTargetID)
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, fmt.Errorf("invalid Proxmox target ID: %w", err)
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, fmt.Errorf("invalid Proxmox target ID: %w", err)
 	}
 	if configuration.proxmoxTargetConfig == "" || configuration.proxmoxCredentialFile == "" {
-		return controlplane.TargetBinding{}, nil, fmt.Errorf("the optional Proxmox target requires --proxmox-target-config and --proxmox-credential-file")
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, fmt.Errorf("the optional Proxmox target requires --proxmox-target-config and --proxmox-credential-file")
 	}
 	pluginPath, err := filepath.Abs(configuration.proxmoxPlugin)
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, err
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	configPath, err := filepath.Abs(configuration.proxmoxTargetConfig)
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, err
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	credentialPath, err := filepath.Abs(configuration.proxmoxCredentialFile)
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, err
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
+	}
+	providerArguments := make([]string, 0, 4)
+	if configuration.proxmoxQualificationDocument != "" {
+		documentPath, pathErr := filepath.Abs(configuration.proxmoxQualificationDocument)
+		if pathErr != nil {
+			return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, pathErr
+		}
+		trustPath, pathErr := filepath.Abs(configuration.proxmoxQualificationTrust)
+		if pathErr != nil {
+			return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, pathErr
+		}
+		providerArguments = append(providerArguments, "--qualification-document", documentPath, "--qualification-trust", trustPath)
 	}
 	configEnvelope, err := readRegularFile(configPath, 8<<20)
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, fmt.Errorf("read Proxmox target configuration: %w", err)
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, fmt.Errorf("read Proxmox target configuration: %w", err)
+	}
+	example, err := proxmoxAuthoringExample(configEnvelope)
+	if err != nil {
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	digest, err := configuredPluginDigest(configuration.proxmoxPlugin, configuration.proxmoxPluginHash, "Proxmox")
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, err
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	client, err := pluginhost.Launch(ctx, pluginhost.Config{
-		Executable: pluginPath, ExecutableSHA256: digest, RuntimeParent: runtimeParent,
+		Executable: pluginPath, ExecutableSHA256: digest, Args: providerArguments, RuntimeParent: runtimeParent,
 		ConfiguredPluginID: proxmoxprovider.PluginID, ConfiguredProviderKind: "proxmox", PluginInstanceID: "plugin.local-proxmox",
 	})
 	if err != nil {
-		return controlplane.TargetBinding{}, nil, fmt.Errorf("launch Proxmox provider: %w", err)
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, fmt.Errorf("launch Proxmox provider: %w", err)
 	}
 	resolver, err := localsecret.NewFileResolver([]string{credentialPath}, 64<<10)
 	if err != nil {
 		_ = client.Close()
-		return controlplane.TargetBinding{}, nil, err
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	return controlplane.TargetBinding{
 		ID: targetID, ProviderKind: "proxmox", Provider: client.Provider, ConfigEnvelope: configEnvelope,
 		CredentialRef: &domain.SecretRef{Source: "file", Name: credentialPath, Key: "value"}, CredentialResolver: resolver,
 		ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures(),
-	}, client, nil
+	}, client, example, nil
+}
+
+func proxmoxAuthoringExample(configEnvelope []byte) (httpapi.ProviderExample, error) {
+	var config proxmoxprovider.TargetConfig
+	if err := json.Unmarshal(configEnvelope, &config); err != nil || len(config.Templates) == 0 || len(config.Storages) == 0 || len(config.Networks) == 0 {
+		return httpapi.ProviderExample{}, fmt.Errorf("Proxmox target configuration cannot produce an authoring example")
+	}
+	template, storage, network := config.Templates[0], config.Storages[0], config.Networks[0]
+	if !authoringAliasPattern.MatchString(template.Alias) || !authoringAliasPattern.MatchString(storage.Alias) || !authoringAliasPattern.MatchString(network.Alias) || !qualifiedSHA256(template.ContentDigest) {
+		return httpapi.ProviderExample{}, fmt.Errorf("Proxmox target configuration contains unsafe authoring profile values")
+	}
+	override, err := json.Marshal(map[string]string{"templateAlias": template.Alias, "storageAlias": storage.Alias, "networkAlias": network.Alias})
+	if err != nil {
+		return httpapi.ProviderExample{}, err
+	}
+	source := fmt.Sprintf(`apiVersion: labs.labcentral.io/v1alpha1
+kind: Lab
+metadata:
+  name: proxmox-vm-lab
+  title: Qualified Proxmox VM lab
+spec:
+  requirements:
+    isolationClass: virtualMachine
+  resources:
+    networks:
+      - name: lab
+        kind: isolated
+        ipv4Cidr: 10.77.0.0/24
+        ipam: static
+        egress: {mode: deny}
+    vms:
+      - name: server
+        imageRef: labcentral/proxmox/%s@%s
+        osFamily: linux
+        compute: {cpu: 0.5, memory: 512Mi, architecture: amd64}
+        interfaces:
+          - {networkRef: networks.lab, ipv4: 10.77.0.10}
+`, template.Alias, template.ContentDigest)
+	return httpapi.ProviderExample{Source: source, ProviderOverride: override}, nil
+}
+
+func qualifiedSHA256(value string) bool {
+	if !strings.HasPrefix(value, "sha256:") || len(value) != 71 {
+		return false
+	}
+	for _, character := range value[7:] {
+		if character < '0' || character > '9' && character < 'a' || character > 'f' {
+			return false
+		}
+	}
+	return true
 }
 
 func readRegularFile(path string, maximumBytes int64) ([]byte, error) {
 	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Size() < 1 || before.Size() > maximumBytes {
-		return nil, fmt.Errorf("configured path is not a bounded regular file")
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() < 1 || before.Size() > maximumBytes {
+		return nil, fmt.Errorf("configured path is not a protected bounded regular file")
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -326,7 +472,7 @@ func readRegularFile(path string, maximumBytes int64) ([]byte, error) {
 	}
 	defer file.Close()
 	after, err := file.Stat()
-	if err != nil || !os.SameFile(before, after) {
+	if err != nil || !os.SameFile(before, after) || after.Mode().Perm()&0o022 != 0 {
 		return nil, fmt.Errorf("configured file identity changed")
 	}
 	contents, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
@@ -337,4 +483,15 @@ func readRegularFile(path string, maximumBytes int64) ([]byte, error) {
 		return nil, fmt.Errorf("configured file is empty or exceeds its size limit")
 	}
 	return contents, nil
+}
+
+func ensurePrivateDirectory(path string) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("path must be a private directory with no group or other permissions")
+	}
+	return nil
 }

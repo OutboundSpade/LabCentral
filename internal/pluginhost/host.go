@@ -28,6 +28,7 @@ import (
 type Config struct {
 	Executable             string
 	ExecutableSHA256       string
+	Args                   []string
 	RuntimeParent          string
 	ConfiguredPluginID     string
 	ConfiguredProviderKind string
@@ -49,18 +50,37 @@ type Client struct {
 	server     *grpc.Server
 	listener   net.Listener
 	runtimeDir string
-	done       chan error
+	process    *processState
 	closeOnce  sync.Once
 	stdout     *boundedWriter
 	stderr     *boundedWriter
 }
 
+type processState struct {
+	done chan struct{}
+	mu   sync.Mutex
+	err  error
+}
+
+func newProcessState() *processState { return &processState{done: make(chan struct{})} }
+
+func (state *processState) wait(command *exec.Cmd) {
+	err := command.Wait()
+	state.mu.Lock()
+	state.err = err
+	state.mu.Unlock()
+	close(state.done)
+}
+
+func (state *processState) result() error {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.err
+}
+
 func Launch(ctx context.Context, config Config) (*Client, error) {
 	config = withDefaults(config)
 	if err := validateConfig(config); err != nil {
-		return nil, err
-	}
-	if err := verifyExecutable(config.Executable, config.ExecutableSHA256); err != nil {
 		return nil, err
 	}
 	runtimeDir, err := os.MkdirTemp(config.RuntimeParent, "labcentral-plugin-")
@@ -75,6 +95,10 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 	}()
 	if err := os.Chmod(runtimeDir, 0o700); err != nil {
 		return nil, fmt.Errorf("restrict plugin runtime directory: %w", err)
+	}
+	executable, err := snapshotExecutable(config.Executable, config.ExecutableSHA256, runtimeDir)
+	if err != nil {
+		return nil, err
 	}
 	token, err := randomToken(32)
 	if err != nil {
@@ -103,7 +127,7 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 	go func() { _ = server.Serve(listener) }()
 
 	processContext, cancel := context.WithCancel(context.Background())
-	command := exec.CommandContext(processContext, config.Executable)
+	command := exec.CommandContext(processContext, executable, config.Args...)
 	command.Env = append(filteredEnvironment(os.Environ()),
 		launch.RegistrationEndpoint+"=unix://"+registrationPath,
 		launch.ServiceEndpoint+"=unix://"+servicePath,
@@ -121,18 +145,18 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 		server.Stop()
 		return nil, fmt.Errorf("start configured plugin: %w", err)
 	}
-	processDone := make(chan error, 1)
-	go func() { processDone <- command.Wait() }()
+	process := newProcessState()
+	go process.wait(command)
 
 	timer := time.NewTimer(config.RegistrationTimeout)
 	defer timer.Stop()
 	var accepted registrationResult
 	select {
 	case accepted = <-registration.accepted:
-	case processErr := <-processDone:
+	case <-process.done:
 		cancel()
 		server.Stop()
-		return nil, fmt.Errorf("plugin exited before registration: %v; stderr=%q", processErr, stderr.String())
+		return nil, fmt.Errorf("plugin exited before registration: %v; stderr=%q", process.result(), stderr.String())
 	case <-timer.C:
 		cancel()
 		server.Stop()
@@ -173,7 +197,7 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 		server:           server,
 		listener:         listener,
 		runtimeDir:       runtimeDir,
-		done:             processDone,
+		process:          process,
 		stdout:           stdout,
 		stderr:           stderr,
 	}
@@ -201,6 +225,14 @@ func validateConfig(config Config) error {
 	if len(config.ExecutableSHA256) != sha256.Size*2 {
 		return fmt.Errorf("configured plugin executable SHA-256 is required")
 	}
+	if len(config.Args) > 16 {
+		return fmt.Errorf("configured plugin argument count exceeds 16")
+	}
+	for _, argument := range config.Args {
+		if argument == "" || len(argument) > 4096 || strings.IndexByte(argument, 0) >= 0 {
+			return fmt.Errorf("configured plugin argument is invalid")
+		}
+	}
 	if config.ConfiguredPluginID == "" || config.ConfiguredProviderKind == "" || config.PluginInstanceID == "" {
 		return fmt.Errorf("configured plugin, provider kind, and instance IDs are required")
 	}
@@ -210,28 +242,49 @@ func validateConfig(config Config) error {
 	return nil
 }
 
-func verifyExecutable(executable, expectedDigest string) error {
+func snapshotExecutable(executable, expectedDigest, runtimeDir string) (string, error) {
 	info, err := os.Lstat(executable)
 	if err != nil {
-		return fmt.Errorf("inspect configured plugin executable: %w", err)
+		return "", fmt.Errorf("inspect configured plugin executable: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return fmt.Errorf("configured plugin path is not an executable regular file")
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+		return "", fmt.Errorf("configured plugin path is not a protected executable regular file")
 	}
 	file, err := os.Open(executable)
 	if err != nil {
-		return fmt.Errorf("open configured plugin executable: %w", err)
+		return "", fmt.Errorf("open configured plugin executable: %w", err)
 	}
 	defer file.Close()
+	after, err := file.Stat()
+	if err != nil || !os.SameFile(info, after) || after.Mode().Perm()&0o022 != 0 {
+		return "", fmt.Errorf("configured plugin executable identity or permissions changed")
+	}
+	destination := filepath.Join(runtimeDir, "plugin")
+	copy, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o500)
+	if err != nil {
+		return "", fmt.Errorf("create private plugin executable snapshot: %w", err)
+	}
 	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return fmt.Errorf("hash configured plugin executable: %w", err)
+	if _, err := io.Copy(io.MultiWriter(copy, hash), file); err != nil {
+		_ = copy.Close()
+		return "", fmt.Errorf("snapshot configured plugin executable: %w", err)
+	}
+	if err := copy.Sync(); err != nil {
+		_ = copy.Close()
+		return "", fmt.Errorf("sync private plugin executable snapshot: %w", err)
+	}
+	if err := copy.Chmod(0o500); err != nil {
+		_ = copy.Close()
+		return "", fmt.Errorf("protect private plugin executable snapshot: %w", err)
+	}
+	if err := copy.Close(); err != nil {
+		return "", fmt.Errorf("close private plugin executable snapshot: %w", err)
 	}
 	actual := hex.EncodeToString(hash.Sum(nil))
 	if subtle.ConstantTimeCompare([]byte(strings.ToLower(actual)), []byte(strings.ToLower(expectedDigest))) != 1 {
-		return fmt.Errorf("configured plugin executable digest mismatch")
+		return "", fmt.Errorf("configured plugin executable digest mismatch")
 	}
-	return nil
+	return destination, nil
 }
 
 func randomToken(bytes int) (string, error) {
@@ -415,12 +468,12 @@ func (c *Client) Close() error {
 		_ = c.connection.Close()
 		c.cancel()
 		select {
-		case <-c.done:
+		case <-c.process.done:
 		case <-time.After(3 * time.Second):
 			if c.command.Process != nil {
 				_ = c.command.Process.Kill()
 			}
-			<-c.done
+			<-c.process.done
 		}
 		c.server.Stop()
 		_ = c.listener.Close()
@@ -429,6 +482,24 @@ func (c *Client) Close() error {
 		}
 	})
 	return result
+}
+
+// Done is closed when the provider child exits. Callers use this to make a
+// terminal child failure visible to the deployment supervisor instead of
+// silently retaining an unusable target.
+func (c *Client) Done() <-chan struct{} {
+	if c == nil || c.process == nil {
+		return nil
+	}
+	return c.process.done
+}
+
+// ExitError reports the child wait result after Done closes.
+func (c *Client) ExitError() error {
+	if c == nil || c.process == nil {
+		return nil
+	}
+	return c.process.result()
 }
 
 func (c *Client) Logs() (stdout, stderr string) {
