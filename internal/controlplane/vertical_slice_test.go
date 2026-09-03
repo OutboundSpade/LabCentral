@@ -1,16 +1,23 @@
 package controlplane_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -37,6 +44,357 @@ func TestExampleAApplyAndDestroyThroughDurableWorker(t *testing.T) {
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	runExampleAStoreConformance(t, store, db)
+}
+
+func TestPostgreSQLControlPlaneStoreConformance(t *testing.T) {
+	openStore, _, _ := postgreSQLTestSchema(t, "parity")
+	store, db := openStore()
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("repeat PostgreSQL migration: %v", err)
+	}
+	runExampleAStoreConformance(t, store, db)
+}
+
+func TestPostgreSQLMultiReplicaFencingAndCrashRecovery(t *testing.T) {
+	openStore, _, _ := postgreSQLTestSchema(t, "replicas")
+	storeA, db := openStore()
+	storeB, _ := openStore()
+	ctx := context.Background()
+	provider, _, closeProvider := testProvider(t)
+	defer closeProvider()
+	ids := &sequenceIDs{}
+	service, err := controlplane.NewService(testRenderer(t), storeA, provider, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateInstance(ctx, source, true, "multi-replica-fencing")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type claimResult struct {
+		claim controlplane.WorkClaim
+		err   error
+	}
+	start := make(chan struct{})
+	results := make(chan claimResult, 2)
+	for index, store := range []*localdb.Store{storeA, storeB} {
+		go func(index int, store *localdb.Store) {
+			<-start
+			claim, claimErr := store.Claim(ctx, fmt.Sprintf("worker-%d", index), time.Minute)
+			results <- claimResult{claim: claim, err: claimErr}
+		}(index, store)
+	}
+	close(start)
+	var oldClaim controlplane.WorkClaim
+	winners, empty := 0, 0
+	for range 2 {
+		result := <-results
+		switch {
+		case result.err == nil:
+			winners++
+			oldClaim = result.claim
+		case errors.Is(result.err, controlplane.ErrNoWork):
+			empty++
+		default:
+			t.Fatalf("concurrent claim: %v", result.err)
+		}
+	}
+	if winners != 1 || empty != 1 {
+		t.Fatalf("concurrent claim winners=%d empty=%d", winners, empty)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE labcentral_jobs SET lease_until_us = 0 WHERE operation_id = $1`, created.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	newClaim, err := storeB.Claim(ctx, "worker-after-crash", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newClaim.Operation.FencingToken <= oldClaim.Operation.FencingToken || newClaim.Operation.Attempt <= oldClaim.Operation.Attempt {
+		t.Fatalf("replacement claim did not advance fence: old=%#v new=%#v", oldClaim.Operation, newClaim.Operation)
+	}
+	oldFence := fenceFromClaim(oldClaim)
+	if err := storeA.MarkInstancePhase(ctx, oldFence, domain.InstanceApplying, "stale network partition"); !errors.Is(err, jobsdb.ErrFencingConflict) {
+		t.Fatalf("stale partitioned worker update returned %v", err)
+	}
+
+	newFence := fenceFromClaim(newClaim)
+	digest, err := domain.ParseSHA256Digest(strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := storeA.PrepareInvocation(ctx, controlplane.PrepareInvocationRequest{
+		Fence: newFence, InvocationID: "invocation.crash", ResourceID: "network.frontend", Action: "apply",
+		IdempotencyKey: "invocation.crash", RequestDigest: digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := storeB.PrepareInvocation(ctx, controlplane.PrepareInvocationRequest{
+		Fence: newFence, InvocationID: "invocation.replacement", ResourceID: "network.frontend", Action: "apply",
+		IdempotencyKey: "invocation.crash", RequestDigest: digest,
+	})
+	if err != nil || recovered.ID != prepared.ID || recovered.State != "prepared" {
+		t.Fatalf("recovered invocation = %#v, %v; original = %#v", recovered, err, prepared)
+	}
+
+	finalize := controlplane.FinalizeRequest{
+		Fence: newFence, OperationKind: controlplane.OperationApply, State: domain.OperationSucceeded,
+		InstancePhase: domain.InstanceReady, Message: "Ready", OutputsJSON: []byte(`{}`),
+		AuditID: "audit.multi-replica-final", EventID: "event.multi-replica-final",
+	}
+	finalResults := make(chan error, 2)
+	start = make(chan struct{})
+	for _, store := range []*localdb.Store{storeA, storeB} {
+		go func(store *localdb.Store) {
+			<-start
+			finalResults <- store.Finalize(ctx, finalize)
+		}(store)
+	}
+	close(start)
+	succeeded, fenced := 0, 0
+	for range 2 {
+		switch finalizeErr := <-finalResults; {
+		case finalizeErr == nil:
+			succeeded++
+		case errors.Is(finalizeErr, jobsdb.ErrFencingConflict):
+			fenced++
+		default:
+			t.Fatalf("concurrent finalization: %v", finalizeErr)
+		}
+	}
+	if succeeded != 1 || fenced != 1 {
+		t.Fatalf("terminal finalization succeeded=%d fenced=%d", succeeded, fenced)
+	}
+	operation, err := storeA.GetOperation(ctx, created.OperationID)
+	if err != nil || operation.State != domain.OperationSucceeded {
+		t.Fatalf("terminal operation = %#v, %v", operation, err)
+	}
+	for table, want := range map[string]int{"labcentral_job_events": 2, "labcentral_outbox_deliveries": 2} {
+		var count int
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != want {
+			t.Fatalf("%s count=%d want=%d err=%v", table, count, want, err)
+		}
+	}
+}
+
+func TestPostgreSQLConcurrentIdempotentCreateHasOneDurableResult(t *testing.T) {
+	openStore, _, _ := postgreSQLTestSchema(t, "idempotency")
+	storeA, db := openStore()
+	storeB, _ := openStore()
+	provider, _, closeProvider := testProvider(t)
+	defer closeProvider()
+	serviceA, err := controlplane.NewService(testRenderer(t), storeA, provider, controlplane.CryptoIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serviceB, err := controlplane.NewService(testRenderer(t), storeB, provider, controlplane.CryptoIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type createResult struct {
+		result controlplane.EnqueueResult
+		err    error
+	}
+	start := make(chan struct{})
+	results := make(chan createResult, 2)
+	for _, service := range []*controlplane.Service{serviceA, serviceB} {
+		go func(service *controlplane.Service) {
+			<-start
+			result, createErr := service.CreateInstance(context.Background(), source, true, "same-concurrent-key")
+			results <- createResult{result: result, err: createErr}
+		}(service)
+	}
+	close(start)
+	first, second := <-results, <-results
+	if first.err != nil || second.err != nil {
+		t.Fatalf("concurrent creates returned %v and %v", first.err, second.err)
+	}
+	if first.result.InstanceID != second.result.InstanceID || first.result.OperationID != second.result.OperationID || first.result.Replay == second.result.Replay {
+		t.Fatalf("concurrent idempotent results = %#v and %#v", first.result, second.result)
+	}
+	for table, want := range map[string]int{"labcentral_local_instances": 1, "labcentral_jobs": 1, "labcentral_idempotency_records": 1} {
+		var count int
+		if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != want {
+			t.Fatalf("%s count=%d want=%d err=%v", table, count, want, err)
+		}
+	}
+}
+
+func TestPostgreSQLBackupRestoreCompatibility(t *testing.T) {
+	toolsContainer := os.Getenv("LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER")
+	if toolsContainer == "" {
+		if _, err := exec.LookPath("pg_dump"); err != nil {
+			t.Skip("pg_dump is not installed")
+		}
+		if _, err := exec.LookPath("pg_restore"); err != nil {
+			t.Skip("pg_restore is not installed")
+		}
+	} else if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker is not installed")
+	}
+	toolDSN := dsnForPostgreSQLTools(t, toolsContainer)
+	if toolsContainer != "" && toolDSN == "" {
+		t.Skip("LABCENTRAL_TEST_POSTGRES_TOOLS_DSN is not set")
+	}
+	openStore, dsn, schemaName := postgreSQLTestSchema(t, "restore")
+	if toolDSN == "" {
+		toolDSN = dsn
+	}
+	store, db := openStore()
+	runExampleAStoreConformance(t, store, db)
+	tables := []string{
+		"labcentral_schema_migrations", "labcentral_local_instances", "labcentral_local_resources",
+		"labcentral_jobs", "labcentral_local_operations", "labcentral_runtime_invocations",
+		"labcentral_job_aggregates", "labcentral_audit_intents", "labcentral_job_events",
+		"labcentral_outbox_deliveries", "labcentral_idempotency_records", "labcentral_provider_allocation_claims",
+		"labcentral_local_provider_targets",
+	}
+	before := tableCounts(t, db, tables)
+	dumpPath := filepath.Join(t.TempDir(), "control-plane.dump")
+	dump := postgresToolCommand(toolsContainer, toolDSN, "pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--schema="+schemaName)
+	var dumpErrors bytes.Buffer
+	dump.Stderr = &dumpErrors
+	dumpBytes, err := dump.Output()
+	if err != nil {
+		t.Fatalf("pg_dump isolated control-plane schema: %v: %s", err, dumpErrors.Bytes())
+	}
+	if err := os.WriteFile(dumpPath, dumpBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	if _, err := admin.ExecContext(context.Background(), `DROP SCHEMA "`+schemaName+`" CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	restore := postgresToolCommand(toolsContainer, toolDSN, "pg_restore", "--exit-on-error", "--no-owner", "--no-privileges")
+	dumpFile, err := os.Open(dumpPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore.Stdin = dumpFile
+	var restoreErrors bytes.Buffer
+	restore.Stderr = &restoreErrors
+	err = restore.Run()
+	closeErr := dumpFile.Close()
+	if err != nil {
+		t.Fatalf("pg_restore isolated control-plane schema: %v: %s", err, restoreErrors.Bytes())
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	restoredStore, restoredDB := openStore()
+	after := tableCounts(t, restoredDB, tables)
+	for table, want := range before {
+		if after[table] != want {
+			t.Fatalf("restored %s count=%d want=%d", table, after[table], want)
+		}
+	}
+	instances, err := restoredStore.ListInstances(context.Background())
+	if err != nil || len(instances) != 1 || instances[0].Phase != domain.InstanceDestroyed {
+		t.Fatalf("restored instance = %#v, %v", instances, err)
+	}
+}
+
+func dsnForPostgreSQLTools(t *testing.T, toolsContainer string) string {
+	t.Helper()
+	if toolsContainer == "" {
+		return ""
+	}
+	return os.Getenv("LABCENTRAL_TEST_POSTGRES_TOOLS_DSN")
+}
+
+func postgresToolCommand(container, dsn, name string, arguments ...string) *exec.Cmd {
+	if container != "" {
+		dockerArguments := []string{"exec", "-i", container, name, "--dbname=" + dsn}
+		return exec.Command("docker", append(dockerArguments, arguments...)...)
+	}
+	command := exec.Command(name, arguments...)
+	command.Env = append(os.Environ(), "PGDATABASE="+dsn)
+	return command
+}
+
+func tableCounts(t *testing.T, db *sql.DB, tables []string) map[string]int {
+	t.Helper()
+	counts := make(map[string]int, len(tables))
+	for _, table := range tables {
+		var count int
+		if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		counts[table] = count
+	}
+	return counts
+}
+
+func fenceFromClaim(claim controlplane.WorkClaim) controlplane.Fence {
+	return controlplane.Fence{
+		OperationID: claim.Operation.ID, LeaseOwner: claim.LeaseOwner, Token: claim.Operation.FencingToken,
+		Generation: claim.Operation.Generation, Attempt: claim.Operation.Attempt,
+	}
+}
+
+func postgreSQLTestSchema(t *testing.T, suffix string) (func() (*localdb.Store, *sql.DB), string, string) {
+	t.Helper()
+	dsn := os.Getenv("LABCENTRAL_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("LABCENTRAL_TEST_POSTGRES_DSN is not set")
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") {
+		t.Fatalf("LABCENTRAL_TEST_POSTGRES_DSN must be a PostgreSQL URL: %v", err)
+	}
+	ctx := context.Background()
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = admin.Close() })
+	schemaName := fmt.Sprintf("labcentral_controlplane_%d_%d_%s", os.Getpid(), time.Now().UnixNano(), suffix)
+	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA "`+schemaName+`"`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = admin.ExecContext(context.Background(), `DROP SCHEMA "`+schemaName+`" CASCADE`) })
+	query := parsed.Query()
+	query.Set("search_path", schemaName)
+	parsed.RawQuery = query.Encode()
+	return func() (*localdb.Store, *sql.DB) {
+		db, err := sql.Open("pgx", parsed.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		store, err := localdb.NewPostgreSQL(db)
+		if err != nil {
+			_ = db.Close()
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = store.Close() })
+		if err := store.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return store, db
+	}, dsn, schemaName
+}
+
+func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
 	provider, engine, closeProvider := testProvider(t)
 	defer closeProvider()
 	renderer := testRenderer(t)

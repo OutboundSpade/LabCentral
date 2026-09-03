@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -35,10 +36,23 @@ import (
 
 var version = "dev"
 var authoringAliasPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+var replicaIDPattern = regexp.MustCompile(`^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+
+const (
+	deploymentModeSingleNode   = "single-node"
+	deploymentModeMultiReplica = "multi-replica"
+	artifactModeLocal          = "local-filesystem"
+	artifactModeShared         = "shared-filesystem"
+)
 
 type config struct {
 	listen                       string
 	dataDir                      string
+	deploymentMode               string
+	postgresDSNFile              string
+	replicaID                    string
+	artifactMode                 string
+	artifactDir                  string
 	dockerPlugin                 string
 	dockerPluginHash             string
 	proxmoxPlugin                string
@@ -99,6 +113,9 @@ func healthcheck() error {
 
 func run(logger *slog.Logger) error {
 	configuration := parseFlags()
+	if err := validateConfig(configuration); err != nil {
+		return err
+	}
 	if configuration.dockerPlugin == "" && configuration.dockerPluginHash != "" {
 		return fmt.Errorf("--docker-plugin-sha256 requires --docker-plugin")
 	}
@@ -180,12 +197,21 @@ func run(logger *slog.Logger) error {
 		defaultTargetID = string(controlplane.LocalDockerTarget)
 	}
 
-	store, err := localdb.Open(ctx, filepath.Join(configuration.dataDir, "labcentral.db"))
+	store, err := openControlPlaneStore(ctx, configuration)
 	if err != nil {
 		return err
 	}
 	defer store.Close()
-	artifacts, err := artifactfs.New(filepath.Join(configuration.dataDir, "artifacts"))
+	artifactDirectory := configuration.artifactDir
+	if artifactDirectory == "" {
+		artifactDirectory = filepath.Join(configuration.dataDir, "artifacts")
+	}
+	var artifacts *artifactfs.Store
+	if configuration.artifactMode == artifactModeShared {
+		artifacts, err = artifactfs.NewShared(artifactDirectory)
+	} else {
+		artifacts, err = artifactfs.New(artifactDirectory)
+	}
 	if err != nil {
 		return fmt.Errorf("open filesystem artifact store: %w", err)
 	}
@@ -208,6 +234,7 @@ func run(logger *slog.Logger) error {
 	defer cancelRefresh()
 	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger)
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
+		Owner:   configuration.replicaID,
 		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
 	})
 	if err != nil {
@@ -312,6 +339,11 @@ func parseFlags() config {
 	var result config
 	flag.StringVar(&result.listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	flag.StringVar(&result.dataDir, "data-dir", "./labcentral-data", "local SQLite, artifact, and runtime directory")
+	flag.StringVar(&result.deploymentMode, "deployment-mode", deploymentModeSingleNode, "deployment topology: single-node or multi-replica")
+	flag.StringVar(&result.postgresDSNFile, "postgres-dsn-file", "", "owner-only file containing the PostgreSQL connection URL")
+	flag.StringVar(&result.replicaID, "replica-id", "local-worker", "stable unique worker identity; required explicitly in multi-replica mode")
+	flag.StringVar(&result.artifactMode, "artifact-mode", artifactModeLocal, "artifact topology: local-filesystem or shared-filesystem")
+	flag.StringVar(&result.artifactDir, "artifact-dir", "", "artifact root; defaults beneath data-dir in single-node mode")
 	flag.StringVar(&result.dockerPlugin, "docker-plugin", defaultPlugin, "path to lab-provider-docker; empty disables Docker")
 	flag.StringVar(&result.dockerPluginHash, "docker-plugin-sha256", "", "pinned Docker plugin SHA-256; defaults to <plugin>.sha256")
 	flag.StringVar(&result.proxmoxPlugin, "proxmox-plugin", "", "path to lab-provider-proxmox; empty keeps Proxmox disabled")
@@ -324,6 +356,76 @@ func parseFlags() config {
 	flag.BoolVar(&result.unsafeNoAuth, "unsafe-listen-non-loopback-without-auth", false, "explicitly allow no-auth mode on a non-loopback listener")
 	flag.Parse()
 	return result
+}
+
+func validateConfig(configuration config) error {
+	switch configuration.deploymentMode {
+	case deploymentModeSingleNode:
+		if configuration.postgresDSNFile != "" {
+			return fmt.Errorf("--postgres-dsn-file requires --deployment-mode=%s", deploymentModeMultiReplica)
+		}
+		if configuration.artifactMode != artifactModeLocal {
+			return fmt.Errorf("single-node mode requires --artifact-mode=%s", artifactModeLocal)
+		}
+	case deploymentModeMultiReplica:
+		if configuration.postgresDSNFile == "" {
+			return fmt.Errorf("multi-replica mode requires --postgres-dsn-file")
+		}
+		if configuration.replicaID == "" || configuration.replicaID == "local-worker" || !replicaIDPattern.MatchString(configuration.replicaID) {
+			return fmt.Errorf("multi-replica mode requires an explicit DNS-label-like --replica-id")
+		}
+		if configuration.artifactMode != artifactModeShared {
+			return fmt.Errorf("multi-replica mode requires --artifact-mode=%s", artifactModeShared)
+		}
+		if !filepath.IsAbs(configuration.artifactDir) || filepath.Clean(configuration.artifactDir) != configuration.artifactDir || configuration.artifactDir == "/" {
+			return fmt.Errorf("multi-replica mode requires an absolute clean non-root --artifact-dir")
+		}
+		if configuration.proxmoxPlugin != "" {
+			return fmt.Errorf("multi-replica mode does not yet support the process-local Proxmox invocation journal")
+		}
+	default:
+		return fmt.Errorf("unsupported --deployment-mode %q", configuration.deploymentMode)
+	}
+	if !replicaIDPattern.MatchString(configuration.replicaID) {
+		return fmt.Errorf("--replica-id must be DNS-label-like")
+	}
+	return nil
+}
+
+func openControlPlaneStore(ctx context.Context, configuration config) (controlplane.Store, error) {
+	if configuration.deploymentMode == deploymentModeSingleNode {
+		return localdb.Open(ctx, filepath.Join(configuration.dataDir, "labcentral.db"))
+	}
+	contents, err := readPrivateRegularFile(configuration.postgresDSNFile, 16<<10)
+	if err != nil {
+		return nil, fmt.Errorf("read PostgreSQL connection secret: %w", err)
+	}
+	dsn := strings.TrimSpace(string(contents))
+	if err := validateProductionPostgreSQLDSN(dsn); err != nil {
+		for index := range contents {
+			contents[index] = 0
+		}
+		return nil, err
+	}
+	store, err := localdb.OpenPostgreSQL(ctx, dsn)
+	for index := range contents {
+		contents[index] = 0
+	}
+	if err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
+func validateProductionPostgreSQLDSN(dsn string) error {
+	parsed, err := url.Parse(dsn)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") || parsed.Host == "" || strings.TrimPrefix(parsed.Path, "/") == "" {
+		return fmt.Errorf("PostgreSQL connection secret must be a postgres URL with host and database")
+	}
+	if parsed.Query().Get("sslmode") != "verify-full" {
+		return fmt.Errorf("multi-replica PostgreSQL requires sslmode=verify-full")
+	}
+	return nil
 }
 
 func listenerIsLoopback(listener net.Listener) bool {
@@ -481,6 +583,21 @@ func readRegularFile(path string, maximumBytes int64) ([]byte, error) {
 	}
 	if len(contents) == 0 || int64(len(contents)) > maximumBytes {
 		return nil, fmt.Errorf("configured file is empty or exceeds its size limit")
+	}
+	return contents, nil
+}
+
+func readPrivateRegularFile(path string, maximumBytes int64) ([]byte, error) {
+	contents, err := readRegularFile(path, maximumBytes)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode().Perm()&0o077 != 0 {
+		for index := range contents {
+			contents[index] = 0
+		}
+		return nil, fmt.Errorf("configured secret must have no group or other permissions")
 	}
 	return contents, nil
 }

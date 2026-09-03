@@ -1,5 +1,6 @@
-// Package filesystem implements the single-node, content-addressed artifact
-// store used by LabCentral's laptop deployment.
+// Package filesystem implements LabCentral's content-addressed artifact store
+// for a local disk or a shared POSIX filesystem with working advisory locks,
+// atomic same-filesystem rename, and durable fsync semantics.
 package filesystem
 
 import (
@@ -15,9 +16,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -32,6 +35,18 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
+	return newStore(path, false)
+}
+
+// NewShared opens an artifact root that will be mounted by multiple labd
+// replicas. It verifies the advisory-lock primitive used to serialize mutable
+// staging uploads. The operator remains responsible for providing durable
+// shared storage with coherent POSIX rename and fsync behavior.
+func NewShared(path string) (*Store, error) {
+	return newStore(path, true)
+}
+
+func newStore(path string, verifySharedLock bool) (*Store, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("resolve artifact root: %w", err)
@@ -42,6 +57,10 @@ func New(path string) (*Store, error) {
 	if err := rejectSymlink(abs); err != nil {
 		return nil, err
 	}
+	rootInfo, err := os.Lstat(abs)
+	if err != nil || rootInfo.Mode().Perm() != 0o700 {
+		return nil, fmt.Errorf("artifact root mode must be 0700")
+	}
 	root, err := os.OpenRoot(abs)
 	if err != nil {
 		return nil, fmt.Errorf("open artifact root: %w", err)
@@ -49,6 +68,12 @@ func New(path string) (*Store, error) {
 	store := &Store{root: root}
 	for _, directory := range []string{stagingDirectory, objectsDirectory} {
 		if err := store.ensureDirectory(directory); err != nil {
+			_ = root.Close()
+			return nil, err
+		}
+	}
+	if verifySharedLock {
+		if err := store.verifyAdvisoryLocks(); err != nil {
 			_ = root.Close()
 			return nil, err
 		}
@@ -71,6 +96,7 @@ func (s *Store) Stage(ctx context.Context, expected application.VerifiedManifest
 			return "", err
 		}
 		dataName, manifestName := stagingNames(uploadID)
+		lockName := stagingLockName(uploadID)
 		data, err := s.root.OpenFile(dataName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if errors.Is(err, fs.ErrExist) {
 			continue
@@ -87,13 +113,25 @@ func (s *Store) Stage(ctx context.Context, expected application.VerifiedManifest
 			_ = s.root.Remove(dataName)
 			return "", fmt.Errorf("close staged artifact: %w", err)
 		}
+		lock, err := s.root.OpenFile(lockName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			_ = s.root.Remove(dataName)
+			return "", fmt.Errorf("create staged artifact lock: %w", err)
+		}
+		if err := lock.Close(); err != nil {
+			_ = s.root.Remove(dataName)
+			_ = s.root.Remove(lockName)
+			return "", fmt.Errorf("close staged artifact lock: %w", err)
+		}
 		if err := s.writeManifest(manifestName, expected); err != nil {
 			_ = s.root.Remove(dataName)
+			_ = s.root.Remove(lockName)
 			return "", err
 		}
 		if err := s.syncDirectory(stagingDirectory); err != nil {
 			_ = s.root.Remove(dataName)
 			_ = s.root.Remove(manifestName)
+			_ = s.root.Remove(lockName)
 			return "", err
 		}
 		return uploadID, nil
@@ -105,6 +143,11 @@ func (s *Store) Write(ctx context.Context, uploadID domain.UploadID, source io.R
 	if err := validateUploadID(uploadID); err != nil {
 		return application.MeasuredArtifact{}, err
 	}
+	unlock, err := s.acquireUploadLock(ctx, uploadID)
+	if err != nil {
+		return application.MeasuredArtifact{}, err
+	}
+	defer unlock()
 	expected, err := s.readStagedManifest(uploadID)
 	if err != nil {
 		return application.MeasuredArtifact{}, err
@@ -147,6 +190,11 @@ func (s *Store) Commit(ctx context.Context, uploadID domain.UploadID, supplied a
 	if err := validateUploadID(uploadID); err != nil {
 		return "", err
 	}
+	unlock, err := s.acquireUploadLock(ctx, uploadID)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
 	if err := validateManifest(supplied); err != nil {
 		return "", err
 	}
@@ -299,8 +347,8 @@ func (s *Store) ensureDirectory(name string) error {
 	if err != nil {
 		return fmt.Errorf("inspect artifact directory %q: %w", name, err)
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("artifact path %q is not a real directory", name)
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return fmt.Errorf("artifact path %q is not a private mode-0700 directory", name)
 	}
 	return nil
 }
@@ -370,6 +418,79 @@ func digestFromReference(reference domain.ArtifactRef) (domain.SHA256Digest, err
 func stagingNames(uploadID domain.UploadID) (string, string) {
 	base := stagingDirectory + "/" + string(uploadID)
 	return base + ".data", base + ".json"
+}
+
+func stagingLockName(uploadID domain.UploadID) string {
+	return stagingDirectory + "/" + string(uploadID) + ".lock"
+}
+
+func (s *Store) acquireUploadLock(ctx context.Context, uploadID domain.UploadID) (func(), error) {
+	name := stagingLockName(uploadID)
+	if err := s.requireRegular(name); err != nil {
+		return nil, err
+	}
+	file, err := s.root.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open staged artifact lock: %w", err)
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		_ = file.Close()
+		return nil, fmt.Errorf("staged artifact lock type or mode is invalid")
+	}
+	for {
+		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		if err == nil {
+			return func() {
+				_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+				_ = file.Close()
+			}, nil
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+			_ = file.Close()
+			return nil, fmt.Errorf("lock staged artifact: %w", err)
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			_ = file.Close()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *Store) verifyAdvisoryLocks() error {
+	id, err := newUploadID()
+	if err != nil {
+		return err
+	}
+	name := stagingDirectory + "/.shared-lock-selftest-" + string(id)
+	first, err := s.root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create shared artifact lock self-test: %w", err)
+	}
+	defer func() {
+		_ = first.Close()
+		_ = s.root.Remove(name)
+	}()
+	second, err := s.root.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("reopen shared artifact lock self-test: %w", err)
+	}
+	defer second.Close()
+	if err := unix.Flock(int(first.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		return fmt.Errorf("acquire shared artifact lock self-test: %w", err)
+	}
+	defer unix.Flock(int(first.Fd()), unix.LOCK_UN) //nolint:errcheck
+	if err := unix.Flock(int(second.Fd()), unix.LOCK_EX|unix.LOCK_NB); !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+		if err == nil {
+			_ = unix.Flock(int(second.Fd()), unix.LOCK_UN)
+		}
+		return fmt.Errorf("shared artifact filesystem does not enforce advisory locks")
+	}
+	return nil
 }
 
 func newUploadID() (domain.UploadID, error) {

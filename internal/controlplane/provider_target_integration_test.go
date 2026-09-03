@@ -154,6 +154,18 @@ func TestContractTESTPROXMOX023ProviderTargetPlansClaimsRoutesWorkerAndReleasesA
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	runProviderTargetStoreConformance(t, store)
+}
+
+func TestPostgreSQLProviderTargetStoreConformance(t *testing.T) {
+	openStore, _, _ := postgreSQLTestSchema(t, "targets")
+	store, _ := openStore()
+	runProviderTargetStoreConformance(t, store)
+}
+
+func runProviderTargetStoreConformance(t *testing.T, store *localdb.Store) {
+	t.Helper()
+	ctx := context.Background()
 	server := &allocationProvider{}
 	client, closeProvider := testProviderClient(t, server)
 	defer closeProvider()

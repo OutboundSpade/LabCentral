@@ -227,7 +227,7 @@ tasks:
       - The current release candidate passes normal/race/static/design suites and a fresh exact-build disposable-target qualification, signed artifact verification, authorized start/status/create/lifecycle/destroy, restart recovery, and independent absence checks.
   - id: TASK-PROD-001
     title: Implement the PostgreSQL production control-plane store and multi-replica fencing
-    status: proposed
+    status: complete
     dependencies: [TASK-PROXMOX-006, TASK-JOBS-001]
     relatedAdrs: [ADR-0001, ADR-0006, ADR-0011, ADR-0013]
     relatedDocuments: [internal/application, internal/adapter/jobsdb, internal/adapter/localdb, internal/controlplane, docs/design/database-schema.md, docs/design/persistence-and-artifacts.md, docs/design/reconciliation-and-jobs.md, docs/design/testing.md]

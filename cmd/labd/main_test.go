@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -10,6 +11,88 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestDeploymentModeStorageContract(t *testing.T) {
+	base := config{
+		deploymentMode: deploymentModeSingleNode,
+		replicaID:      "local-worker",
+		artifactMode:   artifactModeLocal,
+	}
+	if err := validateConfig(base); err != nil {
+		t.Fatalf("valid single-node configuration: %v", err)
+	}
+
+	postgresOnSingle := base
+	postgresOnSingle.postgresDSNFile = "/run/secrets/postgres-dsn"
+	if err := validateConfig(postgresOnSingle); err == nil || !strings.Contains(err.Error(), "multi-replica") {
+		t.Fatalf("single-node PostgreSQL configuration error = %v", err)
+	}
+
+	multi := base
+	multi.deploymentMode = deploymentModeMultiReplica
+	multi.postgresDSNFile = "/run/secrets/postgres-dsn"
+	multi.replicaID = "labd-0"
+	multi.artifactMode = artifactModeShared
+	multi.artifactDir = "/var/lib/labcentral-artifacts"
+	if err := validateConfig(multi); err != nil {
+		t.Fatalf("valid multi-replica configuration: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*config){
+		"missing PostgreSQL": func(candidate *config) { candidate.postgresDSNFile = "" },
+		"default replica":    func(candidate *config) { candidate.replicaID = "local-worker" },
+		"local artifacts":    func(candidate *config) { candidate.artifactMode = artifactModeLocal },
+		"relative artifacts": func(candidate *config) { candidate.artifactDir = "artifacts" },
+		"Proxmox journal":     func(candidate *config) { candidate.proxmoxPlugin = "/opt/labcentral/lab-provider-proxmox" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := multi
+			mutate(&candidate)
+			if err := validateConfig(candidate); err == nil {
+				t.Fatal("unsafe multi-replica configuration was accepted")
+			}
+		})
+	}
+}
+
+func TestPostgreSQLDSNFileIsPrivateAndErrorsAreRedacted(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "postgres-dsn")
+	canary := "postgres://labcentral:do-not-log-this@127.0.0.1:1/labcentral?sslmode=verify-full"
+	if err := os.WriteFile(path, []byte(canary+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configuration := config{deploymentMode: deploymentModeMultiReplica, postgresDSNFile: path}
+	if _, err := openControlPlaneStore(context.Background(), configuration); err == nil || !strings.Contains(err.Error(), "permissions") {
+		t.Fatalf("open with public secret error = %v", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := openControlPlaneStore(ctx, configuration)
+	if err == nil {
+		t.Fatal("cancelled PostgreSQL connection unexpectedly opened")
+	}
+	if strings.Contains(err.Error(), "do-not-log-this") || strings.Contains(err.Error(), canary) {
+		t.Fatalf("PostgreSQL error leaked DSN secret: %v", err)
+	}
+}
+
+func TestProductionPostgreSQLRequiresVerifiedTLS(t *testing.T) {
+	for value, valid := range map[string]bool{
+		"postgres://labcentral@example.test/labcentral?sslmode=verify-full": true,
+		"postgres://labcentral@example.test/labcentral?sslmode=require":     false,
+		"postgres://labcentral@example.test/labcentral?sslmode=disable":     false,
+		"postgres:///labcentral?sslmode=verify-full":                        false,
+	} {
+		err := validateProductionPostgreSQLDSN(value)
+		if (err == nil) != valid {
+			t.Fatalf("validateProductionPostgreSQLDSN(%q) = %v, valid=%t", value, err, valid)
+		}
+	}
+}
 
 func TestNoAuthListenerClassification(t *testing.T) {
 	for _, testCase := range []struct {
