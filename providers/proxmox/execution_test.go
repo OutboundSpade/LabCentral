@@ -623,6 +623,45 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 			t.Fatalf("destroy recovery=%#v deleteCalls=%d", result.GetError(), fixture.fake.deleteCalls)
 		}
 	})
+
+	for _, checkpoint := range []struct {
+		phase            string
+		taskType         string
+		initialStatus    string
+		expectedStopCall int
+	}{
+		{phase: "destroy-resume-submitted", taskType: "qmresume", initialStatus: "paused", expectedStopCall: 1},
+		{phase: "destroy-stop-submitted", taskType: "qmshutdown", initialStatus: "running", expectedStopCall: 0},
+	} {
+		t.Run(checkpoint.phase, func(t *testing.T) {
+			fixture := newExecutionFixture(t)
+			applied := applyVMFixture(t, fixture)
+			input := cloneMutationInput(fixture.vmInput)
+			input.Context = completeCall("restart-"+checkpoint.phase, "vm.lab", fixture.target.GetTargetId())
+			input.PriorState = applied.GetProviderState()
+			prepared, failure := fixture.service.prepareExecution(context.Background(), input, "destroy")
+			if failure != nil {
+				t.Fatal(failure.GetError())
+			}
+			prepared.client.CloseIdleConnections()
+			fixture.fake.statuses[100] = checkpoint.initialStatus
+			fixture.fake.deferLifecycleState = true
+			fixture.fake.completeTaskOnPoll = true
+			prepared.record.Phase = checkpoint.phase
+			prepared.record.TaskUPID = fakeUPID("pve-a", checkpoint.taskType, 100).Raw
+			if err := prepared.journal.Write(prepared.record); err != nil {
+				t.Fatal(err)
+			}
+			restarted := newT0MutationService(ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) { return fixture.fake, nil }))
+			stream := &destroyCapture{}
+			if err := restarted.DestroyResource(&pluginv1.DestroyResourceRequest{Input: input}, stream); err != nil {
+				t.Fatal(err)
+			}
+			if result := stream.events[len(stream.events)-1].GetEvent().GetResult(); result.GetError() != nil || fixture.fake.lifecycleCalls["stop"] != checkpoint.expectedStopCall || fixture.fake.deleteCalls != 1 {
+				t.Fatalf("destroy lifecycle recovery=%#v stopCalls=%d deleteCalls=%d", result.GetError(), fixture.fake.lifecycleCalls["stop"], fixture.fake.deleteCalls)
+			}
+		})
+	}
 }
 
 func materializeOwnedClone(t *testing.T, fake *fakeMutationAPI, plan QEMUPlan) {
@@ -863,6 +902,60 @@ func TestProxmoxFailureWindowContract(t *testing.T) {
 		result := stream.events[len(stream.events)-1].GetEvent().GetResult()
 		if result.GetError() != nil || fixture.fake.deleteCalls != 1 {
 			t.Fatalf("result=%#v delete=%d", result.GetError(), fixture.fake.deleteCalls)
+		}
+	})
+
+	t.Run("TEST-PROXMOX-014 definitive shutdown failures retry after owned unchanged readback", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		applied := applyVMFixture(t, fixture)
+		fixture.fake.deferLifecycleState = true
+		fixture.fake.completeTaskOnPoll = true
+		fixture.fake.taskFailuresRemaining["qmshutdown"] = maximumLifecycleAttempts - 1
+		input := cloneMutationInput(fixture.vmInput)
+		input.Context = completeCall("destroy-stop-retry", "vm.lab", fixture.target.GetTargetId())
+		input.PriorState = applied.GetProviderState()
+		stream := &destroyCapture{}
+		if err := fixture.service.DestroyResource(&pluginv1.DestroyResourceRequest{Input: input}, stream); err != nil {
+			t.Fatal(err)
+		}
+		result := stream.events[len(stream.events)-1].GetEvent().GetResult()
+		if result.GetError() != nil || fixture.fake.lifecycleCalls["stop"] != maximumLifecycleAttempts || fixture.fake.deleteCalls != 1 || countCalls(fixture.fake.calls, "GET config 100") < maximumLifecycleAttempts+2 {
+			t.Fatalf("result=%#v stopCalls=%d delete=%d calls=%#v", result.GetError(), fixture.fake.lifecycleCalls["stop"], fixture.fake.deleteCalls, fixture.fake.calls)
+		}
+	})
+
+	t.Run("TEST-PROXMOX-014 paused destroy resumes then stops before delete", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		applied := applyVMFixture(t, fixture)
+		fixture.fake.statuses[100] = "paused"
+		input := cloneMutationInput(fixture.vmInput)
+		input.Context = completeCall("destroy-paused", "vm.lab", fixture.target.GetTargetId())
+		input.PriorState = applied.GetProviderState()
+		stream := &destroyCapture{}
+		if err := fixture.service.DestroyResource(&pluginv1.DestroyResourceRequest{Input: input}, stream); err != nil {
+			t.Fatal(err)
+		}
+		result := stream.events[len(stream.events)-1].GetEvent().GetResult()
+		if result.GetError() != nil || fixture.fake.lifecycleCalls["resume"] != 1 || fixture.fake.lifecycleCalls["stop"] != 1 || fixture.fake.deleteCalls != 1 {
+			t.Fatalf("result=%#v resume=%d stop=%d delete=%d", result.GetError(), fixture.fake.lifecycleCalls["resume"], fixture.fake.lifecycleCalls["stop"], fixture.fake.deleteCalls)
+		}
+	})
+
+	t.Run("TEST-PROXMOX-014 unknown shutdown outcome is never resubmitted or deleted", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		applied := applyVMFixture(t, fixture)
+		fixture.fake.deferLifecycleState = true
+		fixture.fake.runningTaskType = "qmshutdown"
+		input := cloneMutationInput(fixture.vmInput)
+		input.Context = completeCall("destroy-stop-unknown", "vm.lab", fixture.target.GetTargetId())
+		input.PriorState = applied.GetProviderState()
+		stream := &destroyCapture{}
+		if err := fixture.service.DestroyResource(&pluginv1.DestroyResourceRequest{Input: input}, stream); err != nil {
+			t.Fatal(err)
+		}
+		result := stream.events[len(stream.events)-1].GetEvent().GetResult()
+		if result.GetError().GetCode() != "unknown_destroy_lifecycle_outcome" || !result.GetError().GetRetryable() || fixture.fake.lifecycleCalls["stop"] != 1 || fixture.fake.deleteCalls != 0 {
+			t.Fatalf("result=%#v stopCalls=%d delete=%d", result.GetError(), fixture.fake.lifecycleCalls["stop"], fixture.fake.deleteCalls)
 		}
 	})
 

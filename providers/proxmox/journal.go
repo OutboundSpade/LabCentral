@@ -244,7 +244,7 @@ func journalTaskTypes(action string) []string {
 	case "apply":
 		return []string{"qmclone", "qmconfig", "qmstart"}
 	case "destroy":
-		return []string{"qmdestroy"}
+		return []string{"qmresume", "qmshutdown", "qmdestroy"}
 	case "start":
 		return []string{"qmstart"}
 	case "stop":
@@ -260,7 +260,7 @@ func journalTaskTypes(action string) []string {
 
 func validJournalPhase(phase string) bool {
 	switch phase {
-	case "prepared", "clone-submitted", "clone-complete", "config-submitted", "configured", "lifecycle-submitted", "ready", "destroy-submitted", "destroyed", "failed", "partial":
+	case "prepared", "clone-submitted", "clone-complete", "config-submitted", "configured", "lifecycle-submitted", "ready", "destroy-resume-submitted", "destroy-stop-submitted", "destroy-submitted", "destroyed", "failed", "partial":
 		return true
 	default:
 		return false

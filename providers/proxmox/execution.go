@@ -166,6 +166,23 @@ func (service *Service) destroyVM(ctx context.Context, prepared *preparedExecuti
 		}
 		return successResult(nil, observed, prepared.input.GetOwnershipTokens())
 	}
+	if prepared.existing != nil && (prepared.existing.Phase == "destroy-resume-submitted" || prepared.existing.Phase == "destroy-stop-submitted") {
+		taskType := "qmresume"
+		if prepared.existing.Phase == "destroy-stop-submitted" {
+			taskType = "qmshutdown"
+		}
+		upid, parseErr := ParseUPID(prepared.existing.TaskUPID)
+		if parseErr != nil || upid.validateObject(state.Node, state.VMID, taskType) != nil {
+			return prepared.fail("partial", "invalid_task_identity", "provider_protocol_error", "Persisted Proxmox destroy lifecycle task identity is invalid", false, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
+		}
+		if waitErr := service.waitTask(ctx, prepared.client, state.Node, upid); waitErr != nil && !errors.Is(waitErr, errTaskReportedFailure) {
+			return prepared.fail("partial", "unknown_destroy_lifecycle_outcome", "unknown_outcome", "Persisted Proxmox destroy lifecycle task outcome is unknown", true, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
+		}
+		prepared.record.TaskUPID = ""
+		if !prepared.checkpoint("prepared", "persisted destroy lifecycle task reached a terminal outcome") {
+			return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox destroy lifecycle recovery could not be persisted", true, state.LogicalResourceID)
+		}
+	}
 	current, exists, err := readOptionalVMConfig(ctx, prepared.client, state.Node, state.VMID)
 	if err != nil {
 		return prepared.fail("partial", "provider_read_failed", "provider_unavailable", "Proxmox VM could not be checked before destroy", true, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
@@ -184,11 +201,22 @@ func (service *Service) destroyVM(ctx context.Context, prepared *preparedExecuti
 	if err != nil {
 		return prepared.fail("partial", "provider_read_failed", "provider_unavailable", "Proxmox VM status could not be read before destroy", true, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
 	}
-	if status.Status == "running" {
-		upid, stopErr := prepared.client.LifecycleVM(ctx, LifecycleRequest{Node: state.Node, VMID: state.VMID, Action: "stop"})
-		if stopErr != nil || upid.validateObject(state.Node, state.VMID, "qmshutdown") != nil || service.waitTask(ctx, prepared.client, state.Node, upid) != nil {
-			return prepared.fail("partial", "provider_stop_failed", "provider_failure", "Proxmox VM did not stop cleanly before destroy", false, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
+	if failure := service.prepareVMForDestroy(ctx, prepared, state, status); failure != nil {
+		return failure
+	}
+	current, exists, err = readOptionalVMConfig(ctx, prepared.client, state.Node, state.VMID)
+	if err != nil {
+		return prepared.fail("partial", "provider_read_failed", "provider_unavailable", "Proxmox VM ownership could not be rechecked before destroy", true, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
+	}
+	if !exists {
+		observed := &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "VM", Node: state.Node, VMID: state.VMID, Destroyed: true}
+		if prepared.finish("destroyed", nil, observed, nil, false, true) != nil {
+			return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox invocation result could not be persisted", true, state.LogicalResourceID)
 		}
+		return successResult(nil, observed, prepared.input.GetOwnershipTokens())
+	}
+	if verifyOwnership(current.Description, *state.Ownership) != nil {
+		return prepared.fail("partial", "ownership_mismatch", "ownership_mismatch", "Proxmox VM ownership changed before destroy", false, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
 	}
 	upid, err := prepared.client.DeleteVM(ctx, state.Node, state.VMID)
 	if err != nil {
@@ -221,6 +249,79 @@ func (service *Service) destroyVM(ctx context.Context, prepared *preparedExecuti
 		return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox invocation result could not be persisted", true, state.LogicalResourceID)
 	}
 	return successResult(nil, observed, prepared.input.GetOwnershipTokens())
+}
+
+func (service *Service) prepareVMForDestroy(ctx context.Context, prepared *preparedExecution, state QEMUProviderState, status VMStatus) *pluginv1.ResourceResult {
+	if status.Status == "paused" {
+		var failure *pluginv1.ResourceResult
+		status, failure = service.destroyLifecycleTransition(ctx, prepared, state, status, "resume", "paused", "running", "qmresume", "destroy-resume-submitted", "provider_resume_failed")
+		if failure != nil {
+			return failure
+		}
+	}
+	if status.Status == "stopped" {
+		return nil
+	}
+	if status.Status != "running" {
+		return prepared.fail("partial", "invalid_destroy_power_state", "conflict", "Proxmox VM is not in a power state that permits safe destroy", false, false, false, []string{fmt.Sprintf("qemu/%d", state.VMID)})
+	}
+	_, failure := service.destroyLifecycleTransition(ctx, prepared, state, status, "stop", "running", "stopped", "qmshutdown", "destroy-stop-submitted", "provider_stop_failed")
+	return failure
+}
+
+func (service *Service) destroyLifecycleTransition(ctx context.Context, prepared *preparedExecution, state QEMUProviderState, status VMStatus, action, source, desired, taskType, phase, failureCode string) (VMStatus, *pluginv1.ResourceResult) {
+	leftovers := []string{fmt.Sprintf("qemu/%d", state.VMID)}
+	for attempt := 0; attempt < maximumLifecycleAttempts && status.Status != desired; attempt++ {
+		if status.Status != source {
+			return status, prepared.fail("partial", "invalid_destroy_power_state", "conflict", "Proxmox VM changed to a power state that does not permit safe destroy", false, false, false, leftovers)
+		}
+		current, exists, err := readOptionalVMConfig(ctx, prepared.client, state.Node, state.VMID)
+		if err != nil {
+			return status, prepared.fail("partial", "provider_read_failed", "provider_unavailable", "Proxmox VM ownership could not be checked before a destroy lifecycle action", true, false, false, leftovers)
+		}
+		if !exists || state.Ownership == nil || verifyOwnership(current.Description, *state.Ownership) != nil {
+			return status, prepared.fail("partial", "ownership_mismatch", "ownership_mismatch", "Proxmox VM ownership could not be verified before a destroy lifecycle action", false, false, false, leftovers)
+		}
+		upid, actionErr := prepared.client.LifecycleVM(ctx, LifecycleRequest{Node: state.Node, VMID: state.VMID, Action: action})
+		if actionErr != nil {
+			observed, readErr := prepared.client.VMStatus(ctx, state.Node, state.VMID)
+			if readErr == nil && observed.Status == desired {
+				return observed, nil
+			}
+			return status, prepared.fail("partial", "unknown_destroy_lifecycle_outcome", "unknown_outcome", "Proxmox destroy lifecycle outcome is unknown", true, false, false, leftovers)
+		}
+		if upid.validateObject(state.Node, state.VMID, taskType) != nil {
+			return status, prepared.fail("partial", "invalid_task_identity", "provider_protocol_error", "Proxmox destroy lifecycle returned an invalid task identity", false, false, false, leftovers)
+		}
+		prepared.record.TaskUPID = upid.Raw
+		if !prepared.checkpoint(phase, "destroy lifecycle task accepted") {
+			return status, executionFailure("journal_unavailable", "unknown_outcome", "Proxmox destroy lifecycle task could not be persisted", true, state.LogicalResourceID)
+		}
+		waitErr := service.waitTask(ctx, prepared.client, state.Node, upid)
+		observed, readErr := prepared.client.VMStatus(ctx, state.Node, state.VMID)
+		if readErr != nil {
+			return status, prepared.fail("partial", "unknown_destroy_lifecycle_outcome", "unknown_outcome", "Proxmox destroy lifecycle state could not be confirmed", true, false, false, leftovers)
+		}
+		status = observed
+		if status.Status == desired {
+			return status, nil
+		}
+		if waitErr == nil || !errors.Is(waitErr, errTaskReportedFailure) {
+			return status, prepared.fail("partial", "unknown_destroy_lifecycle_outcome", "unknown_outcome", "Proxmox destroy lifecycle outcome is unknown", true, false, false, leftovers)
+		}
+		if status.Status != source {
+			return status, prepared.fail("partial", "unknown_destroy_lifecycle_outcome", "unknown_outcome", "Proxmox destroy lifecycle left the VM in an unexpected state", true, false, false, leftovers)
+		}
+		if attempt+1 == maximumLifecycleAttempts {
+			return status, prepared.fail("partial", failureCode, "provider_failure", "Proxmox VM did not reach the required state before destroy", false, false, false, leftovers)
+		}
+		prepared.record.TaskUPID = ""
+		if !prepared.checkpoint("prepared", "destroy lifecycle task failed before state change") {
+			return status, executionFailure("journal_unavailable", "unknown_outcome", "Proxmox destroy lifecycle retry could not be persisted", true, state.LogicalResourceID)
+		}
+		service.sleep(2 * time.Second)
+	}
+	return status, nil
 }
 
 func (service *Service) Lifecycle(request *pluginv1.LifecycleRequest, stream grpc.ServerStreamingServer[pluginv1.LifecycleResponse]) error {
