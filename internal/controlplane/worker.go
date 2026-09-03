@@ -191,7 +191,7 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 			observed, projectionErr := projectCoreResource(resource, resources)
 			if projectionErr != nil {
 				_ = w.store.SaveCoreResource(ctx, fence, resource.ID, domain.ResourceFailed, []byte(`{}`))
-				return w.compensateAndFinalize(ctx, fence, instance, resource.ID, projectionErr)
+				return w.compensateAndFinalize(ctx, fence, instance, resource.ID, nil, projectionErr)
 			}
 			if err := w.store.SaveCoreResource(ctx, fence, resource.ID, domain.ResourceReady, observed); err != nil {
 				return err
@@ -203,7 +203,7 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 			return callErr
 		}
 		if result.GetError() != nil {
-			return w.compensateAndFinalize(ctx, fence, instance, resource.ID, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
+			return w.compensateAndFinalize(ctx, fence, instance, resource.ID, result, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
 		}
 		resources, err = w.store.ListResources(ctx, instance.ID)
 		if err != nil {
@@ -216,7 +216,7 @@ func (w *Worker) apply(ctx context.Context, fence Fence, instance InstanceRecord
 	}
 	outputs, err := collectOutputs(resources)
 	if err != nil {
-		return w.compensateAndFinalize(ctx, fence, instance, "", err)
+		return w.compensateAndFinalize(ctx, fence, instance, "", nil, err)
 	}
 	return w.finalize(ctx, fence, OperationApply, domain.OperationSucceeded, domain.InstanceReady, "Lab is ready", "", "", outputs)
 }
@@ -549,12 +549,15 @@ func (w *Worker) saveUnknown(ctx context.Context, fence Fence, invocationID doma
 	return fmt.Errorf("provider outcome for %s is unknown: %w", resource.ID, cause)
 }
 
-func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instance InstanceRecord, failedResource domain.LogicalResourceID, cause error) error {
+func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instance InstanceRecord, failedResource domain.LogicalResourceID, failedResult *pluginv1.ResourceResult, cause error) error {
 	resources, err := w.store.ListResources(ctx, instance.ID)
 	if err != nil {
 		return err
 	}
 	leftovers := make([]string, 0)
+	if failedResource != "" && resultHasOwnedLeftovers(failedResult) {
+		leftovers = append(leftovers, string(failedResource))
+	}
 	for index := len(resources) - 1; index >= 0; index-- {
 		resource := resources[index]
 		if resource.Phase == domain.ResourceDestroyed {
@@ -585,6 +588,19 @@ func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, instanc
 		message += " (failed at " + string(failedResource) + ")"
 	}
 	return w.finalize(ctx, fence, OperationApply, state, phase, message, errorCode, cause.Error(), nil)
+}
+
+func resultHasOwnedLeftovers(result *pluginv1.ResourceResult) bool {
+	if result == nil || result.GetError() == nil || result.GetCompensationComplete() {
+		return false
+	}
+	if result.GetCompensationAttempted() {
+		return true
+	}
+	var observed struct {
+		Leftovers []json.RawMessage `json:"leftovers"`
+	}
+	return json.Unmarshal(result.GetObservedStateJson(), &observed) == nil && len(observed.Leftovers) > 0
 }
 
 func (w *Worker) finalize(ctx context.Context, fence Fence, kind OperationKind, state domain.OperationState, phase domain.InstancePhase, message, errorCode, errorMessage string, outputs []byte) error {

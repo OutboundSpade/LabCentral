@@ -26,7 +26,7 @@ import (
 const (
 	maximumTaskPolls         = 192
 	maximumTaskReadErrors    = 8
-	maximumReadinessPolls    = 8
+	maximumReadinessPolls    = 75
 	maximumLifecycleAttempts = 3
 )
 
@@ -958,11 +958,21 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 		service.sleep(boundedBackoff(attempt))
 	}
 	if !ready {
-		return prepared.fail("partial", "guest_not_ready", "timeout", "Proxmox guest did not become ready", true, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+		complete, leftovers := service.compensateVM(ctx, prepared)
+		phase := "failed"
+		if !complete {
+			phase = "partial"
+		}
+		return prepared.fail(phase, "guest_not_ready", "timeout", "Proxmox guest did not become ready", true, true, complete, leftovers)
 	}
 	finalConfig, err := prepared.client.VMConfig(ctx, plan.Destination.Node, vmid)
 	if err != nil || verifyOwnership(finalConfig.Description, *plan.Ownership) != nil || !managedConfigurationMatches(plan, finalConfig) {
-		return prepared.fail("partial", "provider_drift", "conflict", "Proxmox VM drifted before readiness", false, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+		complete, leftovers := service.compensateVM(ctx, prepared)
+		phase := "failed"
+		if !complete {
+			phase = "partial"
+		}
+		return prepared.fail(phase, "provider_drift", "conflict", "Proxmox VM drifted before readiness", false, true, complete, leftovers)
 	}
 	state := qemuVMState(plan, finalConfig, "ready", prepared.record.TaskUPID)
 	observed := &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "VM", Node: plan.Destination.Node, VMID: vmid, PowerState: "running", GuestReady: true, ConfigDigest: finalConfig.Digest, Networks: append([]NetworkBinding(nil), plan.Networks...)}

@@ -98,6 +98,28 @@ func TestPrivateDataDirectoryPermissions(t *testing.T) {
 	}
 }
 
+func TestPackagedProxmoxServiceUsesAdjacentChecksumFile(t *testing.T) {
+	service, err := os.ReadFile(filepath.Join("..", "..", "deploy", "proxmox", "labcentral.service"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(service)
+	if !strings.Contains(contents, "--proxmox-plugin /opt/labcentral/lab-provider-proxmox") {
+		t.Fatal("packaged service does not select the Proxmox provider")
+	}
+	if strings.Contains(contents, "--proxmox-plugin-sha256") {
+		t.Fatal("packaged service passes the checksum filename as a literal digest")
+	}
+	directory := t.TempDir()
+	plugin := filepath.Join(directory, "lab-provider-proxmox")
+	if err := os.WriteFile(plugin+".sha256", []byte(strings.Repeat("a", 64)+"  lab-provider-proxmox\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := configuredPluginDigest(plugin, "", "Proxmox"); err != nil || digest != strings.Repeat("a", 64) {
+		t.Fatalf("adjacent packaged checksum = %q, %v", digest, err)
+	}
+}
+
 func TestProxmoxAuthoringExampleUsesOnlyApprovedAliasesAndDigest(t *testing.T) {
 	example, err := proxmoxAuthoringExample([]byte(`{
 		"templates":[{"alias":"debian","contentDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],

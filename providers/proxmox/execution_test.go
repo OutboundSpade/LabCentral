@@ -46,6 +46,8 @@ type fakeMutationAPI struct {
 	lifecycleErrorAfter      map[string]bool
 	malformedUPIDType        string
 	agentError               bool
+	agentFailuresRemaining   int
+	agentCalls               int
 	missingConfigStatusCode  int
 	completeTaskOnPoll       bool
 	deferLifecycleState      bool
@@ -221,6 +223,14 @@ func (fake *fakeMutationAPI) LifecycleVM(_ context.Context, request LifecycleReq
 }
 func (fake *fakeMutationAPI) GuestAgentPing(_ context.Context, _ string, vmid uint32) error {
 	fake.record(fmt.Sprintf("POST agent %d", vmid))
+	fake.mu.Lock()
+	fake.agentCalls++
+	if fake.agentFailuresRemaining > 0 {
+		fake.agentFailuresRemaining--
+		fake.mu.Unlock()
+		return errors.New("agent temporarily unavailable")
+	}
+	fake.mu.Unlock()
 	if fake.agentError {
 		return errors.New("agent unavailable")
 	}
@@ -813,6 +823,24 @@ func TestProxmoxFailureWindowContract(t *testing.T) {
 		result := applyVMFixture(t, fixture)
 		if result.GetError() != nil || fixture.fake.lifecycleCalls["start"] != 1 {
 			t.Fatalf("result=%#v startCalls=%d", result.GetError(), fixture.fake.lifecycleCalls["start"])
+		}
+	})
+
+	t.Run("TEST-PROXMOX-012 guest readiness tolerates a bounded boot delay", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		fixture.fake.agentFailuresRemaining = 10
+		result := applyVMFixture(t, fixture)
+		if result.GetError() != nil || fixture.fake.agentCalls != 11 {
+			t.Fatalf("result=%#v agentCalls=%d", result.GetError(), fixture.fake.agentCalls)
+		}
+	})
+
+	t.Run("TEST-PROXMOX-012 guest readiness timeout remains bounded", func(t *testing.T) {
+		fixture := newExecutionFixture(t)
+		fixture.fake.agentError = true
+		result := applyVMFixture(t, fixture)
+		if result.GetError().GetCode() != "guest_not_ready" || !result.GetError().GetRetryable() || fixture.fake.agentCalls != maximumReadinessPolls || !result.GetCompensationAttempted() || !result.GetCompensationComplete() || fixture.fake.deleteCalls != 1 {
+			t.Fatalf("result=%#v agentCalls=%d compensation=%t/%t delete=%d", result.GetError(), fixture.fake.agentCalls, result.GetCompensationAttempted(), result.GetCompensationComplete(), fixture.fake.deleteCalls)
 		}
 	})
 
