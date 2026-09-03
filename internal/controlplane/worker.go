@@ -15,6 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const providerInvocationTimeout = 10 * time.Minute
+
 type Worker struct {
 	store         Store
 	targets       *TargetRegistry
@@ -274,7 +276,7 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instance InstanceRecor
 		return nil, err
 	}
 	scope := application.InvocationScope{
-		InvocationID: prepared.ID, InstanceID: instance.ID, ResourceID: resource.ID, ExpiresAt: time.Now().Add(2 * time.Minute),
+		InvocationID: prepared.ID, InstanceID: instance.ID, ResourceID: resource.ID, ExpiresAt: time.Now().Add(providerInvocationTimeout + time.Minute),
 	}
 	session, err := w.targets.Acquire(ctx, instance.ProviderTargetID, scope, true)
 	if err != nil {
@@ -305,7 +307,7 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, instance InstanceRecor
 	if err != nil {
 		return nil, err
 	}
-	callContext, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	callContext, cancel := context.WithTimeout(ctx, providerInvocationTimeout)
 	defer cancel()
 	var result *pluginv1.ResourceResult
 	if action == "apply" {

@@ -2,9 +2,16 @@ package controlplane
 
 import (
 	"testing"
+	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 )
+
+func TestProviderInvocationEnvelopeCoversBoundedLongRunningTasks(t *testing.T) {
+	if providerInvocationTimeout < 10*time.Minute {
+		t.Fatalf("provider invocation timeout = %s", providerInvocationTimeout)
+	}
+}
 
 func TestFailedResourceLeftoverClassificationIsHonest(t *testing.T) {
 	failure := &pluginv1.StructuredError{Code: "provider_failure", ErrorClass: "provider_failure", SafeMessage: "Provider operation failed"}

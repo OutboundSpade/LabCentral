@@ -29,6 +29,12 @@ Operation is user-visible intent; jobs are schedulable attempts; steps are check
 
 Recommended initial defaults: 30-second job lease, heartbeat every 10 seconds, operation-specific deadlines, exponential retry with full jitter and maximum attempts/elapsed time by error class. Permanent validation/auth/quota/state-version errors are not retried automatically.
 
+The single-node worker gives one provider resource invocation a ten-minute
+deadline while continuing to renew its 30-second database lease. This covers
+the Proxmox provider's bounded five-minute task polling plus configuration,
+start, and guest-readiness confirmation without weakening fencing. Credential
+resolution is scoped to the same invocation with one minute of expiry margin.
+
 ## Graph execution
 
 References and `dependsOn` form a DAG. Stable Kahn topological sorting produces deterministic layers. Resources within a layer run in parallel up to global, target, instance, and provider-advertised limits. Per-resource exclusive locks prevent conflicting lifecycle operations; instance-level locks serialize apply/reset/restore/clone/destroy while start/stop may use graph-safe concurrency.
