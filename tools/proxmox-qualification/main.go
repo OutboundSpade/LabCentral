@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/tools/proxmox-qualification/qualification"
@@ -26,9 +28,11 @@ func main() {
 
 func run(arguments []string, output io.Writer) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: proxmox-qualification <sign|verify> [options]")
+		return errors.New("usage: proxmox-qualification <keygen|sign|verify> [options]")
 	}
 	switch arguments[0] {
+	case "keygen":
+		return runKeygen(arguments[1:], output)
 	case "sign":
 		return runSign(arguments[1:], output)
 	case "verify":
@@ -36,6 +40,87 @@ func run(arguments []string, output io.Writer) error {
 	default:
 		return fmt.Errorf("unknown qualification command %q", arguments[0])
 	}
+}
+
+func runKeygen(arguments []string, output io.Writer) error {
+	flags := flag.NewFlagSet("keygen", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	directory := flags.String("directory", "", "existing private output directory")
+	keyID := flags.String("key-id", "", "stable reviewer key ID used as the filename prefix")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || *directory == "" || !validKeyID(*keyID) {
+		return errors.New("usage: proxmox-qualification keygen --directory ABSOLUTE_PRIVATE_DIRECTORY --key-id ID")
+	}
+	if !filepath.IsAbs(*directory) || filepath.Clean(*directory) != *directory || *directory == string(filepath.Separator) {
+		return errors.New("key output directory must be absolute, clean, and non-root")
+	}
+	info, err := os.Lstat(*directory)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("key output directory must be an existing private non-symlink directory")
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return errors.New("generate reviewer key")
+	}
+	defer clear(privateKey)
+	privatePath := filepath.Join(*directory, *keyID+".private")
+	publicPath := filepath.Join(*directory, *keyID+".public")
+	privateEncoded := []byte(base64.RawURLEncoding.EncodeToString(privateKey) + "\n")
+	defer clear(privateEncoded)
+	if err := writeExclusiveKey(privatePath, privateEncoded, 0o600); err != nil {
+		return fmt.Errorf("write private reviewer key: %w", err)
+	}
+	publicEncoded := []byte(base64.RawURLEncoding.EncodeToString(publicKey) + "\n")
+	if err := writeExclusiveKey(publicPath, publicEncoded, 0o644); err != nil {
+		_ = os.Remove(privatePath)
+		return fmt.Errorf("write public reviewer key: %w", err)
+	}
+	result := struct {
+		KeyID      string `json:"keyID"`
+		PrivateKey string `json:"privateKey"`
+		PublicKey  string `json:"publicKey"`
+	}{KeyID: *keyID, PrivateKey: privatePath, PublicKey: publicPath}
+	if err := json.NewEncoder(output).Encode(result); err != nil {
+		return fmt.Errorf("write key-generation result: %w", err)
+	}
+	return nil
+}
+
+func validKeyID(value string) bool {
+	if len(value) == 0 || len(value) > 128 {
+		return false
+	}
+	for index, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || index > 0 && (character == '.' || character == '_' || character == '-') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func writeExclusiveKey(path string, contents []byte, mode os.FileMode) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return err
+	}
+	remove := true
+	defer func() {
+		_ = file.Close()
+		if remove {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err := file.Write(contents); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	remove = false
+	return nil
 }
 
 func runSign(arguments []string, output io.Writer) error {

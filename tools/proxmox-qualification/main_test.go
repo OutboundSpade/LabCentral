@@ -43,10 +43,53 @@ func TestQualificationToolRequiresModeProtectedNonSymlinkKeys(t *testing.T) {
 }
 
 func TestQualificationToolHasNoImplicitAction(t *testing.T) {
-	if err := run(nil, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "<sign|verify>") {
+	if err := run(nil, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "<keygen|sign|verify>") {
 		t.Fatalf("empty command error = %v", err)
 	}
 	if err := run([]string{"execute"}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "unknown qualification command") {
 		t.Fatalf("unexpected command error = %v", err)
+	}
+}
+
+func TestQualificationToolGeneratesProtectedReviewerKeypair(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "keys")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := run([]string{"keygen", "--directory", directory, "--key-id", "reviewer.test-1"}, &output); err != nil {
+		t.Fatal(err)
+	}
+	privatePath := filepath.Join(directory, "reviewer.test-1.private")
+	publicPath := filepath.Join(directory, "reviewer.test-1.public")
+	privateKey, err := readEncodedKey(privatePath, ed25519.PrivateKeySize, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(privateKey)
+	publicKey, err := readEncodedKey(publicPath, ed25519.PublicKeySize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(privateKey[ed25519.SeedSize:], publicKey) {
+		t.Fatal("generated public key does not match private key")
+	}
+	privateInfo, _ := os.Stat(privatePath)
+	publicInfo, _ := os.Stat(publicPath)
+	if privateInfo.Mode().Perm() != 0o600 || publicInfo.Mode().Perm() != 0o644 || !strings.Contains(output.String(), "reviewer.test-1") {
+		t.Fatalf("generated key modes/output = %o %o %q", privateInfo.Mode().Perm(), publicInfo.Mode().Perm(), output.String())
+	}
+	if err := run([]string{"keygen", "--directory", directory, "--key-id", "reviewer.test-1"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("existing keypair was overwritten")
+	}
+}
+
+func TestQualificationToolKeygenRejectsNonPrivateDirectory(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "keys")
+	if err := os.Mkdir(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"keygen", "--directory", directory, "--key-id", "reviewer.test"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("non-private key directory was accepted")
 	}
 }

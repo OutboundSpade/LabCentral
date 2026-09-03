@@ -2,6 +2,7 @@
 /web/.svelte-kit/
 /dist/
 /bin/
+.env
 *.db
 *.db-shm
 *.db-wal

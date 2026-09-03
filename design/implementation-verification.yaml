@@ -227,6 +227,7 @@ checks:
   - protected_target_configuration_and_immutable_plugin_execution_snapshot
   - terminal_provider_child_failure_is_observable_by_labd
   - target_specific_api_and_ui_authoring_examples
+  - protected_non_overwriting_reviewer_key_generation
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
@@ -235,7 +236,7 @@ notes:
   - Every TEST-PROXMOX-001 through TEST-PROXMOX-028 case has an executable normal-CI binding. The required target-applicable credentialed T3 cases, real guest probes, signed artifact assembly, and read-only prior-build state/journal rehearsal passed on the disposable testbed.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
-  - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or self-approval command; the native release now includes it so operators can verify or sign independently assembled evidence.
+  - The qualification review tool creates protected non-overwriting Ed25519 reviewer keypairs and signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or self-approval command; the native release includes it so reviewers can work from an offline host.
   - TEST-PROXMOX-025 exercised its activation guard, closed profile, and exact synthetic claim planning only. No T3 environment variables, target profile, or credential file were configured, so the destructive smoke skipped before any provider call.
   - The credentialed Proxmox lifecycle, isolation, and failure/recovery runners are package-test-only, use the existing private mutation constructor, and cannot be invoked by the production provider binary. They do not emit signed passing evidence individually.
   - TEST-PROXMOX-026 used only synthetic TCP outcomes and local TLS servers. It proved dedicated client and server trust, closed schemas, response/evidence binding, redaction, and effort bounds but contacted no Proxmox endpoint and did not execute inside a guest.
