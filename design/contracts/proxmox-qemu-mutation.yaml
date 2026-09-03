@@ -26,7 +26,7 @@ allocationClaims:
   states: [held, committed, orphaned, released]
   releaseCondition: provider_absence_confirmed
 qualificationEvidence:
-  status: verifier_implemented_t3_not_executed
+  status: verifier_implemented_t3_executed_unsigned
   evidenceSchema: labcentral.proxmox-qualification-evidence/v1
   envelopeSchema: labcentral.proxmox-qualification-envelope/v1
   canonicalization: RFC_8785
@@ -72,7 +72,7 @@ qualificationEvidence:
     failureCondition: retain_or_orphan_claims_and_block_capability
   productionEnablement: separate_accepted_adr_and_implementation_required
 credentialedSmokeHarness:
-  status: implemented_not_executed
+  status: implemented_executed_two_storage_profiles
   profileSchema: labcentral.proxmox-t3-smoke-profile/v1
   profileSchemaFile: design/contracts/proxmox-t3-smoke-profile.schema.json
   activation:
@@ -89,8 +89,31 @@ credentialedSmokeHarness:
   cleanupTimeoutSeconds: 300
   defaultBehavior: skipped_with_zero_provider_calls
   qualifyingEvidence: false
+credentialedFailureRecoveryHarness:
+  status: implemented_executed_once
+  profileSchema: labcentral.proxmox-t3-smoke-profile/v1
+  profileSchemaFile: design/contracts/proxmox-t3-smoke-profile.schema.json
+  activation:
+    exactSentinel: I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE
+    targetSpecificConfirmation: required
+    absoluteDistinctInputPaths: 3
+  boundaryFaults:
+    - permission_or_inventory_read_substitution
+    - response_loss_after_confirmed_PVE_acceptance
+    - synthetic_failed_task_before_object_creation
+    - stale_config_digest_rejection_by_PVE
+    - compensation_delete_rejection_before_PVE_request
+  guarantees:
+    injectedAndNativeOutcomesDistinguished: true
+    mutationCallsCounted: true
+    everyDurableCheckpointRestarted: true
+    corruptJournalFailsClosed: true
+    ownedCleanupTimeoutSeconds: 600
+    providerAbsenceRechecked: true
+  defaultBehavior: skipped_with_zero_provider_calls
+  qualifyingEvidence: false
 qualificationProbe:
-  status: protocol_agent_and_client_implemented_not_executed_on_guest
+  status: protocol_agent_and_client_executed_on_guest
   requestSchema: labcentral.proxmox-qualification-probe-request/v1
   requestSchemaFile: design/contracts/proxmox-qualification-probe-request.schema.json
   responseSchema: labcentral.proxmox-qualification-probe-response/v1
@@ -119,7 +142,7 @@ qualificationProbe:
     canonicalTranscriptDigest: sha256
   productionRole: none_qualification_fixture_only
 credentialedIsolationHarness:
-  status: implemented_not_executed
+  status: implemented_executed_once
   profileSchema: labcentral.proxmox-t3-isolation-profile/v1
   profileSchemaFile: design/contracts/proxmox-t3-isolation-profile.schema.json
   activation:
@@ -137,7 +160,7 @@ credentialedIsolationHarness:
     evidenceMapping: typed_probe_records_for_signed_evidence
   cleanup:
     order: reverse_dependency
-    perResourceTimeoutSeconds: 300
+    perResourceTimeoutSeconds: 600
     vmAbsenceRechecked: true
   defaultBehavior: skipped_with_zero_provider_calls
   qualifyingEvidence: false
@@ -250,16 +273,19 @@ cases:
     title: Template digest or forbidden-device drift rejects apply
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-003"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {error: template_drift, mutations: 0}
   - id: TEST-PROXMOX-004
     title: Claimed VMID occupied by foreign VM is never adopted
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-004"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {error: ownership_mismatch, cloneCalls: 0, adopted: false, claimsRetained: true}
   - id: TEST-PROXMOX-005
     title: Lost clone response finds matching marker and resumes
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-005"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     fault: clone_response_lost_after_commit
     expect: {cloneCalls: 1, duplicateVMs: 0, resumesTaskOrConfig: true}
   - id: TEST-PROXMOX-006
@@ -272,47 +298,56 @@ cases:
     title: Clone task failure before VM creation is terminal and clean
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-007"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {operationState: failed, leftovers: [], vmidClaimReleasedAfterAbsence: true}
   - id: TEST-PROXMOX-008
     title: Configuration failure compensates exactly owned VM
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-008"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {deleteCalls: 1, ownershipChecked: true, absenceConfirmed: true, leftovers: []}
   - id: TEST-PROXMOX-009
     title: Compensation delete failure reports leftover and retains claims
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-009"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {operationState: partial, leftovers: [ownedVM], claimsRetained: true}
   - id: TEST-PROXMOX-010
     title: PVE config digest race never overwrites drift
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-010"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {desiredReadbackMayComplete: true, conflictingDriftFails: true, blindOverwrite: false}
   - id: TEST-PROXMOX-011
     title: Durable journal survives restart and rejects corrupt versions
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     fault: plugin_restart_at_every_checkpoint
     expect: {sameInvocation: true, duplicateMutation: false, corruptJournalFailsClosed: true}
   - id: TEST-PROXMOX-012
     title: Lost start response reconciles task and VM state
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-012"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {startCalls: 1, finalState: running, duplicateMutation: false}
   - id: TEST-PROXMOX-013
     title: Destroy refuses ownership marker mismatch
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-013"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {error: ownership_mismatch, deleteCalls: 0, auditAlert: true, claimsRetained: true}
   - id: TEST-PROXMOX-014
     title: Lost destroy response releases claims only after absence
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-014"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {deleteCalls: 1, absenceConfirmed: true, releaseAfterConfirmation: true}
   - id: TEST-PROXMOX-015
     title: Lifecycle operations are read-before-action idempotent
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-015"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {duplicateActions: 0, forceFlags: false, pauseToDisk: false}
   - id: TEST-PROXMOX-016
     title: Credential and guest-data canaries are absent from every sink
@@ -323,6 +358,7 @@ cases:
     title: Concurrent VLAN claims are unique and safely retained
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxAllocationAndCapabilityEvidenceContract/TEST-PROXMOX-017"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {duplicateClaims: 0, conflictReplans: true, orphanClaimReleased: false}
   - id: TEST-PROXMOX-018
     title: Management and cross-instance isolation are proved positively and negatively
@@ -334,6 +370,7 @@ cases:
     title: Missing or mis-scoped effective privilege blocks capability
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxAllocationAndCapabilityEvidenceContract/TEST-PROXMOX-018-and-TEST-PROXMOX-019"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {workloadVm: unsupported, mutations: 0, missingScopesReportedSafely: true}
   - id: TEST-PROXMOX-020
     title: Unsupported artifact mount and snapshot requests never mutate
@@ -349,6 +386,7 @@ cases:
     title: Task failure and oversized diagnostics stay bounded and redacted
     layer: T0_T3
     testBinding: "providers/proxmox/execution_test.go#TestProxmoxFailureWindowContract/TEST-PROXMOX-022"
+    credentialedBinding: "providers/proxmox/t3_failure_recovery_test.go#TestCredentialedProxmoxT3FailureRecovery"
     expect: {error: provider_task_failed, bounded: true, canaryOccurrences: 0, rawTaskLog: false}
   - id: TEST-PROXMOX-023
     title: Core target integration binds evidence, claims, dependencies, credentials, and cleanup
@@ -372,7 +410,7 @@ cases:
     testBinding: "tools/proxmox-qualification/probe/protocol_test.go#TestContractTESTPROXMOX026GuestProbeProtocolIsClosedBoundedAndRedacted"
     companionBinding: "tools/proxmox-qualification/probe/client_test.go#TestProbeClientUsesPinnedTLSAndBoundedTypedResponse"
     evidenceBinding: "tools/proxmox-qualification/qualification/probe_test.go#TestContractTESTPROXMOX026ProbeTranscriptMapsToSignedEvidence"
-    expect: {orderedTargets: [intended_segment, management, cross_instance], tcpConnectOnly: true, mutualTLS: true, singleFlight: true, boundedAttempts: true, rawTargetAddressesReturned: false, guestExecutionOutstanding: true, productionRole: none}
+    expect: {orderedTargets: [intended_segment, management, cross_instance], tcpConnectOnly: true, mutualTLS: true, singleFlight: true, boundedAttempts: true, rawTargetAddressesReturned: false, guestExecutionOutstanding: false, productionRole: none}
   - id: TEST-PROXMOX-027
     title: Credentialed isolation runner binds exact source peer and cross-instance topology
     layer: T0_T3

@@ -334,7 +334,7 @@ def verify_proxmox_mutation_contract() -> None:
     assert contract["allocationClaims"]["uniqueKey"] == ["targetID", "namespace", "value"]
     assert contract["allocationClaims"]["releaseCondition"] == "provider_absence_confirmed"
     qualification = contract["qualificationEvidence"]
-    assert qualification["status"] == "verifier_implemented_t3_not_executed"
+    assert qualification["status"] == "verifier_implemented_t3_executed_unsigned"
     assert qualification["evidenceSchema"] == "labcentral.proxmox-qualification-evidence/v1"
     assert qualification["envelopeSchema"] == "labcentral.proxmox-qualification-envelope/v1"
     assert qualification["canonicalization"] == "RFC_8785"
@@ -364,7 +364,7 @@ def verify_proxmox_mutation_contract() -> None:
     assert qualification["productionEnablement"] == "separate_accepted_adr_and_implementation_required"
     smoke = contract["credentialedSmokeHarness"]
     assert smoke == {
-        "status": "implemented_not_executed",
+        "status": "implemented_executed_two_storage_profiles",
         "profileSchema": "labcentral.proxmox-t3-smoke-profile/v1",
         "profileSchemaFile": "design/contracts/proxmox-t3-smoke-profile.schema.json",
         "activation": {
@@ -384,9 +384,37 @@ def verify_proxmox_mutation_contract() -> None:
         "defaultBehavior": "skipped_with_zero_provider_calls",
         "qualifyingEvidence": False,
     }
+    failure_recovery = contract["credentialedFailureRecoveryHarness"]
+    assert failure_recovery == {
+        "status": "implemented_executed_once",
+        "profileSchema": "labcentral.proxmox-t3-smoke-profile/v1",
+        "profileSchemaFile": "design/contracts/proxmox-t3-smoke-profile.schema.json",
+        "activation": {
+            "exactSentinel": "I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE",
+            "targetSpecificConfirmation": "required",
+            "absoluteDistinctInputPaths": 3,
+        },
+        "boundaryFaults": [
+            "permission_or_inventory_read_substitution",
+            "response_loss_after_confirmed_PVE_acceptance",
+            "synthetic_failed_task_before_object_creation",
+            "stale_config_digest_rejection_by_PVE",
+            "compensation_delete_rejection_before_PVE_request",
+        ],
+        "guarantees": {
+            "injectedAndNativeOutcomesDistinguished": True,
+            "mutationCallsCounted": True,
+            "everyDurableCheckpointRestarted": True,
+            "corruptJournalFailsClosed": True,
+            "ownedCleanupTimeoutSeconds": 600,
+            "providerAbsenceRechecked": True,
+        },
+        "defaultBehavior": "skipped_with_zero_provider_calls",
+        "qualifyingEvidence": False,
+    }
     qualification_probe = contract["qualificationProbe"]
     assert qualification_probe == {
-        "status": "protocol_agent_and_client_implemented_not_executed_on_guest",
+        "status": "protocol_agent_and_client_executed_on_guest",
         "requestSchema": "labcentral.proxmox-qualification-probe-request/v1",
         "requestSchemaFile": "design/contracts/proxmox-qualification-probe-request.schema.json",
         "responseSchema": "labcentral.proxmox-qualification-probe-response/v1",
@@ -421,7 +449,7 @@ def verify_proxmox_mutation_contract() -> None:
     }
     isolation = contract["credentialedIsolationHarness"]
     assert isolation == {
-        "status": "implemented_not_executed",
+        "status": "implemented_executed_once",
         "profileSchema": "labcentral.proxmox-t3-isolation-profile/v1",
         "profileSchemaFile": "design/contracts/proxmox-t3-isolation-profile.schema.json",
         "activation": {
@@ -442,7 +470,7 @@ def verify_proxmox_mutation_contract() -> None:
         },
         "cleanup": {
             "order": "reverse_dependency",
-            "perResourceTimeoutSeconds": 300,
+            "perResourceTimeoutSeconds": 600,
             "vmAbsenceRechecked": True,
         },
         "defaultBehavior": "skipped_with_zero_provider_calls",

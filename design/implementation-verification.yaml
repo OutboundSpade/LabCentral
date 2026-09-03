@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-02T20:54:13Z"
+verifiedAt: "2026-09-03T00:11:14Z"
 result: pass
-scope: phase_2_proxmox_credentialed_isolation_runner_t0
+scope: phase_2_proxmox_target_applicable_t3_executed_unsigned
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -51,6 +51,12 @@ commands:
   - go test -race -count=1 ./... with both credentialed Proxmox runners disabled by default
   - go vet ./... after the guarded Proxmox isolation runner
   - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py after the guarded Proxmox isolation runner
+  - go test -count=1 ./... with lifecycle, isolation, and failure/recovery credentialed runners disabled by default
+  - go test -race -count=1 ./providers/proxmox after the guarded failure/recovery runner
+  - go vet ./... after the guarded failure/recovery runner
+  - python3 tools/verify_phase0.py after target-applicable T3 execution
+  - protected runner TestCredentialedProxmoxT3FailureRecovery with exact destructive sentinel and target confirmation
+  - independent PVE VMID, local-lvm/raw, local/qcow2, and completed-task cleanup reads
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -196,21 +202,30 @@ checks:
   - fresh_nonce_single_guest_origin_probe_invocation
   - reverse_owned_cleanup_with_per_vm_absence_recheck
   - test_proxmox_027_guarded_isolation_runner_readiness
+  - independent_failure_recovery_activation_namespace
+  - declared_boundary_faults_separate_from_native_PVE_outcomes
+  - real_PVE_stale_digest_rejection_and_owned_compensation
+  - retained_leftover_then_exact_ownership_checked_cleanup
+  - lost_clone_config_start_and_destroy_response_reconciliation
+  - real_target_restart_from_every_durable_apply_and_destroy_checkpoint
+  - corrupt_journal_version_fails_closed_without_mutation
+  - post_matrix_provider_and_storage_absence_confirmation
 notes:
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
-  - Every TEST-PROXMOX-001 through TEST-PROXMOX-027 case has an executable normal-CI binding. Exact-target credentialed T3 execution and real guest connectivity probes remain outstanding.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-027 case has an executable normal-CI binding. The required target-applicable credentialed T3 cases and real guest connectivity probes have now passed separately; signed artifact assembly remains outstanding.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
   - The qualification review tool signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or capability-enablement command and is not included in the production release artifacts.
   - TEST-PROXMOX-025 exercised its activation guard, closed profile, and exact synthetic claim planning only. No T3 environment variables, target profile, or credential file were configured, so the destructive smoke skipped before any provider call.
-  - The credentialed Proxmox smoke is package-test-only, uses the existing private mutation constructor, and cannot be invoked by the production provider binary. It does not claim full T3 qualification or emit signed passing evidence.
+  - The credentialed Proxmox lifecycle, isolation, and failure/recovery runners are package-test-only, use the existing private mutation constructor, and cannot be invoked by the production provider binary. They do not emit signed passing evidence individually.
   - TEST-PROXMOX-026 used only synthetic TCP outcomes and local TLS servers. It proved dedicated client and server trust, closed schemas, response/evidence binding, redaction, and effort bounds but contacted no Proxmox endpoint and did not execute inside a guest.
   - The standalone probe agent is a qualification fixture excluded from production release packaging. Its configured image digest is bound evidence rather than runtime attestation; the future runner must rebind it to the approved exact template and content digest.
   - TEST-PROXMOX-027 proved exact synthetic planning for source and peer guests on one VLAN plus a distinct-instance guest on a second VLAN. No isolation activation variables, profile, credentials, or probe PKI were configured, so its destructive binding skipped before file or network access.
-  - The isolation runner maps a successful response into typed ProbeEvidence in memory and performs reverse owned cleanup with fresh VM absence checks. It neither emits a complete qualification artifact nor covers the remaining T3 failure/recovery cases.
+  - The isolation runner maps a successful response into typed ProbeEvidence in memory and performs reverse owned cleanup with fresh VM absence checks. The failure/recovery runner separately passed every other target-applicable case using declared boundary injection and real accepted PVE calls. Neither emits a complete qualification artifact.
+  - Protected failure/recovery run qualification.failure-20260903-r3 passed in 158.58 seconds. Independent PVE reads found only template VMID 900000, VMID 910001 available, no matching local-lvm/raw or local/qcow2 content, and only completed recent tasks.
   - Optional Proxmox startup persists only redacted expiring discovery evidence; target configuration and credential envelopes are not stored in SQLite.
   - The production Proxmox constructor has no path that opens mutation execution; workload.vm and start/stop/pause/resume remain unsupported there.
   - PostgreSQL conformance used an isolated temporary PostgreSQL 18 container; the container and per-case schemas were removed after the run.
