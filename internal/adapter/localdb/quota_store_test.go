@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
@@ -678,5 +679,86 @@ func quotaTestDestroyRequest(instanceID domain.InstanceID, operationID domain.Op
 		InstanceID: instanceID, OperationID: operationID, SubjectID: actor, IdempotencyKey: key,
 		RequestDigest: testRequestDigest(key), Payload: []byte(`{"schemaVersion":1}`),
 		AuditID: "audit." + string(operationID), EventID: "event." + string(operationID), ExpirationDueAt: due,
+	}
+}
+
+func TestPostgreSQLExecutionPolicyRetriesLeaseRenewalConflict(t *testing.T) {
+	for _, operation := range []string{"policy", "retain"} {
+		t.Run(operation, func(t *testing.T) {
+			store := newPostgreSQLQuotaTestStore(t, "execution_retry")
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := store.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			setupQuotaTestTenancy(t, store)
+			created, err := store.CreateInstance(ctx, quotaTestCreateRequest("inst.retry", "project.alpha", 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			claim, err := store.Claim(ctx, "worker.retry", time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fence := application.Fence{OperationID: created.OperationID, LeaseOwner: claim.LeaseOwner, Token: claim.Operation.FencingToken, Generation: claim.Operation.Generation, Attempt: claim.Operation.Attempt}
+			blocker, err := store.db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer blocker.Rollback()
+			var blockerPID int
+			if err := blocker.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&blockerPID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := blocker.ExecContext(ctx, store.bind(`UPDATE labcentral_jobs SET lease_until_us = lease_until_us + 1 WHERE operation_id = ?`), created.OperationID); err != nil {
+				t.Fatal(err)
+			}
+			result := make(chan error, 1)
+			go func() {
+				if operation == "retain" {
+					result <- store.RetainInstanceQuota(ctx, fence)
+					return
+				}
+				allowed, err := store.ApplyExecutionAllowed(ctx, fence)
+				if err == nil && !allowed {
+					err = fmt.Errorf("current apply policy was denied")
+				}
+				result <- err
+			}()
+			// Wait for the serializable reader's snapshot to block on the renewing row,
+			// then commit the renewal. PostgreSQL must abort that first snapshot (40001).
+			for {
+				var waiting bool
+				if err := store.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))`, blockerPID).Scan(&waiting); err != nil {
+					t.Fatal(err)
+				}
+				if waiting {
+					break
+				}
+				select {
+				case err := <-result:
+					t.Fatalf("policy did not wait for lease lock: %v", err)
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-time.After(5 * time.Millisecond):
+				}
+			}
+			if err := blocker.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-result:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			// A stale fence is a policy failure, never a retryable transaction conflict.
+			fence.Token++
+			if _, err := store.ApplyExecutionAllowed(ctx, fence); !errors.Is(err, jobsdb.ErrFencingConflict) {
+				t.Fatalf("stale fence error = %v", err)
+			}
+		})
 	}
 }

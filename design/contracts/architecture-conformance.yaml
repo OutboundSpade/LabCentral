@@ -46,3 +46,7 @@ cases:
     contract: Filtered claims preserve unavailable instances and claim the available instance, on SQLite and PostgreSQL.
     file: internal/adapter/jobsdb/conformance_test.go
     test: TestClaimFilterLeavesUnavailableInstanceQueued
+  - id: TEST-ARCH-012
+    contract: Lease renewal conflicts retry only the serializable policy or quota transaction, and stale fences remain failures.
+    file: internal/adapter/localdb/quota_store_test.go
+    test: TestPostgreSQLExecutionPolicyRetriesLeaseRenewalConflict

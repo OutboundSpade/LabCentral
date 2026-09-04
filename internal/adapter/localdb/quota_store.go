@@ -1723,7 +1723,23 @@ func (s *Store) appendInstanceLifetimeGovernanceTx(ctx context.Context, tx *sql.
 	return nil
 }
 
-func (s *Store) RetainInstanceQuota(ctx context.Context, fence application.Fence) error {
+func (s *Store) RetainInstanceQuota(ctx context.Context, fence application.Fence) (err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("retain instance quota: %w", err)
+		}
+	}()
+	for attempt := 0; ; attempt++ {
+		err = s.retainInstanceQuota(ctx, fence)
+		if !isRetryableTransactionConflict(err) || attempt == 7 {
+			return err
+		}
+		if err = waitTransactionRetry(ctx, attempt); err != nil {
+			return err
+		}
+	}
+}
+func (s *Store) retainInstanceQuota(ctx context.Context, fence application.Fence) error {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return err
@@ -1742,7 +1758,23 @@ func (s *Store) RetainInstanceQuota(ctx context.Context, fence application.Fence
 	return tx.Commit()
 }
 
-func (s *Store) ApplyExecutionAllowed(ctx context.Context, fence application.Fence) (bool, error) {
+func (s *Store) ApplyExecutionAllowed(ctx context.Context, fence application.Fence) (allowed bool, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("apply execution policy transaction: %w", err)
+		}
+	}()
+	for attempt := 0; ; attempt++ {
+		allowed, err = s.applyExecutionAllowed(ctx, fence)
+		if !isRetryableTransactionConflict(err) || attempt == 7 {
+			return allowed, err
+		}
+		if err = waitTransactionRetry(ctx, attempt); err != nil {
+			return false, err
+		}
+	}
+}
+func (s *Store) applyExecutionAllowed(ctx context.Context, fence application.Fence) (bool, error) {
 	// requireFence deliberately locks the running job on PostgreSQL so an
 	// expiration transition cannot race this policy decision.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})

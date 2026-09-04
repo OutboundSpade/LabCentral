@@ -411,3 +411,9 @@ architectureSimplification:
     - No live provider qualification or infrastructure mutation was performed for this refactor.
     - TASK-PROD-004 live load/soak, cross-node journal failover/DR and protected publisher ceremony remain open.
   evidenceInterpretation: Earlier production/testbed entries in this file describe their recorded binaries and checkpoints; they do not qualify the architecture-refactor binary.
+
+architectureCIHardening:
+  finding: Hosted 100-instance concurrency testing exposed an unhandled PostgreSQL 40001 during worker policy checks.
+  reproduction: TEST-ARCH-012 deterministically holds the job row, starts a serializable policy or quota transaction, then commits a lease renewal to invalidate its first snapshot.
+  fix: Apply bounded existing transaction-conflict retries to apply-policy checks and quota retention; recheck fences each attempt and never replay provider calls.
+  validation: The deterministic PostgreSQL conflict test passed three race-enabled repetitions; the 100-instance multi-replica test passed five race-enabled repetitions after the fix.

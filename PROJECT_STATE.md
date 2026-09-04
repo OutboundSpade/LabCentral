@@ -24,6 +24,6 @@ The [architecture audit](docs/design/architecture-audit-2026-09-04.md) is the hi
 
 `TASK-PROD-004` still requires live target load/soak, cross-node shared-journal locking/failover/disaster-recovery evidence, publisher-control approval, and the first signed release ceremony. Local/fake-provider tests do not satisfy these gates. New provider binaries require fresh exact-build qualification; earlier testbed evidence is not relabeled.
 
-The full race-enabled Go suite passed with disposable PostgreSQL 18. Targeted normal tests, Go vet, design/protocol/schema/link checks, generated OpenAPI/TypeScript, Svelte checks/build, and dependency scans passed. See the [verification record](design/implementation-verification.yaml) for scope and exclusions.
+The full race-enabled Go suite passed with disposable PostgreSQL 18. A CI-exposed lease-renewal conflict was reproduced and fixed with bounded database-only retries; three deterministic conflict runs and five 100-instance runs passed under the race detector. Targeted normal tests, Go vet, design/protocol/schema/link checks, generated OpenAPI/TypeScript, Svelte checks/build, and dependency scans passed. See the [verification record](design/implementation-verification.yaml) for scope and exclusions.
 
 **Next action:** resume the outstanding production qualification gates in `design/checklist.yaml`, starting with deployment-specific live load/soak and shared-journal failover evidence before release.
