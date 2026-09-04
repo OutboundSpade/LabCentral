@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OutboundSpade/LabCentral/internal/application"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -176,6 +178,58 @@ func TestBackgroundAndPluginMetricsAreBounded(t *testing.T) {
 	}
 	if strings.Contains(body, "secret failure") {
 		t.Fatal("metrics exposed an error string")
+	}
+}
+
+func TestOperationalMetricsExposeOnlyClosedAggregateDimensions(t *testing.T) {
+	system, err := New("test", "replica-test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	system.SetOperationalSnapshot(application.OperationalSnapshot{
+		Jobs: application.DurableJobSnapshot{
+			Queued: 2, Running: 1, RecoveryRequired: 1,
+			OldestQueuedAge: 90 * time.Second, OldestExpiredLeaseAge: 12 * time.Second,
+		},
+		Outbox:  application.OutboxSnapshot{JobPending: 3, EventPending: 4, OldestJobAge: 8 * time.Second, OldestEventAge: 9 * time.Second},
+		Targets: application.TargetCapabilitySnapshot{Total: 2, Stale: 1, OldestAge: 3 * time.Minute},
+		Cleanup: application.CleanupSnapshot{UnknownResources: 1, FailedResources: 2, OrphanedAllocations: 3},
+		Operations: []application.OperationStateCount{
+			{State: domain.OperationQueued, Count: 2}, {State: domain.OperationPartial, Count: 1},
+			{State: domain.OperationState("operation-secret-canary"), Count: 99},
+		},
+		Access: []application.AccessStateCount{
+			{State: domain.AccessSessionActive, Count: 4}, {State: domain.AccessSessionState("access-secret-canary"), Count: 99},
+		},
+		Resources: []application.ResourcePhaseCount{
+			{Phase: domain.ResourceCleanupFailed, Count: 2}, {Phase: domain.ResourcePhase("resource-secret-canary"), Count: 99},
+		},
+	})
+	system.ObserveOperation("apply", domain.OperationPartial, 4*time.Second)
+	system.ObserveOperation("instance-secret-canary", domain.OperationSucceeded, time.Second)
+
+	response := httptest.NewRecorder()
+	system.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := response.Body.String()
+	for _, expected := range []string{
+		`labcentral_durable_jobs{state="queued"} 2`,
+		`labcentral_durable_job_oldest_age_seconds{condition="expired_lease"} 12`,
+		`labcentral_outbox_pending{stream="event"} 4`,
+		`labcentral_operation_state{state="partial"} 1`,
+		`labcentral_operation_completed_total{kind="apply",result="partial"} 1`,
+		`labcentral_access_sessions{state="active"} 4`,
+		`labcentral_resource_state{phase="cleanup_failed"} 2`,
+		`labcentral_cleanup_leftovers{kind="allocation_orphaned"} 3`,
+		`labcentral_target_capability_stale 1`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("metrics missing %q", expected)
+		}
+	}
+	for _, forbidden := range []string{"operation-secret-canary", "access-secret-canary", "resource-secret-canary", "instance-secret-canary"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("metrics contain forbidden value %q", forbidden)
+		}
 	}
 }
 

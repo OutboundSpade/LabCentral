@@ -344,6 +344,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err != nil {
 		return err
 	}
+	if err := updateOperationalTelemetry(ctx, store, telemetry); err != nil {
+		return fmt.Errorf("initialize operational telemetry: %w", err)
+	}
 	if dockerPlugin != nil {
 		telemetry.SetPlugin("provider", "docker", true)
 	}
@@ -367,6 +370,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	refreshContext, cancelRefresh := context.WithCancel(ctx)
 	defer cancelRefresh()
 	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger, telemetry)
+	go refreshOperationalTelemetry(refreshContext, store, logger, telemetry)
 	expirationContext, cancelExpiration := context.WithCancel(ctx)
 	defer cancelExpiration()
 	go sweepExpiredInstances(expirationContext, control, logger, telemetry)
@@ -378,6 +382,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		OnError: func(err error) {
 			telemetry.ObserveBackground("durable_worker", err)
 			logger.Error("durable worker iteration failed", "error", err)
+		},
+		OnComplete: func(kind controlplane.OperationKind, state domain.OperationState, duration time.Duration) {
+			telemetry.ObserveOperation(string(kind), state, duration)
 		},
 	})
 	if err != nil {
@@ -544,6 +551,32 @@ func refreshProviderTargets(ctx context.Context, control *controlplane.Service, 
 			}
 		}
 	}
+}
+
+func refreshOperationalTelemetry(ctx context.Context, store *localdb.Store, logger *slog.Logger, telemetry *observability.System) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			err := updateOperationalTelemetry(ctx, store, telemetry)
+			telemetry.ObserveBackground("operational_snapshot", err)
+			if err != nil {
+				logger.Error("operational telemetry refresh failed", "error", err)
+			}
+		}
+	}
+}
+
+func updateOperationalTelemetry(ctx context.Context, store *localdb.Store, telemetry *observability.System) error {
+	snapshot, err := store.ReadOperationalSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	telemetry.SetOperationalSnapshot(snapshot)
+	return nil
 }
 
 func sweepExpiredInstances(ctx context.Context, control *controlplane.Service, logger *slog.Logger, telemetry *observability.System) {

@@ -116,6 +116,16 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   corrected the scratch image's state mountpoint to mode `0700`; fresh named
   volumes now start without weakening `labd`'s private-directory refusal and
   retain the existing on-volume layout across restart.
+- The second production-observability checkpoint refreshes an aggregate-only
+  database snapshot every 15 seconds. SQLite and PostgreSQL expose identical
+  fixed-cardinality queue/expired-lease age, legacy and generalized outbox lag,
+  Operation/resource/access lifecycle, target-evidence age/staleness, and
+  cleanup-leftover gauges. Worker terminal callbacks add bounded
+  `apply|destroy` result counters and execution-duration histograms. Unknown
+  persisted state is rejected before it can become a Prometheus label, and the
+  expanded alert rules cover stalled work, expired leases, outbox lag,
+  operation failure ratio, stale target evidence, and ownership-sensitive
+  cleanup review.
 - The Kubernetes `TASK-PROD-004` checkpoint adds a fail-closed two-replica
   StatefulSet, required cross-node anti-affinity, a disruption budget,
   Restricted Pod Security settings, default-deny ingress/egress policy,

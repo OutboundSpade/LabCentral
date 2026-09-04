@@ -27,6 +27,7 @@ type Worker struct {
 	leaseDuration time.Duration
 	pollInterval  time.Duration
 	onError       func(error)
+	onComplete    func(OperationKind, domain.OperationState, time.Duration)
 	authorizer    application.Authorizer
 }
 
@@ -35,6 +36,7 @@ type WorkerOptions struct {
 	LeaseDuration time.Duration
 	PollInterval  time.Duration
 	OnError       func(error)
+	OnComplete    func(OperationKind, domain.OperationState, time.Duration)
 	Authorizer    application.Authorizer
 }
 
@@ -62,7 +64,14 @@ func NewWorkerWithTargets(store Store, targets *TargetRegistry, ids IDSource, op
 	if options.OnError == nil {
 		options.OnError = func(error) {}
 	}
-	return &Worker{store: store, targets: targets, ids: ids, owner: options.Owner, leaseDuration: options.LeaseDuration, pollInterval: options.PollInterval, onError: options.OnError, authorizer: options.Authorizer}, nil
+	if options.OnComplete == nil {
+		options.OnComplete = func(OperationKind, domain.OperationState, time.Duration) {}
+	}
+	return &Worker{
+		store: store, targets: targets, ids: ids, owner: options.Owner,
+		leaseDuration: options.LeaseDuration, pollInterval: options.PollInterval,
+		onError: options.OnError, onComplete: options.OnComplete, authorizer: options.Authorizer,
+	}, nil
 }
 
 func (w *Worker) Run(ctx context.Context) error {
@@ -97,6 +106,7 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 	defer cancel()
 	renewalErrors := make(chan error, 1)
 	go w.renewLease(workContext, fence, renewalErrors)
+	started := time.Now()
 	err = w.process(workContext, fence, claim.Action, claim.Recovery, claim.Payload)
 	cancel()
 	select {
@@ -105,6 +115,12 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 			return renewalErr
 		}
 	default:
+	}
+	if err == nil {
+		completed, loadErr := w.store.GetOperation(ctx, fence.OperationID)
+		if loadErr == nil && completed.State.Terminal() {
+			w.onComplete(completed.Kind, completed.State, time.Since(started))
+		}
 	}
 	return err
 }

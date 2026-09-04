@@ -29,6 +29,14 @@ cases:
     title: Trace transport configuration fails closed
     goTest: TestObservabilityConfigurationFailsClosed
     expect: {remoteTLSRequired: true, loopbackPlaintextAllowed: true, mtlsPairRequired: true, endpointUserInfoForbidden: true}
+  - id: TEST-PROD-OBS-008
+    title: Durable operational snapshots use database time on both supported stores
+    goTest: TestSQLiteOperationalTelemetrySnapshot and TestPostgreSQLOperationalTelemetrySnapshot
+    expect: {databaseTime: true, queueAndExpiredLeaseAge: true, bothOutboxes: true, targetEvidenceAge: true, sqlitePostgresqlParity: true}
+  - id: TEST-PROD-OBS-009
+    title: Runtime lifecycle metrics and terminal operation SLOs remain fixed cardinality
+    goTest: TestOperationalMetricsExposeOnlyClosedAggregateDimensions and TestExampleAApplyAndDestroyThroughDurableWorker
+    expect: {operationAndResourceStates: true, accessSessionStates: true, cleanupLeftovers: true, terminalDurationAndResult: true, objectIdentifiersExposed: false}
   - id: TEST-PROD-PKG-001
     title: Scratch image starts and restarts with a clean private named volume
     integrationGate: docker compose clean-volume start, healthcheck, restart, healthcheck

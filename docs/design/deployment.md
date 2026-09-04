@@ -94,9 +94,13 @@ families. Remote export requires TLS 1.3 or newer and may use private-CA mTLS;
 plaintext is accepted only to a loopback Collector. Raw URL paths, queries,
 tenant/object identifiers, and error strings are not trace attributes. The
 operator contract, alert rules, and certificate rotation procedure are in
-[`../operations/observability.md`](../operations/observability.md). Queue/outbox,
-operation-SLO, access-session, and cleanup-leftover instrumentation remains in
-the next production-observability slice.
+[`../operations/observability.md`](../operations/observability.md). The second
+runtime checkpoint adds a database-time aggregate snapshot every 15 seconds for
+queue and expired-lease age, both outboxes, every Operation/resource/access
+lifecycle state, stale target evidence, and cleanup leftovers. Terminal worker
+executions add fixed-kind/result counters and duration histograms. The exporter
+rejects unknown lifecycle values rather than turning database content into new
+labels; no object or tenant identity is present.
 
 ## Kubernetes production base
 

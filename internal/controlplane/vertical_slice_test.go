@@ -546,7 +546,17 @@ func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{})
+	type completion struct {
+		kind     controlplane.OperationKind
+		state    domain.OperationState
+		duration time.Duration
+	}
+	var completions []completion
+	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{
+		OnComplete: func(kind controlplane.OperationKind, state domain.OperationState, duration time.Duration) {
+			completions = append(completions, completion{kind: kind, state: state, duration: duration})
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,6 +652,11 @@ func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB)
 		if err := db.QueryRowContext(ctx, query).Scan(&count); err != nil || count != want {
 			t.Fatalf("generalized operation %s count=%d want=%d err=%v", table, count, want, err)
 		}
+	}
+	if len(completions) != 2 || completions[0].kind != controlplane.OperationApply || completions[0].state != domain.OperationSucceeded ||
+		completions[1].kind != controlplane.OperationDestroy || completions[1].state != domain.OperationSucceeded ||
+		completions[0].duration < 0 || completions[1].duration < 0 {
+		t.Fatalf("worker terminal operation observations = %#v", completions)
 	}
 }
 

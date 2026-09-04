@@ -55,7 +55,13 @@ parallel readiness checks to one deadline, preserves SSE flush and WebSocket
 hijack behavior through HTTP instrumentation, and scans Prometheus exposition
 and recorded OTLP span attributes for raw paths, queries, tenant IDs, tokens,
 and error text. Startup configuration tests require TLS for every non-loopback
-OTLP endpoint and a complete certificate/key pair for mTLS.
+OTLP endpoint and a complete certificate/key pair for mTLS. The second slice
+runs the same database-time operational snapshot assertions on SQLite and
+PostgreSQL, including queue/expired-lease age, both outboxes, target staleness,
+access/resource lifecycle, and cleanup ownership records. Metrics tests seed
+unknown state and identifier canaries and prove that only closed labels are
+exported; the full apply/destroy worker path proves one terminal duration/result
+observation per completed operation.
 
 [`access-conformance.yaml`](../../design/contracts/access-conformance.yaml) binds
 all eighteen access cases to Go tests. Normal CI covers pre-plugin denial,

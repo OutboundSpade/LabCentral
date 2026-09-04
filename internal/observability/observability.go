@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/OutboundSpade/LabCentral/internal/application"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/felixge/httpsnoop"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -48,6 +50,19 @@ type System struct {
 	pluginUp           *prometheus.GaugeVec
 	readinessCheckUp   *prometheus.GaugeVec
 	readinessCheckTime *prometheus.HistogramVec
+	durableJobs        *prometheus.GaugeVec
+	durableJobAge      *prometheus.GaugeVec
+	outboxPending      *prometheus.GaugeVec
+	outboxAge          *prometheus.GaugeVec
+	operationState     *prometheus.GaugeVec
+	operationCompleted *prometheus.CounterVec
+	operationDuration  *prometheus.HistogramVec
+	accessSessions     *prometheus.GaugeVec
+	resourceState      *prometheus.GaugeVec
+	cleanupLeftovers   *prometheus.GaugeVec
+	targetSnapshots    prometheus.Gauge
+	targetStale        prometheus.Gauge
+	targetOldestAge    prometheus.Gauge
 }
 
 func New(version, replicaID string, checks []Check) (*System, error) {
@@ -91,6 +106,46 @@ func New(version, replicaID string, checks []Check) (*System, error) {
 			Namespace: "labcentral", Subsystem: "readiness", Name: "check_duration_seconds", Help: "Readiness dependency check duration.",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2},
 		}, []string{"check"}),
+		durableJobs: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "durable", Name: "jobs", Help: "Durable jobs by bounded operational condition.",
+		}, []string{"state"}),
+		durableJobAge: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "durable", Name: "job_oldest_age_seconds", Help: "Age of the oldest queued job or expired lease.",
+		}, []string{"condition"}),
+		outboxPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "outbox", Name: "pending", Help: "Pending durable outbox deliveries by bounded stream.",
+		}, []string{"stream"}),
+		outboxAge: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "outbox", Name: "oldest_age_seconds", Help: "Age of the oldest pending durable outbox delivery.",
+		}, []string{"stream"}),
+		operationState: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "operation", Name: "state", Help: "Durable operations by bounded lifecycle state.",
+		}, []string{"state"}),
+		operationCompleted: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "labcentral", Subsystem: "operation", Name: "completed_total", Help: "Operations completed by bounded kind and result in this process.",
+		}, []string{"kind", "result"}),
+		operationDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "labcentral", Subsystem: "operation", Name: "duration_seconds", Help: "Worker execution duration for completed operations by bounded kind and result.",
+			Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600},
+		}, []string{"kind", "result"}),
+		accessSessions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "access", Name: "sessions", Help: "Controlled access sessions by bounded lifecycle state.",
+		}, []string{"state"}),
+		resourceState: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "resource", Name: "state", Help: "Durable resources by bounded lifecycle phase.",
+		}, []string{"phase"}),
+		cleanupLeftovers: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "cleanup", Name: "leftovers", Help: "Resources and allocations requiring cleanup or ownership review.",
+		}, []string{"kind"}),
+		targetSnapshots: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "target", Name: "capability_snapshots", Help: "Persisted provider target capability snapshots.",
+		}),
+		targetStale: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "target", Name: "capability_stale", Help: "Persisted provider target capability snapshots past their validity bound.",
+		}),
+		targetOldestAge: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "labcentral", Subsystem: "target", Name: "capability_oldest_age_seconds", Help: "Age of the oldest persisted provider target capability snapshot.",
+		}),
 	}
 	registry.MustRegister(
 		prometheus.NewGoCollector(), prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
@@ -99,7 +154,12 @@ func New(version, replicaID string, checks []Check) (*System, error) {
 		}, func() float64 { return 1 }),
 		system.ready, system.httpRequests, system.httpDuration, system.backgroundRuns,
 		system.backgroundErrors, system.pluginUp, system.readinessCheckUp, system.readinessCheckTime,
+		system.durableJobs, system.durableJobAge, system.outboxPending, system.outboxAge,
+		system.operationState, system.operationCompleted, system.operationDuration,
+		system.accessSessions, system.resourceState, system.cleanupLeftovers,
+		system.targetSnapshots, system.targetStale, system.targetOldestAge,
 	)
+	system.initializeOperationalLabels()
 	return system, nil
 }
 
@@ -137,6 +197,144 @@ func (s *System) ObserveBackground(component string, err error) {
 		s.backgroundErrors.WithLabelValues(component).Inc()
 	}
 	s.backgroundRuns.WithLabelValues(component, outcome).Inc()
+}
+
+// SetOperationalSnapshot replaces every aggregate runtime gauge. Only closed
+// lifecycle values are accepted, so corrupt rows cannot create metric labels.
+func (s *System) SetOperationalSnapshot(snapshot application.OperationalSnapshot) {
+	s.durableJobs.WithLabelValues("queued").Set(float64(snapshot.Jobs.Queued))
+	s.durableJobs.WithLabelValues("running").Set(float64(snapshot.Jobs.Running))
+	s.durableJobs.WithLabelValues("recovery_required").Set(float64(snapshot.Jobs.RecoveryRequired))
+	s.durableJobAge.WithLabelValues("queued").Set(nonNegativeSeconds(snapshot.Jobs.OldestQueuedAge))
+	s.durableJobAge.WithLabelValues("expired_lease").Set(nonNegativeSeconds(snapshot.Jobs.OldestExpiredLeaseAge))
+	s.outboxPending.WithLabelValues("job").Set(float64(snapshot.Outbox.JobPending))
+	s.outboxPending.WithLabelValues("event").Set(float64(snapshot.Outbox.EventPending))
+	s.outboxAge.WithLabelValues("job").Set(nonNegativeSeconds(snapshot.Outbox.OldestJobAge))
+	s.outboxAge.WithLabelValues("event").Set(nonNegativeSeconds(snapshot.Outbox.OldestEventAge))
+
+	resetGaugeLabels(s.operationState, operationStates)
+	for _, count := range snapshot.Operations {
+		if knownOperationState(count.State) {
+			s.operationState.WithLabelValues(string(count.State)).Add(float64(count.Count))
+		}
+	}
+	resetGaugeLabels(s.accessSessions, accessStates)
+	for _, count := range snapshot.Access {
+		if knownAccessState(count.State) {
+			s.accessSessions.WithLabelValues(string(count.State)).Add(float64(count.Count))
+		}
+	}
+	resetGaugeLabels(s.resourceState, resourcePhases)
+	for _, count := range snapshot.Resources {
+		if knownResourcePhase(count.Phase) {
+			s.resourceState.WithLabelValues(string(count.Phase)).Add(float64(count.Count))
+		}
+	}
+	s.cleanupLeftovers.WithLabelValues("resource_unknown").Set(float64(snapshot.Cleanup.UnknownResources))
+	s.cleanupLeftovers.WithLabelValues("resource_cleanup_failed").Set(float64(snapshot.Cleanup.FailedResources))
+	s.cleanupLeftovers.WithLabelValues("allocation_orphaned").Set(float64(snapshot.Cleanup.OrphanedAllocations))
+	s.targetSnapshots.Set(float64(snapshot.Targets.Total))
+	s.targetStale.Set(float64(snapshot.Targets.Stale))
+	s.targetOldestAge.Set(nonNegativeSeconds(snapshot.Targets.OldestAge))
+}
+
+// ObserveOperation records one terminal worker execution. Kind and result are
+// closed sets; unexpected values are rejected instead of becoming labels.
+func (s *System) ObserveOperation(kind string, result domain.OperationState, duration time.Duration) {
+	if kind != "apply" && kind != "destroy" || !terminalOperationState(result) {
+		return
+	}
+	s.operationCompleted.WithLabelValues(kind, string(result)).Inc()
+	s.operationDuration.WithLabelValues(kind, string(result)).Observe(nonNegativeSeconds(duration))
+}
+
+var operationStates = []string{
+	string(domain.OperationQueued), string(domain.OperationRunning), string(domain.OperationCancelRequested),
+	string(domain.OperationCompensating), string(domain.OperationSucceeded), string(domain.OperationFailed),
+	string(domain.OperationCanceled), string(domain.OperationTimedOut), string(domain.OperationPartial),
+}
+
+var terminalOperationStates = []string{
+	string(domain.OperationSucceeded), string(domain.OperationFailed), string(domain.OperationCanceled),
+	string(domain.OperationTimedOut), string(domain.OperationPartial),
+}
+
+var accessStates = []string{
+	string(domain.AccessSessionPending), string(domain.AccessSessionReady), string(domain.AccessSessionActive),
+	string(domain.AccessSessionExpired), string(domain.AccessSessionRevoked), string(domain.AccessSessionFailed),
+}
+
+var resourcePhases = []string{
+	string(domain.ResourcePending), string(domain.ResourceApplying), string(domain.ResourceReady),
+	string(domain.ResourceFailed), string(domain.ResourceUnknown), string(domain.ResourceStopped),
+	string(domain.ResourcePaused), string(domain.ResourceDestroying), string(domain.ResourceDestroyed),
+	string(domain.ResourceCleanupFailed),
+}
+
+func (s *System) initializeOperationalLabels() {
+	resetGaugeLabels(s.durableJobs, []string{"queued", "running", "recovery_required"})
+	resetGaugeLabels(s.durableJobAge, []string{"queued", "expired_lease"})
+	resetGaugeLabels(s.outboxPending, []string{"job", "event"})
+	resetGaugeLabels(s.outboxAge, []string{"job", "event"})
+	resetGaugeLabels(s.operationState, operationStates)
+	resetGaugeLabels(s.accessSessions, accessStates)
+	resetGaugeLabels(s.resourceState, resourcePhases)
+	resetGaugeLabels(s.cleanupLeftovers, []string{"resource_unknown", "resource_cleanup_failed", "allocation_orphaned"})
+	for _, kind := range []string{"apply", "destroy"} {
+		for _, result := range terminalOperationStates {
+			s.operationCompleted.WithLabelValues(kind, result)
+			s.operationDuration.WithLabelValues(kind, result)
+		}
+	}
+}
+
+func resetGaugeLabels(gauge *prometheus.GaugeVec, labels []string) {
+	for _, label := range labels {
+		gauge.WithLabelValues(label).Set(0)
+	}
+}
+
+func nonNegativeSeconds(duration time.Duration) float64 {
+	if duration < 0 {
+		return 0
+	}
+	return duration.Seconds()
+}
+
+func knownOperationState(state domain.OperationState) bool {
+	for _, candidate := range operationStates {
+		if string(state) == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func terminalOperationState(state domain.OperationState) bool {
+	for _, candidate := range terminalOperationStates {
+		if string(state) == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func knownAccessState(state domain.AccessSessionState) bool {
+	for _, candidate := range accessStates {
+		if string(state) == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func knownResourcePhase(phase domain.ResourcePhase) bool {
+	for _, candidate := range resourcePhases {
+		if string(phase) == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *System) Handler() http.Handler {

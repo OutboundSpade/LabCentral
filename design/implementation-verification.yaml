@@ -262,6 +262,11 @@ checks:
   - process_liveness_and_dependency_backed_readiness
   - shared_two_second_parallel_readiness_deadline
   - prometheus_process_http_plugin_and_background_metrics
+  - database_time_queue_depth_and_expired_lease_age_metrics
+  - legacy_and_generalized_outbox_lag_metrics
+  - operation_resource_access_and_target_lifecycle_metrics
+  - worker_terminal_result_and_duration_metrics
+  - cleanup_leftover_metrics_and_alerts
   - metrics_exclude_path_query_tenant_token_and_error_values
   - w3c_trace_context_and_otlp_http_export
   - remote_tls_1_3_and_private_ca_mtls_trace_transport
@@ -277,7 +282,7 @@ checks:
   - test_prod_topology_007_native_identity_and_credential_separation
   - test_prod_topology_008_native_network_state_and_syscall_isolation
 notes:
-  - TASK-PROD-004 remains intentionally partial. Expanded queue/outbox/SLO metrics, automated encrypted recovery, shared-RWX failover/chaos evidence, 100-instance load/soak evidence, disaster-recovery evidence, and signed publisher releases remain open.
+  - TASK-PROD-004 remains intentionally partial. Automated encrypted recovery, shared-RWX failover/chaos evidence, 100-instance load/soak evidence, disaster-recovery evidence, and signed publisher releases remain open.
   - TEST-PROD-TOPOLOGY-001 through TEST-PROD-TOPOLOGY-006 passed. The checked-in base remains fail-closed behind an all-zero OCI digest, RFC 5737 egress sentinels, and separately created configuration/secrets.
   - TEST-PROD-TOPOLOGY-007 and TEST-PROD-TOPOLOGY-008 passed. An isolated alternate filesystem root populated from the packaged sysusers definition passed systemd unit verification without changing host accounts or installed units. Offline systemd security exposure was 1.4 for core and 1.3 for each plugin against an enforced maximum of 3.0.
   - Native core, Proxmox, and noVNC use distinct users, non-overlapping per-plugin IPC groups, private systemd credential projections, separate protected state paths, and attached 0770/0660 Unix IPC. All non-loopback IP traffic remains denied until an operator installs the exact Proxmox address; TCP/8006 restriction remains a documented UID-scoped host-firewall obligation.
@@ -285,7 +290,7 @@ notes:
   - Attached provider startup passed with host-first and provider-first ordering over exact 0770/0660 IPC, protected token-file authentication, separate plugin identity, and persistent-health-failure supervision. These tests used local Unix sockets and contacted no provider.
   - The topology-check scratch image built successfully and exported labd, all three official runtime binaries/checksums, the Proxmox source digest, and the system CA bundle without a shell or toolchain. It was a disposable working-tree build, not signed release evidence, and was removed after inspection.
   - The full normal and race-enabled Go suites passed with the disposable PostgreSQL 18 test database. The existing operator-provided test container was retained; every test used its own isolated schema.
-  - TEST-PROD-OBS-001 through TEST-PROD-OBS-007 passed normal and race-enabled CI. Metrics and recorded spans contained no seeded raw path, query, tenant, token, or error canaries.
+  - TEST-PROD-OBS-001 through TEST-PROD-OBS-009 passed normal and race-enabled CI on SQLite and disposable PostgreSQL. Runtime snapshots use database time, worker completions emit only closed operation dimensions, and metrics/recorded spans contained no seeded raw path, query, tenant, token, error, object-identity, or unknown-state canaries.
   - A real scratch-image/Compose rehearsal started from a newly created named volume, proved the copied-up state root was mode 0700, reached container healthy through /ready, served the public API, emitted bounded metrics, and remained healthy after restart. The disposable container and volumes created by both the diagnostic failure and passing rehearsal were removed.
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
