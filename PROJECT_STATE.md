@@ -187,6 +187,11 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   plus the `v0.2.x` API, protocol, state, migration, recovery, target, upgrade,
   and rollback compatibility matrix. Repository environment/branch/tag review
   controls and the first live publisher ceremony require owner action.
+  Clean revision `dd6fc1b` produced two byte-identical
+  `v0.2.0-publisher-check` Linux/amd64 archives at SHA-256
+  `d5686a105ace30c8977ec4d324f2b3e7e66064e071cb1469b3d3d2c5c7b28b33`;
+  the external/archive-wide checksums, packaged executable smoke, release
+  inventory, compatibility matrix, and verification guide all passed.
 
 ## Open questions and risks
 
