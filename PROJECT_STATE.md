@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, and native multi-service deployment checkpoints are implemented, while resilience/load, automated recovery, and signed-publisher release gates remain open.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, native multi-service deployment, and automated encrypted offline-recovery checkpoints are implemented, while load/failover/disaster-recovery evidence and signed-publisher release gates remain open.
 **Updated:** 2026-09-04
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -150,6 +150,16 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   traffic is denied until the operator adds the exact qualified Proxmox address
   plus a UID/port-scoped host firewall rule. `TEST-PROD-TOPOLOGY-007` and `008`
   bind these assets and their release packaging.
+- The recovery checkpoint adds a packaged, non-overwriting
+  `labcentral-recovery` utility for PostgreSQL/shared-state and native
+  SQLite/provider-state layouts. Recovery sets use hybrid age encryption plus
+  domain-separated Ed25519 manifest signatures, exact release/tool-major and
+  database watermark binding, bounded link-free state archives, protected key
+  inputs, off-workload decryption identity, and empty-destination restores.
+  Native creation proves the live database lock is free and both native
+  components are staged before commit. `TEST-PROD-RECOVERY-001` through `005`
+  pass locally, including a real custom dump/decrypt/verify/restore against the
+  disposable PostgreSQL 18 test bed and a reopened restored SQLite database.
 
 ## Open questions and risks
 

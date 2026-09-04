@@ -1,0 +1,25 @@
+formatVersion: 1
+suite: labcentral.production-recovery/v1alpha1
+status: offline_encrypted_recovery_implemented_and_rehearsed
+cases:
+  - id: TEST-PROD-RECOVERY-001
+    title: Recovery key generation is protected, separated, and non-overwriting
+    goTest: TestRecoveryKeygenIsProtectedAndNonOverwriting
+    expect: {hybridAgeIdentity: true, publicRecipientSeparated: true, ed25519SigningKey: true, publicTrustSeparated: true, overwrite: refused}
+  - id: TEST-PROD-RECOVERY-002
+    title: Recovery sets are encrypted, signed, bounded, and safe to extract
+    goTest: TestRecoveryBundleIsEncryptedSignedAndRestoresSafeState and TestRecoveryRejectsTamperingRevocationAndArchiveTraversal
+    expect: {plaintextCanariesExposed: false, manifestSigned: true, componentsHashed: true, revokedSignerAccepted: false, linksAndTraversalAccepted: false}
+  - id: TEST-PROD-RECOVERY-003
+    title: PostgreSQL credentials and transport fail closed
+    goTest: TestRecoveryDatabaseURLAndPostgresEnvironmentAreFailClosed
+    expect: {productionTLSMode: verify-full, passwordInArguments: false, passwordInEnvironment: false, inheritedPGEnvironment: blocked, loopbackPlaintextProduction: false}
+  - id: TEST-PROD-RECOVERY-004
+    title: PostgreSQL and shared state restore as one exact-release recovery set
+    goTest: TestPostgreSQLRecoveryCreateVerifyRestore
+    integrationGate: disposable PostgreSQL custom dump, encrypted verification, empty-database restore, shared-state restore, and watermark comparison
+    expect: {offlineConfirmation: exact, activeJobsAllowed: false, databaseWatermarkStable: true, toolMajorMatch: true, destinationOverwrite: refused}
+  - id: TEST-PROD-RECOVERY-005
+    title: Native SQLite and provider state restore only after lock and integrity checks
+    goTest: TestNativeSQLiteRecoveryCreateVerifyRestoreAndLockExclusion and TestNativeRestorePrestagesBothComponents
+    expect: {labdLockMustBeFree: true, sqliteIntegrityChecked: true, bothComponentsPrestaged: true, watermarkMatched: true, numericOwnershipPreservedByDefault: true}

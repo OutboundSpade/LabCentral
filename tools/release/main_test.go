@@ -42,7 +42,7 @@ func TestSanitizeRemote(t *testing.T) {
 
 func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	t.Parallel()
-	readme := releaseReadme("v1.0.0", "linux", "amd64", "labd", "lab-provider-docker", "lab-provider-proxmox", "lab-access-novnc")
+	readme := releaseReadme("v1.0.0", "linux", "amd64", "labd", "lab-provider-docker", "lab-provider-proxmox", "lab-access-novnc", "labcentral-recovery")
 	if !strings.Contains(readme, "--auth-mode=none") {
 		t.Fatal("release launch instructions omit the required authentication mode")
 	}
@@ -54,6 +54,9 @@ func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	}
 	if !strings.Contains(readme, "three OS identities") {
 		t.Fatal("release instructions omit the native identity boundary")
+	}
+	if !strings.Contains(readme, "labcentral-recovery") || !strings.Contains(readme, "docs/recovery.md") {
+		t.Fatal("release instructions omit the encrypted recovery utility")
 	}
 }
 

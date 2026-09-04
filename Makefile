@@ -1,4 +1,4 @@
-.PHONY: build build-access-plugin build-proxmox-provider build-proxmox-qualification build-proxmox-probe-agent web test run release image compose-config clean
+.PHONY: build build-access-plugin build-proxmox-provider build-proxmox-qualification build-proxmox-probe-agent build-recovery web test run release image compose-config clean
 
 GO ?= go
 BUN ?= bun
@@ -36,6 +36,10 @@ build-proxmox-qualification:
 build-proxmox-probe-agent:
 	mkdir -p bin
 	$(GO) build -trimpath -o bin/lab-proxmox-probe-agent ./tools/proxmox-probe-agent
+
+build-recovery:
+	mkdir -p bin
+	$(GO) build -trimpath -o bin/labcentral-recovery ./tools/recovery
 
 web:
 	cd web && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) install --frozen-lockfile && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) run check && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) run build

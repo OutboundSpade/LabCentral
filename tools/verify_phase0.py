@@ -303,6 +303,7 @@ def collect_test_ids() -> set[str]:
         ROOT / "design/contracts/access-conformance.yaml",
         ROOT / "design/contracts/production-observability.yaml",
         ROOT / "design/contracts/production-topology.yaml",
+        ROOT / "design/contracts/production-recovery.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
         ROOT / "schemas/fixtures/parser/cases.yaml",
         ROOT / "schemas/fixtures/canonical/vectors.yaml",

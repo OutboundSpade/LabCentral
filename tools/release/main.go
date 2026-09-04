@@ -117,6 +117,7 @@ func run(ctx context.Context, args []string) error {
 	proxmoxProviderName := "lab-provider-proxmox" + extension
 	accessProviderName := "lab-access-novnc" + extension
 	qualificationName := "lab-proxmox-qualification" + extension
+	recoveryName := "labcentral-recovery" + extension
 	if err := buildBinary(ctx, cfg, "./cmd/labd", filepath.Join(root, labdName), "-X=main.version="+cfg.version); err != nil {
 		return err
 	}
@@ -130,6 +131,9 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	if err := buildBinary(ctx, cfg, "./tools/proxmox-qualification", filepath.Join(root, qualificationName), ""); err != nil {
+		return err
+	}
+	if err := buildBinary(ctx, cfg, "./tools/recovery", filepath.Join(root, recoveryName), ""); err != nil {
 		return err
 	}
 	labdDigest, err := fileSHA256(filepath.Join(root, labdName))
@@ -149,6 +153,10 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	qualificationDigest, err := fileSHA256(filepath.Join(root, qualificationName))
+	if err != nil {
+		return err
+	}
+	recoveryDigest, err := fileSHA256(filepath.Join(root, recoveryName))
 	if err != nil {
 		return err
 	}
@@ -217,6 +225,7 @@ func run(ctx context.Context, args []string) error {
 		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
 		{Name: accessProviderName, SHA256: accessProviderDigest},
 		{Name: qualificationName, SHA256: qualificationDigest},
+		{Name: recoveryName, SHA256: recoveryDigest},
 	})
 	if err := writeJSON(filepath.Join(root, "sbom.cdx.json"), sbom); err != nil {
 		return err
@@ -245,12 +254,13 @@ func run(ctx context.Context, args []string) error {
 		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
 		{Name: accessProviderName, SHA256: accessProviderDigest},
 		{Name: qualificationName, SHA256: qualificationDigest},
+		{Name: recoveryName, SHA256: recoveryDigest},
 	}
 	if err := writeJSON(filepath.Join(root, "provenance.json"), provenance); err != nil {
 		return err
 	}
 
-	readme := releaseReadme(cfg.version, cfg.goos, cfg.goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName)
+	readme := releaseReadme(cfg.version, cfg.goos, cfg.goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, recoveryName)
 	if err := writeFile(filepath.Join(root, "README.md"), []byte(readme), 0o644); err != nil {
 		return err
 	}
@@ -278,6 +288,8 @@ func run(ctx context.Context, args []string) error {
 		"docs/operations/proxmox-deployment.md":              "docs/proxmox-deployment.md",
 		"docs/operations/kubernetes-proxmox.md":              "docs/kubernetes-proxmox.md",
 		"docs/operations/observability.md":                   "docs/observability.md",
+		"docs/operations/postgresql-control-plane.md":        "docs/postgresql-control-plane.md",
+		"docs/operations/recovery.md":                        "docs/recovery.md",
 	} {
 		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
 			return err
@@ -495,16 +507,18 @@ func goPURL(path, version string) string {
 	return "pkg:golang/" + strings.ReplaceAll(path, "%", "%25") + "@" + url.PathEscape(version)
 }
 
-func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName string) string {
+func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, recoveryName string) string {
 	return fmt.Sprintf(`# LabCentral %s (%s/%s)
 
 This archive contains the trusted-laptop Docker distribution and the
 qualification-gated Proxmox distribution with its isolated noVNC access
-process. Keep %s, %s, %s, %s, and their adjacent
-checksum/source-provenance files together. Local child-process mode verifies
+process. Keep %s, %s, %s, %s, %s, and their packaged checksum and
+source-provenance metadata together. Local child-process mode verifies
 and snapshots provider executables before launch. The native production units
 instead isolate the official processes under three OS identities; archive
-checksums and signed exact-build qualification bind the installed files.
+checksums and signed exact-build qualification bind the installed files. The
+recovery utility creates and verifies signed age-encrypted PostgreSQL/shared
+state or native SQLite/provider-state recovery sets; follow docs/recovery.md.
 
 For the local Docker example, run:
 
@@ -526,7 +540,7 @@ Verify every packaged file with:
 
 The CycloneDX inventory is sbom.cdx.json. provenance.json records source and
 build facts but is not a signature or a SLSA attestation.
-`, version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, labdName)
+`, version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, recoveryName, labdName)
 }
 
 func copyReleaseFile(source, destination string) error {

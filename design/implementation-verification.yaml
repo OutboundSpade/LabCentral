@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T06:45:35Z"
+verifiedAt: "2026-09-04T07:35:58Z"
 result: pass
-scope: task_prod_004_native_multi_service_checkpoint
+scope: task_prod_004_automated_encrypted_recovery_checkpoint
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -89,6 +89,14 @@ commands:
   - go test -count=1 ./... after shared Proxmox journal coordination and multi-replica admission
   - go test -race -count=1 ./... after shared Proxmox journal coordination and multi-replica admission
   - go vet ./... and python3 tools/verify_phase0.py after TEST-PROXMOX-029
+  - go mod tidy after adding filippo.io/age v1.3.2
+  - LABCENTRAL_TEST_POSTGRES_DSN=<disposable-postgresql-18-url> LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER=labcentral-postgres-prod1 go test -count=1 -v ./tools/recovery
+  - the same recovery test under go test -race -count=1
+  - GOOS=windows GOARCH=amd64 go build ./tools/recovery cross-compilation check
+  - LABCENTRAL_TEST_POSTGRES_DSN=<disposable-postgresql-18-url> LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER=labcentral-postgres-prod1 go test -count=1 ./...
+  - the same complete repository suite under go test -race -count=1 ./...
+  - go vet ./... and python3 tools/verify_phase0.py after TEST-PROD-RECOVERY-001 through TEST-PROD-RECOVERY-005
+  - bun run check and bun run build after recovery release packaging and documentation
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -281,8 +289,20 @@ checks:
   - test_proxmox_029_shared_provider_process_coordination
   - test_prod_topology_007_native_identity_and_credential_separation
   - test_prod_topology_008_native_network_state_and_syscall_isolation
+  - protected_non_overwriting_recovery_key_generation
+  - hybrid_age_encryption_and_domain_separated_ed25519_manifest_signature
+  - recovery_signer_trust_rotation_and_revocation
+  - bounded_hashed_link_free_state_components
+  - postgres_verify_full_and_passfile_only_credentials
+  - exact_offline_confirmation_release_and_tool_major_binding
+  - stable_database_time_backup_and_restore_watermarks
+  - empty_postgresql_database_and_nonexistent_filesystem_destinations
+  - native_database_lock_integrity_and_two_component_prestaging
+  - real_postgresql_18_custom_dump_decrypt_verify_and_restore
 notes:
-  - TASK-PROD-004 remains intentionally partial. Automated encrypted recovery, shared-RWX failover/chaos evidence, 100-instance load/soak evidence, disaster-recovery evidence, and signed publisher releases remain open.
+  - TASK-PROD-004 remains intentionally partial. Shared-RWX failover/chaos evidence, 100-instance load/soak evidence, deployment-specific disaster-recovery evidence, and signed publisher releases remain open.
+  - TEST-PROD-RECOVERY-001 through TEST-PROD-RECOVERY-005 passed normal and race-enabled CI. The disposable PostgreSQL 18 runner invoked real pg_dump and pg_restore, decrypted and authenticated the set, restored a new database and state root, matched audit/event/job watermarks, and reopened the restored store. The operator-provided database container remains running; every temporary source/restore database was removed.
+  - Native recovery proved that a live labd lock excludes backup, SQLite integrity and watermarks survive restoration, and an unsafe second component commits neither the core nor provider destination. The recovery binary also cross-compiled for the Windows archive while native SQLite/systemd commands remain explicitly POSIX-only.
   - TEST-PROD-TOPOLOGY-001 through TEST-PROD-TOPOLOGY-006 passed. The checked-in base remains fail-closed behind an all-zero OCI digest, RFC 5737 egress sentinels, and separately created configuration/secrets.
   - TEST-PROD-TOPOLOGY-007 and TEST-PROD-TOPOLOGY-008 passed. An isolated alternate filesystem root populated from the packaged sysusers definition passed systemd unit verification without changing host accounts or installed units. Offline systemd security exposure was 1.4 for core and 1.3 for each plugin against an enforced maximum of 3.0.
   - Native core, Proxmox, and noVNC use distinct users, non-overlapping per-plugin IPC groups, private systemd credential projections, separate protected state paths, and attached 0770/0660 Unix IPC. All non-loopback IP traffic remains denied until an operator installs the exact Proxmox address; TCP/8006 restriction remains a documented UID-scoped host-firewall obligation.

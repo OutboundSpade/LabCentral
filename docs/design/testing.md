@@ -138,6 +138,21 @@ host-loss subprocess test proves an attached plugin exits after its heartbeat
 channel disappears, so an external service manager can reconstruct the one-use
 handshake.
 
+[`production-recovery.yaml`](../../design/contracts/production-recovery.yaml)
+indexes the offline recovery checkpoint. The normal suite proves protected
+non-overwriting hybrid age and Ed25519 key generation, encrypted canary
+absence, domain-separated manifest authentication, signer revocation,
+component hashes and bounds, traversal/link/type refusal, exact release and
+offline confirmation, native SQLite lock/integrity/watermark checks, and
+pre-staging of both native components before either destination is committed.
+With `LABCENTRAL_TEST_POSTGRES_DSN` and
+`LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER`, the same suite creates a migrated
+source database, invokes real containerized `pg_dump` and `pg_restore`,
+decrypts/verifies the set, requires an empty target, compares signed
+audit/event/job watermarks, and opens the restored database and shared state.
+The test-only insecure flag accepts only a loopback database and is absent from
+the production procedure.
+
 `TASK-PROXMOX-001` adds the normal-CI T0 HTTPS discovery fake. `TASK-PROXMOX-004` extends T0 with closed-schema planning/state/journal tests, a stateful mutation fake, and an HTTPS method/path/form fake. Tests pin the API-token header, private-CA verification, redirect refusal, envelope/response/inventory bounds, provider-returned paths, deterministic evidence, every allowed mutation endpoint and safe field, committed claims/dependency state, ownership, optimistic config, UPID/task bounds, compensation, absence-confirmed destroy, lifecycle idempotency, restart at every checkpoint, and credential/guest/upstream canary absence. The default constructor is asserted closed; separate production-constructor tests require a non-nil authorizer and prove authorization on discovery plus fail-closed reviewer rejection. Build the binary with `make build-proxmox-provider`; the disposable testbed T3 evidence package and read-only cross-build T4 rehearsal pass.
 
 `TEST-PROXMOX-023`, the `TASK-PROXMOX-005` control-plane T0 integration test, runs a protocol-v1.1 provider through real in-process gRPC and the migrated SQLite store. It persists expiring discovery evidence and visible freshness status, proves scoped credential/config delivery, atomically commits Network/VM plans and claims, forces a second instance through conflict exclusions, passes committed Network state/claims into the VM mutation, routes apply/destroy by persisted target after enqueue, releases claims only on successful absence, and proves an `unsupported` refreshed capability blocks create. Normal CI still contacts no external target. The protected exact-profile lifecycle, guest-connectivity, and failure/recovery runs passed, and their closed testbed artifact verifies `qualifies=true` for its exact target/candidate.

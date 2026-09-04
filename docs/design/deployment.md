@@ -102,6 +102,20 @@ executions add fixed-kind/result counters and duration histograms. The exporter
 rejects unknown lifecycle values rather than turning database content into new
 labels; no object or tenant identity is present.
 
+The recovery checkpoint packages `labcentral-recovery` in every native
+release. It creates non-overwriting, domain-separated Ed25519-signed and
+hybrid-age-encrypted offline sets. Multi-replica sets bind a PostgreSQL custom
+dump to the complete shared artifact/journal root and stable database
+watermarks; native sets bind the locked, integrity-checked SQLite core root to
+the separately owned provider root. Restore authenticates and hashes every
+component, stages filesystem contents before mutation, requires an exact
+release and a new database/path, preserves numeric ownership by default, and
+rechecks the signed watermark. Decryption identity and runtime secrets remain
+off-workload and separately recoverable. The exact operator procedure is
+[`../operations/recovery.md`](../operations/recovery.md), and the executable
+contract is
+[`../../design/contracts/production-recovery.yaml`](../../design/contracts/production-recovery.yaml).
+
 ## Kubernetes production base
 
 The first Kubernetes checkpoint is a two-replica StatefulSet with stable Pod

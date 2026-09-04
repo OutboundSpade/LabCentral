@@ -3,6 +3,7 @@ module github.com/OutboundSpade/LabCentral
 go 1.27.0
 
 require (
+	filippo.io/age v1.3.2
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
@@ -28,6 +29,7 @@ require (
 
 require (
 	cel.dev/expr v0.25.2 // indirect
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

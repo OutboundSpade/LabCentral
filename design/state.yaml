@@ -80,6 +80,8 @@ documents:
     status: complete
   - path: docs/operations/postgresql-control-plane.md
     status: complete
+  - path: docs/operations/recovery.md
+    status: complete
   - path: schemas/lab-v1alpha1.schema.json
     status: complete
   - path: schemas/fixtures
@@ -163,6 +165,8 @@ documents:
   - path: tools/proxmox-probe-agent
     status: complete
   - path: tools/provider-testenv
+    status: complete
+  - path: tools/recovery
     status: complete
   - path: deploy/proxmox
     status: complete

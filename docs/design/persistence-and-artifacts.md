@@ -34,6 +34,16 @@ Published Template Revision source uses the existing content-addressed artifact 
 
 Production backup coordinates a database snapshot with an artifact inventory/manifest watermark; restore verifies every referenced digest and reports missing/orphaned artifacts. External secrets are backed up by their owning system. Provider resources are not reconstructed from database backup alone: post-restore starts in observation-safe mode until installation identity, target credentials, and ownership are confirmed.
 
-The implemented `TASK-PROD-001` compatibility gate uses PostgreSQL custom-format `pg_dump`, drops only its isolated test schema, restores it with `pg_restore --exit-on-error`, reapplies the migration verifier, compares every durable table count, and reads the restored terminal Instance. The operator procedure is [`../operations/postgresql-control-plane.md`](../operations/postgresql-control-plane.md). It requires a full replica stop for this first conservative backup contract; online coordinated watermarks and encrypted automated backups remain part of `TASK-PROD-004`.
+The implemented `TASK-PROD-001` compatibility gate uses PostgreSQL
+custom-format `pg_dump`, drops only its isolated test schema, restores it with
+`pg_restore --exit-on-error`, reapplies the migration verifier, compares every
+durable table count, and reads the restored terminal Instance. The
+`TASK-PROD-004` recovery checkpoint adds the packaged offline
+`labcentral-recovery` utility: signed age-encrypted sets, stable database
+watermarks, complete shared/native state archives, strict path/type/bounds,
+empty-destination restore, exact release/tool-major binding, and real
+PostgreSQL plus SQLite rehearsals. The supported consistency boundary still
+requires every replica/plugin to stop; online backup is not claimed. The
+operator procedure is [`../operations/recovery.md`](../operations/recovery.md).
 
 Migrations are numbered and monotonic. Multi-replica rollouts use expand → dual-read/write if needed → backfill → contract after the compatibility window. Destructive schema changes and irreversible provider-state migrations require backup/restore rehearsal and ADR.
