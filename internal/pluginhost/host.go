@@ -49,6 +49,7 @@ type Config struct {
 }
 
 type Client struct {
+	supervised       *supervisedState
 	Provider         pluginv1.ProviderServiceClient
 	Access           pluginv1.AccessServiceClient
 	Runtime          pluginv1.PluginRuntimeServiceClient
@@ -807,6 +808,11 @@ func (c *Client) SupportsFeatures(minor uint32, required ...string) bool {
 }
 
 func (c *Client) Close() error {
+	if c != nil && c.supervised != nil {
+		c.supervised.cancel()
+		<-c.supervised.done
+		return nil
+	}
 	var result error
 	c.closeOnce.Do(func() {
 		if c.connection != nil {

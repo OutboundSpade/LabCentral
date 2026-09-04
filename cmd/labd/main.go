@@ -28,6 +28,7 @@ import (
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localsecret"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/authentication"
 	"github.com/OutboundSpade/LabCentral/internal/authorization"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
@@ -53,6 +54,7 @@ const (
 )
 
 type config struct {
+	installationFile             string
 	listen                       string
 	observabilityListen          string
 	otlpTracesEndpoint           string
@@ -239,7 +241,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		}
 		defer dockerPlugin.Close()
 		targetBindings = append(targetBindings, controlplane.TargetBinding{
-			ID: controlplane.LocalDockerTarget, ProviderKind: "docker", Provider: dockerPlugin.Provider,
+			ID: controlplane.LocalDockerTarget, ProviderKind: "docker", Policy: controlplane.TargetPolicy{TrustedLaptop: true}, Provider: providergrpc.NewLive(dockerPlugin.Provider, dockerPlugin.Available),
 			ProtocolMajor: dockerPlugin.SelectedProtocol.GetMajor(), ProtocolMinor: dockerPlugin.SelectedProtocol.GetMinor(), Features: dockerPlugin.Info.GetFeatures(),
 		})
 		providerExamples[string(controlplane.LocalDockerTarget)] = httpapi.ProviderExample{Source: string(dockerlaptop.LabYAML())}
@@ -254,6 +256,18 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		defer proxmoxPlugin.Close()
 		targetBindings = append(targetBindings, proxmoxBinding)
 		providerExamples[string(proxmoxBinding.ID)] = example
+	}
+	var installedClients []*pluginhost.Client
+	if configuration.installationFile != "" {
+		installed, clients, err := loadInstalledProviders(ctx, configuration, runtimeParent)
+		if err != nil {
+			return err
+		}
+		installedClients = clients
+		for _, client := range clients {
+			defer client.Close()
+		}
+		targetBindings = append(targetBindings, installed...)
 	}
 	if len(targetBindings) == 0 {
 		return fmt.Errorf("at least one provider target must be configured")
@@ -305,12 +319,19 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		if err != nil {
 			return fmt.Errorf("launch noVNC access plugin: %w", err)
 		}
+		accessStartConfig := pluginConfig
+		accessPlugin = pluginhost.Supervise(ctx, accessPlugin, func(restartContext context.Context) (*pluginhost.Client, error) {
+			if configuration.accessPluginRuntimeDir != "" {
+				return attachConfiguredPlugin(restartContext, configuration.accessPluginRuntimeDir, configuration.accessPluginTokenFile, accessStartConfig)
+			}
+			return pluginhost.Launch(restartContext, accessStartConfig)
+		})
 		defer accessPlugin.Close()
 		accessRegistry, err := controlplane.NewAccessRegistry([]controlplane.AccessBinding{{
-			PluginID: accessPlugin.Info.GetPluginId(), PluginVersion: accessPlugin.Info.GetPluginVersion(), PluginInstance: "plugin.local-novnc",
-			AccessKind: "browser-vnc", Audience: configuration.publicOrigin, Access: accessPlugin.Access,
+			PluginID: accessPlugin.Info.GetPluginId(), PluginVersion: accessPlugin.Info.GetPluginVersion(), PluginInstance: configuration.accessPluginInstanceID,
+			AccessKind: "browser-vnc", Audience: configuration.publicOrigin, Access: providergrpc.NewAccess(accessPlugin.Access),
 			ProtocolMajor: accessPlugin.SelectedProtocol.GetMajor(), ProtocolMinor: accessPlugin.SelectedProtocol.GetMinor(),
-			Features: accessPlugin.Info.GetFeatures(), Methods: accessPlugin.Info.GetSupportedAccessMethods(), EndpointSchemas: accessPlugin.Info.GetAcceptedAccessEndpointSchemas(),
+			Features: accessPlugin.Info.GetFeatures(), Methods: accessPlugin.Info.GetSupportedAccessMethods(), EndpointSchemas: providergrpc.Schemas(accessPlugin.Info.GetAcceptedAccessEndpointSchemas()),
 		}})
 		if err != nil {
 			return fmt.Errorf("construct access plugin registry: %w", err)
@@ -327,18 +348,6 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	readinessChecks := []observability.Check{
 		{Name: "database", Run: store.Ping},
 		{Name: "artifacts", Run: artifacts.Check},
-	}
-	if dockerPlugin != nil {
-		client := dockerPlugin
-		readinessChecks = append(readinessChecks, observability.Check{Name: "docker_plugin", Run: client.CheckHealth})
-	}
-	if proxmoxPlugin != nil {
-		client := proxmoxPlugin
-		readinessChecks = append(readinessChecks, observability.Check{Name: "proxmox_plugin", Run: client.CheckHealth})
-	}
-	if accessPlugin != nil {
-		client := accessPlugin
-		readinessChecks = append(readinessChecks, observability.Check{Name: "access_plugin", Run: client.CheckHealth})
 	}
 	telemetry, err := observability.New(version, configuration.replicaID, readinessChecks)
 	if err != nil {
@@ -428,31 +437,37 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		serveDone <- server.ServeTLS(listener, "", "")
 	}()
 	telemetry.MarkStartupComplete()
-	providerFailure := make(chan error, 3)
-	monitorProvider := func(label, category, kind string, client *pluginhost.Client) {
-		if client == nil {
-			return
-		}
-		go func() {
-			if done := client.Done(); done != nil {
-				select {
-				case <-ctx.Done():
-					return
-				case <-done:
-					telemetry.SetPlugin(category, kind, false)
-					providerFailure <- fmt.Errorf("%s plugin process exited: %v", label, client.ExitError())
-				}
+	// Target availability is independent of core readiness. Each managed client
+	// rebuilds only its own registration and reports bounded plugin telemetry.
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
 				return
+			case <-ticker.C:
 			}
-			if err := waitForAttachedPluginFailure(ctx, client, 5*time.Second, 3); err != nil {
-				telemetry.SetPlugin(category, kind, false)
-				providerFailure <- fmt.Errorf("%s attached plugin failed: %w", label, err)
+			byKind := map[string]bool{}
+			for _, client := range installedClients {
+				for _, kind := range client.Info.GetProviderKinds() {
+					prior, seen := byKind[kind]
+					byKind[kind] = client.Available() && (!seen || prior)
+				}
 			}
-		}()
-	}
-	monitorProvider("Docker", "provider", "docker", dockerPlugin)
-	monitorProvider("Proxmox", "provider", "proxmox", proxmoxPlugin)
-	monitorProvider("noVNC access", "access", "novnc", accessPlugin)
+			for kind, available := range byKind {
+				telemetry.SetPlugin("provider", kind, available)
+			}
+			for _, entry := range []struct {
+				category, kind string
+				client         *pluginhost.Client
+			}{{"provider", "docker", dockerPlugin}, {"provider", "proxmox", proxmoxPlugin}, {"access", "novnc", accessPlugin}} {
+				if entry.client != nil {
+					telemetry.SetPlugin(entry.category, entry.kind, entry.client.Available())
+				}
+			}
+		}
+	}()
 	if configuration.authMode == httpapi.AuthModeNone {
 		logger.Warn("LabCentral started in no-auth development mode", "listen", listener.Addr().String(), "version", version, "warning", warning)
 	} else {
@@ -486,51 +501,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		return fmt.Errorf("operations server stopped: %w", err)
 	case err := <-workerDone:
 		return fmt.Errorf("durable worker stopped: %w", err)
-	case err := <-providerFailure:
-		if ctx.Err() != nil {
-			return nil
-		}
-		stop()
-		cancelWorker()
-		shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if shutdownErr := server.Shutdown(shutdownContext); shutdownErr != nil {
-			return errors.Join(err, shutdownErr)
-		}
-		if shutdownErr := operationsServer.Shutdown(shutdownContext); shutdownErr != nil {
-			return errors.Join(err, shutdownErr)
-		}
-		if workerErr := <-workerDone; workerErr != nil {
-			return errors.Join(err, workerErr)
-		}
-		return err
-	}
-}
 
-func waitForAttachedPluginFailure(ctx context.Context, client *pluginhost.Client, interval time.Duration, failureThreshold int) error {
-	if client == nil || client.Done() != nil || interval <= 0 || failureThreshold < 1 {
-		return fmt.Errorf("attached plugin monitor configuration is invalid")
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	consecutiveFailures := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			checkContext, cancel := context.WithTimeout(ctx, 2*time.Second)
-			err := client.CheckHealth(checkContext)
-			cancel()
-			if err == nil {
-				consecutiveFailures = 0
-				continue
-			}
-			consecutiveFailures++
-			if consecutiveFailures >= failureThreshold {
-				return fmt.Errorf("health failed %d consecutive times", consecutiveFailures)
-			}
-		}
 	}
 }
 
@@ -641,6 +612,7 @@ func parseFlags() config {
 	executable, _ := os.Executable()
 	defaultPlugin := filepath.Join(filepath.Dir(executable), "lab-provider-docker")
 	var result config
+	flag.StringVar(&result.installationFile, "installation", "", "versioned plugin installation configuration")
 	flag.StringVar(&result.listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	flag.StringVar(&result.observabilityListen, "observability-listen", "127.0.0.1:9090", "private operations listen address for /live, /ready, and /metrics")
 	flag.StringVar(&result.otlpTracesEndpoint, "otlp-traces-endpoint", "", "optional exact OTLP/HTTP traces endpoint")
@@ -1168,6 +1140,24 @@ type providerPluginConfig struct {
 }
 
 func startProviderPlugin(ctx context.Context, configuration providerPluginConfig) (*pluginhost.Client, error) {
+	if configuration.AttachRuntimeDirectory == "" {
+		digest, err := configuredPluginDigest(configuration.Executable, configuration.ExecutableSHA256, configuration.Label)
+		if err != nil {
+			return nil, err
+		}
+		configuration.ExecutableSHA256 = digest
+	}
+	start := func(callContext context.Context) (*pluginhost.Client, error) {
+		return startProviderPluginOnce(callContext, configuration)
+	}
+	initial, err := start(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pluginhost.Supervise(ctx, initial, start), nil
+}
+
+func startProviderPluginOnce(ctx context.Context, configuration providerPluginConfig) (*pluginhost.Client, error) {
 	base := pluginhost.Config{
 		ConfiguredPluginID: configuration.PluginID, ConfiguredProviderKind: configuration.ProviderKind,
 		PluginInstanceID: configuration.PluginInstanceID,
@@ -1288,7 +1278,7 @@ func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParen
 		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	return controlplane.TargetBinding{
-		ID: targetID, ProviderKind: "proxmox", Provider: client.Provider, ConfigEnvelope: configEnvelope,
+		ID: targetID, ProviderKind: "proxmox", Policy: controlplane.TargetPolicy{MinimumMinor: 1, RequiredFeatures: []string{"opaque-allocation-claims-v1", "dependency-resource-input-v1"}, NativeCapabilities: []string{"workload.vm"}}, Provider: providergrpc.NewLive(client.Provider, client.Available), ConfigEnvelope: configEnvelope,
 		CredentialRef: &domain.SecretRef{Source: "file", Name: credentialPath, Key: "value"}, CredentialResolver: resolver,
 		ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures(),
 	}, client, example, nil

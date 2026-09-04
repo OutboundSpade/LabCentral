@@ -11,7 +11,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
-const SystemExpirationActorID = domain.UserID("system.expiration")
+const SystemExpirationActorID = application.SystemExpirationActorID
 
 type ExpirationSweepResult struct {
 	ReservationsExpired uint32

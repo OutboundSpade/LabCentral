@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -76,23 +76,62 @@ func TestProviderInvocationEnvelopeCoversBoundedLongRunningTasks(t *testing.T) {
 }
 
 func TestFailedResourceLeftoverClassificationIsHonest(t *testing.T) {
-	failure := &pluginv1.StructuredError{Code: "provider_failure", ErrorClass: "provider_failure", SafeMessage: "Provider operation failed"}
+	failure := &application.ProviderIssue{Code: "provider_failure", Message: "Provider operation failed"}
 	for _, testCase := range []struct {
 		name   string
-		result *pluginv1.ResourceResult
+		result *application.ProviderResult
 		want   bool
 	}{
 		{name: "no provider result", result: nil, want: false},
-		{name: "unproven prewrite failure is retained", result: &pluginv1.ResourceResult{Error: failure, ObservedStateJson: []byte(`{"leftovers":[]}`)}, want: true},
-		{name: "explicitly compensated prewrite failure", result: &pluginv1.ResourceResult{Error: failure, CompensationComplete: true, ObservedStateJson: []byte(`{"leftovers":[]}`)}, want: false},
-		{name: "reported owned leftover", result: &pluginv1.ResourceResult{Error: failure, ObservedStateJson: []byte(`{"leftovers":["qemu/101"]}`)}, want: true},
-		{name: "incomplete attempted compensation", result: &pluginv1.ResourceResult{Error: failure, CompensationAttempted: true}, want: true},
-		{name: "confirmed compensation overrides stale observation", result: &pluginv1.ResourceResult{Error: failure, CompensationAttempted: true, CompensationComplete: true, ObservedStateJson: []byte(`{"leftovers":["qemu/101"]}`)}, want: false},
+		{name: "unproven prewrite failure is retained", result: &application.ProviderResult{Error: failure, Observation: []byte(`{"leftovers":[]}`)}, want: true},
+		{name: "explicitly compensated prewrite failure", result: &application.ProviderResult{Error: failure, CompensationComplete: true, Observation: []byte(`{"leftovers":[]}`)}, want: false},
+		{name: "reported owned leftover", result: &application.ProviderResult{Error: failure, Observation: []byte(`{"leftovers":["qemu/101"]}`)}, want: true},
+		{name: "incomplete attempted compensation", result: &application.ProviderResult{Error: failure, CompensationAttempted: true}, want: true},
+		{name: "confirmed compensation overrides stale observation", result: &application.ProviderResult{Error: failure, CompensationAttempted: true, CompensationComplete: true, Observation: []byte(`{"leftovers":["qemu/101"]}`)}, want: false},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			if got := resultHasOwnedLeftovers(testCase.result); got != testCase.want {
 				t.Fatalf("resultHasOwnedLeftovers() = %t, want %t", got, testCase.want)
 			}
 		})
+	}
+}
+
+type availableProvider struct {
+	application.Provider
+	up bool
+}
+
+func (p *availableProvider) Available() bool { return p.up }
+
+type filterClaimStore struct {
+	application.WorkerStore
+	targets []domain.ProviderTargetID
+}
+
+func (s *filterClaimStore) ClaimTargets(_ context.Context, _ string, _ time.Duration, targets []domain.ProviderTargetID) (application.WorkClaim, error) {
+	s.targets = targets
+	return application.WorkClaim{}, application.ErrNoWork
+}
+func TestWorkerClaimsOnlyAvailableTargets(t *testing.T) {
+	healthy := &availableProvider{up: true}
+	down := &availableProvider{up: false}
+	registry, err := NewTargetRegistry([]TargetBinding{{ID: "target.healthy", ProviderKind: "external", Provider: healthy, ProtocolMajor: 1}, {ID: "target.down", ProviderKind: "external", Provider: down, ProtocolMajor: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &filterClaimStore{}
+	worker, err := NewWorkerWithTargets(store, registry, CryptoIDs{}, WorkerOptions{Owner: "worker.filter"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = worker.RunOnce(context.Background())
+	if len(store.targets) != 1 || store.targets[0] != "target.healthy" {
+		t.Fatal("unavailable target was claimed", store.targets)
+	}
+	down.up = true
+	_ = worker.RunOnce(context.Background())
+	if len(store.targets) != 2 {
+		t.Fatal("recovered target did not resume", store.targets)
 	}
 }

@@ -29,6 +29,7 @@ func (s *Service) CreateInstanceBatchRevisionTargetForLifetime(
 	idempotencyKey string,
 	targetID domain.ProviderTargetID,
 	providerOverride []byte,
+	options ...RenderOptions,
 ) (InstanceBatchRecord, error) {
 	if _, err := domain.NewUserID(string(subjectID)); err != nil {
 		return InstanceBatchRecord{}, err
@@ -60,15 +61,24 @@ func (s *Service) CreateInstanceBatchRevisionTargetForLifetime(
 		return InstanceBatchRecord{}, err
 	}
 
-	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride)
+	if len(options) > 1 {
+		return InstanceBatchRecord{}, fmt.Errorf("only one render options object is allowed")
+	}
+	option := RenderOptions{}
+	if len(options) == 1 {
+		option = options[0]
+	}
+	revision, err := s.store.GetTemplateRevision(ctx, revisionID)
 	if err != nil {
 		return InstanceBatchRecord{}, err
 	}
-	if validation.ProviderKind == "proxmox" {
-		_ = s.RefreshTargetAs(ctx, subjectID, targetID)
-		if err := s.requireNativeCapability(ctx, targetID, "workload.vm"); err != nil {
-			return InstanceBatchRecord{}, err
-		}
+	option.RendererVersion = revision.RendererVersion
+	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride, option)
+	if err != nil {
+		return InstanceBatchRecord{}, err
+	}
+	if err := s.requireTargetAdmission(ctx, subjectID, targetID); err != nil {
+		return InstanceBatchRecord{}, err
 	}
 	quotaAmounts, err := quotaAmountsForCanonical(validation.Canonical)
 	if err != nil {
@@ -90,6 +100,10 @@ func (s *Service) CreateInstanceBatchRevisionTargetForLifetime(
 	lifetimeDigest := []byte(fmt.Sprintf("%d:%t", lifetime.TTLSeconds, lifetime.Persistent))
 	requestDigest := digestBytes("labcentral.http.create-instance-batch/v1", []byte(projectID), []byte(revisionID),
 		ownerDigest, lifetimeDigest, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+	if len(option.Inputs) > 0 {
+		requestDigest = digestBytes("labcentral.http.instance-batch-inputs/v1", []byte(requestDigest), []byte(validation.Canonical.Digest))
+	}
+
 	recordIDs, err := s.newGovernanceRecordIDs()
 	if err != nil {
 		return InstanceBatchRecord{}, err

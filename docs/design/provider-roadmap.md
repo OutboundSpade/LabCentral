@@ -1,5 +1,7 @@
 # Implementation and provider roadmap
 
+Current architecture follows ADR-0015, ADR-0016 and ADR-0017. See [architecture](architecture.md), [installation and cleanup authority](../operations/plugin-installation.md), and [compatibility](../compatibility.md). Historical task checkpoints below remain evidence, not additional implementation requirements.
+
 The thin Docker path optimizes onboarding, not production priority.
 
 ## Phase 0A — architecture and contract gate (complete)

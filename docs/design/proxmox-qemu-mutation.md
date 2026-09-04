@@ -1,5 +1,7 @@
 # Proxmox QEMU mutation contract
 
+Current architecture follows ADR-0015, ADR-0016 and ADR-0017. See [architecture](architecture.md), [installation and cleanup authority](../operations/plugin-installation.md), and [compatibility](../compatibility.md). Historical task checkpoints below remain evidence, not additional implementation requirements.
+
 `TASK-PROXMOX-002` fixes the safety and integration contract for the first write-capable Proxmox slice. `TASK-PROXMOX-003` implements the additive protocol-minor fields and core allocation repository prerequisites. `TASK-PROXMOX-004` implements the closed provider types and every T0 fake-API case behind a package-private test gate. `TASK-PROXMOX-005` completes the control-plane target/secret/capability/allocation/dependency path and credentialed T3 evidence boundary. ADR-0014 permits the production constructor to advertise and execute the supported subset only through an authorizer that consumes a passing signed artifact and rebinds it to active reviewer trust, the exact running provider build, target configuration, live inventory/profile, permissions, and PVE build before every write.
 
 ## Supported slice

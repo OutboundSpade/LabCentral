@@ -11,6 +11,7 @@ import (
 
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -58,7 +59,7 @@ func TestPostgreSQLHundredInstanceMultiReplicaResilience(t *testing.T) {
 	provider, engine, closeProvider := testProvider(t)
 	t.Cleanup(closeProvider)
 	ids := &sequenceIDs{}
-	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +126,7 @@ func TestPostgreSQLHundredInstanceMultiReplicaResilience(t *testing.T) {
 	var workers sync.WaitGroup
 	for index := 0; index < 4; index++ {
 		workerStore, _ := openStore()
-		worker, err := controlplane.NewWorker(workerStore, provider, ids, controlplane.WorkerOptions{
+		worker, err := controlplane.NewWorker(workerStore, providergrpc.New(provider), ids, controlplane.WorkerOptions{
 			Owner: fmt.Sprintf("replica-%d", index), LeaseDuration: 3 * time.Second, PollInterval: 2 * time.Millisecond,
 			OnError: func(workerErr error) {
 				select {

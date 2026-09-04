@@ -103,3 +103,19 @@ func importsBelow(t *testing.T, root string) map[string][]string {
 	}
 	return result
 }
+
+func TestOrchestrationAndPersistenceDependOnApplication(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, area := range []string{"controlplane", "adapter/localdb"} {
+		for file, paths := range importsBelow(t, filepath.Join(root, "internal", area)) {
+			if strings.HasSuffix(file, "_test.go") {
+				continue
+			}
+			for _, path := range paths {
+				if path == modulePath+"/internal/controlplane" || area == "controlplane" && (strings.HasPrefix(path, "google.golang.org/grpc") || strings.HasPrefix(path, "google.golang.org/protobuf") || path == modulePath+"/api/plugin/v1") {
+					t.Errorf("%s imports outward dependency %s", file, path)
+				}
+			}
+		}
+	}
+}

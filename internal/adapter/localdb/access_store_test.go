@@ -12,7 +12,6 @@ import (
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"google.golang.org/protobuf/proto"
 )
@@ -97,10 +96,10 @@ func TestAccessContract006ExchangeReauthorizes(t *testing.T) {
 				beginAccessTestSession(t, store, instance, providerDigest, "access.reauthorize", "reauthorize"),
 				providerDigest, accessTestHash("reauthorize-launch"), "reauthorize")
 			mutate(t, store)
-			denied, allowed, err := store.ExchangeAccessToken(context.Background(), controlplane.AccessExchangeRequest{
+			denied, allowed, err := store.ExchangeAccessToken(context.Background(), application.AccessExchangeRequest{
 				GovernanceRecordIDs: governanceIDs("access-exchange-reauthorize-" + name), ID: ready.ID,
 				Identity: accessTestIdentity(), TokenHashes: []application.KeyedTokenHash{accessTestHash("reauthorize-launch")},
-				NewLease: accessTestHash("reauthorize-lease"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+				NewLease: accessTestHash("reauthorize-lease"), LeaseDuration: application.DefaultAccessLeaseDuration,
 			})
 			if err != nil || allowed || denied.State != domain.AccessSessionFailed || denied.LaunchTokenHash != "" {
 				t.Fatalf("reauthorization after %s = state %q allowed=%v token=%q err=%v", name, denied.State, allowed, denied.LaunchTokenHash, err)
@@ -134,15 +133,15 @@ func TestAccessContract011LostCreateResponseRecovery(t *testing.T) {
 	}
 	first := finalizeAccessTestSession(t, store, pending, providerDigest, accessTestHash("superseded-launch"), "lost-first")
 	latest := finalizeAccessTestSession(t, store, first, providerDigest, accessTestHash("latest-launch"), "lost-second")
-	if _, allowed, err := store.ExchangeAccessToken(context.Background(), controlplane.AccessExchangeRequest{
+	if _, allowed, err := store.ExchangeAccessToken(context.Background(), application.AccessExchangeRequest{
 		GovernanceRecordIDs: governanceIDs("access-lost-old-token"), ID: latest.ID, Identity: accessTestIdentity(),
-		TokenHashes: []application.KeyedTokenHash{accessTestHash("superseded-launch")}, NewLease: accessTestHash("unused-lease"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		TokenHashes: []application.KeyedTokenHash{accessTestHash("superseded-launch")}, NewLease: accessTestHash("unused-lease"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	}); err != nil || allowed {
 		t.Fatalf("superseded launch allowed=%v err=%v", allowed, err)
 	}
-	if _, allowed, err := store.ExchangeAccessToken(context.Background(), controlplane.AccessExchangeRequest{
+	if _, allowed, err := store.ExchangeAccessToken(context.Background(), application.AccessExchangeRequest{
 		GovernanceRecordIDs: governanceIDs("access-lost-latest-token"), ID: latest.ID, Identity: accessTestIdentity(),
-		TokenHashes: []application.KeyedTokenHash{accessTestHash("latest-launch")}, NewLease: accessTestHash("latest-lease"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		TokenHashes: []application.KeyedTokenHash{accessTestHash("latest-launch")}, NewLease: accessTestHash("latest-lease"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	}); err != nil || !allowed {
 		t.Fatalf("latest launch allowed=%v err=%v", allowed, err)
 	}
@@ -155,16 +154,16 @@ func TestAccessContract012RestartPreservesDenial(t *testing.T) {
 	active := finalizeAccessTestSession(t, store,
 		beginAccessTestSession(t, store, instance, providerDigest, "access.restart-active", "restart-active"),
 		providerDigest, accessTestHash("restart-consumed"), "restart-active")
-	if _, allowed, err := store.ExchangeAccessToken(context.Background(), controlplane.AccessExchangeRequest{
+	if _, allowed, err := store.ExchangeAccessToken(context.Background(), application.AccessExchangeRequest{
 		GovernanceRecordIDs: governanceIDs("access-restart-consume"), ID: active.ID, Identity: accessTestIdentity(),
-		TokenHashes: []application.KeyedTokenHash{accessTestHash("restart-consumed")}, NewLease: accessTestHash("restart-lease"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		TokenHashes: []application.KeyedTokenHash{accessTestHash("restart-consumed")}, NewLease: accessTestHash("restart-lease"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	}); err != nil || !allowed {
 		t.Fatalf("initial exchange allowed=%v err=%v", allowed, err)
 	}
 	revoked := finalizeAccessTestSession(t, store,
 		beginAccessTestSession(t, store, instance, providerDigest, "access.restart-revoked", "restart-revoked"),
 		providerDigest, accessTestHash("restart-revoked"), "restart-revoked")
-	if _, err := store.RevokeAccessSession(context.Background(), controlplane.RevokeAccessSessionRequest{
+	if _, err := store.RevokeAccessSession(context.Background(), application.RevokeAccessSessionRequest{
 		GovernanceRecordIDs: governanceIDs("access-restart-revoke"), ID: revoked.ID, ActorID: "user.quota", Reason: "revoked",
 		ExpectedResourceVersion: revoked.ResourceVersion, IdempotencyKey: "idem.restart-revoke", RequestDigest: testRequestDigest("restart-revoke"),
 	}); err != nil {
@@ -187,9 +186,9 @@ func TestAccessContract012RestartPreservesDenial(t *testing.T) {
 		"consumed": {active.ID, "restart-consumed"}, "revoked": {revoked.ID, "restart-revoked"}, "expired": {expired.ID, "restart-expired"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			record, allowed, err := restarted.ExchangeAccessToken(context.Background(), controlplane.AccessExchangeRequest{
+			record, allowed, err := restarted.ExchangeAccessToken(context.Background(), application.AccessExchangeRequest{
 				GovernanceRecordIDs: governanceIDs("access-restart-deny-" + name), ID: candidate.id, Identity: accessTestIdentity(),
-				TokenHashes: []application.KeyedTokenHash{accessTestHash(candidate.token)}, NewLease: accessTestHash("restart-unused-" + name), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+				TokenHashes: []application.KeyedTokenHash{accessTestHash(candidate.token)}, NewLease: accessTestHash("restart-unused-" + name), LeaseDuration: application.DefaultAccessLeaseDuration,
 			})
 			if err != nil || allowed {
 				t.Fatalf("post-restart %s state=%q allowed=%v err=%v", name, record.State, allowed, err)
@@ -222,7 +221,7 @@ func newSQLiteAccessContractStore(t *testing.T) *Store {
 func accessTestIdentity() application.AccessCallbackIdentity {
 	return application.AccessCallbackIdentity{
 		PluginID: "access.novnc", PluginInstanceID: "plugin.access-1", Audience: "https://access.example.test",
-		ProtocolMajor: 1, ProtocolMinor: controlplane.AccessProtocolMinor,
+		ProtocolMajor: 1, ProtocolMinor: application.AccessProtocolMinor,
 	}
 }
 
@@ -241,7 +240,7 @@ func runAccessSessionConformance(t *testing.T, store *Store) {
 
 	start := make(chan struct{})
 	type result struct {
-		record  controlplane.AccessSessionRecord
+		record  application.AccessSessionRecord
 		allowed bool
 		err     error
 	}
@@ -252,10 +251,10 @@ func runAccessSessionConformance(t *testing.T, store *Store) {
 		go func(index int) {
 			defer workers.Done()
 			<-start
-			record, allowed, err := store.ExchangeAccessToken(ctx, controlplane.AccessExchangeRequest{
+			record, allowed, err := store.ExchangeAccessToken(ctx, application.AccessExchangeRequest{
 				GovernanceRecordIDs: governanceIDs(fmt.Sprintf("access-exchange-%d", index)), ID: ready.ID, Identity: identity,
 				TokenHashes: []application.KeyedTokenHash{launchHash}, NewLease: accessTestHash("lease-one"),
-				LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+				LeaseDuration: application.DefaultAccessLeaseDuration,
 			})
 			results <- result{record: record, allowed: allowed, err: err}
 		}(index)
@@ -279,38 +278,38 @@ func runAccessSessionConformance(t *testing.T, store *Store) {
 		t.Fatalf("concurrent exchange winners = %d, want 1", winners)
 	}
 
-	if _, allowed, err := store.RecheckAccessLease(ctx, controlplane.AccessLeaseRecheckRequest{
+	if _, allowed, err := store.RecheckAccessLease(ctx, application.AccessLeaseRecheckRequest{
 		GovernanceRecordIDs: governanceIDs("access-recheck-wrong-audience"), ID: ready.ID,
-		Identity:    application.AccessCallbackIdentity{PluginID: identity.PluginID, PluginInstanceID: identity.PluginInstanceID, Audience: "https://other.example.test", ProtocolMajor: 1, ProtocolMinor: controlplane.AccessProtocolMinor},
-		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-one")}, NewLease: accessTestHash("lease-never"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		Identity:    application.AccessCallbackIdentity{PluginID: identity.PluginID, PluginInstanceID: identity.PluginInstanceID, Audience: "https://other.example.test", ProtocolMajor: 1, ProtocolMinor: application.AccessProtocolMinor},
+		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-one")}, NewLease: accessTestHash("lease-never"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	}); err != nil || allowed {
 		t.Fatalf("audience mismatch allowed=%v err=%v", allowed, err)
 	}
-	if _, allowed, err := store.RecheckAccessLease(ctx, controlplane.AccessLeaseRecheckRequest{
+	if _, allowed, err := store.RecheckAccessLease(ctx, application.AccessLeaseRecheckRequest{
 		GovernanceRecordIDs: governanceIDs("access-recheck-ok"), ID: ready.ID, Identity: identity,
-		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-one")}, NewLease: accessTestHash("lease-two"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-one")}, NewLease: accessTestHash("lease-two"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	}); err != nil || !allowed {
 		t.Fatalf("valid recheck allowed=%v err=%v", allowed, err)
 	}
 	if err := store.PutUser(ctx, application.UserRecord{ID: "user.quota", Username: "quota", DisplayName: "Quota User", Disabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	denied, allowed, err := store.RecheckAccessLease(ctx, controlplane.AccessLeaseRecheckRequest{
+	denied, allowed, err := store.RecheckAccessLease(ctx, application.AccessLeaseRecheckRequest{
 		GovernanceRecordIDs: governanceIDs("access-recheck-disabled"), ID: ready.ID, Identity: identity,
-		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-two")}, NewLease: accessTestHash("lease-three"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-two")}, NewLease: accessTestHash("lease-three"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	})
 	if err != nil || allowed || denied.State != domain.AccessSessionFailed || !denied.ClosureRequired {
 		t.Fatalf("disabled recheck = state %q allowed=%v closure=%v err=%v", denied.State, allowed, denied.ClosureRequired, err)
 	}
 	wrongIdentity := identity
 	wrongIdentity.PluginInstanceID = "plugin.access-other"
-	if _, ended, err := store.EndAccessLease(ctx, controlplane.EndAccessLeaseRequest{
+	if _, ended, err := store.EndAccessLease(ctx, application.EndAccessLeaseRequest{
 		GovernanceRecordIDs: governanceIDs("access-end-wrong-plugin"), ID: ready.ID, Identity: wrongIdentity,
 		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-two")}, Reason: "authorization_denied",
 	}); err != nil || ended {
 		t.Fatalf("wrong-plugin terminal acknowledgement ended=%v err=%v", ended, err)
 	}
-	endedRecord, ended, err := store.EndAccessLease(ctx, controlplane.EndAccessLeaseRequest{
+	endedRecord, ended, err := store.EndAccessLease(ctx, application.EndAccessLeaseRequest{
 		GovernanceRecordIDs: governanceIDs("access-end-terminal"), ID: ready.ID, Identity: identity,
 		LeaseHashes: []application.KeyedTokenHash{accessTestHash("lease-two")}, Reason: "authorization_denied",
 	})
@@ -323,16 +322,16 @@ func runAccessSessionConformance(t *testing.T, store *Store) {
 	}
 	second := beginAccessTestSession(t, store, instance, providerDigest, "access.two", "two")
 	second = finalizeAccessTestSession(t, store, second, providerDigest, accessTestHash("second-launch-secret-canary"), "two")
-	revoked, err := store.RevokeAccessSession(ctx, controlplane.RevokeAccessSessionRequest{
+	revoked, err := store.RevokeAccessSession(ctx, application.RevokeAccessSessionRequest{
 		GovernanceRecordIDs: governanceIDs("access-revoke"), ID: second.ID, ActorID: "user.quota", Reason: "revoked",
 		ExpectedResourceVersion: second.ResourceVersion, IdempotencyKey: "idem.access-revoke", RequestDigest: testRequestDigest("access-revoke"),
 	})
 	if err != nil || revoked.State != domain.AccessSessionRevoked || !revoked.ClosureRequired || revoked.LaunchTokenHash != "" {
 		t.Fatalf("revoked access session = %#v, %v", revoked, err)
 	}
-	if _, allowed, err := store.ExchangeAccessToken(ctx, controlplane.AccessExchangeRequest{
+	if _, allowed, err := store.ExchangeAccessToken(ctx, application.AccessExchangeRequest{
 		GovernanceRecordIDs: governanceIDs("access-exchange-revoked"), ID: second.ID, Identity: identity,
-		TokenHashes: []application.KeyedTokenHash{accessTestHash("second-launch-secret-canary")}, NewLease: accessTestHash("unused-lease"), LeaseDuration: controlplane.DefaultAccessLeaseDuration,
+		TokenHashes: []application.KeyedTokenHash{accessTestHash("second-launch-secret-canary")}, NewLease: accessTestHash("unused-lease"), LeaseDuration: application.DefaultAccessLeaseDuration,
 	}); err != nil || allowed {
 		t.Fatalf("revoked exchange allowed=%v err=%v", allowed, err)
 	}
@@ -369,7 +368,7 @@ func runAccessSessionConformance(t *testing.T, store *Store) {
 	assertAccessGovernanceRedacted(t, store, "second-launch-secret-canary", "endpoint-secret-canary", "opaque-state-canary")
 }
 
-func createReadyAccessTestInstance(t *testing.T, store *Store, id string) (controlplane.InstanceRecord, domain.SHA256Digest) {
+func createReadyAccessTestInstance(t *testing.T, store *Store, id string) (application.InstanceRecord, domain.SHA256Digest) {
 	t.Helper()
 	ctx := context.Background()
 	request := quotaTestCreateRequest(id, "project.alpha", 3600)
@@ -407,7 +406,7 @@ func createReadyAccessTestInstance(t *testing.T, store *Store, id string) (contr
 	return instance, domain.SHA256Digest(fmt.Sprintf("%x", digestBytes))
 }
 
-func beginAccessTestSession(t *testing.T, store *Store, instance controlplane.InstanceRecord, providerDigest domain.SHA256Digest, id, suffix string) controlplane.AccessSessionRecord {
+func beginAccessTestSession(t *testing.T, store *Store, instance application.InstanceRecord, providerDigest domain.SHA256Digest, id, suffix string) application.AccessSessionRecord {
 	t.Helper()
 	record, err := store.BeginAccessSession(context.Background(), accessBeginTestRequest(instance, providerDigest, id, suffix))
 	if err != nil {
@@ -416,8 +415,8 @@ func beginAccessTestSession(t *testing.T, store *Store, instance controlplane.In
 	return record
 }
 
-func accessBeginTestRequest(instance controlplane.InstanceRecord, providerDigest domain.SHA256Digest, id, suffix string) controlplane.BeginAccessSessionRequest {
-	return controlplane.BeginAccessSessionRequest{
+func accessBeginTestRequest(instance application.InstanceRecord, providerDigest domain.SHA256Digest, id, suffix string) application.BeginAccessSessionRequest {
+	return application.BeginAccessSessionRequest{
 		GovernanceRecordIDs: governanceIDs("access-begin-" + suffix), ID: domain.AccessSessionID(id), SubjectID: "user.quota",
 		InstanceID: instance.ID, ResourceID: "vm.test", Method: "vnc", AccessPluginID: "access.novnc", AccessPluginVersion: "1.0.0",
 		AccessPluginInstance: "plugin.access-1", AccessKind: "browser-vnc", Audience: "https://access.example.test",
@@ -426,11 +425,11 @@ func accessBeginTestRequest(instance controlplane.InstanceRecord, providerDigest
 	}
 }
 
-func finalizeAccessTestSession(t *testing.T, store *Store, pending controlplane.AccessSessionRecord, providerDigest domain.SHA256Digest, launch application.KeyedTokenHash, suffix string) controlplane.AccessSessionRecord {
+func finalizeAccessTestSession(t *testing.T, store *Store, pending application.AccessSessionRecord, providerDigest domain.SHA256Digest, launch application.KeyedTokenHash, suffix string) application.AccessSessionRecord {
 	t.Helper()
 	endpointDigest := sha256.Sum256([]byte("endpoint-secret-canary"))
 	stateDigest := sha256.Sum256([]byte("opaque-state-canary"))
-	record, err := store.FinalizeAccessSession(context.Background(), controlplane.FinalizeAccessSessionRequest{
+	record, err := store.FinalizeAccessSession(context.Background(), application.FinalizeAccessSessionRequest{
 		GovernanceRecordIDs: governanceIDs("access-finalize-" + suffix), ID: pending.ID, SubjectID: pending.SubjectID,
 		EndpointSchemaName: "proxmox.vnc-endpoint", EndpointSchemaMajor: 1, EndpointDigest: domain.SHA256Digest(fmt.Sprintf("%x", endpointDigest)),
 		ProviderStateDigest: providerDigest, LaunchToken: launch, LaunchExpiresAt: time.Now().UTC().Add(2 * time.Minute),

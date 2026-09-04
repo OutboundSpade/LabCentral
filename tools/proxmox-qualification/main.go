@@ -1,5 +1,5 @@
 // Command proxmox-qualification signs and verifies bounded Proxmox T3 evidence.
-// It never connects to Proxmox and cannot enable provider mutations.
+// It never connects to Proxmox. Reviewed signed artifacts are consumed separately by the production authorizer.
 package main
 
 import (
@@ -28,9 +28,11 @@ func main() {
 
 func run(arguments []string, output io.Writer) error {
 	if len(arguments) == 0 {
-		return errors.New("usage: proxmox-qualification <keygen|sign|verify> [options]")
+		return errors.New("usage: proxmox-qualification <keygen|sign|verify|cleanup-sign> [options]")
 	}
 	switch arguments[0] {
+	case "cleanup-sign":
+		return runCleanupSign(arguments[1:], output)
 	case "keygen":
 		return runKeygen(arguments[1:], output)
 	case "sign":
@@ -267,4 +269,34 @@ func readBoundedRegularFile(path string, maximum int, private bool) ([]byte, err
 		return nil, errors.New("input file is empty or exceeds its size limit")
 	}
 	return contents, nil
+}
+
+func runCleanupSign(arguments []string, output io.Writer) error {
+	flags := flag.NewFlagSet("cleanup-sign", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	grantPath := flags.String("grant", "", "unsigned exact-resource cleanup grant")
+	privatePath := flags.String("private-key", "", "private signing key")
+	keyID := flags.String("key-id", "", "trusted signer ID")
+	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 || *grantPath == "" || *privatePath == "" || *keyID == "" {
+		return errors.New("usage: cleanup-sign --grant FILE --private-key FILE --key-id ID")
+	}
+	b, err := readBoundedRegularFile(*grantPath, qualification.MaxDocumentBytes, false)
+	if err != nil {
+		return err
+	}
+	g, err := qualification.DecodeCleanupGrant(b)
+	if err != nil {
+		return err
+	}
+	key, err := readEncodedKey(*privatePath, ed25519.PrivateKeySize, true)
+	if err != nil {
+		return err
+	}
+	defer clear(key)
+	document, err := qualification.SignCleanup(g, *keyID, ed25519.PrivateKey(key))
+	if err != nil {
+		return err
+	}
+	_, err = output.Write(append(document, '\n'))
+	return err
 }

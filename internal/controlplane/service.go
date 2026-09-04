@@ -12,17 +12,15 @@ import (
 	"fmt"
 	"time"
 
-	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/render"
 	plugincontract "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/contract"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 const (
-	LocalAdminID         = domain.UserID("local-admin")
-	LocalDockerTarget    = domain.ProviderTargetID("target.local-docker")
+	LocalAdminID         = application.LocalAdminID
+	LocalDockerTarget    = application.LocalDockerTarget
 	jobPayloadVersion    = 1
 	IsolationWarningCode = "docker_trusted_laptop_only"
 )
@@ -93,6 +91,11 @@ func (e *ValidationError) Error() string {
 	return e.Issues[0].Message
 }
 
+type RenderOptions struct {
+	Inputs          domain.TypedInputs
+	RendererVersion string
+}
+
 type Service struct {
 	renderer    *render.Renderer
 	store       Store
@@ -104,7 +107,7 @@ type Service struct {
 	ids         IDSource
 }
 
-func NewService(renderer *render.Renderer, store Store, provider pluginv1.ProviderServiceClient, ids IDSource) (*Service, error) {
+func NewService(renderer *render.Renderer, store Store, provider application.Provider, ids IDSource) (*Service, error) {
 	registry, err := NewDockerTargetRegistry(provider)
 	if err != nil {
 		return nil, err
@@ -145,7 +148,7 @@ func (s *Service) Validate(ctx context.Context, source []byte, acknowledged bool
 	return s.ValidateTarget(ctx, source, acknowledged, LocalDockerTarget, nil)
 }
 
-func (s *Service) ValidateTarget(ctx context.Context, source []byte, acknowledged bool, targetID domain.ProviderTargetID, providerOverride []byte) (ValidationResult, error) {
+func (s *Service) ValidateTarget(ctx context.Context, source []byte, acknowledged bool, targetID domain.ProviderTargetID, providerOverride []byte, options ...RenderOptions) (ValidationResult, error) {
 	if len(providerOverride) > maximumTargetEnvelopeBytes {
 		return ValidationResult{}, &ValidationError{Issues: []Issue{{Code: "provider_override_invalid", Message: "The provider override exceeds its size limit"}}}
 	}
@@ -155,7 +158,14 @@ func (s *Service) ValidateTarget(ctx context.Context, source []byte, acknowledge
 			return ValidationResult{}, &ValidationError{Issues: []Issue{{Code: "provider_override_invalid", Message: "The provider override must be one JSON object"}}}
 		}
 	}
-	canonical, report, err := s.renderer.Render(ctx, domain.RevisionContent{VerifiedBundle: source}, nil, domain.RenderPolicy{})
+	if len(options) > 1 {
+		return ValidationResult{}, fmt.Errorf("only one render options object is allowed")
+	}
+	option := RenderOptions{}
+	if len(options) == 1 {
+		option = options[0]
+	}
+	canonical, report, err := s.renderer.RenderVersion(ctx, option.RendererVersion, domain.RevisionContent{VerifiedBundle: source}, option.Inputs, domain.RenderPolicy{})
 	if err != nil {
 		return ValidationResult{}, &ValidationError{Issues: []Issue{{Code: "render_failed", Message: err.Error()}}}
 	}
@@ -164,16 +174,13 @@ func (s *Service) ValidateTarget(ctx context.Context, source []byte, acknowledge
 		return ValidationResult{}, &ValidationError{Issues: []Issue{{Code: "provider_target_unavailable", Message: "The selected provider target is unavailable"}}}
 	}
 	defer session.Close()
-	if session.ProviderKind == "proxmox" && !session.Supports(1,
-		plugincontract.FeatureOpaqueAllocationClaimsV1,
-		plugincontract.FeatureDependencyResourceInputV1,
-	) {
+	if !session.Supports(session.Policy.MinimumMinor, session.Policy.RequiredFeatures...) {
 		return ValidationResult{}, &ValidationError{Issues: []Issue{{
-			Code: "provider_protocol_features_unavailable", Message: "The selected Proxmox target did not negotiate the required protocol features",
+			Code: "provider_protocol_features_unavailable", Message: "The selected target did not negotiate the required protocol features",
 		}}}
 	}
 	override := append([]byte(nil), providerOverride...)
-	if session.ProviderKind == "docker" {
+	if session.Policy.TrustedLaptop {
 		if len(providerOverride) != 0 {
 			return ValidationResult{}, &ValidationError{Issues: []Issue{{Code: "provider_override_unsupported", Message: "The Docker laptop target does not accept a caller-supplied provider override"}}}
 		}
@@ -181,30 +188,30 @@ func (s *Service) ValidateTarget(ctx context.Context, source []byte, acknowledge
 	}
 	callContext, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	response, err := session.Provider.ValidateLab(callContext, &pluginv1.ValidateLabRequest{
-		Context:              &pluginv1.CallContext{RequestId: "validate", ProviderTargetId: string(targetID)},
-		Target:               session.Context,
-		CanonicalLabJson:     canonical.CanonicalBytes,
-		ProviderOverrideJson: override,
+	response, err := session.Provider.Validate(callContext, application.ProviderValidationRequest{
+		Call:      application.ProviderCall{RequestID: "validate", TargetID: string(targetID)},
+		Target:    session.Context,
+		Canonical: canonical.CanonicalBytes,
+		Override:  override,
 	})
 	if err != nil {
 		return ValidationResult{}, fmt.Errorf("provider validation is unavailable: %w", err)
 	}
-	issues := providerErrors(response.GetErrors())
+	issues := providerErrors(response.Errors)
 	if len(issues) > 0 {
 		return ValidationResult{}, &ValidationError{Issues: issues}
 	}
-	if err := verifyProviderPlanDigest(response.GetProviderPlan(), response.GetProviderPlanDigest()); err != nil {
+	if err := verifyProviderPlanDigest(response.Plan, response.PlanDigest); err != nil {
 		return ValidationResult{}, fmt.Errorf("provider validation plan digest mismatch: %w", err)
 	}
-	warnings := make([]Issue, 0, len(report.Warnings)+len(response.GetWarnings()))
+	warnings := make([]Issue, 0, len(report.Warnings)+len(response.Warnings))
 	for _, warning := range report.Warnings {
 		warnings = append(warnings, Issue{Code: warning.Code, Message: warning.Message, FieldPath: warning.FieldPath, ResourceID: string(warning.ResourceID)})
 	}
-	warnings = append(warnings, providerWarnings(response.GetWarnings())...)
+	warnings = append(warnings, providerWarnings(response.Warnings)...)
 	return ValidationResult{
 		Canonical: canonical, Warnings: deduplicateIssues(warnings), TargetID: targetID, ProviderKind: session.ProviderKind,
-		ValidationPlan: append([]byte(nil), response.GetProviderPlan()...), EffectiveOverride: append([]byte(nil), override...),
+		ValidationPlan: append([]byte(nil), response.Plan...), EffectiveOverride: append([]byte(nil), override...),
 	}, nil
 }
 
@@ -212,8 +219,8 @@ func (s *Service) Plan(ctx context.Context, source []byte, acknowledged bool) (P
 	return s.PlanTarget(ctx, source, acknowledged, LocalDockerTarget, nil)
 }
 
-func (s *Service) PlanTarget(ctx context.Context, source []byte, acknowledged bool, targetID domain.ProviderTargetID, providerOverride []byte) (PlanResult, error) {
-	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride)
+func (s *Service) PlanTarget(ctx context.Context, source []byte, acknowledged bool, targetID domain.ProviderTargetID, providerOverride []byte, options ...RenderOptions) (PlanResult, error) {
+	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride, options...)
 	if err != nil {
 		return PlanResult{}, err
 	}
@@ -253,44 +260,41 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 		if err != nil {
 			return PlanResult{}, nil, err
 		}
-		dependencies := make([]*pluginv1.ResourceDependency, 0, len(resource.Dependencies()))
+		dependencies := make([]application.ProviderDependency, 0, len(resource.Dependencies()))
 		for _, dependencyID := range resource.Dependencies() {
 			dependencyPlan, exists := providerPlans[dependencyID]
 			if !exists {
 				return PlanResult{}, nil, fmt.Errorf("dependency %s was not planned before %s", dependencyID, resource.ID())
 			}
-			dependencies = append(dependencies, &pluginv1.ResourceDependency{
-				LogicalResourceId: string(dependencyID), ProviderPlan: append([]byte(nil), dependencyPlan.plan...),
-				ProviderPlanDigest: dependencyPlan.planDigest.Hex(), CommittedAllocations: protocolClaims(dependencyPlan.allocations),
+			dependencies = append(dependencies, application.ProviderDependency{
+				ResourceID: string(dependencyID), Plan: append([]byte(nil), dependencyPlan.plan...),
+				PlanDigest: dependencyPlan.planDigest.Hex(), Allocations: protocolClaims(dependencyPlan.allocations),
 			})
 		}
 		excluded := exclusions[resource.ID()]
 		planContext, cancel := context.WithTimeout(ctx, 10*time.Second)
-		response, callErr := session.Provider.PlanResource(planContext, &pluginv1.PlanResourceRequest{Input: &pluginv1.ResourceMutationInput{
-			Context: &pluginv1.CallContext{
-				RequestId: "plan", LabInstanceId: string(instanceID), LogicalResourceId: string(resource.ID()),
-				ProviderTargetId: string(validation.TargetID), DesiredGeneration: 1,
+		response, callErr := session.Provider.Plan(planContext, application.ProviderMutation{
+			Call: application.ProviderCall{
+				RequestID: "plan", InstanceID: string(instanceID), ResourceID: string(resource.ID()),
+				TargetID: string(validation.TargetID), Generation: 1,
 			},
-			Target: session.Context, CanonicalResourceJson: canonicalResource, ProviderPlan: validation.ValidationPlan,
-			OwnershipTokens: []string{ownershipToken(validation.TargetID, instanceID, resource.ID())}, Dependencies: dependencies,
-		}, ExcludedAllocations: protocolClaims(excluded)})
+			Target: session.Context, Canonical: canonicalResource, Plan: validation.ValidationPlan,
+			Ownership: []string{ownershipToken(validation.TargetID, instanceID, resource.ID())}, Dependencies: dependencies,
+			ExcludedAllocations: protocolClaims(excluded)})
 		cancel()
 		if callErr != nil {
 			return PlanResult{}, nil, fmt.Errorf("plan provider resource %s: %w", resource.ID(), callErr)
 		}
-		if response.GetError() != nil {
-			return PlanResult{}, nil, &ValidationError{Issues: providerErrors([]*pluginv1.StructuredError{response.GetError()})}
+		if response.Error != nil {
+			return PlanResult{}, nil, &ValidationError{Issues: providerErrors([]application.ProviderIssue{*response.Error})}
 		}
-		if err := verifyProviderPlanDigest(response.GetProviderPlan(), response.GetProviderPlanDigest()); err != nil {
+		if err := verifyProviderPlanDigest(response.Plan, response.PlanDigest); err != nil {
 			return PlanResult{}, nil, fmt.Errorf("provider plan digest mismatch for %s", resource.ID())
 		}
-		planDigest, _ := domain.ParseSHA256Digest(response.GetProviderPlanDigest())
-		allocations := make([]application.AllocationKey, 0, len(response.GetProposedAllocations()))
-		for _, proposal := range response.GetProposedAllocations() {
-			if proposal == nil {
-				return PlanResult{}, nil, fmt.Errorf("provider proposed an empty allocation claim for %s", resource.ID())
-			}
-			allocations = append(allocations, application.AllocationKey{TargetID: validation.TargetID, Namespace: proposal.GetNamespace(), Value: proposal.GetValue()})
+		planDigest, _ := domain.ParseSHA256Digest(response.PlanDigest)
+		allocations := make([]application.AllocationKey, 0, len(response.Allocations))
+		for _, proposal := range response.Allocations {
+			allocations = append(allocations, application.AllocationKey{TargetID: validation.TargetID, Namespace: proposal.Namespace, Value: proposal.Value})
 		}
 		if len(allocations) > 0 {
 			if !session.Supports(1, plugincontract.FeatureOpaqueAllocationClaimsV1) {
@@ -302,11 +306,11 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 				return PlanResult{}, nil, fmt.Errorf("provider proposed invalid allocations for %s: %w", resource.ID(), err)
 			}
 		}
-		providerPlans[resource.ID()] = plannedResource{plan: append([]byte(nil), response.GetProviderPlan()...), planDigest: planDigest, allocations: allocations}
+		providerPlans[resource.ID()] = plannedResource{plan: append([]byte(nil), response.Plan...), planDigest: planDigest, allocations: allocations}
 		for _, allocation := range allocations {
 			plan.ProposedAllocations = append(plan.ProposedAllocations, AllocationPreview{Namespace: allocation.Namespace, Value: allocation.Value})
 		}
-		plan.Warnings = providerWarnings(response.GetWarnings())
+		plan.Warnings = providerWarnings(response.Warnings)
 		result.Resources = append(result.Resources, plan)
 	}
 	return result, providerPlans, nil
@@ -324,22 +328,35 @@ func (s *Service) CreateInstanceTargetFor(ctx context.Context, subjectID domain.
 	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, application.InstanceLifetimeRequest{}, acknowledged, idempotencyKey, targetID, providerOverride)
 }
 
-func (s *Service) CreateInstanceTargetForLifetime(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
-	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, lifetime, acknowledged, idempotencyKey, targetID, providerOverride)
+func (s *Service) CreateInstanceTargetForLifetime(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte, options ...RenderOptions) (EnqueueResult, error) {
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, lifetime, acknowledged, idempotencyKey, targetID, providerOverride, options...)
 }
 
 func (s *Service) CreateInstanceRevisionTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
 	return s.CreateInstanceRevisionTargetForLifetime(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, application.InstanceLifetimeRequest{}, acknowledged, idempotencyKey, targetID, providerOverride)
 }
 
-func (s *Service) CreateInstanceRevisionTargetForLifetime(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+func (s *Service) CreateInstanceRevisionTargetForLifetime(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte, options ...RenderOptions) (EnqueueResult, error) {
 	if _, err := domain.NewRevisionID(string(revisionID)); err != nil {
 		return EnqueueResult{}, err
 	}
-	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, lifetime, acknowledged, idempotencyKey, targetID, providerOverride)
+	revision, err := s.store.GetTemplateRevision(ctx, revisionID)
+	if err != nil {
+		return EnqueueResult{}, err
+	}
+	if len(options) > 1 {
+		return EnqueueResult{}, fmt.Errorf("only one render options object is allowed")
+	}
+	option := RenderOptions{}
+	if len(options) == 1 {
+		option = options[0]
+	}
+	option.RendererVersion = revision.RendererVersion
+	options = []RenderOptions{option}
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, lifetime, acknowledged, idempotencyKey, targetID, providerOverride, options...)
 }
 
-func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte, options ...RenderOptions) (EnqueueResult, error) {
 	if _, err := domain.NewUserID(string(subjectID)); err != nil {
 		return EnqueueResult{}, err
 	}
@@ -352,17 +369,12 @@ func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.
 	if err := application.ValidateInstanceLifetimeRequest(lifetime); err != nil {
 		return EnqueueResult{}, err
 	}
-	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride)
+	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride, options...)
 	if err != nil {
 		return EnqueueResult{}, err
 	}
-	if validation.ProviderKind == "proxmox" {
-		// Refresh is read-only. If it fails, a still-valid persisted snapshot may
-		// remain usable; the binding check below is the sole scheduling gate.
-		_ = s.RefreshTargetAs(ctx, subjectID, targetID)
-		if err := s.requireNativeCapability(ctx, targetID, "workload.vm"); err != nil {
-			return EnqueueResult{}, err
-		}
+	if err := s.requireTargetAdmission(ctx, subjectID, targetID); err != nil {
+		return EnqueueResult{}, err
 	}
 	instanceValue, err := s.ids.New("inst")
 	if err != nil {
@@ -385,6 +397,10 @@ func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.
 	if revisionID != "" {
 		requestDigest = digestBytes("labcentral.http.create-instance-revision/v2", []byte(projectID), []byte(ownerKind), []byte(ownerID), []byte(revisionID), lifetimeDigest, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
 	}
+	if len(options) == 1 && len(options[0].Inputs) > 0 {
+		requestDigest = digestBytes("labcentral.http.instance-inputs/v1", []byte(requestDigest), []byte(validation.Canonical.Digest))
+	}
+
 	quotaAmounts, err := quotaAmountsForCanonical(validation.Canonical)
 	if err != nil {
 		return EnqueueResult{}, err
@@ -556,6 +572,11 @@ func (s *Service) listProviderTargets(ctx context.Context, allowed map[domain.Pr
 		} else if !errors.Is(err, ErrNotFound) {
 			return nil, err
 		}
+		if session, err := s.targets.Acquire(ctx, target.ID, application.InvocationScope{}, false); err != nil {
+			status.Status = "unavailable"
+		} else {
+			session.Close()
+		}
 		result = append(result, status)
 	}
 	return result, nil
@@ -588,29 +609,22 @@ func (s *Service) refreshTarget(ctx context.Context, subjectID domain.UserID, ac
 	defer session.Close()
 	discoveryContext, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	response, err := session.Provider.DiscoverTarget(discoveryContext, &pluginv1.DiscoverTargetRequest{Target: session.Context})
+	response, err := session.Provider.Discover(discoveryContext, session.Context)
 	if err != nil {
 		return fmt.Errorf("provider target discovery failed: %w", err)
 	}
-	if response.GetDiscoveredAt() == nil || response.GetValidUntil() == nil || response.GetDiscoveredAt().CheckValid() != nil || response.GetValidUntil().CheckValid() != nil {
-		return fmt.Errorf("provider target discovery returned invalid validity timestamps")
-	}
-	discoveredAt := response.GetDiscoveredAt().AsTime()
-	validUntil := response.GetValidUntil().AsTime()
+	discoveredAt, validUntil := response.DiscoveredAt, response.ValidUntil
 	if !validUntil.After(discoveredAt) || validUntil.After(discoveredAt.Add(24*time.Hour)) || !validUntil.After(time.Now()) || discoveredAt.After(time.Now().Add(time.Minute)) {
 		return fmt.Errorf("provider target discovery returned an invalid validity interval")
 	}
-	seen := make(map[string]bool, len(response.GetCapabilities()))
-	for _, capability := range response.GetCapabilities() {
-		if capability == nil || capability.GetFeatureId() == "" || len(capability.GetFeatureId()) > 128 || seen[capability.GetFeatureId()] || capability.GetSupport() == pluginv1.Capability_SUPPORT_UNSPECIFIED {
+	seen := make(map[string]bool, len(response.Capabilities))
+	for _, capability := range response.Capabilities {
+		if capability.ID == "" || len(capability.ID) > 128 || seen[capability.ID] || capability.Support == "SUPPORT_UNSPECIFIED" {
 			return fmt.Errorf("provider target discovery returned an invalid capability set")
 		}
-		seen[capability.GetFeatureId()] = true
+		seen[capability.ID] = true
 	}
-	encoded, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(response)
-	if err != nil {
-		return fmt.Errorf("encode provider target discovery: %w", err)
-	}
+	encoded := response.JSON
 	features := make([]string, 0, len(session.features))
 	for feature := range session.features {
 		features = append(features, feature)
@@ -621,7 +635,7 @@ func (s *Service) refreshTarget(ctx context.Context, subjectID domain.UserID, ac
 	}
 	return s.store.SaveTargetSnapshot(ctx, TargetSnapshot{
 		GovernanceRecordIDs: recordIDs, Actor: actor,
-		ID: targetID, ProviderKind: session.ProviderKind, ConfigFingerprint: session.Context.GetConfigFingerprint(),
+		ID: targetID, ProviderKind: session.ProviderKind, ConfigFingerprint: session.Context.ConfigFingerprint,
 		ProtocolMajor: session.ProtocolMajor, ProtocolMinor: session.ProtocolMinor, Features: features,
 		DiscoveryJSON: encoded, DiscoveredAt: discoveredAt, ValidUntil: validUntil,
 	})
@@ -641,18 +655,18 @@ func (s *Service) requireNativeCapability(ctx context.Context, targetID domain.P
 	for feature := range session.features {
 		currentFeatures = append(currentFeatures, feature)
 	}
-	if snapshot.ProviderKind != session.ProviderKind || snapshot.ConfigFingerprint != session.Context.GetConfigFingerprint() || snapshot.ProtocolMajor != session.ProtocolMajor || snapshot.ProtocolMinor != session.ProtocolMinor || !equalFeatureSets(snapshot.Features, currentFeatures) || !snapshot.ValidUntil.After(time.Now()) {
+	if snapshot.ProviderKind != session.ProviderKind || snapshot.ConfigFingerprint != session.Context.ConfigFingerprint || snapshot.ProtocolMajor != session.ProtocolMajor || snapshot.ProtocolMinor != session.ProtocolMinor || !equalFeatureSets(snapshot.Features, currentFeatures) || !snapshot.ValidUntil.After(time.Now()) {
 		return &ValidationError{Issues: []Issue{{Code: "provider_capability_stale", Message: "The selected provider target qualification evidence is stale"}}}
 	}
-	var discovery pluginv1.DiscoverTargetResponse
-	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(snapshot.DiscoveryJSON, &discovery); err != nil {
+	discovery, err := session.Provider.DecodeDiscovery(snapshot.DiscoveryJSON)
+	if err != nil {
 		return fmt.Errorf("decode persisted provider target discovery: %w", err)
 	}
-	if discovery.GetDiscoveredAt() == nil || discovery.GetValidUntil() == nil || discovery.GetDiscoveredAt().AsTime().UnixMicro() != snapshot.DiscoveredAt.UnixMicro() || discovery.GetValidUntil().AsTime().UnixMicro() != snapshot.ValidUntil.UnixMicro() {
-		return fmt.Errorf("persisted provider target discovery validity does not match its snapshot")
+	if discovery.DiscoveredAt.UnixMicro() != snapshot.DiscoveredAt.UnixMicro() || discovery.ValidUntil.UnixMicro() != snapshot.ValidUntil.UnixMicro() {
+		return fmt.Errorf("persisted discovery validity does not match snapshot")
 	}
-	for _, capability := range discovery.GetCapabilities() {
-		if capability.GetFeatureId() == featureID && capability.GetSupport() == pluginv1.Capability_SUPPORT_NATIVE && capability.GetEvidence() != "" {
+	for _, capability := range discovery.Capabilities {
+		if capability.ID == featureID && capability.Support == "SUPPORT_NATIVE" && capability.Evidence != "" {
 			return nil
 		}
 	}
@@ -692,26 +706,14 @@ func providerManagedKind(kind domain.ResourceKind) bool {
 	return kind == domain.ResourceNetwork || kind == domain.ResourceVolume || kind == domain.ResourceContainer || kind == domain.ResourceVM
 }
 
-func providerErrors(source []*pluginv1.StructuredError) []Issue {
+func providerErrors(source []application.ProviderIssue) []Issue {
 	result := make([]Issue, 0, len(source))
 	for _, issue := range source {
-		if issue == nil {
-			continue
-		}
-		result = append(result, Issue{Code: issue.GetCode(), Message: issue.GetSafeMessage(), FieldPath: issue.GetFieldPath(), ResourceID: issue.GetResourceRef()})
+		result = append(result, Issue{Code: issue.Code, Message: issue.Message, FieldPath: issue.FieldPath, ResourceID: issue.ResourceID})
 	}
 	return result
 }
-
-func providerWarnings(source []*pluginv1.Warning) []Issue {
-	result := make([]Issue, 0, len(source))
-	for _, issue := range source {
-		if issue != nil {
-			result = append(result, Issue{Code: issue.GetCode(), Message: issue.GetSafeMessage(), ResourceID: issue.GetResourceRef()})
-		}
-	}
-	return result
-}
+func providerWarnings(source []application.ProviderIssue) []Issue { return providerErrors(source) }
 
 func deduplicateIssues(source []Issue) []Issue {
 	seen := make(map[string]bool)
@@ -743,12 +745,8 @@ func rawDigest(value []byte) domain.SHA256Digest {
 	return parsed
 }
 
-func protocolClaims(source []application.AllocationKey) []*pluginv1.AllocationClaim {
-	result := make([]*pluginv1.AllocationClaim, 0, len(source))
-	for _, claim := range source {
-		result = append(result, &pluginv1.AllocationClaim{Namespace: claim.Namespace, Value: claim.Value})
-	}
-	return result
+func protocolClaims(source []application.AllocationKey) []application.AllocationKey {
+	return append([]application.AllocationKey(nil), source...)
 }
 
 func mergePlanConflicts(exclusions map[domain.LogicalResourceID][]application.AllocationKey, plans map[domain.LogicalResourceID]plannedResource, conflicts []application.AllocationKey) bool {
@@ -797,4 +795,23 @@ func writeFrame(writer hashWriter, value []byte) {
 	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
 	_, _ = writer.Write(length[:])
 	_, _ = writer.Write(value)
+}
+
+func (s *Service) requireTargetAdmission(ctx context.Context, actor domain.UserID, id domain.ProviderTargetID) error {
+	session, err := s.targets.Acquire(ctx, id, application.InvocationScope{}, false)
+	if err != nil {
+		return err
+	}
+	required := append([]string(nil), session.Policy.NativeCapabilities...)
+	session.Close()
+	if len(required) == 0 {
+		return nil
+	}
+	_ = s.RefreshTargetAs(ctx, actor, id)
+	for _, feature := range required {
+		if err := s.requireNativeCapability(ctx, id, feature); err != nil {
+			return err
+		}
+	}
+	return nil
 }

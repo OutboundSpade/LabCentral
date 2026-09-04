@@ -631,7 +631,7 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
-	if _, err := service.authorizeMutation(ctx, input.GetTarget(), config, inventory, mutationDigest); err != nil {
+	if _, err := service.authorizeExecution(ctx, input, config, inventory, mutationDigest, action); err != nil {
 		client.CloseIdleConnections()
 		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
@@ -1228,12 +1228,14 @@ func readOptionalVMConfig(ctx context.Context, client MutationAPI, node string, 
 	if errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
 		return VMConfig{}, false, nil
 	}
-	// PVE 9.2 returns HTTP 500 with a missing-config message for an unused
-	// VMID. Error bodies are intentionally never parsed because they can
-	// contain attacker-controlled or secret material. Treat that response as
-	// absence only when the separate typed nextid check positively confirms
-	// the exact VMID is available; otherwise preserve the original error.
-	if errors.As(err, &status) && status.StatusCode == http.StatusInternalServerError {
+	// PVE 9.2 returns HTTP 500 for an unused VMID when the caller can inspect
+	// the VM root, and HTTP 403 for a least-privilege pool-scoped caller because
+	// a not-yet-created VM cannot belong to the pool. Error bodies are
+	// intentionally never parsed because they can contain attacker-controlled
+	// or secret material. Treat either response as absence only when the
+	// separate typed nextid check positively confirms the exact VMID is
+	// available; an occupied or ambiguous VMID remains fail-closed.
+	if errors.As(err, &status) && (status.StatusCode == http.StatusInternalServerError || status.StatusCode == http.StatusForbidden) {
 		if available, checkErr := client.AdvisoryVMIDAvailable(ctx, vmid); checkErr == nil && available {
 			return VMConfig{}, false, nil
 		}

@@ -15,7 +15,6 @@ import (
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/authorization"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -257,7 +256,7 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	if err := tryCreateAccessTestInstance(store, "instance.audit-conflict", "project.alpha", application.OwnerUser, "user.alice", "user.alice"); err == nil {
 		t.Fatal("operation governance conflict did not abort instance admission")
 	}
-	if _, err := store.GetInstance(ctx, "instance.audit-conflict"); !errors.Is(err, controlplane.ErrNotFound) {
+	if _, err := store.GetInstance(ctx, "instance.audit-conflict"); !errors.Is(err, application.ErrNotFound) {
 		t.Fatalf("operation governance conflict retained instance: %v", err)
 	}
 	for _, invalid := range []struct {
@@ -399,8 +398,8 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	if _, err := store.CreateOrganization(actorContext, application.OrganizationRecord{ID: "org.audit", Name: "audit-org"}); err != nil {
 		t.Fatal(err)
 	}
-	targetSnapshot := controlplane.TargetSnapshot{
-		GovernanceRecordIDs: controlplane.GovernanceRecordIDs{AuditID: "audit.target-refresh", EventID: "event.target-refresh"},
+	targetSnapshot := application.TargetSnapshot{
+		GovernanceRecordIDs: application.GovernanceRecordIDs{AuditID: "audit.target-refresh", EventID: "event.target-refresh"},
 		ID:                  "target.audit", Actor: application.RecordActor{Kind: application.RecordActorUser, ID: "user.admin"}, ProviderKind: "proxmox", ConfigFingerprint: "sha256:" + strings.Repeat("a", 64),
 		ProtocolMajor: 1, ProtocolMinor: 2, Features: []string{"target-discovery-v1"}, DiscoveryJSON: []byte(`{"capabilities":[]}`),
 		DiscoveredAt: now, ValidUntil: now.Add(time.Hour),
@@ -474,7 +473,7 @@ func tryCreateAccessTestInstance(store *Store, instanceID string, projectID doma
 	plan := []byte(`{"planned":true}`)
 	canonical := []byte(`{"apiVersion":"labcentral.io/v1alpha1"}`)
 	planSum, canonicalSum, requestSum := sha256.Sum256(plan), sha256.Sum256(canonical), sha256.Sum256([]byte(instanceID))
-	_, err := store.CreateInstance(context.Background(), controlplane.CreateInstanceRequest{
+	_, err := store.CreateInstance(context.Background(), application.CreateInstanceRequest{
 		InstanceID:       domain.InstanceID(instanceID),
 		ProjectID:        projectID,
 		OwnerKind:        ownerKind,
@@ -485,7 +484,7 @@ func tryCreateAccessTestInstance(store *Store, instanceID string, projectID doma
 		CanonicalDigest:  domain.SHA256Digest(fmt.Sprintf("%x", canonicalSum)),
 		CanonicalJSON:    canonical,
 		SourceYAML:       []byte("apiVersion: labcentral.io/v1alpha1\n"),
-		Resources: []controlplane.ResourceSeed{{
+		Resources: []application.ResourceSeed{{
 			ID: "container.test", Kind: domain.ResourceContainer, CanonicalJSON: []byte(`{"kind":"Container"}`),
 			ProviderPlan: plan, ProviderPlanDigest: domain.SHA256Digest(fmt.Sprintf("%x", planSum)), OwnershipToken: "ownership." + instanceID,
 		}},

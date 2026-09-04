@@ -20,6 +20,7 @@ import (
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/authorization"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
@@ -68,7 +69,7 @@ func TestPostgreSQLMultiReplicaFencingAndCrashRecovery(t *testing.T) {
 	provider, _, closeProvider := testProvider(t)
 	defer closeProvider()
 	ids := &sequenceIDs{}
-	service, err := controlplane.NewService(testRenderer(t), storeA, provider, ids)
+	service, err := controlplane.NewService(testRenderer(t), storeA, providergrpc.New(provider), ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,11 +211,11 @@ func TestWorkerRecoversUnknownInvocationWithoutRedispatch(t *testing.T) {
 	provider, closeProvider := testProviderClient(t, dropper)
 	defer closeProvider()
 	ids := &sequenceIDs{}
-	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), ids)
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{LeaseDuration: time.Second})
+	worker, err := controlplane.NewWorker(store, providergrpc.New(provider), ids, controlplane.WorkerOptions{LeaseDuration: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,11 +279,11 @@ func TestWorkerReleasesPlannedClaimsWhenLifetimeExpiresBeforeProviderWork(t *tes
 	provider, closeProvider := testProviderClient(t, recorder)
 	defer closeProvider()
 	ids := &sequenceIDs{}
-	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), ids)
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{})
+	worker, err := controlplane.NewWorker(store, providergrpc.New(provider), ids, controlplane.WorkerOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,11 +334,11 @@ func TestPostgreSQLConcurrentIdempotentCreateHasOneDurableResult(t *testing.T) {
 	storeB, _ := openStore()
 	provider, _, closeProvider := testProvider(t)
 	defer closeProvider()
-	serviceA, err := controlplane.NewService(testRenderer(t), storeA, provider, controlplane.CryptoIDs{})
+	serviceA, err := controlplane.NewService(testRenderer(t), storeA, providergrpc.New(provider), controlplane.CryptoIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	serviceB, err := controlplane.NewService(testRenderer(t), storeB, provider, controlplane.CryptoIDs{})
+	serviceB, err := controlplane.NewService(testRenderer(t), storeB, providergrpc.New(provider), controlplane.CryptoIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,7 +543,7 @@ func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB)
 	defer closeProvider()
 	renderer := testRenderer(t)
 	ids := &sequenceIDs{}
-	service, err := controlplane.NewService(renderer, store, provider, ids)
+	service, err := controlplane.NewService(renderer, store, providergrpc.New(provider), ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +553,7 @@ func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB)
 		duration time.Duration
 	}
 	var completions []completion
-	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{
+	worker, err := controlplane.NewWorker(store, providergrpc.New(provider), ids, controlplane.WorkerOptions{
 		OnComplete: func(kind controlplane.OperationKind, state domain.OperationState, duration time.Duration) {
 			completions = append(completions, completion{kind: kind, state: state, duration: duration})
 		},
@@ -708,7 +709,7 @@ func TestWorkerReauthorizesQueuedActorBeforeProviderAccess(t *testing.T) {
 	provider, closeProvider := testProviderClient(t, recorder)
 	defer closeProvider()
 	ids := &sequenceIDs{}
-	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +729,7 @@ func TestWorkerReauthorizesQueuedActorBeforeProviderAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{Authorizer: evaluator})
+	worker, err := controlplane.NewWorker(store, providergrpc.New(provider), ids, controlplane.WorkerOptions{Authorizer: evaluator})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,7 +761,7 @@ func TestExampleARejectsMissingDockerRiskAcknowledgement(t *testing.T) {
 	}
 	provider, _, closeProvider := testProvider(t)
 	defer closeProvider()
-	service, err := controlplane.NewService(testRenderer(t), store, provider, &sequenceIDs{})
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), &sequenceIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -797,7 +798,7 @@ func TestCreateAssignsInstanceBeforeDependencyAwarePlanning(t *testing.T) {
 	recorder := &recordingProvider{ProviderServiceServer: dockerService}
 	provider, closeProvider := testProviderClient(t, recorder)
 	defer closeProvider()
-	service, err := controlplane.NewService(testRenderer(t), store, provider, &sequenceIDs{})
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), &sequenceIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}

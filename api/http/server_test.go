@@ -18,6 +18,7 @@ import (
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/render"
@@ -251,7 +252,7 @@ func auditTestServer(t *testing.T) (*Server, *localdb.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := controlplane.NewService(renderer, store, pluginv1.NewProviderServiceClient(connection), controlplane.CryptoIDs{})
+	service, err := controlplane.NewService(renderer, store, providergrpc.New(pluginv1.NewProviderServiceClient(connection)), controlplane.CryptoIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}

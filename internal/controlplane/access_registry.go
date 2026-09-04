@@ -6,12 +6,12 @@ import (
 	"sort"
 	"strings"
 
-	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/internal/application"
 )
 
 const (
 	AccessAuthorizationFeature = "access-authorization-recheck-v1"
-	AccessProtocolMinor        = uint32(2)
+	AccessProtocolMinor        = application.AccessProtocolMinor
 )
 
 var accessMethodPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{0,63}$`)
@@ -22,12 +22,12 @@ type AccessBinding struct {
 	PluginInstance  string
 	AccessKind      string
 	Audience        string
-	Access          pluginv1.AccessServiceClient
+	Access          application.AccessPlugin
 	ProtocolMajor   uint32
 	ProtocolMinor   uint32
 	Features        []string
 	Methods         []string
-	EndpointSchemas []*pluginv1.SchemaVersion
+	EndpointSchemas []application.ProviderSchema
 }
 
 type AccessRegistry struct {
@@ -78,14 +78,14 @@ func NewAccessRegistry(bindings []AccessBinding) (*AccessRegistry, error) {
 			return nil, fmt.Errorf("access plugin must advertise at least one method")
 		}
 		for _, schema := range input.EndpointSchemas {
-			if schema == nil || !providerKindPattern.MatchString(schema.GetName()) || schema.GetMajor() == 0 {
+			if !providerKindPattern.MatchString(schema.Name) || schema.Major == 0 {
 				return nil, fmt.Errorf("access plugin endpoint schema set is invalid")
 			}
-			key := endpointSchemaKey(schema.GetName(), schema.GetMajor())
+			key := endpointSchemaKey(schema.Name, schema.Major)
 			if _, duplicate := binding.schemas[key]; duplicate {
 				return nil, fmt.Errorf("access plugin endpoint schema set is invalid")
 			}
-			binding.schemas[key] = schema.GetMinor()
+			binding.schemas[key] = schema.Minor
 		}
 		if len(binding.schemas) == 0 {
 			return nil, fmt.Errorf("access plugin must advertise at least one endpoint schema")
@@ -120,16 +120,16 @@ func (registry *AccessRegistry) Get(pluginInstance string) (AccessBinding, error
 	return AccessBinding{}, ErrAccessUnavailable
 }
 
-func (registry *AccessRegistry) Accepts(binding AccessBinding, schema *pluginv1.SchemaVersion) bool {
-	if registry == nil || schema == nil {
+func (registry *AccessRegistry) Accepts(binding AccessBinding, schema application.ProviderSchema) bool {
+	if registry == nil {
 		return false
 	}
 	for _, candidate := range registry.bindings {
 		if candidate.PluginInstance != binding.PluginInstance {
 			continue
 		}
-		maximumMinor, ok := candidate.schemas[endpointSchemaKey(schema.GetName(), schema.GetMajor())]
-		return ok && schema.GetMinor() <= maximumMinor
+		maximumMinor, ok := candidate.schemas[endpointSchemaKey(schema.Name, schema.Major)]
+		return ok && schema.Minor <= maximumMinor
 	}
 	return false
 }
@@ -141,9 +141,6 @@ func endpointSchemaKey(name string, major uint32) string {
 func cloneAccessBinding(binding AccessBinding) AccessBinding {
 	binding.Features = append([]string(nil), binding.Features...)
 	binding.Methods = append([]string(nil), binding.Methods...)
-	binding.EndpointSchemas = make([]*pluginv1.SchemaVersion, 0, len(binding.EndpointSchemas))
-	for _, schema := range binding.EndpointSchemas {
-		binding.EndpointSchemas = append(binding.EndpointSchemas, &pluginv1.SchemaVersion{Name: schema.GetName(), Major: schema.GetMajor(), Minor: schema.GetMinor()})
-	}
+	binding.EndpointSchemas = append([]application.ProviderSchema(nil), binding.EndpointSchemas...)
 	return binding
 }

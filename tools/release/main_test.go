@@ -55,7 +55,7 @@ func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	if !strings.Contains(readme, "three OS identities") {
 		t.Fatal("release instructions omit the native identity boundary")
 	}
-	if !strings.Contains(readme, "labcentral-recovery") || !strings.Contains(readme, "reference-aware filesystem artifact maintenance") || !strings.Contains(readme, "docs/recovery.md") {
+	if !strings.Contains(readme, "labcentral-recovery") || !strings.Contains(readme, "reference-aware filesystem artifact maintenance") || !strings.Contains(readme, "docs/operations/recovery.md") {
 		t.Fatal("release instructions omit the encrypted recovery utility")
 	}
 	if !strings.Contains(readme, "docs/operations/release-verification.md") || !strings.Contains(readme, "external Sigstore bundle") {
@@ -123,5 +123,21 @@ func TestWriteArchiveIsDeterministicAndNormalized(t *testing.T) {
 	wantModes := []int64{0o755, 0o755, 0o755, 0o644}
 	if !reflect.DeepEqual(modes, wantModes) {
 		t.Fatalf("modes = %#v, want %#v", modes, wantModes)
+	}
+}
+
+func TestReleaseAssetPreservesCanonicalDirectoryLayout(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.md")
+	if err := os.WriteFile(source, []byte("guide"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(root, "archive", "docs", "operations", "guide.md")
+	if err := copyReleaseFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(destination)
+	if err != nil || string(b) != "guide" {
+		t.Fatal("release guide was not copied", err)
 	}
 }

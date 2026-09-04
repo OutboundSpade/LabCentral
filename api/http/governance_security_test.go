@@ -22,6 +22,7 @@ import (
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/authentication"
 	"github.com/OutboundSpade/LabCentral/internal/authorization"
@@ -391,7 +392,7 @@ func newGovernanceHTTPFixture(t *testing.T) *governanceHTTPFixture {
 	}
 	countingStore := &governanceCountingStore{Store: database}
 	provider := pluginv1.NewProviderServiceClient(nil)
-	service, err := controlplane.NewService(renderer, countingStore, provider, controlplane.CryptoIDs{})
+	service, err := controlplane.NewService(renderer, countingStore, providergrpc.New(provider), controlplane.CryptoIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,9 +1,11 @@
 # ADR-0014: Signed exact-target authorization for Proxmox production mutation
 
-- **Status:** Accepted
+- **Status:** Superseded
 - **Date:** 2026-09-03
 - **Supersedes:** None
-- **Superseded by:** None
+- **Superseded by:** ADR-0017
+
+This historical decision is superseded by ADR-0017. Consult the successor for current behavior; the original reasoning is retained below.
 
 ## Context and constraints
 

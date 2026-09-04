@@ -11,6 +11,7 @@ import (
 
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -41,7 +42,7 @@ func TestTemplatePublicationUsesVerifiedImmutableArtifactAndAtomicRecords(t *tes
 	t.Cleanup(func() { _ = artifacts.Close() })
 	provider, _, closeProvider := testProvider(t)
 	t.Cleanup(closeProvider)
-	service, err := controlplane.NewService(testRenderer(t), store, provider, &sequenceIDs{})
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), &sequenceIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,4 +139,104 @@ func TestTemplatePublicationRequiresArtifactStore(t *testing.T) {
 	if _, err := service.PublishTemplateRevision(context.Background(), controlplane.LocalAdminID, "template.alpha", []byte("source"), "publish-key-1"); err == nil {
 		t.Fatal("Template publication succeeded without a configured artifact store")
 	}
+}
+
+func TestParameterizedRevisionInputIdentityAndSemantics(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:parameter-service?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := localdb.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	artifactRoot := t.TempDir()
+	if err := os.Chmod(artifactRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := artifactfs.New(artifactRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = artifacts.Close() })
+	provider, _, closeProvider := testProvider(t)
+	t.Cleanup(closeProvider)
+	service, err := controlplane.NewService(testRenderer(t), store, providergrpc.New(provider), &sequenceIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetArtifactStore(artifacts); err != nil {
+		t.Fatal(err)
+	}
+
+	template, err := service.CreateLabTemplate(ctx, controlplane.LocalAdminID, "project.local", "parameter-lab", "", "parameter-template")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source = bytes.Replace(source, []byte("spec:\n"), []byte("spec:\n  parameters:\n    - name: class_name\n      type: string\n      required: true\n"), 1)
+	revision, err := service.PublishTemplateRevision(ctx, controlplane.LocalAdminID, template.ID, source, "parameter-publish")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, opened, err := service.OpenTemplateRevision(ctx, controlplane.LocalAdminID, revision.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create := func(value, key string) (controlplane.EnqueueResult, error) {
+		return service.CreateInstanceRevisionTargetForLifetime(ctx, controlplane.LocalAdminID, "project.local", application.OwnerUser, string(controlplane.LocalAdminID), revision.ID, opened, application.InstanceLifetimeRequest{}, true, key, controlplane.LocalDockerTarget, nil, controlplane.RenderOptions{Inputs: domain.TypedInputs{{Name: "class_name", Kind: domain.InputString, String: value}}})
+	}
+	first, err := create("alpha", "parameter-create")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := create("alpha", "parameter-create")
+	if err != nil || !replay.Replay || first.InstanceID != replay.InstanceID {
+		t.Fatal("identical input did not replay", err)
+	}
+	if _, err := create("beta", "parameter-create"); err == nil {
+		t.Fatal("different inputs reused idempotency key")
+	}
+	second, err := create("beta", "parameter-create-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := store.GetInstance(ctx, first.InstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := store.GetInstance(ctx, second.InstanceID)
+	if err != nil || a.CanonicalDigest == b.CanonicalDigest {
+		t.Fatal("input identity was not preserved", err)
+	}
+	future, err := controlplane.NewService(testRenderer(t), &templateSemanticsStore{Store: store}, providergrpc.New(provider), &sequenceIDs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := future.SetArtifactStore(artifacts); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := future.OpenTemplateRevision(ctx, controlplane.LocalAdminID, revision.ID); err != nil {
+		t.Fatal("source reading invoked unsupported renderer", err)
+	}
+	if _, err := future.CreateInstanceRevisionTargetForLifetime(ctx, controlplane.LocalAdminID, "project.local", application.OwnerUser, string(controlplane.LocalAdminID), revision.ID, opened, application.InstanceLifetimeRequest{}, true, "future-create", controlplane.LocalDockerTarget, nil, controlplane.RenderOptions{Inputs: domain.TypedInputs{{Name: "class_name", Kind: domain.InputString, String: "alpha"}}}); err == nil {
+		t.Fatal("revision silently used current semantics")
+	}
+
+}
+
+type templateSemanticsStore struct{ application.Store }
+
+func (s *templateSemanticsStore) GetTemplateRevision(ctx context.Context, id domain.RevisionID) (application.TemplateRevisionRecord, error) {
+	record, err := s.Store.GetTemplateRevision(ctx, id)
+	record.RendererVersion = "future-semantics"
+	return record, err
 }

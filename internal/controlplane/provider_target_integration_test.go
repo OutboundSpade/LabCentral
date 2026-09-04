@@ -14,6 +14,7 @@ import (
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -172,7 +173,7 @@ func runProviderTargetStoreConformance(t *testing.T, store *localdb.Store) {
 	targetID := domain.ProviderTargetID("target.proxmox-test")
 	resolver := fixedSecretResolver{value: []byte(`{"token":"canary"}`)}
 	registry, err := controlplane.NewTargetRegistry([]controlplane.TargetBinding{{
-		ID: targetID, ProviderKind: "proxmox", Provider: client, ConfigEnvelope: []byte(`{"endpoint":"test"}`),
+		ID: targetID, ProviderKind: "proxmox", Policy: controlplane.TargetPolicy{MinimumMinor: 1, RequiredFeatures: []string{"opaque-allocation-claims-v1", "dependency-resource-input-v1"}, NativeCapabilities: []string{"workload.vm"}}, Provider: providergrpc.New(client), ConfigEnvelope: []byte(`{"endpoint":"test"}`),
 		CredentialRef: &domain.SecretRef{Source: "file", Name: "/test/credential", Key: "value"}, CredentialResolver: resolver,
 		ProtocolMajor: 1, ProtocolMinor: 1, Features: []string{plugincontract.FeatureOpaqueAllocationClaimsV1, plugincontract.FeatureDependencyResourceInputV1},
 	}})

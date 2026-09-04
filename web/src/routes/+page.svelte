@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ParameterInputs from '$lib/ParameterInputs.svelte';
   import { onMount, tick } from 'svelte';
   import RFB from '@novnc/novnc';
   import {
@@ -19,6 +20,8 @@
   let session = $state<Session | null>(null);
   let authState = $state<'loading' | 'signed-out' | 'signed-in'>('loading');
   let source = $state('');
+  let parametersValid = $state(true);
+  let parameterInputs = $state<import('$lib/api').InputValue[]>([]);
   let acknowledged = $state(false);
   let instances = $state<Instance[]>([]);
   let plan = $state<Array<{ resourceId: string; kind: string; action: string }> | null>(null);
@@ -52,7 +55,7 @@
   let selectedProject = $derived(projects.find((project) => project.id === selectedProjectId));
   let dockerSelected = $derived(selectedTarget?.providerKind === 'docker');
   let authenticated = $derived(server?.authMode !== 'none');
-  let platformAdministrator = $derived(session?.roles.includes('platform-administrator') ?? false);
+  let platformAdministrator = $derived(session?.roles?.includes('platform-administrator') ?? false);
   let workspaceReady = $derived(authState === 'signed-in' && (!authenticated || selectedProjectId !== '') && !showProjectChooser);
 
   onMount(() => {
@@ -341,6 +344,7 @@
     source = example?.source || fallbackSource || '';
     providerOverride = example?.providerOverride ? JSON.stringify(example.providerOverride, null, 2) : '';
     acknowledged = false;
+    parameterInputs = [];
     plan = null;
   }
 
@@ -348,6 +352,7 @@
     if (!session) throw new Error('Sign in before creating a lab.');
     return {
       source,
+      inputs: parameterInputs,
       acknowledgeDockerIsolationRisk: acknowledged,
       projectId: selectedProjectId || 'project.local',
       ownerKind: 'user',
@@ -566,6 +571,7 @@
             <p class="mt-2 text-sm text-base-content/65">{dockerSelected ? 'A private Docker network, persistent volume, Python/SQLite web service, client, shell endpoint, and loopback URL.' : 'The selected target accepts only its administrator-approved VM, storage, and network profiles.'}</p>
           </div>
           <textarea class="textarea h-72 w-full resize-y bg-base-100 font-mono text-xs leading-relaxed" bind:value={source} spellcheck="false" aria-label="Lab YAML"></textarea>
+          {#key selectedTargetId}<ParameterInputs bind:values={parameterInputs} bind:valid={parametersValid} />{/key}
           {#if !dockerSelected}
             <label class="form-control w-full"><span class="label-text mb-2 text-xs font-semibold tracking-widest text-primary uppercase">Approved provider profiles</span><textarea class="textarea h-28 w-full resize-y bg-base-100 font-mono text-xs leading-relaxed" bind:value={providerOverride} spellcheck="false" aria-label="Provider override JSON"></textarea></label>
           {/if}
@@ -573,8 +579,8 @@
             <label class="label cursor-pointer items-start justify-start gap-3 rounded-box border border-warning/35 bg-warning/10 p-4"><input class="checkbox checkbox-warning mt-0.5" type="checkbox" bind:checked={acknowledged} /><span class="label-text leading-relaxed">I understand ordinary Docker containers are not safe for arbitrary hostile workloads and accept trusted-laptop mode for this lab.</span></label>
           {/if}
           <div class="card-actions justify-end">
-            <button class="btn btn-ghost" disabled={busy || !source || !selectedTargetId} onclick={preview}>Preview plan</button>
-            <button class="btn btn-primary" disabled={busy || !source || !selectedTargetId || (dockerSelected && !acknowledged)} onclick={launch}>{busy ? 'Working…' : 'Launch lab'}</button>
+            <button class="btn btn-ghost" disabled={busy || !parametersValid || !source || !selectedTargetId} onclick={preview}>Preview plan</button>
+            <button class="btn btn-primary" disabled={busy || !parametersValid || !source || !selectedTargetId || (dockerSelected && !acknowledged)} onclick={launch}>{busy ? 'Working…' : 'Launch lab'}</button>
           </div>
         </div>
       </section>
@@ -596,7 +602,7 @@
       {:else}
         <div class="grid gap-4 md:grid-cols-2">
           {#each instances as instance}
-            <article class="card border border-base-300 bg-base-200/75"><div class="card-body gap-4"><div class="flex items-center justify-between gap-3"><span class="font-mono text-xs text-base-content/55">{instance.id}</span><span class="badge badge-outline">{instance.phase}</span></div>{#if instance.outputs['web-url']}<a class="link link-primary break-all text-sm" href={String(instance.outputs['web-url'])} target="_blank" rel="noreferrer">{String(instance.outputs['web-url'])}</a>{/if}<div class="grid grid-cols-2 gap-2">{#each instance.resources ?? [] as resource}<div class="rounded-lg bg-base-100 px-3 py-2"><p class="truncate font-mono text-[11px]">{resource.id}</p><div class="mt-1 flex items-center justify-between gap-2"><p class="text-xs text-base-content/50">{resource.phase}</p>{#if server?.uiFeatures.includes('browser-vnc') && resource.kind === 'VM' && resource.phase === 'ready'}<button class="btn btn-xs btn-primary btn-outline" disabled={busy} onclick={() => openConsole(instance, resource.id)}>Console</button>{/if}</div></div>{/each}</div><div class="card-actions justify-end"><button class="btn btn-sm btn-error btn-outline" disabled={busy || instance.phase === 'destroyed' || instance.phase === 'destroying'} onclick={() => destroy(instance)}>Destroy</button></div></div></article>
+            <article class="card border border-base-300 bg-base-200/75"><div class="card-body gap-4"><div class="flex items-center justify-between gap-3"><span class="font-mono text-xs text-base-content/55">{instance.id}</span><span class="badge badge-outline">{instance.phase}</span></div>{#if instance.outputs['web-url']}<a class="link link-primary break-all text-sm" href={String(instance.outputs['web-url'])} target="_blank" rel="noreferrer">{String(instance.outputs['web-url'])}</a>{/if}<div class="grid grid-cols-2 gap-2">{#each instance.resources ?? [] as resource}<div class="rounded-lg bg-base-100 px-3 py-2"><p class="truncate font-mono text-[11px]">{resource.id}</p><div class="mt-1 flex items-center justify-between gap-2"><p class="text-xs text-base-content/50">{resource.phase}</p>{#if server?.uiFeatures?.includes('browser-vnc') && resource.kind === 'VM' && resource.phase === 'ready'}<button class="btn btn-xs btn-primary btn-outline" disabled={busy} onclick={() => openConsole(instance, resource.id)}>Console</button>{/if}</div></div>{/each}</div><div class="card-actions justify-end"><button class="btn btn-sm btn-error btn-outline" disabled={busy || instance.phase === 'destroyed' || instance.phase === 'destroying'} onclick={() => destroy(instance)}>Destroy</button></div></div></article>
           {/each}
         </div>
       {/if}

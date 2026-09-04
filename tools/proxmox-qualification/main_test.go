@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
+	"github.com/OutboundSpade/LabCentral/tools/proxmox-qualification/qualification"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestQualificationToolRequiresModeProtectedNonSymlinkKeys(t *testing.T) {
@@ -43,7 +46,7 @@ func TestQualificationToolRequiresModeProtectedNonSymlinkKeys(t *testing.T) {
 }
 
 func TestQualificationToolHasNoImplicitAction(t *testing.T) {
-	if err := run(nil, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "<keygen|sign|verify>") {
+	if err := run(nil, &bytes.Buffer{}); err == nil || !strings.HasPrefix(err.Error(), "usage:") {
 		t.Fatalf("empty command error = %v", err)
 	}
 	if err := run([]string{"execute"}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "unknown qualification command") {
@@ -91,5 +94,33 @@ func TestQualificationToolKeygenRejectsNonPrivateDirectory(t *testing.T) {
 	}
 	if err := run([]string{"keygen", "--directory", directory, "--key-id", "reviewer.test"}, &bytes.Buffer{}); err == nil {
 		t.Fatal("non-private key directory was accepted")
+	}
+}
+
+func TestCleanupSignCommandProducesVerifiableScopedGrant(t *testing.T) {
+	directory := t.TempDir()
+	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x42}, ed25519.SeedSize))
+	privatePath := filepath.Join(directory, "reviewer.private")
+	if err := os.WriteFile(privatePath, []byte(base64.RawURLEncoding.EncodeToString(key)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	digest := "sha256:" + strings.Repeat("a", 64)
+	grant := qualification.CleanupGrant{SchemaVersion: qualification.CleanupSchema, ID: "cleanup.test", IssuedAt: now.Format(time.RFC3339), ValidUntil: now.Add(time.Hour).Format(time.RFC3339), TargetID: "target.test", InstallationID: "installation.test", InstanceID: "instance.test", ResourceID: "vm.test", ConfigurationDigest: digest, InventoryDigest: digest, ProviderBinaryDigest: digest, OwnershipDigest: digest}
+	encoded, err := json.Marshal(grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "grant.json")
+	if err := os.WriteFile(path, encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := run([]string{"cleanup-sign", "--grant", path, "--private-key", privatePath, "--key-id", "reviewer.test"}, &output); err != nil {
+		t.Fatal(err)
+	}
+	trust := qualification.TrustPolicy{SchemaVersion: qualification.TrustPolicySchema, MaxEvidenceAgeSeconds: 3600, Keys: []qualification.TrustKey{{KeyID: "reviewer.test", PublicKey: base64.RawURLEncoding.EncodeToString(key.Public().(ed25519.PublicKey)), NotBefore: now.Add(-time.Hour).Format(time.RFC3339), NotAfter: now.Add(2 * time.Hour).Format(time.RFC3339)}}}
+	if _, err := qualification.VerifyCleanup(output.Bytes(), trust, now, grant); err != nil {
+		t.Fatal(err)
 	}
 }

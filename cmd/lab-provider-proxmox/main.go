@@ -18,6 +18,7 @@ import (
 	plugincontract "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/contract"
 	pluginruntime "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/runtime"
 	"github.com/OutboundSpade/LabCentral/providers/proxmox"
+	"github.com/OutboundSpade/LabCentral/tools/proxmox-qualification/qualification"
 )
 
 var sourceTreeDigest = "unavailable"
@@ -28,6 +29,7 @@ func main() {
 	defer stop()
 	flags := flag.NewFlagSet("lab-provider-proxmox", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	cleanupDocument := flags.String("cleanup-authorization", "", "explicit signed exact-resource cleanup grant")
 	qualificationDocument := flags.String("qualification-document", "", "signed qualification evidence")
 	qualificationTrust := flags.String("qualification-trust", "", "qualification reviewer trust policy")
 	journalDirectory := flags.String("initialize-journal-directory", "", "create and verify the configured shared invocation journal directory")
@@ -43,7 +45,7 @@ func main() {
 	}
 	buildDigest := executableDigest()
 	service := proxmox.NewService()
-	if (*qualificationDocument == "") != (*qualificationTrust == "") {
+	if (*qualificationDocument == "") != (*qualificationTrust == "") || (*cleanupDocument != "" && *qualificationDocument == "") {
 		logger.Error("qualification document and trust policy must be configured together")
 		os.Exit(1)
 	}
@@ -52,6 +54,13 @@ func main() {
 		if err != nil {
 			logger.Error("load Proxmox production qualification", "error", errors.New("qualification inputs are invalid"))
 			os.Exit(1)
+		}
+		if *cleanupDocument != "" {
+			authorizer.cleanupDocument, err = readPublicInput(*cleanupDocument, qualification.MaxDocumentBytes)
+			if err != nil {
+				logger.Error("invalid cleanup grant file")
+				os.Exit(1)
+			}
 		}
 		service, err = proxmox.NewProductionService(authorizer)
 		if err != nil {

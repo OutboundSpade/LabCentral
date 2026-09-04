@@ -13,13 +13,19 @@ acceptedAdrs:
   - ADR-0008
   - ADR-0009
   - ADR-0010
-  - ADR-0011
-  - ADR-0012
   - ADR-0013
-  - ADR-0014
+  - ADR-0015
+  - ADR-0016
+  - ADR-0017
 proposedAdrs: []
-supersededAdrs: []
+supersededAdrs: [ADR-0011, ADR-0012, ADR-0014]
 documents:
+  - path: docs/operations/plugin-installation.md
+    status: complete
+  - path: design/contracts/architecture-conformance.yaml
+    status: complete
+  - path: docs/design/architecture-audit-2026-09-04.md
+    status: complete
   - path: AGENTS.md
     status: complete
   - path: PROJECT_STATE.md
@@ -211,6 +217,8 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-ARCH-002
+  - TASK-ARCH-001
   - TASK-DESIGN-001
   - TASK-DESIGN-002
   - TASK-DESIGN-003

@@ -1,69 +1,13 @@
-export type Issue = { code: string; message: string; fieldPath?: string; resourceRef?: string };
+import type { components } from './api.generated';
 
-export type ServerInfo = {
-  serverVersion: string;
-  apiVersion: string;
-  apiBase: string;
-  authMode: 'none' | 'local' | 'oidc';
-  authMethods: string[];
-  enabledProviderKinds: string[];
-  defaultProviderTargetId: string;
-  noAuthWarning: string;
-  uiFeatures: string[];
-};
-
-export type Session = {
-  subjectId: string;
-  displayName: string;
-  roles: string[];
-};
-
-export type ProviderTarget = {
-  id: string;
-  providerKind: string;
-  protocolMajor: number;
-  protocolMinor: number;
-  features: string[];
-  status: 'fresh' | 'stale' | 'undiscovered';
-  example?: { source: string; providerOverride?: Record<string, unknown> };
-  discovery?: { capabilities?: Array<{ feature_id?: string; featureId?: string; support?: string; evidence?: string }> };
-  discoveredAt?: string;
-  validUntil?: string;
-};
-
-export type Operation = {
-  id: string;
-  instanceId: string;
-  kind: string;
-  state: string;
-  message: string;
-  errorCode?: string;
-};
-
-export type Instance = {
-  id: string;
-  projectId: string;
-  ownerKind: string;
-  ownerId: string;
-  phase: string;
-  desiredLifecycle: string;
-  canonicalDigest: string;
-  outputs: Record<string, unknown>;
-  resources?: Array<{ id: string; kind: string; phase: string; errorCode?: string }>;
-};
-
-export type AccessSession = {
-  id: string;
-  subjectId: string;
-  instanceId: string;
-  resourceId: string;
-  method: 'vnc' | 'ssh';
-  state: 'pending' | 'ready' | 'active' | 'expired' | 'revoked' | 'failed';
-  expiresAt: string;
-  leaseExpiresAt?: string;
-  closureRequired: boolean;
-  resourceVersion: number;
-};
+export type Issue = components['schemas']['Issue'];
+export type ServerInfo = components['schemas']['ServerInfo'];
+export type Session = components['schemas']['Session'];
+export type ProviderTarget = components['schemas']['ProviderTargetDTO'];
+export type Operation = components['schemas']['OperationDTO'];
+export type Instance = components['schemas']['InstanceDTO'];
+export type AccessSession = components['schemas']['AccessSessionDTO'];
+export type InputValue = components['schemas']['InputValue'];
 
 export type AccessLaunch = {
   session: AccessSession;

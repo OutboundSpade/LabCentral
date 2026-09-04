@@ -1028,7 +1028,7 @@ def verify_release_supply_chain() -> None:
     release_guide = (ROOT / "docs/operations/release-verification.md").read_text(encoding="utf-8")
     assert "--cert-identity \"$IDENTITY\"" in release_guide
     assert "--source-ref \"refs/tags/${VERSION}\"" in release_guide
-    server_source = (ROOT / "api/http/server.go").read_text(encoding="utf-8")
+    server_source = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "api/http").glob("*.go") if not path.name.endswith("_test.go"))
     assert 'ServerVersion: options.ServerVersion' in server_source
     assert 'ServerVersion: "0.1.0"' not in server_source
 
@@ -1077,6 +1077,24 @@ def verify_markdown_links_and_state() -> None:
             assert not incomplete, f"completed task has incomplete dependencies: {task['id']}: {sorted(incomplete)}"
 
 
+def verify_architecture_contracts() -> None:
+    contract = load_yaml(ROOT / "design/contracts/architecture-conformance.yaml")
+    ids = set()
+    for case in contract["cases"]:
+        assert case["id"] not in ids, "duplicate architecture test ID"
+        ids.add(case["id"])
+        source = (ROOT / case["file"]).read_text(encoding="utf-8")
+        assert "func " + case["test"] + "(" in source, f"missing bound architecture test: {case['id']}"
+    state = load_yaml(ROOT / "design/state.yaml")
+    for status, key in [("Accepted", "acceptedAdrs"), ("Superseded", "supersededAdrs")]:
+        for identity in state[key]:
+            paths = list((ROOT / "docs/adr").glob(identity[4:] + "-*.md"))
+            assert len(paths) == 1 and "**Status:** " + status + "\n" in paths[0].read_text(), f"ADR state drift: {identity}"
+    schema = json.loads((ROOT / "api/http/openapi.json").read_text())
+    assert "InputValue" in schema["components"]["schemas"]
+    assert "openapi-typescript" in (ROOT / "web/package.json").read_text()
+
+
 def main() -> int:
     bun = executable("BUN", "bun")
     buf = executable("BUFBIN", "buf")
@@ -1092,6 +1110,7 @@ def main() -> int:
         ("Kubernetes production topology", verify_kubernetes_topology),
         ("native production topology", verify_native_topology),
         ("production release supply chain", verify_release_supply_chain),
+        ("architecture contracts and decision state", verify_architecture_contracts),
         ("documentation links and project state", verify_markdown_links_and_state),
     ]
     for label, check in checks:
