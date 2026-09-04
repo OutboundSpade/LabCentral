@@ -42,9 +42,12 @@ func TestSanitizeRemote(t *testing.T) {
 
 func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	t.Parallel()
-	readme := releaseReadme("v1.0.0", "linux", "amd64", "labd", "lab-provider-docker", "lab-provider-proxmox")
+	readme := releaseReadme("v1.0.0", "linux", "amd64", "labd", "lab-provider-docker", "lab-provider-proxmox", "lab-access-novnc")
 	if !strings.Contains(readme, "--auth-mode=none") {
 		t.Fatal("release launch instructions omit the required authentication mode")
+	}
+	if !strings.Contains(readme, "lab-access-novnc") {
+		t.Fatal("release instructions omit the access plugin")
 	}
 }
 

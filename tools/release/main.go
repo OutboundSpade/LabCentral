@@ -28,6 +28,7 @@ import (
 const (
 	dockerPluginID  = "io.labcentral.provider.docker"
 	proxmoxPluginID = "io.labcentral.provider.proxmox"
+	accessPluginID  = "io.labcentral.access.novnc"
 	pluginVersion   = "0.1.0"
 )
 
@@ -114,6 +115,7 @@ func run(ctx context.Context, args []string) error {
 	labdName := "labd" + extension
 	dockerProviderName := "lab-provider-docker" + extension
 	proxmoxProviderName := "lab-provider-proxmox" + extension
+	accessProviderName := "lab-access-novnc" + extension
 	qualificationName := "lab-proxmox-qualification" + extension
 	if err := buildBinary(ctx, cfg, "./cmd/labd", filepath.Join(root, labdName), "-X=main.version="+cfg.version); err != nil {
 		return err
@@ -122,6 +124,9 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	if err := buildBinary(ctx, cfg, "./cmd/lab-provider-proxmox", filepath.Join(root, proxmoxProviderName), "-X=main.sourceTreeDigest="+proxmoxSourceDigest); err != nil {
+		return err
+	}
+	if err := buildBinary(ctx, cfg, "./cmd/lab-access-novnc", filepath.Join(root, accessProviderName), ""); err != nil {
 		return err
 	}
 	if err := buildBinary(ctx, cfg, "./tools/proxmox-qualification", filepath.Join(root, qualificationName), ""); err != nil {
@@ -139,11 +144,15 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	accessProviderDigest, err := fileSHA256(filepath.Join(root, accessProviderName))
+	if err != nil {
+		return err
+	}
 	qualificationDigest, err := fileSHA256(filepath.Join(root, qualificationName))
 	if err != nil {
 		return err
 	}
-	for name, digest := range map[string]string{dockerProviderName: dockerProviderDigest, proxmoxProviderName: proxmoxProviderDigest} {
+	for name, digest := range map[string]string{dockerProviderName: dockerProviderDigest, proxmoxProviderName: proxmoxProviderDigest, accessProviderName: accessProviderDigest} {
 		if err := writeFile(filepath.Join(root, name+".sha256"), []byte(digest+"  "+name+"\n"), 0o644); err != nil {
 			return err
 		}
@@ -160,7 +169,10 @@ func run(ctx context.Context, args []string) error {
 		Executable           string   `json:"executable"`
 		SHA256               string   `json:"sha256"`
 		Categories           []string `json:"categories"`
-		ProviderKinds        []string `json:"providerKinds"`
+		ProviderKinds        []string `json:"providerKinds,omitempty"`
+		AccessKinds          []string `json:"accessKinds,omitempty"`
+		AccessMethods        []string `json:"accessMethods,omitempty"`
+		EndpointSchemas      []string `json:"endpointSchemas,omitempty"`
 		ProtocolMajor        int      `json:"protocolMajor"`
 		MinimumProtocolMinor int      `json:"minimumProtocolMinor"`
 		MaximumProtocolMinor int      `json:"maximumProtocolMinor"`
@@ -188,10 +200,22 @@ func run(ctx context.Context, args []string) error {
 	if err := writeJSON(filepath.Join(root, "plugins", "proxmox.json"), proxmoxManifest); err != nil {
 		return err
 	}
+	accessManifest := pluginManifest{
+		APIVersion: "labcentral.io/plugin-manifest/v1", ID: accessPluginID, Version: pluginVersion,
+		Executable: "../" + accessProviderName, SHA256: accessProviderDigest, Categories: []string{"access"},
+		AccessKinds: []string{"browser-vnc"}, AccessMethods: []string{"vnc"}, EndpointSchemas: []string{"proxmox.vnc-endpoint/v1.0"},
+		ProtocolMajor: 1, MinimumProtocolMinor: 2, MaximumProtocolMinor: 2,
+		OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch},
+		RequestedPermissions: []string{"loopback-http-listener", "proxmox-vnc-tls-endpoint", "private-core-authorization-callback"},
+	}
+	if err := writeJSON(filepath.Join(root, "plugins", "access-novnc.json"), accessManifest); err != nil {
+		return err
+	}
 
 	sbom := makeSBOM(cfg, created, modules, labdName, labdDigest, []subject{
 		{Name: dockerProviderName, SHA256: dockerProviderDigest},
 		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
+		{Name: accessProviderName, SHA256: accessProviderDigest},
 		{Name: qualificationName, SHA256: qualificationDigest},
 	})
 	if err := writeJSON(filepath.Join(root, "sbom.cdx.json"), sbom); err != nil {
@@ -219,13 +243,14 @@ func run(ctx context.Context, args []string) error {
 		{Name: labdName, SHA256: labdDigest},
 		{Name: dockerProviderName, SHA256: dockerProviderDigest},
 		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
+		{Name: accessProviderName, SHA256: accessProviderDigest},
 		{Name: qualificationName, SHA256: qualificationDigest},
 	}
 	if err := writeJSON(filepath.Join(root, "provenance.json"), provenance); err != nil {
 		return err
 	}
 
-	readme := releaseReadme(cfg.version, cfg.goos, cfg.goarch, labdName, dockerProviderName, proxmoxProviderName)
+	readme := releaseReadme(cfg.version, cfg.goos, cfg.goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName)
 	if err := writeFile(filepath.Join(root, "README.md"), []byte(readme), 0o644); err != nil {
 		return err
 	}
@@ -453,11 +478,12 @@ func goPURL(path, version string) string {
 	return "pkg:golang/" + strings.ReplaceAll(path, "%", "%25") + "@" + url.PathEscape(version)
 }
 
-func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName string) string {
+func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName string) string {
 	return fmt.Sprintf(`# LabCentral %s (%s/%s)
 
 This archive contains the trusted-laptop Docker distribution and the
-qualification-gated Proxmox distribution. Keep %s, %s, %s, and their adjacent
+qualification-gated Proxmox distribution with its isolated noVNC access
+process. Keep %s, %s, %s, %s, and their adjacent
 checksum/source-provenance files together. The control plane verifies each
 provider digest and snapshots the protected executable before launching it as
 a separate process.
@@ -480,7 +506,7 @@ Verify every packaged file with:
 
 The CycloneDX inventory is sbom.cdx.json. provenance.json records source and
 build facts but is not a signature or a SLSA attestation.
-`, version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, labdName)
+`, version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, labdName)
 }
 
 func copyReleaseFile(source, destination string) error {

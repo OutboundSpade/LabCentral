@@ -179,6 +179,26 @@ func TestClientRejectsUnsafeConfiguration(t *testing.T) {
 	}
 }
 
+func TestClientRequestsExactDirectVNCProxyEndpoint(t *testing.T) {
+	certificate := "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api2/json/nodes/pve-a/qemu/910001/vncproxy" || request.URL.RawQuery != "" {
+			t.Fatalf("VNC proxy request = %s %s", request.Method, request.URL.RequestURI())
+		}
+		if request.Header.Get("Authorization") != "PVEAPIToken="+testTokenID+"="+testTokenSecret {
+			t.Fatal("VNC proxy request omitted the configured API token")
+		}
+		writeAPIData(t, response, map[string]any{"port": "5907", "password": "vnc-secret", "cert": certificate})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server, 0)
+	defer client.CloseIdleConnections()
+	proxy, err := client.VNCProxy(context.Background(), "pve-a", 910001)
+	if err != nil || proxy.Port != 5907 || proxy.Password != "vnc-secret" || proxy.Certificate != certificate {
+		t.Fatalf("VNC proxy = %#v, %v", proxy, err)
+	}
+}
+
 func TestClientEnvelopesAreStrictAndCredentialErrorsAreRedacted(t *testing.T) {
 	config := []byte(`{"endpoint":"https://pve.example:8006","unknown":true}`)
 	credentials := []byte(`{"tokenID":"` + testTokenID + `","tokenSecret":"` + testTokenSecret + `"}`)

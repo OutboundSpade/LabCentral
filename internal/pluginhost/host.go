@@ -17,6 +17,7 @@ import (
 	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/launch"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,6 +33,9 @@ type Config struct {
 	RuntimeParent          string
 	ConfiguredPluginID     string
 	ConfiguredProviderKind string
+	ConfiguredAccessKind   string
+	AccessAudience         string
+	AccessAuthorization    application.AccessAuthorizationHandler
 	PluginInstanceID       string
 	RegistrationTimeout    time.Duration
 	RPCMaxBytes            int
@@ -40,6 +44,7 @@ type Config struct {
 
 type Client struct {
 	Provider         pluginv1.ProviderServiceClient
+	Access           pluginv1.AccessServiceClient
 	Runtime          pluginv1.PluginRuntimeServiceClient
 	Info             *pluginv1.PluginInfo
 	SelectedProtocol *pluginv1.ProtocolVersion
@@ -104,6 +109,13 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	callbackCredential := ""
+	if config.ConfiguredAccessKind != "" {
+		callbackCredential, err = randomToken(32)
+		if err != nil {
+			return nil, err
+		}
+	}
 	registrationPath := filepath.Join(runtimeDir, "registration.sock")
 	servicePath := filepath.Join(runtimeDir, "service.sock")
 	listener, err := net.Listen("unix", registrationPath)
@@ -118,24 +130,31 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 	if err := os.Chmod(registrationPath, 0o600); err != nil {
 		return nil, fmt.Errorf("restrict plugin registration socket: %w", err)
 	}
-	registration := newRegistrationServer(token, config, runtimeDir)
+	registration := newRegistrationServer(token, callbackCredential, config, runtimeDir)
 	server := grpc.NewServer(
 		grpc.MaxRecvMsgSize(config.RPCMaxBytes),
 		grpc.MaxSendMsgSize(config.RPCMaxBytes),
 	)
 	pluginv1.RegisterPluginRegistrationServiceServer(server, registration)
+	if config.AccessAuthorization != nil {
+		pluginv1.RegisterAccessAuthorizationServiceServer(server, &accessAuthorizationServer{
+			registration: registration, handler: config.AccessAuthorization,
+		})
+	}
 	go func() { _ = server.Serve(listener) }()
 
 	processContext, cancel := context.WithCancel(context.Background())
 	command := exec.CommandContext(processContext, executable, config.Args...)
-	command.Env = append(filteredEnvironment(os.Environ()),
-		launch.RegistrationEndpoint+"=unix://"+registrationPath,
-		launch.ServiceEndpoint+"=unix://"+servicePath,
-		launch.Token+"="+token,
-		launch.ConfiguredPluginID+"="+config.ConfiguredPluginID,
-		launch.PluginInstanceID+"="+config.PluginInstanceID,
-		launch.RuntimeDirectory+"="+runtimeDir,
-	)
+	command.Env = []string{
+		"PATH=/usr/bin:/bin",
+		"TMPDIR=" + runtimeDir,
+		launch.RegistrationEndpoint + "=unix://" + registrationPath,
+		launch.ServiceEndpoint + "=unix://" + servicePath,
+		launch.Token + "=" + token,
+		launch.ConfiguredPluginID + "=" + config.ConfiguredPluginID,
+		launch.PluginInstanceID + "=" + config.PluginInstanceID,
+		launch.RuntimeDirectory + "=" + runtimeDir,
+	}
 	stdout := newBoundedWriter(config.LogMaxBytes)
 	stderr := newBoundedWriter(config.LogMaxBytes)
 	command.Stdout = stdout
@@ -173,21 +192,17 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 		server.Stop()
 		return nil, fmt.Errorf("connect to registered plugin service: %w", err)
 	}
-	healthContext, healthCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer healthCancel()
 	runtimeClient := pluginv1.NewPluginRuntimeServiceClient(connection)
-	health, err := runtimeClient.Health(healthContext, &pluginv1.HealthRequest{})
-	if err != nil || health.GetStatus() != pluginv1.HealthResponse_STATUS_HEALTHY {
+	_, err = waitForHealthy(ctx, runtimeClient, process, 5*time.Second)
+	if err != nil {
 		_ = connection.Close()
 		cancel()
 		server.Stop()
-		if err != nil {
-			return nil, fmt.Errorf("plugin health check failed: %w", err)
-		}
-		return nil, fmt.Errorf("plugin did not become healthy: %s", health.GetSafeMessage())
+		return nil, fmt.Errorf("plugin did not become healthy: %w", err)
 	}
 	client := &Client{
 		Provider:         pluginv1.NewProviderServiceClient(connection),
+		Access:           pluginv1.NewAccessServiceClient(connection),
 		Runtime:          runtimeClient,
 		Info:             accepted.info,
 		SelectedProtocol: accepted.selectedProtocol,
@@ -203,6 +218,36 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 	}
 	cleanupDir = false
 	return client, nil
+}
+
+func waitForHealthy(ctx context.Context, client pluginv1.PluginRuntimeServiceClient, process *processState, timeout time.Duration) (*pluginv1.HealthResponse, error) {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	var lastMessage string
+	for {
+		callContext, cancel := context.WithTimeout(ctx, time.Second)
+		health, err := client.Health(callContext, &pluginv1.HealthRequest{})
+		cancel()
+		if err == nil && health.GetStatus() == pluginv1.HealthResponse_STATUS_HEALTHY {
+			return health, nil
+		}
+		if err != nil {
+			lastMessage = "health RPC failed"
+		} else {
+			lastMessage = health.GetSafeMessage()
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-process.done:
+			return nil, fmt.Errorf("plugin exited: %v", process.result())
+		case <-deadline.C:
+			return nil, fmt.Errorf("health timeout: %s", lastMessage)
+		case <-ticker.C:
+		}
+	}
 }
 
 func withDefaults(config Config) Config {
@@ -233,8 +278,19 @@ func validateConfig(config Config) error {
 			return fmt.Errorf("configured plugin argument is invalid")
 		}
 	}
-	if config.ConfiguredPluginID == "" || config.ConfiguredProviderKind == "" || config.PluginInstanceID == "" {
-		return fmt.Errorf("configured plugin, provider kind, and instance IDs are required")
+	if config.ConfiguredPluginID == "" || config.PluginInstanceID == "" {
+		return fmt.Errorf("configured plugin and instance IDs are required")
+	}
+	provider, access := config.ConfiguredProviderKind != "", config.ConfiguredAccessKind != ""
+	if provider == access {
+		return fmt.Errorf("exactly one configured provider or access kind is required")
+	}
+	if access {
+		if len(config.AccessAudience) == 0 || len(config.AccessAudience) > 512 || strings.ContainsAny(config.AccessAudience, "\r\n\t ") || config.AccessAuthorization == nil {
+			return fmt.Errorf("configured access audience and authorization callback are required")
+		}
+	} else if config.AccessAudience != "" || config.AccessAuthorization != nil {
+		return fmt.Errorf("provider plugins cannot receive access callback configuration")
 	}
 	if config.RPCMaxBytes < 1024 || config.RPCMaxBytes > 64<<20 {
 		return fmt.Errorf("plugin RPC size limit must be between 1 KiB and 64 MiB")
@@ -295,25 +351,6 @@ func randomToken(bytes int) (string, error) {
 	return hex.EncodeToString(buffer), nil
 }
 
-func filteredEnvironment(environment []string) []string {
-	blocked := map[string]bool{
-		launch.RegistrationEndpoint: true,
-		launch.ServiceEndpoint:      true,
-		launch.Token:                true,
-		launch.ConfiguredPluginID:   true,
-		launch.PluginInstanceID:     true,
-		launch.RuntimeDirectory:     true,
-	}
-	result := make([]string, 0, len(environment))
-	for _, value := range environment {
-		key, _, _ := strings.Cut(value, "=")
-		if !blocked[key] {
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
 type registrationResult struct {
 	servicePath      string
 	info             *pluginv1.PluginInfo
@@ -323,17 +360,19 @@ type registrationResult struct {
 type registrationServer struct {
 	pluginv1.UnimplementedPluginRegistrationServiceServer
 
-	token      string
-	config     Config
-	runtimeDir string
-	accepted   chan registrationResult
-	mu         sync.Mutex
-	used       bool
-	sequence   uint64
+	token              string
+	callbackCredential string
+	config             Config
+	runtimeDir         string
+	accepted           chan registrationResult
+	mu                 sync.Mutex
+	used               bool
+	sequence           uint64
+	selectedProtocol   *pluginv1.ProtocolVersion
 }
 
-func newRegistrationServer(token string, config Config, runtimeDir string) *registrationServer {
-	return &registrationServer{token: token, config: config, runtimeDir: runtimeDir, accepted: make(chan registrationResult, 1)}
+func newRegistrationServer(token, callbackCredential string, config Config, runtimeDir string) *registrationServer {
+	return &registrationServer{token: token, callbackCredential: callbackCredential, config: config, runtimeDir: runtimeDir, accepted: make(chan registrationResult, 1)}
 }
 
 func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1.RegisterPluginRequest) (*pluginv1.RegisterPluginResponse, error) {
@@ -349,12 +388,36 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 		return nil, fmt.Errorf("plugin registration identity mismatch")
 	}
 	info := request.GetPlugin()
-	if info == nil || info.GetPluginId() != s.config.ConfiguredPluginID || !contains(info.GetCategories(), "provider") || !contains(info.GetProviderKinds(), s.config.ConfiguredProviderKind) {
+	if info == nil || info.GetPluginId() != s.config.ConfiguredPluginID || len(info.GetCategories()) != 1 {
 		return nil, fmt.Errorf("plugin registration metadata mismatch")
 	}
-	selectedProtocol, ok := selectProtocol(info.GetSupportedProtocols())
-	if !ok {
-		return nil, fmt.Errorf("plugin does not support protocol 1.0")
+	var selectedProtocol *pluginv1.ProtocolVersion
+	var selectedProvider, selectedAccess *pluginv1.ProtocolVersion
+	if s.config.ConfiguredProviderKind != "" {
+		if info.GetCategories()[0] != "provider" || !contains(info.GetProviderKinds(), s.config.ConfiguredProviderKind) {
+			return nil, fmt.Errorf("plugin registration metadata mismatch")
+		}
+		ranges := info.GetSupportedProviderProtocols()
+		if len(ranges) == 0 {
+			ranges = info.GetSupportedProtocols()
+		}
+		var ok bool
+		selectedProvider, ok = selectProtocol(ranges)
+		if !ok {
+			return nil, fmt.Errorf("plugin does not support provider protocol 1.0")
+		}
+		selectedProtocol = selectedProvider
+	} else {
+		if info.GetCategories()[0] != "access" || !contains(info.GetAccessKinds(), s.config.ConfiguredAccessKind) ||
+			!contains(info.GetFeatures(), "access-authorization-recheck-v1") || len(info.GetSupportedAccessMethods()) == 0 || len(info.GetAcceptedAccessEndpointSchemas()) == 0 {
+			return nil, fmt.Errorf("plugin registration metadata mismatch")
+		}
+		var ok bool
+		selectedAccess, ok = selectAccessProtocol(info.GetSupportedAccessProtocols())
+		if !ok {
+			return nil, fmt.Errorf("plugin does not support required access protocol 1.2")
+		}
+		selectedProtocol = selectedAccess
 	}
 	servicePath, err := confinedUnixEndpoint(request.GetServiceEndpoint(), s.runtimeDir)
 	if err != nil {
@@ -362,12 +425,17 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 	}
 	infoCopy := clonePluginInfo(info)
 	s.used = true
+	s.selectedProtocol = proto.Clone(selectedProtocol).(*pluginv1.ProtocolVersion)
 	s.accepted <- registrationResult{servicePath: servicePath, info: infoCopy, selectedProtocol: selectedProtocol}
 	return &pluginv1.RegisterPluginResponse{
-		SelectedProtocol:  selectedProtocol,
-		HeartbeatInterval: durationpb.New(2 * time.Second),
-		MaxRequestBytes:   uint64(s.config.RPCMaxBytes),
-		MaxResponseBytes:  uint64(s.config.RPCMaxBytes),
+		SelectedProtocol:         selectedProtocol,
+		HeartbeatInterval:        durationpb.New(2 * time.Second),
+		MaxRequestBytes:          uint64(s.config.RPCMaxBytes),
+		MaxResponseBytes:         uint64(s.config.RPCMaxBytes),
+		SelectedProviderProtocol: selectedProvider,
+		SelectedAccessProtocol:   selectedAccess,
+		AccessCallbackCredential: s.callbackCredential,
+		AccessAudience:           s.config.AccessAudience,
 	}, nil
 }
 
@@ -382,10 +450,17 @@ func (s *registrationServer) Heartbeat(_ context.Context, request *pluginv1.Hear
 }
 
 func selectProtocol(ranges []*pluginv1.ProtocolVersionRange) (*pluginv1.ProtocolVersion, bool) {
-	const hostMaxMinor uint32 = 1
+	return selectProtocolThrough(ranges, 1, 0)
+}
+
+func selectAccessProtocol(ranges []*pluginv1.ProtocolVersionRange) (*pluginv1.ProtocolVersion, bool) {
+	return selectProtocolThrough(ranges, 2, 2)
+}
+
+func selectProtocolThrough(ranges []*pluginv1.ProtocolVersionRange, hostMaxMinor, hostMinMinor uint32) (*pluginv1.ProtocolVersion, bool) {
 	var selected *pluginv1.ProtocolVersion
 	for _, versionRange := range ranges {
-		if versionRange == nil || versionRange.GetMajor() != 1 || versionRange.GetMinMinor() > versionRange.GetMaxMinor() || versionRange.GetMinMinor() > hostMaxMinor {
+		if versionRange == nil || versionRange.GetMajor() != 1 || versionRange.GetMinMinor() > versionRange.GetMaxMinor() || versionRange.GetMinMinor() > hostMaxMinor || versionRange.GetMaxMinor() < hostMinMinor {
 			continue
 		}
 		minor := versionRange.GetMaxMinor()
@@ -397,6 +472,101 @@ func selectProtocol(ranges []*pluginv1.ProtocolVersionRange) (*pluginv1.Protocol
 		}
 	}
 	return selected, selected != nil
+}
+
+type accessAuthorizationServer struct {
+	pluginv1.UnimplementedAccessAuthorizationServiceServer
+	registration *registrationServer
+	handler      application.AccessAuthorizationHandler
+}
+
+func (s *accessAuthorizationServer) callbackIdentity(credential, audience string) (application.AccessCallbackIdentity, error) {
+	if len(credential) == 0 || len(credential) > 256 || audience != s.registration.config.AccessAudience {
+		return application.AccessCallbackIdentity{}, fmt.Errorf("access callback binding is invalid")
+	}
+	s.registration.mu.Lock()
+	defer s.registration.mu.Unlock()
+	if !s.registration.used || s.registration.selectedProtocol == nil ||
+		subtle.ConstantTimeCompare([]byte(credential), []byte(s.registration.callbackCredential)) != 1 {
+		return application.AccessCallbackIdentity{}, fmt.Errorf("access callback binding is invalid")
+	}
+	identity := application.AccessCallbackIdentity{
+		PluginID: s.registration.config.ConfiguredPluginID, PluginInstanceID: s.registration.config.PluginInstanceID,
+		Audience: s.registration.config.AccessAudience, ProtocolMajor: s.registration.selectedProtocol.GetMajor(),
+		ProtocolMinor: s.registration.selectedProtocol.GetMinor(),
+	}
+	return identity, nil
+}
+
+func (s *accessAuthorizationServer) ExchangeAccessToken(ctx context.Context, request *pluginv1.ExchangeAccessTokenRequest) (*pluginv1.ExchangeAccessTokenResponse, error) {
+	identity, err := s.callbackIdentity(request.GetCallbackCredential(), request.GetAudience())
+	if err != nil {
+		return nil, err
+	}
+	decision, err := s.handler.ExchangeAccessToken(ctx, identity, request.GetAccessSessionId(), request.GetOneTimeToken())
+	if err != nil {
+		return nil, err
+	}
+	return exchangeDecision(decision), nil
+}
+
+func (s *accessAuthorizationServer) RecheckAccessLease(ctx context.Context, request *pluginv1.RecheckAccessLeaseRequest) (*pluginv1.RecheckAccessLeaseResponse, error) {
+	identity, err := s.callbackIdentity(request.GetCallbackCredential(), request.GetAudience())
+	if err != nil {
+		return nil, err
+	}
+	decision, err := s.handler.RecheckAccessLease(ctx, identity, request.GetAccessSessionId(), request.GetAuthorizationLease())
+	if err != nil {
+		return nil, err
+	}
+	response := &pluginv1.RecheckAccessLeaseResponse{
+		AuthorizationLease: decision.Lease, ValidUntil: timestamppb.New(decision.ValidUntil),
+		RecheckAfter: durationpb.New(decision.RecheckAfter),
+	}
+	if !decision.Granted {
+		response.AuthorizationLease = ""
+		response.ValidUntil = nil
+		response.RecheckAfter = nil
+		response.Error = accessDecisionError(decision)
+	}
+	return response, nil
+}
+
+func (s *accessAuthorizationServer) EndAccessLease(ctx context.Context, request *pluginv1.EndAccessLeaseRequest) (*pluginv1.EndAccessLeaseResponse, error) {
+	identity, err := s.callbackIdentity(request.GetCallbackCredential(), request.GetAudience())
+	if err != nil {
+		return nil, err
+	}
+	ended, err := s.handler.EndAccessLease(ctx, identity, request.GetAccessSessionId(), request.GetAuthorizationLease(), request.GetReason())
+	if err != nil {
+		return nil, err
+	}
+	return &pluginv1.EndAccessLeaseResponse{Ended: ended}, nil
+}
+
+func exchangeDecision(decision application.AccessAuthorizationDecision) *pluginv1.ExchangeAccessTokenResponse {
+	response := &pluginv1.ExchangeAccessTokenResponse{
+		AuthorizationLease: decision.Lease, ValidUntil: timestamppb.New(decision.ValidUntil),
+		RecheckAfter: durationpb.New(decision.RecheckAfter),
+	}
+	if !decision.Granted {
+		response.AuthorizationLease = ""
+		response.ValidUntil = nil
+		response.RecheckAfter = nil
+		response.Error = accessDecisionError(decision)
+	}
+	return response
+}
+
+func accessDecisionError(decision application.AccessAuthorizationDecision) *pluginv1.StructuredError {
+	code, message := decision.Code, decision.SafeMessage
+	if code == "" {
+		code = "access_denied"
+	}
+	if message == "" {
+		message = "Access authorization was denied"
+	}
+	return &pluginv1.StructuredError{Code: code, ErrorClass: "authorization_denied", SafeMessage: message}
 }
 
 func contains(values []string, expected string) bool {
@@ -539,3 +709,4 @@ func (w *boundedWriter) String() string {
 }
 
 var _ pluginv1.PluginRegistrationServiceServer = (*registrationServer)(nil)
+var _ pluginv1.AccessAuthorizationServiceServer = (*accessAuthorizationServer)(nil)

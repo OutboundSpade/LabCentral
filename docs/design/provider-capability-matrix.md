@@ -65,7 +65,16 @@ Legend: **N** native, **E** emulated, **C** constrained/discover, **—** unsupp
 
 ## Precise provider notes
 
-- **Proxmox:** the completed `TASK-PROXMOX-001` foundation discovers version, nodes, QEMU-list reachability/templates, VM-image storage content/formats/capacity, and bridges/VLAN awareness. These are target facts, not portable realization claims: every mutation feature remains unsupported. Later slices must separately discover snapshot/clone compatibility, firewall enforcement, console methods, guest agent, and placement before advertising them. Never infer snapshot from “Proxmox” alone because storage backends differ.
+- **Proxmox:** discovery reports version, nodes, QEMU-list reachability/templates,
+  VM-image storage content/formats/capacity, and bridges/VLAN awareness. These
+  remain target facts rather than portable realization claims. The qualified
+  fixed-node QEMU subset advertises its implemented mutation/lifecycle
+  features only inside the signed exact-target gate. `access.vnc` additionally
+  requires explicit target-config v1.2 console enablement and effective
+  `VM.Console`, and is realized only through the separate controlled noVNC
+  process. Snapshot/restore, firewall enforcement, SSH, arbitrary placement,
+  and unqualified console access remain unsupported; storage presence alone
+  never implies snapshot support.
 - **KubeVirt:** discover CRDs/API versions, KubeVirt readiness/features, CDI, VolumeSnapshot/CSI classes, Multus/NADs/bindings, RuntimeClasses, CNI NetworkPolicy enforcement evidence, live migration, and permitted MAC/interface modes. Absence of KubeVirt is explicit container-only.
 - **Fly:** a Machine is accepted only as logical container realization. Custom 6PN offers L3 IPv6 segmentation; it does not satisfy L2, arbitrary multi-NIC, static lab CIDR/MAC, or VM requirements.
 - **Docker:** baseline uses Engine REST containers, images, volumes, user-defined networks, and port publishing. Desktop runs Engine networking behind a VM/backend and differs from Linux bridge behavior; advanced namespace/iptables features require `docker.linuxAdvancedNetworking` and operator opt-in.

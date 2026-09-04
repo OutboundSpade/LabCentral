@@ -34,6 +34,7 @@ var templateDiskPattern = regexp.MustCompile(`^(scsi|virtio)[0-9]{1,2}$`)
 
 const (
 	targetConfigV11      = "proxmox.target-config/v1.1"
+	targetConfigV12      = "proxmox.target-config/v1.2"
 	mutationInventoryV10 = "proxmox.mutation-inventory/v1.0"
 	supportedPVERange    = ">=9.0.0 <10.0.0"
 )
@@ -58,6 +59,12 @@ type TargetConfig struct {
 	Qualification         TargetQualification         `json:"qualification,omitempty"`
 	PermissionScopes      []PermissionScope           `json:"permissionScopes,omitempty"`
 	JournalDirectory      string                      `json:"journalDirectory,omitempty"`
+	ConsoleAccess         ConsoleAccessConfig         `json:"consoleAccess,omitempty"`
+}
+
+type ConsoleAccessConfig struct {
+	Enabled                bool   `json:"enabled,omitempty"`
+	MaximumDurationSeconds uint32 `json:"maximumDurationSeconds,omitempty"`
 }
 
 type IntegerRange struct {
@@ -131,8 +138,15 @@ func (config TargetConfig) validateMutation() error {
 	if !config.MutationEnabled {
 		return nil
 	}
-	if config.SchemaVersion != targetConfigV11 {
-		return fmt.Errorf("mutation requires schemaVersion %q", targetConfigV11)
+	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 {
+		return fmt.Errorf("mutation requires schemaVersion %q or %q", targetConfigV11, targetConfigV12)
+	}
+	if config.ConsoleAccess.Enabled {
+		if config.SchemaVersion != targetConfigV12 || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
+			return fmt.Errorf("console access requires schemaVersion %q and a maximum duration between 60 and 3600 seconds", targetConfigV12)
+		}
+	} else if config.ConsoleAccess.MaximumDurationSeconds != 0 {
+		return fmt.Errorf("console access duration requires console access to be enabled")
 	}
 	if config.SupportedPVERange != supportedPVERange {
 		return fmt.Errorf("supportedPVERange must be %q", supportedPVERange)
@@ -305,6 +319,9 @@ func expectedPermissionScopes(config TargetConfig) map[string]map[string]bool {
 		destinationPath = "/pool/" + config.Pool
 	}
 	add(destinationPath, "VM.Allocate", "VM.Audit", "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Memory", "VM.Config.Network", "VM.Config.Options", "VM.GuestAgent.Audit", "VM.PowerMgmt")
+	if config.ConsoleAccess.Enabled {
+		add(destinationPath, "VM.Console")
+	}
 	for _, profile := range config.Storages {
 		add("/storage/"+profile.ID, "Datastore.AllocateSpace", "Datastore.Audit")
 	}

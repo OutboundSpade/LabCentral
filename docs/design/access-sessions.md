@@ -63,10 +63,23 @@ Revocation is core-first. A version-pinned transaction records `revoked`, revoca
 
 ## First production adapters
 
-The first browser console adapter is Proxmox noVNC through the separate proxy. The provider uses only separately reviewed console-ticket APIs and fresh exact-target privilege/capability evidence, then returns a typed short-lived opaque endpoint envelope directly to the access plugin through core. The plugin terminates the browser session and connects to Proxmox; the browser receives neither the Proxmox management origin nor console ticket nor API credential. Existing Proxmox mutation qualification does not imply console support: the method remains `unsupported` until its API, privilege, TLS, redaction, expiry, revocation, and disposable-target tests pass for the exact target.
+The first browser console adapter is implemented as Proxmox VNC through the
+separate `lab-access-novnc` proxy. The provider uses only the reviewed
+`POST /nodes/{node}/qemu/{vmid}/vncproxy` API after fresh signed-qualification,
+effective `VM.Console`, exact provider-state, generation, ownership-marker,
+and current VM-config checks. It returns a typed short-lived endpoint envelope
+directly to the access plugin through core. The plugin connects immediately,
+verifies the proxy against system roots plus the target-configured and
+Proxmox-returned CA material, consumes the Proxmox VNC challenge
+itself, and presents a no-auth RFB stream only after core accepts the one-time
+launch exchange. The browser receives neither the Proxmox management origin,
+VNC password, nor API credential. Existing mutation qualification does not
+imply console support: target config v1.2 must explicitly enable console access
+and the changed config/permission profile must be qualified on that exact
+installation.
 
 Browser SSH is supported only when the selected image explicitly trusts an operator-configured SSH user CA and policy binds an allowed guest principal. Core resolves the target-scoped CA `SecretRef` only for the authorized invocation; the access plugin generates an ephemeral key, signs a certificate no longer than the Access Session, keeps key material in memory, proxies the terminal, and never returns that credential to the browser. Without that declared trust path, `access.ssh` is `unsupported`; LabCentral does not fall back to a cloned password, shared key, arbitrary control-plane SSH script, or participant-supplied plaintext secret.
 
 Future guest credential brokers may add per-instance/per-session passwords, users, RDP credentials, or API tokens; values use secret delivery and are never copied on clone unless explicitly regenerated.
 
-The executable cases for these rules are [`design/contracts/access-conformance.yaml`](../../design/contracts/access-conformance.yaml). `TEST-SEC-ACCESS-001` and `TEST-SEC-ACCESS-002` remain the threat-model anchors for single-use launch and telemetry secrecy.
+The executable cases for these rules are [`design/contracts/access-conformance.yaml`](../../design/contracts/access-conformance.yaml). All eighteen normal/guarded Go bindings now exist; `TEST-ACCESS-018` is an opt-in black-box run against an operator's disposable authenticated installation and skips before file or network access when inactive. `TEST-SEC-ACCESS-001` and `TEST-SEC-ACCESS-002` remain the threat-model anchors for single-use launch and telemetry secrecy.

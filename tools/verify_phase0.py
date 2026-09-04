@@ -278,7 +278,7 @@ def verify_proto(buf: str) -> None:
             str(current_path),
         ])
         current = compatibility["currentDescriptor"]
-        assert current["protocol"] == {"major": 1, "minor": 1}, "current plugin protocol version is not 1.1"
+        assert current["protocol"] == {"major": 1, "minor": 2}, "current plugin protocol version is not 1.2"
         assert hashlib.sha256(current_path.read_bytes()).hexdigest() == current["sha256"], (
             "current plugin descriptor digest is stale; verify compatibility before refreshing it"
         )
@@ -294,6 +294,7 @@ def collect_test_ids() -> set[str]:
         ROOT / "design/contracts/allocation-claims.yaml",
         ROOT / "design/contracts/rendering-cases.yaml",
         ROOT / "design/contracts/job-invariants.yaml",
+        ROOT / "design/contracts/access-conformance.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
         ROOT / "schemas/fixtures/parser/cases.yaml",
         ROOT / "schemas/fixtures/canonical/vectors.yaml",
@@ -589,7 +590,8 @@ def verify_contract_catalogs() -> None:
     assert len(provider["requiredCases"]) >= 18, "provider suite lost required failure coverage"
     rendering = load_yaml(ROOT / "design/contracts/rendering-cases.yaml")
     go_test_source = "\n".join(
-        path.read_text(encoding="utf-8") for path in ROOT.glob("internal/**/*_test.go")
+        path.read_text(encoding="utf-8") for path in ROOT.rglob("*_test.go")
+        if ".git" not in path.parts
     )
     provider_suite_source = (ROOT / "pkg/plugin-sdk-go/contracttest/suite.go").read_text(encoding="utf-8")
     for case in provider["requiredCases"]:
@@ -633,6 +635,22 @@ def verify_contract_catalogs() -> None:
         if postgresql_test:
             assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
                 f"allocation case references missing PostgreSQL test: {case['id']}: {postgresql_test}"
+            )
+    access = load_yaml(ROOT / "design/contracts/access-conformance.yaml")
+    assert access["states"] == ["pending", "ready", "active", "expired", "revoked", "failed"]
+    assert len(access["cases"]) == 18, "access suite must retain all eighteen contract cases"
+    for case in access["cases"]:
+        go_test = case.get("goTest")
+        protected_test = case.get("protectedGoTest")
+        assert bool(go_test) != bool(protected_test), f"access case must bind exactly one normal or protected Go test: {case['id']}"
+        test_name = go_test or protected_test
+        assert re.search(rf"func\s+{re.escape(test_name)}\s*\(", go_test_source), (
+            f"access case references missing Go test: {case['id']}: {test_name}"
+        )
+        postgresql_test = case.get("postgresqlGoTest")
+        if postgresql_test:
+            assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
+                f"access case references missing PostgreSQL test: {case['id']}: {postgresql_test}"
             )
     security = load_yaml(ROOT / "design/contracts/security-controls.yaml")
     threat_ids: set[str] = set()

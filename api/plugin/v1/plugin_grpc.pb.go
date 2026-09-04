@@ -971,3 +971,182 @@ var AccessService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "plugin/v1/plugin.proto",
 }
+
+const (
+	AccessAuthorizationService_ExchangeAccessToken_FullMethodName = "/labcentral.plugin.v1.AccessAuthorizationService/ExchangeAccessToken"
+	AccessAuthorizationService_RecheckAccessLease_FullMethodName  = "/labcentral.plugin.v1.AccessAuthorizationService/RecheckAccessLease"
+	AccessAuthorizationService_EndAccessLease_FullMethodName      = "/labcentral.plugin.v1.AccessAuthorizationService/EndAccessLease"
+)
+
+// AccessAuthorizationServiceClient is the client API for AccessAuthorizationService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type AccessAuthorizationServiceClient interface {
+	ExchangeAccessToken(ctx context.Context, in *ExchangeAccessTokenRequest, opts ...grpc.CallOption) (*ExchangeAccessTokenResponse, error)
+	RecheckAccessLease(ctx context.Context, in *RecheckAccessLeaseRequest, opts ...grpc.CallOption) (*RecheckAccessLeaseResponse, error)
+	EndAccessLease(ctx context.Context, in *EndAccessLeaseRequest, opts ...grpc.CallOption) (*EndAccessLeaseResponse, error)
+}
+
+type accessAuthorizationServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAccessAuthorizationServiceClient(cc grpc.ClientConnInterface) AccessAuthorizationServiceClient {
+	return &accessAuthorizationServiceClient{cc}
+}
+
+func (c *accessAuthorizationServiceClient) ExchangeAccessToken(ctx context.Context, in *ExchangeAccessTokenRequest, opts ...grpc.CallOption) (*ExchangeAccessTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExchangeAccessTokenResponse)
+	err := c.cc.Invoke(ctx, AccessAuthorizationService_ExchangeAccessToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accessAuthorizationServiceClient) RecheckAccessLease(ctx context.Context, in *RecheckAccessLeaseRequest, opts ...grpc.CallOption) (*RecheckAccessLeaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecheckAccessLeaseResponse)
+	err := c.cc.Invoke(ctx, AccessAuthorizationService_RecheckAccessLease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accessAuthorizationServiceClient) EndAccessLease(ctx context.Context, in *EndAccessLeaseRequest, opts ...grpc.CallOption) (*EndAccessLeaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndAccessLeaseResponse)
+	err := c.cc.Invoke(ctx, AccessAuthorizationService_EndAccessLease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AccessAuthorizationServiceServer is the server API for AccessAuthorizationService service.
+// All implementations must embed UnimplementedAccessAuthorizationServiceServer
+// for forward compatibility.
+type AccessAuthorizationServiceServer interface {
+	ExchangeAccessToken(context.Context, *ExchangeAccessTokenRequest) (*ExchangeAccessTokenResponse, error)
+	RecheckAccessLease(context.Context, *RecheckAccessLeaseRequest) (*RecheckAccessLeaseResponse, error)
+	EndAccessLease(context.Context, *EndAccessLeaseRequest) (*EndAccessLeaseResponse, error)
+	mustEmbedUnimplementedAccessAuthorizationServiceServer()
+}
+
+// UnimplementedAccessAuthorizationServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAccessAuthorizationServiceServer struct{}
+
+func (UnimplementedAccessAuthorizationServiceServer) ExchangeAccessToken(context.Context, *ExchangeAccessTokenRequest) (*ExchangeAccessTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeAccessToken not implemented")
+}
+func (UnimplementedAccessAuthorizationServiceServer) RecheckAccessLease(context.Context, *RecheckAccessLeaseRequest) (*RecheckAccessLeaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecheckAccessLease not implemented")
+}
+func (UnimplementedAccessAuthorizationServiceServer) EndAccessLease(context.Context, *EndAccessLeaseRequest) (*EndAccessLeaseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EndAccessLease not implemented")
+}
+func (UnimplementedAccessAuthorizationServiceServer) mustEmbedUnimplementedAccessAuthorizationServiceServer() {
+}
+func (UnimplementedAccessAuthorizationServiceServer) testEmbeddedByValue() {}
+
+// UnsafeAccessAuthorizationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AccessAuthorizationServiceServer will
+// result in compilation errors.
+type UnsafeAccessAuthorizationServiceServer interface {
+	mustEmbedUnimplementedAccessAuthorizationServiceServer()
+}
+
+func RegisterAccessAuthorizationServiceServer(s grpc.ServiceRegistrar, srv AccessAuthorizationServiceServer) {
+	// If the following call panics, it indicates UnimplementedAccessAuthorizationServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AccessAuthorizationService_ServiceDesc, srv)
+}
+
+func _AccessAuthorizationService_ExchangeAccessToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeAccessTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessAuthorizationServiceServer).ExchangeAccessToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessAuthorizationService_ExchangeAccessToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessAuthorizationServiceServer).ExchangeAccessToken(ctx, req.(*ExchangeAccessTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccessAuthorizationService_RecheckAccessLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecheckAccessLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessAuthorizationServiceServer).RecheckAccessLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessAuthorizationService_RecheckAccessLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessAuthorizationServiceServer).RecheckAccessLease(ctx, req.(*RecheckAccessLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccessAuthorizationService_EndAccessLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndAccessLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessAuthorizationServiceServer).EndAccessLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessAuthorizationService_EndAccessLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessAuthorizationServiceServer).EndAccessLease(ctx, req.(*EndAccessLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AccessAuthorizationService_ServiceDesc is the grpc.ServiceDesc for AccessAuthorizationService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AccessAuthorizationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "labcentral.plugin.v1.AccessAuthorizationService",
+	HandlerType: (*AccessAuthorizationServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ExchangeAccessToken",
+			Handler:    _AccessAuthorizationService_ExchangeAccessToken_Handler,
+		},
+		{
+			MethodName: "RecheckAccessLease",
+			Handler:    _AccessAuthorizationService_RecheckAccessLease_Handler,
+		},
+		{
+			MethodName: "EndAccessLease",
+			Handler:    _AccessAuthorizationService_EndAccessLease_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "plugin/v1/plugin.proto",
+}

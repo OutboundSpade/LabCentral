@@ -80,3 +80,13 @@ The first `TASK-PROD-003` slice adds checksummed migrations `0007_classroom_gove
 Migration `0009_classroom_quota_expiration` adds scoped limits and usage, multi-scope reservation lines, versioned lifetime policies, Instance expiry/warning/renewal fields, and exact governance-mutation replay snapshots. Platform defaults bound new admissions to 100 instances/VMs/containers, 512,000 CPU millicores, 2 TiB memory, 20 TiB storage, 100 public IPs, 1,000 published ports, and 500 snapshots; deployments should tighten these per scope. A post-migration restart-safe backfill derives legacy usage from canonical resources. Ready work becomes committed, active admission remains reserved, and failed/destroyed rows with allocation claims, unknown cleanup, provider state, or ambiguous terminal work become retained for review. Re-running startup cannot duplicate reservations or usage. SQLite/PostgreSQL upgrade fixtures start from the real `0008` schema and prove identical postconditions.
 
 Migration `0010_classroom_instance_batches` adds the durable batch aggregate and ordered child bindings without weakening the existing independent Instance/Operation model. Batch create takes one serializable transaction, acquires deterministic owner/quota locks, rechecks every owner authorization, and inserts all child reservations, claims, jobs, legacy operation envelopes, batch audit/event/outbox records, and the parent idempotency result. A 100-item shared SQLite/PostgreSQL conformance case proves an applicable limit of 99 leaves zero batches, Instances, or reservations; raising it to 100 admits exactly one batch even under two simultaneous equivalent requests.
+
+Migration `0011_controlled_access_sessions` adds the exact subject/scope,
+Instance/resource/method/target, provider-state generation/digest, access-plugin
+identity/audience, endpoint and access-state schema/digest, keyed launch/lease
+hash, expiry, revocation, closure-retry, and optimistic-version fields required
+by controlled access. Endpoint bytes and provider credentials have no durable
+column. Begin/finalize/exchange/recheck/end/revoke transactions use database
+time, repeat current authority and owned-resource checks, clear consumed or
+denied hash material, and atomically append redacted access audit/event/outbox
+records. The same concurrency and restart cases pass on SQLite and PostgreSQL.

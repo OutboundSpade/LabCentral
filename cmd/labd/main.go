@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	accessnovnc "github.com/OutboundSpade/LabCentral/access/novnc"
 	httpapi "github.com/OutboundSpade/LabCentral/api/http"
 	dockerlaptop "github.com/OutboundSpade/LabCentral/examples/docker-laptop"
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
@@ -65,6 +67,9 @@ type config struct {
 	proxmoxCredentialFile        string
 	proxmoxQualificationDocument string
 	proxmoxQualificationTrust    string
+	accessPlugin                 string
+	accessPluginHash             string
+	accessProxyListen            string
 	authMode                     string
 	publicOrigin                 string
 	tlsCertificateFile           string
@@ -141,6 +146,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	}
 	if configuration.proxmoxPlugin == "" && (configuration.proxmoxTargetConfig != "" || configuration.proxmoxCredentialFile != "" || configuration.proxmoxPluginHash != "" || configuration.proxmoxQualificationDocument != "" || configuration.proxmoxQualificationTrust != "") {
 		return fmt.Errorf("Proxmox target options require --proxmox-plugin")
+	}
+	if configuration.accessPlugin == "" && configuration.accessPluginHash != "" {
+		return fmt.Errorf("--access-plugin-sha256 requires --access-plugin")
 	}
 	if (configuration.proxmoxQualificationDocument == "") != (configuration.proxmoxQualificationTrust == "") {
 		return fmt.Errorf("Proxmox qualification document and trust policy must be configured together")
@@ -250,6 +258,39 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err := control.SetArtifactStore(artifacts); err != nil {
 		return err
 	}
+	var accessPlugin *pluginhost.Client
+	if configuration.accessPlugin != "" {
+		accessHash, err := configuredPluginDigest(configuration.accessPlugin, configuration.accessPluginHash, "noVNC access")
+		if err != nil {
+			return err
+		}
+		accessPath, err := filepath.Abs(configuration.accessPlugin)
+		if err != nil {
+			return err
+		}
+		accessPlugin, err = pluginhost.Launch(ctx, pluginhost.Config{
+			Executable: accessPath, ExecutableSHA256: accessHash,
+			Args:          []string{"--listen", configuration.accessProxyListen, "--public-origin", configuration.publicOrigin, "--websocket-base-path", "/access-proxy"},
+			RuntimeParent: runtimeParent, ConfiguredPluginID: accessnovnc.PluginID, ConfiguredAccessKind: "browser-vnc",
+			AccessAudience: configuration.publicOrigin, AccessAuthorization: control, PluginInstanceID: "plugin.local-novnc",
+		})
+		if err != nil {
+			return fmt.Errorf("launch noVNC access plugin: %w", err)
+		}
+		defer accessPlugin.Close()
+		accessRegistry, err := controlplane.NewAccessRegistry([]controlplane.AccessBinding{{
+			PluginID: accessPlugin.Info.GetPluginId(), PluginVersion: accessPlugin.Info.GetPluginVersion(), PluginInstance: "plugin.local-novnc",
+			AccessKind: "browser-vnc", Audience: configuration.publicOrigin, Access: accessPlugin.Access,
+			ProtocolMajor: accessPlugin.SelectedProtocol.GetMajor(), ProtocolMinor: accessPlugin.SelectedProtocol.GetMinor(),
+			Features: accessPlugin.Info.GetFeatures(), Methods: accessPlugin.Info.GetSupportedAccessMethods(), EndpointSchemas: accessPlugin.Info.GetAcceptedAccessEndpointSchemas(),
+		}})
+		if err != nil {
+			return fmt.Errorf("construct access plugin registry: %w", err)
+		}
+		if err := control.SetAccessRuntime(accessRegistry, authenticationOptions.Authorizer, authenticationOptions.TokenHasher); err != nil {
+			return err
+		}
+	}
 	for _, target := range targets.IDs() {
 		if err := control.RefreshTarget(ctx, target); err != nil {
 			logger.Error("configured provider target discovery failed; cached evidence remains authoritative", "target", target, "error", err)
@@ -261,6 +302,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	expirationContext, cancelExpiration := context.WithCancel(ctx)
 	defer cancelExpiration()
 	go sweepExpiredInstances(expirationContext, control, logger)
+	if control.AccessAvailable() {
+		go sweepAccessSessions(expirationContext, control, logger)
+	}
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
 		Owner: configuration.replicaID, Authorizer: authenticationOptions.Authorizer,
 		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
@@ -279,8 +323,12 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err != nil {
 		return err
 	}
+	handler := apiServer.Handler
+	if accessPlugin != nil {
+		handler = withAccessProxy(handler, configuration.accessProxyListen)
+	}
 	server := &http.Server{
-		Handler:           apiServer.Handler,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       20 * time.Second,
 		WriteTimeout:      3 * time.Minute,
@@ -316,6 +364,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	}
 	monitorProvider("Docker", dockerPlugin)
 	monitorProvider("Proxmox", proxmoxPlugin)
+	monitorProvider("noVNC access", accessPlugin)
 	if configuration.authMode == httpapi.AuthModeNone {
 		logger.Warn("LabCentral started in no-auth development mode", "listen", listener.Addr().String(), "version", version, "warning", warning)
 	} else {
@@ -404,6 +453,34 @@ func sweepExpiredInstances(ctx context.Context, control *controlplane.Service, l
 	}
 }
 
+func sweepAccessSessions(ctx context.Context, control *controlplane.Service, logger *slog.Logger) {
+	const batchSize = uint32(200)
+	run := func() {
+		result, err := control.RunAccessReconciliation(ctx, batchSize)
+		if err != nil {
+			if ctx.Err() == nil {
+				logger.Error("access session reconciliation failed", "error", err)
+			}
+			return
+		}
+		if result.Expired > 0 || result.ClosuresRetried > 0 {
+			logger.Info("access session reconciliation completed", "expired", result.Expired,
+				"closuresRetried", result.ClosuresRetried, "closuresClosed", result.ClosuresClosed)
+		}
+	}
+	run()
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
+	}
+}
+
 func parseFlags() config {
 	executable, _ := os.Executable()
 	defaultPlugin := filepath.Join(filepath.Dir(executable), "lab-provider-docker")
@@ -424,6 +501,9 @@ func parseFlags() config {
 	flag.StringVar(&result.proxmoxCredentialFile, "proxmox-credential-file", "", "mode-0600 file containing the Proxmox credential JSON envelope")
 	flag.StringVar(&result.proxmoxQualificationDocument, "proxmox-qualification-document", "", "signed exact-target qualification evidence; requires the trust policy")
 	flag.StringVar(&result.proxmoxQualificationTrust, "proxmox-qualification-trust", "", "reviewer trust policy for signed exact-target qualification evidence")
+	flag.StringVar(&result.accessPlugin, "access-plugin", "", "path to lab-access-novnc; empty keeps browser console access disabled")
+	flag.StringVar(&result.accessPluginHash, "access-plugin-sha256", "", "pinned noVNC access plugin SHA-256; defaults to <plugin>.sha256")
+	flag.StringVar(&result.accessProxyListen, "access-proxy-listen", "127.0.0.1:8091", "private loopback address for the access plugin HTTP bridge")
 	flag.StringVar(&result.authMode, "auth-mode", "", "required authentication mode: none, local, or oidc")
 	flag.StringVar(&result.publicOrigin, "public-origin", "", "exact public HTTPS origin, for example https://labs.example.edu")
 	flag.StringVar(&result.tlsCertificateFile, "tls-certificate-file", "", "protected PEM certificate chain for direct HTTPS")
@@ -503,6 +583,16 @@ func validateConfig(configuration config) error {
 		}
 	default:
 		return fmt.Errorf("unsupported --auth-mode %q", configuration.authMode)
+	}
+	if configuration.accessPlugin != "" {
+		if configuration.proxmoxPlugin == "" || configuration.authMode == httpapi.AuthModeNone {
+			return fmt.Errorf("browser console access requires the Proxmox provider and authenticated mode")
+		}
+		host, port, err := net.SplitHostPort(configuration.accessProxyListen)
+		ip := net.ParseIP(host)
+		if err != nil || port == "" || ip == nil || !ip.IsLoopback() {
+			return fmt.Errorf("--access-proxy-listen must be an explicit loopback IP and port")
+		}
 	}
 	if _, err := parseTrustedProxyCIDRs(configuration.trustedProxyCIDRs); err != nil {
 		return err
@@ -593,9 +683,32 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 	}
 	result := httpapi.AuthenticationOptions{
 		Mode: configuration.authMode, Manager: manager, Repository: store, Authorizer: evaluator,
+		TokenHasher:  keyring,
 		PublicOrigin: configuration.publicOrigin, SecureCookies: true, TrustedProxies: trustedProxies, OIDC: oidcService, OIDCIssuer: configuration.oidcIssuer,
 	}
 	return result, nil
+}
+
+func withAccessProxy(next http.Handler, listen string) http.Handler {
+	target := &url.URL{Scheme: "http", Host: listen}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}).DialContext}
+	proxy.ErrorHandler = func(response http.ResponseWriter, _ *http.Request, _ error) {
+		http.Error(response, "access proxy unavailable", http.StatusServiceUnavailable)
+	}
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if strings.HasPrefix(request.URL.Path, "/access-proxy/") {
+			// The API server intentionally has short request deadlines. Clear them
+			// before ReverseProxy hijacks an upgraded connection so a valid console
+			// is bounded by its Access Session instead of the HTTP read timeout.
+			controller := http.NewResponseController(response)
+			_ = controller.SetReadDeadline(time.Time{})
+			_ = controller.SetWriteDeadline(time.Time{})
+			proxy.ServeHTTP(response, request)
+			return
+		}
+		next.ServeHTTP(response, request)
+	})
 }
 
 func parseTrustedProxyCIDRs(value string) ([]*net.IPNet, error) {

@@ -43,6 +43,24 @@ type Keyring struct {
 	keys    []sessionKey
 }
 
+func (k *Keyring) HashCurrent(purpose, value string) application.KeyedTokenHash {
+	if k == nil || k.current.id == "" {
+		return application.KeyedTokenHash{}
+	}
+	return application.KeyedTokenHash{KeyID: k.current.id, Digest: keyedHash(k.current.material, purpose, value)}
+}
+
+func (k *Keyring) HashCandidates(purpose, value string) []application.KeyedTokenHash {
+	if k == nil {
+		return nil
+	}
+	result := make([]application.KeyedTokenHash, 0, len(k.keys))
+	for _, key := range k.keys {
+		result = append(result, application.KeyedTokenHash{KeyID: key.id, Digest: keyedHash(key.material, purpose, value)})
+	}
+	return result
+}
+
 func ParseKeyring(contents []byte) (*Keyring, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(contents)))
 	decoder.DisallowUnknownFields()

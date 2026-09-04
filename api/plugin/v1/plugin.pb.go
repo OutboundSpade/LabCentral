@@ -425,18 +425,22 @@ func (x *SchemaVersion) GetMinor() uint32 {
 }
 
 type PluginInfo struct {
-	state              protoimpl.MessageState  `protogen:"open.v1"`
-	PluginId           string                  `protobuf:"bytes,1,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
-	PluginVersion      string                  `protobuf:"bytes,2,opt,name=plugin_version,json=pluginVersion,proto3" json:"plugin_version,omitempty"`
-	BuildDigest        string                  `protobuf:"bytes,3,opt,name=build_digest,json=buildDigest,proto3" json:"build_digest,omitempty"`
-	SupportedProtocols []*ProtocolVersionRange `protobuf:"bytes,4,rep,name=supported_protocols,json=supportedProtocols,proto3" json:"supported_protocols,omitempty"`
-	Categories         []string                `protobuf:"bytes,5,rep,name=categories,proto3" json:"categories,omitempty"`
-	ProviderKinds      []string                `protobuf:"bytes,6,rep,name=provider_kinds,json=providerKinds,proto3" json:"provider_kinds,omitempty"`
-	AccessKinds        []string                `protobuf:"bytes,7,rep,name=access_kinds,json=accessKinds,proto3" json:"access_kinds,omitempty"`
-	Schemas            []*SchemaVersion        `protobuf:"bytes,8,rep,name=schemas,proto3" json:"schemas,omitempty"`
-	Features           []string                `protobuf:"bytes,9,rep,name=features,proto3" json:"features,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                         protoimpl.MessageState  `protogen:"open.v1"`
+	PluginId                      string                  `protobuf:"bytes,1,opt,name=plugin_id,json=pluginId,proto3" json:"plugin_id,omitempty"`
+	PluginVersion                 string                  `protobuf:"bytes,2,opt,name=plugin_version,json=pluginVersion,proto3" json:"plugin_version,omitempty"`
+	BuildDigest                   string                  `protobuf:"bytes,3,opt,name=build_digest,json=buildDigest,proto3" json:"build_digest,omitempty"`
+	SupportedProtocols            []*ProtocolVersionRange `protobuf:"bytes,4,rep,name=supported_protocols,json=supportedProtocols,proto3" json:"supported_protocols,omitempty"`
+	Categories                    []string                `protobuf:"bytes,5,rep,name=categories,proto3" json:"categories,omitempty"`
+	ProviderKinds                 []string                `protobuf:"bytes,6,rep,name=provider_kinds,json=providerKinds,proto3" json:"provider_kinds,omitempty"`
+	AccessKinds                   []string                `protobuf:"bytes,7,rep,name=access_kinds,json=accessKinds,proto3" json:"access_kinds,omitempty"`
+	Schemas                       []*SchemaVersion        `protobuf:"bytes,8,rep,name=schemas,proto3" json:"schemas,omitempty"`
+	Features                      []string                `protobuf:"bytes,9,rep,name=features,proto3" json:"features,omitempty"`
+	SupportedProviderProtocols    []*ProtocolVersionRange `protobuf:"bytes,10,rep,name=supported_provider_protocols,json=supportedProviderProtocols,proto3" json:"supported_provider_protocols,omitempty"`
+	SupportedAccessProtocols      []*ProtocolVersionRange `protobuf:"bytes,11,rep,name=supported_access_protocols,json=supportedAccessProtocols,proto3" json:"supported_access_protocols,omitempty"`
+	SupportedAccessMethods        []string                `protobuf:"bytes,12,rep,name=supported_access_methods,json=supportedAccessMethods,proto3" json:"supported_access_methods,omitempty"`
+	AcceptedAccessEndpointSchemas []*SchemaVersion        `protobuf:"bytes,13,rep,name=accepted_access_endpoint_schemas,json=acceptedAccessEndpointSchemas,proto3" json:"accepted_access_endpoint_schemas,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *PluginInfo) Reset() {
@@ -532,6 +536,34 @@ func (x *PluginInfo) GetFeatures() []string {
 	return nil
 }
 
+func (x *PluginInfo) GetSupportedProviderProtocols() []*ProtocolVersionRange {
+	if x != nil {
+		return x.SupportedProviderProtocols
+	}
+	return nil
+}
+
+func (x *PluginInfo) GetSupportedAccessProtocols() []*ProtocolVersionRange {
+	if x != nil {
+		return x.SupportedAccessProtocols
+	}
+	return nil
+}
+
+func (x *PluginInfo) GetSupportedAccessMethods() []string {
+	if x != nil {
+		return x.SupportedAccessMethods
+	}
+	return nil
+}
+
+func (x *PluginInfo) GetAcceptedAccessEndpointSchemas() []*SchemaVersion {
+	if x != nil {
+		return x.AcceptedAccessEndpointSchemas
+	}
+	return nil
+}
+
 type RegisterPluginRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	LaunchToken        string                 `protobuf:"bytes,1,opt,name=launch_token,json=launchToken,proto3" json:"launch_token,omitempty"`
@@ -609,13 +641,17 @@ func (x *RegisterPluginRequest) GetPlugin() *PluginInfo {
 }
 
 type RegisterPluginResponse struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	SelectedProtocol  *ProtocolVersion       `protobuf:"bytes,1,opt,name=selected_protocol,json=selectedProtocol,proto3" json:"selected_protocol,omitempty"`
-	HeartbeatInterval *durationpb.Duration   `protobuf:"bytes,2,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
-	MaxRequestBytes   uint64                 `protobuf:"varint,3,opt,name=max_request_bytes,json=maxRequestBytes,proto3" json:"max_request_bytes,omitempty"`
-	MaxResponseBytes  uint64                 `protobuf:"varint,4,opt,name=max_response_bytes,json=maxResponseBytes,proto3" json:"max_response_bytes,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	SelectedProtocol         *ProtocolVersion       `protobuf:"bytes,1,opt,name=selected_protocol,json=selectedProtocol,proto3" json:"selected_protocol,omitempty"`
+	HeartbeatInterval        *durationpb.Duration   `protobuf:"bytes,2,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
+	MaxRequestBytes          uint64                 `protobuf:"varint,3,opt,name=max_request_bytes,json=maxRequestBytes,proto3" json:"max_request_bytes,omitempty"`
+	MaxResponseBytes         uint64                 `protobuf:"varint,4,opt,name=max_response_bytes,json=maxResponseBytes,proto3" json:"max_response_bytes,omitempty"`
+	SelectedProviderProtocol *ProtocolVersion       `protobuf:"bytes,5,opt,name=selected_provider_protocol,json=selectedProviderProtocol,proto3" json:"selected_provider_protocol,omitempty"`
+	SelectedAccessProtocol   *ProtocolVersion       `protobuf:"bytes,6,opt,name=selected_access_protocol,json=selectedAccessProtocol,proto3" json:"selected_access_protocol,omitempty"`
+	AccessCallbackCredential string                 `protobuf:"bytes,7,opt,name=access_callback_credential,json=accessCallbackCredential,proto3" json:"access_callback_credential,omitempty"`
+	AccessAudience           string                 `protobuf:"bytes,8,opt,name=access_audience,json=accessAudience,proto3" json:"access_audience,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *RegisterPluginResponse) Reset() {
@@ -674,6 +710,34 @@ func (x *RegisterPluginResponse) GetMaxResponseBytes() uint64 {
 		return x.MaxResponseBytes
 	}
 	return 0
+}
+
+func (x *RegisterPluginResponse) GetSelectedProviderProtocol() *ProtocolVersion {
+	if x != nil {
+		return x.SelectedProviderProtocol
+	}
+	return nil
+}
+
+func (x *RegisterPluginResponse) GetSelectedAccessProtocol() *ProtocolVersion {
+	if x != nil {
+		return x.SelectedAccessProtocol
+	}
+	return nil
+}
+
+func (x *RegisterPluginResponse) GetAccessCallbackCredential() string {
+	if x != nil {
+		return x.AccessCallbackCredential
+	}
+	return ""
+}
+
+func (x *RegisterPluginResponse) GetAccessAudience() string {
+	if x != nil {
+		return x.AccessAudience
+	}
+	return ""
 }
 
 type HeartbeatRequest struct {
@@ -3310,6 +3374,13 @@ type DiscoverAccessEndpointResponse struct {
 	ValidUntil           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
 	Warnings             []*Warning             `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	Error                *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	EndpointSchema       *SchemaVersion         `protobuf:"bytes,5,opt,name=endpoint_schema,json=endpointSchema,proto3" json:"endpoint_schema,omitempty"`
+	EndpointDigest       string                 `protobuf:"bytes,6,opt,name=endpoint_digest,json=endpointDigest,proto3" json:"endpoint_digest,omitempty"`
+	TargetId             string                 `protobuf:"bytes,7,opt,name=target_id,json=targetId,proto3" json:"target_id,omitempty"`
+	LabInstanceId        string                 `protobuf:"bytes,8,opt,name=lab_instance_id,json=labInstanceId,proto3" json:"lab_instance_id,omitempty"`
+	LogicalResourceId    string                 `protobuf:"bytes,9,opt,name=logical_resource_id,json=logicalResourceId,proto3" json:"logical_resource_id,omitempty"`
+	Method               string                 `protobuf:"bytes,10,opt,name=method,proto3" json:"method,omitempty"`
+	ProviderStateDigest  string                 `protobuf:"bytes,11,opt,name=provider_state_digest,json=providerStateDigest,proto3" json:"provider_state_digest,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -3370,6 +3441,55 @@ func (x *DiscoverAccessEndpointResponse) GetError() *StructuredError {
 		return x.Error
 	}
 	return nil
+}
+
+func (x *DiscoverAccessEndpointResponse) GetEndpointSchema() *SchemaVersion {
+	if x != nil {
+		return x.EndpointSchema
+	}
+	return nil
+}
+
+func (x *DiscoverAccessEndpointResponse) GetEndpointDigest() string {
+	if x != nil {
+		return x.EndpointDigest
+	}
+	return ""
+}
+
+func (x *DiscoverAccessEndpointResponse) GetTargetId() string {
+	if x != nil {
+		return x.TargetId
+	}
+	return ""
+}
+
+func (x *DiscoverAccessEndpointResponse) GetLabInstanceId() string {
+	if x != nil {
+		return x.LabInstanceId
+	}
+	return ""
+}
+
+func (x *DiscoverAccessEndpointResponse) GetLogicalResourceId() string {
+	if x != nil {
+		return x.LogicalResourceId
+	}
+	return ""
+}
+
+func (x *DiscoverAccessEndpointResponse) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *DiscoverAccessEndpointResponse) GetProviderStateDigest() string {
+	if x != nil {
+		return x.ProviderStateDigest
+	}
+	return ""
 }
 
 type ListImagesRequest struct {
@@ -3696,6 +3816,10 @@ type CreateAccessRequest struct {
 	Method               string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
 	ExpiresAt            *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	OpaqueConnectionData []byte                 `protobuf:"bytes,6,opt,name=opaque_connection_data,json=opaqueConnectionData,proto3" json:"opaque_connection_data,omitempty"`
+	EndpointSchema       *SchemaVersion         `protobuf:"bytes,7,opt,name=endpoint_schema,json=endpointSchema,proto3" json:"endpoint_schema,omitempty"`
+	EndpointDigest       string                 `protobuf:"bytes,8,opt,name=endpoint_digest,json=endpointDigest,proto3" json:"endpoint_digest,omitempty"`
+	ProviderStateDigest  string                 `protobuf:"bytes,9,opt,name=provider_state_digest,json=providerStateDigest,proto3" json:"provider_state_digest,omitempty"`
+	Audience             string                 `protobuf:"bytes,10,opt,name=audience,proto3" json:"audience,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -3772,6 +3896,34 @@ func (x *CreateAccessRequest) GetOpaqueConnectionData() []byte {
 	return nil
 }
 
+func (x *CreateAccessRequest) GetEndpointSchema() *SchemaVersion {
+	if x != nil {
+		return x.EndpointSchema
+	}
+	return nil
+}
+
+func (x *CreateAccessRequest) GetEndpointDigest() string {
+	if x != nil {
+		return x.EndpointDigest
+	}
+	return ""
+}
+
+func (x *CreateAccessRequest) GetProviderStateDigest() string {
+	if x != nil {
+		return x.ProviderStateDigest
+	}
+	return ""
+}
+
+func (x *CreateAccessRequest) GetAudience() string {
+	if x != nil {
+		return x.Audience
+	}
+	return ""
+}
+
 type CreateAccessResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	OpaqueAccessState []byte                 `protobuf:"bytes,1,opt,name=opaque_access_state,json=opaqueAccessState,proto3" json:"opaque_access_state,omitempty"`
@@ -3779,6 +3931,8 @@ type CreateAccessResponse struct {
 	OneTimeToken      string                 `protobuf:"bytes,3,opt,name=one_time_token,json=oneTimeToken,proto3" json:"one_time_token,omitempty"`
 	ValidUntil        *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
 	Error             *StructuredError       `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	AccessStateSchema *SchemaVersion         `protobuf:"bytes,6,opt,name=access_state_schema,json=accessStateSchema,proto3" json:"access_state_schema,omitempty"`
+	AccessStateDigest string                 `protobuf:"bytes,7,opt,name=access_state_digest,json=accessStateDigest,proto3" json:"access_state_digest,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -3846,6 +4000,20 @@ func (x *CreateAccessResponse) GetError() *StructuredError {
 		return x.Error
 	}
 	return nil
+}
+
+func (x *CreateAccessResponse) GetAccessStateSchema() *SchemaVersion {
+	if x != nil {
+		return x.AccessStateSchema
+	}
+	return nil
+}
+
+func (x *CreateAccessResponse) GetAccessStateDigest() string {
+	if x != nil {
+		return x.AccessStateDigest
+	}
+	return ""
 }
 
 type RevokeAccessRequest struct {
@@ -3960,6 +4128,406 @@ func (x *RevokeAccessResponse) GetError() *StructuredError {
 	return nil
 }
 
+type ExchangeAccessTokenRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	CallbackCredential string                 `protobuf:"bytes,1,opt,name=callback_credential,json=callbackCredential,proto3" json:"callback_credential,omitempty"`
+	AccessSessionId    string                 `protobuf:"bytes,2,opt,name=access_session_id,json=accessSessionId,proto3" json:"access_session_id,omitempty"`
+	Audience           string                 `protobuf:"bytes,3,opt,name=audience,proto3" json:"audience,omitempty"`
+	OneTimeToken       string                 `protobuf:"bytes,4,opt,name=one_time_token,json=oneTimeToken,proto3" json:"one_time_token,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ExchangeAccessTokenRequest) Reset() {
+	*x = ExchangeAccessTokenRequest{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExchangeAccessTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExchangeAccessTokenRequest) ProtoMessage() {}
+
+func (x *ExchangeAccessTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExchangeAccessTokenRequest.ProtoReflect.Descriptor instead.
+func (*ExchangeAccessTokenRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *ExchangeAccessTokenRequest) GetCallbackCredential() string {
+	if x != nil {
+		return x.CallbackCredential
+	}
+	return ""
+}
+
+func (x *ExchangeAccessTokenRequest) GetAccessSessionId() string {
+	if x != nil {
+		return x.AccessSessionId
+	}
+	return ""
+}
+
+func (x *ExchangeAccessTokenRequest) GetAudience() string {
+	if x != nil {
+		return x.Audience
+	}
+	return ""
+}
+
+func (x *ExchangeAccessTokenRequest) GetOneTimeToken() string {
+	if x != nil {
+		return x.OneTimeToken
+	}
+	return ""
+}
+
+type ExchangeAccessTokenResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	AuthorizationLease string                 `protobuf:"bytes,1,opt,name=authorization_lease,json=authorizationLease,proto3" json:"authorization_lease,omitempty"`
+	ValidUntil         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
+	RecheckAfter       *durationpb.Duration   `protobuf:"bytes,3,opt,name=recheck_after,json=recheckAfter,proto3" json:"recheck_after,omitempty"`
+	Error              *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ExchangeAccessTokenResponse) Reset() {
+	*x = ExchangeAccessTokenResponse{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExchangeAccessTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExchangeAccessTokenResponse) ProtoMessage() {}
+
+func (x *ExchangeAccessTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExchangeAccessTokenResponse.ProtoReflect.Descriptor instead.
+func (*ExchangeAccessTokenResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *ExchangeAccessTokenResponse) GetAuthorizationLease() string {
+	if x != nil {
+		return x.AuthorizationLease
+	}
+	return ""
+}
+
+func (x *ExchangeAccessTokenResponse) GetValidUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidUntil
+	}
+	return nil
+}
+
+func (x *ExchangeAccessTokenResponse) GetRecheckAfter() *durationpb.Duration {
+	if x != nil {
+		return x.RecheckAfter
+	}
+	return nil
+}
+
+func (x *ExchangeAccessTokenResponse) GetError() *StructuredError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type RecheckAccessLeaseRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	CallbackCredential string                 `protobuf:"bytes,1,opt,name=callback_credential,json=callbackCredential,proto3" json:"callback_credential,omitempty"`
+	AccessSessionId    string                 `protobuf:"bytes,2,opt,name=access_session_id,json=accessSessionId,proto3" json:"access_session_id,omitempty"`
+	Audience           string                 `protobuf:"bytes,3,opt,name=audience,proto3" json:"audience,omitempty"`
+	AuthorizationLease string                 `protobuf:"bytes,4,opt,name=authorization_lease,json=authorizationLease,proto3" json:"authorization_lease,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *RecheckAccessLeaseRequest) Reset() {
+	*x = RecheckAccessLeaseRequest{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecheckAccessLeaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecheckAccessLeaseRequest) ProtoMessage() {}
+
+func (x *RecheckAccessLeaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecheckAccessLeaseRequest.ProtoReflect.Descriptor instead.
+func (*RecheckAccessLeaseRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *RecheckAccessLeaseRequest) GetCallbackCredential() string {
+	if x != nil {
+		return x.CallbackCredential
+	}
+	return ""
+}
+
+func (x *RecheckAccessLeaseRequest) GetAccessSessionId() string {
+	if x != nil {
+		return x.AccessSessionId
+	}
+	return ""
+}
+
+func (x *RecheckAccessLeaseRequest) GetAudience() string {
+	if x != nil {
+		return x.Audience
+	}
+	return ""
+}
+
+func (x *RecheckAccessLeaseRequest) GetAuthorizationLease() string {
+	if x != nil {
+		return x.AuthorizationLease
+	}
+	return ""
+}
+
+type RecheckAccessLeaseResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	AuthorizationLease string                 `protobuf:"bytes,1,opt,name=authorization_lease,json=authorizationLease,proto3" json:"authorization_lease,omitempty"`
+	ValidUntil         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
+	RecheckAfter       *durationpb.Duration   `protobuf:"bytes,3,opt,name=recheck_after,json=recheckAfter,proto3" json:"recheck_after,omitempty"`
+	Error              *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *RecheckAccessLeaseResponse) Reset() {
+	*x = RecheckAccessLeaseResponse{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecheckAccessLeaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecheckAccessLeaseResponse) ProtoMessage() {}
+
+func (x *RecheckAccessLeaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecheckAccessLeaseResponse.ProtoReflect.Descriptor instead.
+func (*RecheckAccessLeaseResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *RecheckAccessLeaseResponse) GetAuthorizationLease() string {
+	if x != nil {
+		return x.AuthorizationLease
+	}
+	return ""
+}
+
+func (x *RecheckAccessLeaseResponse) GetValidUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidUntil
+	}
+	return nil
+}
+
+func (x *RecheckAccessLeaseResponse) GetRecheckAfter() *durationpb.Duration {
+	if x != nil {
+		return x.RecheckAfter
+	}
+	return nil
+}
+
+func (x *RecheckAccessLeaseResponse) GetError() *StructuredError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type EndAccessLeaseRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	CallbackCredential string                 `protobuf:"bytes,1,opt,name=callback_credential,json=callbackCredential,proto3" json:"callback_credential,omitempty"`
+	AccessSessionId    string                 `protobuf:"bytes,2,opt,name=access_session_id,json=accessSessionId,proto3" json:"access_session_id,omitempty"`
+	Audience           string                 `protobuf:"bytes,3,opt,name=audience,proto3" json:"audience,omitempty"`
+	AuthorizationLease string                 `protobuf:"bytes,4,opt,name=authorization_lease,json=authorizationLease,proto3" json:"authorization_lease,omitempty"`
+	Reason             string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *EndAccessLeaseRequest) Reset() {
+	*x = EndAccessLeaseRequest{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndAccessLeaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndAccessLeaseRequest) ProtoMessage() {}
+
+func (x *EndAccessLeaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndAccessLeaseRequest.ProtoReflect.Descriptor instead.
+func (*EndAccessLeaseRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *EndAccessLeaseRequest) GetCallbackCredential() string {
+	if x != nil {
+		return x.CallbackCredential
+	}
+	return ""
+}
+
+func (x *EndAccessLeaseRequest) GetAccessSessionId() string {
+	if x != nil {
+		return x.AccessSessionId
+	}
+	return ""
+}
+
+func (x *EndAccessLeaseRequest) GetAudience() string {
+	if x != nil {
+		return x.Audience
+	}
+	return ""
+}
+
+func (x *EndAccessLeaseRequest) GetAuthorizationLease() string {
+	if x != nil {
+		return x.AuthorizationLease
+	}
+	return ""
+}
+
+func (x *EndAccessLeaseRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type EndAccessLeaseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ended         bool                   `protobuf:"varint,1,opt,name=ended,proto3" json:"ended,omitempty"`
+	Error         *StructuredError       `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndAccessLeaseResponse) Reset() {
+	*x = EndAccessLeaseResponse{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndAccessLeaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndAccessLeaseResponse) ProtoMessage() {}
+
+func (x *EndAccessLeaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndAccessLeaseResponse.ProtoReflect.Descriptor instead.
+func (*EndAccessLeaseResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *EndAccessLeaseResponse) GetEnded() bool {
+	if x != nil {
+		return x.Ended
+	}
+	return false
+}
+
+func (x *EndAccessLeaseResponse) GetError() *StructuredError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 var File_plugin_v1_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_v1_plugin_proto_rawDesc = "" +
@@ -3975,7 +4543,7 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\rSchemaVersion\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05major\x18\x02 \x01(\rR\x05major\x12\x14\n" +
-	"\x05minor\x18\x03 \x01(\rR\x05minor\"\x95\x03\n" +
+	"\x05minor\x18\x03 \x01(\rR\x05minor\"\x95\x06\n" +
 	"\n" +
 	"PluginInfo\x12\x1b\n" +
 	"\tplugin_id\x18\x01 \x01(\tR\bpluginId\x12%\n" +
@@ -3988,18 +4556,27 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0eprovider_kinds\x18\x06 \x03(\tR\rproviderKinds\x12!\n" +
 	"\faccess_kinds\x18\a \x03(\tR\vaccessKinds\x12=\n" +
 	"\aschemas\x18\b \x03(\v2#.labcentral.plugin.v1.SchemaVersionR\aschemas\x12\x1a\n" +
-	"\bfeatures\x18\t \x03(\tR\bfeatures\"\xff\x01\n" +
+	"\bfeatures\x18\t \x03(\tR\bfeatures\x12l\n" +
+	"\x1csupported_provider_protocols\x18\n" +
+	" \x03(\v2*.labcentral.plugin.v1.ProtocolVersionRangeR\x1asupportedProviderProtocols\x12h\n" +
+	"\x1asupported_access_protocols\x18\v \x03(\v2*.labcentral.plugin.v1.ProtocolVersionRangeR\x18supportedAccessProtocols\x128\n" +
+	"\x18supported_access_methods\x18\f \x03(\tR\x16supportedAccessMethods\x12l\n" +
+	" accepted_access_endpoint_schemas\x18\r \x03(\v2#.labcentral.plugin.v1.SchemaVersionR\x1dacceptedAccessEndpointSchemas\"\xff\x01\n" +
 	"\x15RegisterPluginRequest\x12!\n" +
 	"\flaunch_token\x18\x01 \x01(\tR\vlaunchToken\x120\n" +
 	"\x14configured_plugin_id\x18\x02 \x01(\tR\x12configuredPluginId\x12,\n" +
 	"\x12plugin_instance_id\x18\x03 \x01(\tR\x10pluginInstanceId\x12)\n" +
 	"\x10service_endpoint\x18\x04 \x01(\tR\x0fserviceEndpoint\x128\n" +
-	"\x06plugin\x18\x05 \x01(\v2 .labcentral.plugin.v1.PluginInfoR\x06plugin\"\x90\x02\n" +
+	"\x06plugin\x18\x05 \x01(\v2 .labcentral.plugin.v1.PluginInfoR\x06plugin\"\xbd\x04\n" +
 	"\x16RegisterPluginResponse\x12R\n" +
 	"\x11selected_protocol\x18\x01 \x01(\v2%.labcentral.plugin.v1.ProtocolVersionR\x10selectedProtocol\x12H\n" +
 	"\x12heartbeat_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x12*\n" +
 	"\x11max_request_bytes\x18\x03 \x01(\x04R\x0fmaxRequestBytes\x12,\n" +
-	"\x12max_response_bytes\x18\x04 \x01(\x04R\x10maxResponseBytes\"\x91\x01\n" +
+	"\x12max_response_bytes\x18\x04 \x01(\x04R\x10maxResponseBytes\x12c\n" +
+	"\x1aselected_provider_protocol\x18\x05 \x01(\v2%.labcentral.plugin.v1.ProtocolVersionR\x18selectedProviderProtocol\x12_\n" +
+	"\x18selected_access_protocol\x18\x06 \x01(\v2%.labcentral.plugin.v1.ProtocolVersionR\x16selectedAccessProtocol\x12<\n" +
+	"\x1aaccess_callback_credential\x18\a \x01(\tR\x18accessCallbackCredential\x12'\n" +
+	"\x0faccess_audience\x18\b \x01(\tR\x0eaccessAudience\"\x91\x01\n" +
 	"\x10HeartbeatRequest\x12,\n" +
 	"\x12plugin_instance_id\x18\x01 \x01(\tR\x10pluginInstanceId\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x04R\bsequence\x123\n" +
@@ -4214,13 +4791,21 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\acontext\x18\x01 \x01(\v2!.labcentral.plugin.v1.CallContextR\acontext\x12;\n" +
 	"\x06target\x18\x02 \x01(\v2#.labcentral.plugin.v1.TargetContextR\x06target\x12J\n" +
 	"\x0eresource_state\x18\x03 \x01(\v2#.labcentral.plugin.v1.ProviderStateR\rresourceState\x12\x16\n" +
-	"\x06method\x18\x04 \x01(\tR\x06method\"\x8b\x02\n" +
+	"\x06method\x18\x04 \x01(\tR\x06method\"\xc3\x04\n" +
 	"\x1eDiscoverAccessEndpointResponse\x124\n" +
 	"\x16opaque_connection_data\x18\x01 \x01(\fR\x14opaqueConnectionData\x12;\n" +
 	"\vvalid_until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"validUntil\x129\n" +
 	"\bwarnings\x18\x03 \x03(\v2\x1d.labcentral.plugin.v1.WarningR\bwarnings\x12;\n" +
-	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xc9\x01\n" +
+	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\x12L\n" +
+	"\x0fendpoint_schema\x18\x05 \x01(\v2#.labcentral.plugin.v1.SchemaVersionR\x0eendpointSchema\x12'\n" +
+	"\x0fendpoint_digest\x18\x06 \x01(\tR\x0eendpointDigest\x12\x1b\n" +
+	"\ttarget_id\x18\a \x01(\tR\btargetId\x12&\n" +
+	"\x0flab_instance_id\x18\b \x01(\tR\rlabInstanceId\x12.\n" +
+	"\x13logical_resource_id\x18\t \x01(\tR\x11logicalResourceId\x12\x16\n" +
+	"\x06method\x18\n" +
+	" \x01(\tR\x06method\x122\n" +
+	"\x15provider_state_digest\x18\v \x01(\tR\x13providerStateDigest\"\xc9\x01\n" +
 	"\x11ListImagesRequest\x12;\n" +
 	"\acontext\x18\x01 \x01(\v2!.labcentral.plugin.v1.CallContextR\acontext\x12;\n" +
 	"\x06target\x18\x02 \x01(\v2#.labcentral.plugin.v1.TargetContextR\x06target\x12\x1d\n" +
@@ -4243,7 +4828,7 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x18source_provenance_digest\x18\x04 \x01(\tR\x16sourceProvenanceDigest\x124\n" +
 	"\x16import_parameters_json\x18\x05 \x01(\fR\x14importParametersJson\"R\n" +
 	"\x13ImportImageResponse\x12;\n" +
-	"\x05event\x18\x01 \x01(\v2%.labcentral.plugin.v1.InvocationEventR\x05event\"\xa6\x02\n" +
+	"\x05event\x18\x01 \x01(\v2%.labcentral.plugin.v1.InvocationEventR\x05event\"\xed\x03\n" +
 	"\x13CreateAccessRequest\x12;\n" +
 	"\acontext\x18\x01 \x01(\v2!.labcentral.plugin.v1.CallContextR\acontext\x12*\n" +
 	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1d\n" +
@@ -4252,7 +4837,12 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x06method\x18\x04 \x01(\tR\x06method\x129\n" +
 	"\n" +
 	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x124\n" +
-	"\x16opaque_connection_data\x18\x06 \x01(\fR\x14opaqueConnectionData\"\x85\x02\n" +
+	"\x16opaque_connection_data\x18\x06 \x01(\fR\x14opaqueConnectionData\x12L\n" +
+	"\x0fendpoint_schema\x18\a \x01(\v2#.labcentral.plugin.v1.SchemaVersionR\x0eendpointSchema\x12'\n" +
+	"\x0fendpoint_digest\x18\b \x01(\tR\x0eendpointDigest\x122\n" +
+	"\x15provider_state_digest\x18\t \x01(\tR\x13providerStateDigest\x12\x1a\n" +
+	"\baudience\x18\n" +
+	" \x01(\tR\baudience\"\x8a\x03\n" +
 	"\x14CreateAccessResponse\x12.\n" +
 	"\x13opaque_access_state\x18\x01 \x01(\fR\x11opaqueAccessState\x12\x1d\n" +
 	"\n" +
@@ -4260,13 +4850,46 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0eone_time_token\x18\x03 \x01(\tR\foneTimeToken\x12;\n" +
 	"\vvalid_until\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"validUntil\x12;\n" +
-	"\x05error\x18\x05 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xae\x01\n" +
+	"\x05error\x18\x05 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\x12S\n" +
+	"\x13access_state_schema\x18\x06 \x01(\v2#.labcentral.plugin.v1.SchemaVersionR\x11accessStateSchema\x12.\n" +
+	"\x13access_state_digest\x18\a \x01(\tR\x11accessStateDigest\"\xae\x01\n" +
 	"\x13RevokeAccessRequest\x12;\n" +
 	"\acontext\x18\x01 \x01(\v2!.labcentral.plugin.v1.CallContextR\acontext\x12*\n" +
 	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12.\n" +
 	"\x13opaque_access_state\x18\x03 \x01(\fR\x11opaqueAccessState\"\x8f\x01\n" +
 	"\x14RevokeAccessResponse\x12:\n" +
 	"\x19active_connections_closed\x18\x01 \x01(\bR\x17activeConnectionsClosed\x12;\n" +
+	"\x05error\x18\x02 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xbb\x01\n" +
+	"\x1aExchangeAccessTokenRequest\x12/\n" +
+	"\x13callback_credential\x18\x01 \x01(\tR\x12callbackCredential\x12*\n" +
+	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1a\n" +
+	"\baudience\x18\x03 \x01(\tR\baudience\x12$\n" +
+	"\x0eone_time_token\x18\x04 \x01(\tR\foneTimeToken\"\x88\x02\n" +
+	"\x1bExchangeAccessTokenResponse\x12/\n" +
+	"\x13authorization_lease\x18\x01 \x01(\tR\x12authorizationLease\x12;\n" +
+	"\vvalid_until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"validUntil\x12>\n" +
+	"\rrecheck_after\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\frecheckAfter\x12;\n" +
+	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xc5\x01\n" +
+	"\x19RecheckAccessLeaseRequest\x12/\n" +
+	"\x13callback_credential\x18\x01 \x01(\tR\x12callbackCredential\x12*\n" +
+	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1a\n" +
+	"\baudience\x18\x03 \x01(\tR\baudience\x12/\n" +
+	"\x13authorization_lease\x18\x04 \x01(\tR\x12authorizationLease\"\x87\x02\n" +
+	"\x1aRecheckAccessLeaseResponse\x12/\n" +
+	"\x13authorization_lease\x18\x01 \x01(\tR\x12authorizationLease\x12;\n" +
+	"\vvalid_until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"validUntil\x12>\n" +
+	"\rrecheck_after\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\frecheckAfter\x12;\n" +
+	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xd9\x01\n" +
+	"\x15EndAccessLeaseRequest\x12/\n" +
+	"\x13callback_credential\x18\x01 \x01(\tR\x12callbackCredential\x12*\n" +
+	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1a\n" +
+	"\baudience\x18\x03 \x01(\tR\baudience\x12/\n" +
+	"\x13authorization_lease\x18\x04 \x01(\tR\x12authorizationLease\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"k\n" +
+	"\x16EndAccessLeaseResponse\x12\x14\n" +
+	"\x05ended\x18\x01 \x01(\bR\x05ended\x12;\n" +
 	"\x05error\x18\x02 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error*\x98\x02\n" +
 	"\x0fLifecycleAction\x12 \n" +
 	"\x1cLIFECYCLE_ACTION_UNSPECIFIED\x10\x00\x12\x1a\n" +
@@ -4301,7 +4924,11 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\vImportImage\x12(.labcentral.plugin.v1.ImportImageRequest\x1a).labcentral.plugin.v1.ImportImageResponse0\x012\xdd\x01\n" +
 	"\rAccessService\x12e\n" +
 	"\fCreateAccess\x12).labcentral.plugin.v1.CreateAccessRequest\x1a*.labcentral.plugin.v1.CreateAccessResponse\x12e\n" +
-	"\fRevokeAccess\x12).labcentral.plugin.v1.RevokeAccessRequest\x1a*.labcentral.plugin.v1.RevokeAccessResponseB9Z7github.com/labcentral/labcentral/api/plugin/v1;pluginv1b\x06proto3"
+	"\fRevokeAccess\x12).labcentral.plugin.v1.RevokeAccessRequest\x1a*.labcentral.plugin.v1.RevokeAccessResponse2\xfe\x02\n" +
+	"\x1aAccessAuthorizationService\x12z\n" +
+	"\x13ExchangeAccessToken\x120.labcentral.plugin.v1.ExchangeAccessTokenRequest\x1a1.labcentral.plugin.v1.ExchangeAccessTokenResponse\x12w\n" +
+	"\x12RecheckAccessLease\x12/.labcentral.plugin.v1.RecheckAccessLeaseRequest\x1a0.labcentral.plugin.v1.RecheckAccessLeaseResponse\x12k\n" +
+	"\x0eEndAccessLease\x12+.labcentral.plugin.v1.EndAccessLeaseRequest\x1a,.labcentral.plugin.v1.EndAccessLeaseResponseB9Z7github.com/labcentral/labcentral/api/plugin/v1;pluginv1b\x06proto3"
 
 var (
 	file_plugin_v1_plugin_proto_rawDescOnce sync.Once
@@ -4316,7 +4943,7 @@ func file_plugin_v1_plugin_proto_rawDescGZIP() []byte {
 }
 
 var file_plugin_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 56)
+var file_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 62)
 var file_plugin_v1_plugin_proto_goTypes = []any{
 	(LifecycleAction)(0),                   // 0: labcentral.plugin.v1.LifecycleAction
 	(HealthResponse_Status)(0),             // 1: labcentral.plugin.v1.HealthResponse.Status
@@ -4378,134 +5005,161 @@ var file_plugin_v1_plugin_proto_goTypes = []any{
 	(*CreateAccessResponse)(nil),           // 57: labcentral.plugin.v1.CreateAccessResponse
 	(*RevokeAccessRequest)(nil),            // 58: labcentral.plugin.v1.RevokeAccessRequest
 	(*RevokeAccessResponse)(nil),           // 59: labcentral.plugin.v1.RevokeAccessResponse
-	(*durationpb.Duration)(nil),            // 60: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 61: google.protobuf.Timestamp
+	(*ExchangeAccessTokenRequest)(nil),     // 60: labcentral.plugin.v1.ExchangeAccessTokenRequest
+	(*ExchangeAccessTokenResponse)(nil),    // 61: labcentral.plugin.v1.ExchangeAccessTokenResponse
+	(*RecheckAccessLeaseRequest)(nil),      // 62: labcentral.plugin.v1.RecheckAccessLeaseRequest
+	(*RecheckAccessLeaseResponse)(nil),     // 63: labcentral.plugin.v1.RecheckAccessLeaseResponse
+	(*EndAccessLeaseRequest)(nil),          // 64: labcentral.plugin.v1.EndAccessLeaseRequest
+	(*EndAccessLeaseResponse)(nil),         // 65: labcentral.plugin.v1.EndAccessLeaseResponse
+	(*durationpb.Duration)(nil),            // 66: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 67: google.protobuf.Timestamp
 }
 var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	5,   // 0: labcentral.plugin.v1.PluginInfo.supported_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
 	6,   // 1: labcentral.plugin.v1.PluginInfo.schemas:type_name -> labcentral.plugin.v1.SchemaVersion
-	7,   // 2: labcentral.plugin.v1.RegisterPluginRequest.plugin:type_name -> labcentral.plugin.v1.PluginInfo
-	4,   // 3: labcentral.plugin.v1.RegisterPluginResponse.selected_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
-	60,  // 4: labcentral.plugin.v1.RegisterPluginResponse.heartbeat_interval:type_name -> google.protobuf.Duration
-	61,  // 5: labcentral.plugin.v1.HeartbeatRequest.sent_at:type_name -> google.protobuf.Timestamp
-	61,  // 6: labcentral.plugin.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
-	1,   // 7: labcentral.plugin.v1.HealthResponse.status:type_name -> labcentral.plugin.v1.HealthResponse.Status
-	14,  // 8: labcentral.plugin.v1.Parameter.string_list:type_name -> labcentral.plugin.v1.StringList
-	15,  // 9: labcentral.plugin.v1.Parameter.int_list:type_name -> labcentral.plugin.v1.IntList
-	2,   // 10: labcentral.plugin.v1.Capability.support:type_name -> labcentral.plugin.v1.Capability.Support
-	16,  // 11: labcentral.plugin.v1.Capability.parameters:type_name -> labcentral.plugin.v1.Parameter
-	18,  // 12: labcentral.plugin.v1.DiscoverTargetRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	17,  // 13: labcentral.plugin.v1.DiscoverTargetResponse.capabilities:type_name -> labcentral.plugin.v1.Capability
-	61,  // 14: labcentral.plugin.v1.DiscoverTargetResponse.discovered_at:type_name -> google.protobuf.Timestamp
-	61,  // 15: labcentral.plugin.v1.DiscoverTargetResponse.valid_until:type_name -> google.protobuf.Timestamp
-	6,   // 16: labcentral.plugin.v1.ProviderState.schema:type_name -> labcentral.plugin.v1.SchemaVersion
-	22,  // 17: labcentral.plugin.v1.ResourceDependency.provider_state:type_name -> labcentral.plugin.v1.ProviderState
-	23,  // 18: labcentral.plugin.v1.ResourceDependency.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	60,  // 19: labcentral.plugin.v1.StructuredError.retry_after:type_name -> google.protobuf.Duration
-	25,  // 20: labcentral.plugin.v1.StructuredError.causes:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 21: labcentral.plugin.v1.ValidateLabRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 22: labcentral.plugin.v1.ValidateLabRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	25,  // 23: labcentral.plugin.v1.ValidateLabResponse.errors:type_name -> labcentral.plugin.v1.StructuredError
-	26,  // 24: labcentral.plugin.v1.ValidateLabResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	21,  // 25: labcentral.plugin.v1.ResourceMutationInput.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 26: labcentral.plugin.v1.ResourceMutationInput.target:type_name -> labcentral.plugin.v1.TargetContext
-	22,  // 27: labcentral.plugin.v1.ResourceMutationInput.prior_state:type_name -> labcentral.plugin.v1.ProviderState
-	24,  // 28: labcentral.plugin.v1.ResourceMutationInput.dependencies:type_name -> labcentral.plugin.v1.ResourceDependency
-	23,  // 29: labcentral.plugin.v1.ResourceMutationInput.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	61,  // 30: labcentral.plugin.v1.Progress.occurred_at:type_name -> google.protobuf.Timestamp
-	22,  // 31: labcentral.plugin.v1.ResourceResult.provider_state:type_name -> labcentral.plugin.v1.ProviderState
-	26,  // 32: labcentral.plugin.v1.ResourceResult.warnings:type_name -> labcentral.plugin.v1.Warning
-	25,  // 33: labcentral.plugin.v1.ResourceResult.error:type_name -> labcentral.plugin.v1.StructuredError
-	30,  // 34: labcentral.plugin.v1.InvocationEvent.progress:type_name -> labcentral.plugin.v1.Progress
-	31,  // 35: labcentral.plugin.v1.InvocationEvent.result:type_name -> labcentral.plugin.v1.ResourceResult
-	29,  // 36: labcentral.plugin.v1.PlanResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	23,  // 37: labcentral.plugin.v1.PlanResourceRequest.excluded_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	26,  // 38: labcentral.plugin.v1.PlanResourceResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	25,  // 39: labcentral.plugin.v1.PlanResourceResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	23,  // 40: labcentral.plugin.v1.PlanResourceResponse.proposed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	29,  // 41: labcentral.plugin.v1.ApplyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	32,  // 42: labcentral.plugin.v1.ApplyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	29,  // 43: labcentral.plugin.v1.ReadResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	31,  // 44: labcentral.plugin.v1.ReadResourceResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
-	29,  // 45: labcentral.plugin.v1.DestroyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
-	32,  // 46: labcentral.plugin.v1.DestroyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	21,  // 47: labcentral.plugin.v1.LifecycleRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 48: labcentral.plugin.v1.LifecycleRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	0,   // 49: labcentral.plugin.v1.LifecycleRequest.action:type_name -> labcentral.plugin.v1.LifecycleAction
-	22,  // 50: labcentral.plugin.v1.LifecycleRequest.prior_state:type_name -> labcentral.plugin.v1.ProviderState
-	32,  // 51: labcentral.plugin.v1.LifecycleResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	21,  // 52: labcentral.plugin.v1.GetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 53: labcentral.plugin.v1.GetInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	31,  // 54: labcentral.plugin.v1.GetInvocationResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
-	21,  // 55: labcentral.plugin.v1.CancelInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 56: labcentral.plugin.v1.CancelInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	3,   // 57: labcentral.plugin.v1.CancelInvocationResponse.outcome:type_name -> labcentral.plugin.v1.CancelInvocationResponse.Outcome
-	21,  // 58: labcentral.plugin.v1.MigrateStateRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 59: labcentral.plugin.v1.MigrateStateRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	22,  // 60: labcentral.plugin.v1.MigrateStateRequest.state:type_name -> labcentral.plugin.v1.ProviderState
-	6,   // 61: labcentral.plugin.v1.MigrateStateRequest.destination:type_name -> labcentral.plugin.v1.SchemaVersion
-	22,  // 62: labcentral.plugin.v1.MigrateStateResponse.state:type_name -> labcentral.plugin.v1.ProviderState
-	26,  // 63: labcentral.plugin.v1.MigrateStateResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	25,  // 64: labcentral.plugin.v1.MigrateStateResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 65: labcentral.plugin.v1.DiscoverAccessEndpointRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 66: labcentral.plugin.v1.DiscoverAccessEndpointRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	22,  // 67: labcentral.plugin.v1.DiscoverAccessEndpointRequest.resource_state:type_name -> labcentral.plugin.v1.ProviderState
-	61,  // 68: labcentral.plugin.v1.DiscoverAccessEndpointResponse.valid_until:type_name -> google.protobuf.Timestamp
-	26,  // 69: labcentral.plugin.v1.DiscoverAccessEndpointResponse.warnings:type_name -> labcentral.plugin.v1.Warning
-	25,  // 70: labcentral.plugin.v1.DiscoverAccessEndpointResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 71: labcentral.plugin.v1.ListImagesRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 72: labcentral.plugin.v1.ListImagesRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	52,  // 73: labcentral.plugin.v1.ListImagesResponse.images:type_name -> labcentral.plugin.v1.ImageRecord
-	21,  // 74: labcentral.plugin.v1.ImportImageRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 75: labcentral.plugin.v1.ImportImageRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	32,  // 76: labcentral.plugin.v1.ImportImageResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
-	21,  // 77: labcentral.plugin.v1.CreateAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	61,  // 78: labcentral.plugin.v1.CreateAccessRequest.expires_at:type_name -> google.protobuf.Timestamp
-	61,  // 79: labcentral.plugin.v1.CreateAccessResponse.valid_until:type_name -> google.protobuf.Timestamp
-	25,  // 80: labcentral.plugin.v1.CreateAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 81: labcentral.plugin.v1.RevokeAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	25,  // 82: labcentral.plugin.v1.RevokeAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	8,   // 83: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:input_type -> labcentral.plugin.v1.RegisterPluginRequest
-	10,  // 84: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:input_type -> labcentral.plugin.v1.HeartbeatRequest
-	12,  // 85: labcentral.plugin.v1.PluginRuntimeService.Health:input_type -> labcentral.plugin.v1.HealthRequest
-	19,  // 86: labcentral.plugin.v1.ProviderService.DiscoverTarget:input_type -> labcentral.plugin.v1.DiscoverTargetRequest
-	27,  // 87: labcentral.plugin.v1.ProviderService.ValidateLab:input_type -> labcentral.plugin.v1.ValidateLabRequest
-	33,  // 88: labcentral.plugin.v1.ProviderService.PlanResource:input_type -> labcentral.plugin.v1.PlanResourceRequest
-	35,  // 89: labcentral.plugin.v1.ProviderService.ApplyResource:input_type -> labcentral.plugin.v1.ApplyResourceRequest
-	37,  // 90: labcentral.plugin.v1.ProviderService.ReadResource:input_type -> labcentral.plugin.v1.ReadResourceRequest
-	39,  // 91: labcentral.plugin.v1.ProviderService.DestroyResource:input_type -> labcentral.plugin.v1.DestroyResourceRequest
-	41,  // 92: labcentral.plugin.v1.ProviderService.Lifecycle:input_type -> labcentral.plugin.v1.LifecycleRequest
-	43,  // 93: labcentral.plugin.v1.ProviderService.GetInvocation:input_type -> labcentral.plugin.v1.GetInvocationRequest
-	45,  // 94: labcentral.plugin.v1.ProviderService.CancelInvocation:input_type -> labcentral.plugin.v1.CancelInvocationRequest
-	47,  // 95: labcentral.plugin.v1.ProviderService.MigrateState:input_type -> labcentral.plugin.v1.MigrateStateRequest
-	49,  // 96: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:input_type -> labcentral.plugin.v1.DiscoverAccessEndpointRequest
-	51,  // 97: labcentral.plugin.v1.ProviderService.ListImages:input_type -> labcentral.plugin.v1.ListImagesRequest
-	54,  // 98: labcentral.plugin.v1.ProviderService.ImportImage:input_type -> labcentral.plugin.v1.ImportImageRequest
-	56,  // 99: labcentral.plugin.v1.AccessService.CreateAccess:input_type -> labcentral.plugin.v1.CreateAccessRequest
-	58,  // 100: labcentral.plugin.v1.AccessService.RevokeAccess:input_type -> labcentral.plugin.v1.RevokeAccessRequest
-	9,   // 101: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:output_type -> labcentral.plugin.v1.RegisterPluginResponse
-	11,  // 102: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:output_type -> labcentral.plugin.v1.HeartbeatResponse
-	13,  // 103: labcentral.plugin.v1.PluginRuntimeService.Health:output_type -> labcentral.plugin.v1.HealthResponse
-	20,  // 104: labcentral.plugin.v1.ProviderService.DiscoverTarget:output_type -> labcentral.plugin.v1.DiscoverTargetResponse
-	28,  // 105: labcentral.plugin.v1.ProviderService.ValidateLab:output_type -> labcentral.plugin.v1.ValidateLabResponse
-	34,  // 106: labcentral.plugin.v1.ProviderService.PlanResource:output_type -> labcentral.plugin.v1.PlanResourceResponse
-	36,  // 107: labcentral.plugin.v1.ProviderService.ApplyResource:output_type -> labcentral.plugin.v1.ApplyResourceResponse
-	38,  // 108: labcentral.plugin.v1.ProviderService.ReadResource:output_type -> labcentral.plugin.v1.ReadResourceResponse
-	40,  // 109: labcentral.plugin.v1.ProviderService.DestroyResource:output_type -> labcentral.plugin.v1.DestroyResourceResponse
-	42,  // 110: labcentral.plugin.v1.ProviderService.Lifecycle:output_type -> labcentral.plugin.v1.LifecycleResponse
-	44,  // 111: labcentral.plugin.v1.ProviderService.GetInvocation:output_type -> labcentral.plugin.v1.GetInvocationResponse
-	46,  // 112: labcentral.plugin.v1.ProviderService.CancelInvocation:output_type -> labcentral.plugin.v1.CancelInvocationResponse
-	48,  // 113: labcentral.plugin.v1.ProviderService.MigrateState:output_type -> labcentral.plugin.v1.MigrateStateResponse
-	50,  // 114: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:output_type -> labcentral.plugin.v1.DiscoverAccessEndpointResponse
-	53,  // 115: labcentral.plugin.v1.ProviderService.ListImages:output_type -> labcentral.plugin.v1.ListImagesResponse
-	55,  // 116: labcentral.plugin.v1.ProviderService.ImportImage:output_type -> labcentral.plugin.v1.ImportImageResponse
-	57,  // 117: labcentral.plugin.v1.AccessService.CreateAccess:output_type -> labcentral.plugin.v1.CreateAccessResponse
-	59,  // 118: labcentral.plugin.v1.AccessService.RevokeAccess:output_type -> labcentral.plugin.v1.RevokeAccessResponse
-	101, // [101:119] is the sub-list for method output_type
-	83,  // [83:101] is the sub-list for method input_type
-	83,  // [83:83] is the sub-list for extension type_name
-	83,  // [83:83] is the sub-list for extension extendee
-	0,   // [0:83] is the sub-list for field type_name
+	5,   // 2: labcentral.plugin.v1.PluginInfo.supported_provider_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
+	5,   // 3: labcentral.plugin.v1.PluginInfo.supported_access_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
+	6,   // 4: labcentral.plugin.v1.PluginInfo.accepted_access_endpoint_schemas:type_name -> labcentral.plugin.v1.SchemaVersion
+	7,   // 5: labcentral.plugin.v1.RegisterPluginRequest.plugin:type_name -> labcentral.plugin.v1.PluginInfo
+	4,   // 6: labcentral.plugin.v1.RegisterPluginResponse.selected_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
+	66,  // 7: labcentral.plugin.v1.RegisterPluginResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	4,   // 8: labcentral.plugin.v1.RegisterPluginResponse.selected_provider_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
+	4,   // 9: labcentral.plugin.v1.RegisterPluginResponse.selected_access_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
+	67,  // 10: labcentral.plugin.v1.HeartbeatRequest.sent_at:type_name -> google.protobuf.Timestamp
+	67,  // 11: labcentral.plugin.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
+	1,   // 12: labcentral.plugin.v1.HealthResponse.status:type_name -> labcentral.plugin.v1.HealthResponse.Status
+	14,  // 13: labcentral.plugin.v1.Parameter.string_list:type_name -> labcentral.plugin.v1.StringList
+	15,  // 14: labcentral.plugin.v1.Parameter.int_list:type_name -> labcentral.plugin.v1.IntList
+	2,   // 15: labcentral.plugin.v1.Capability.support:type_name -> labcentral.plugin.v1.Capability.Support
+	16,  // 16: labcentral.plugin.v1.Capability.parameters:type_name -> labcentral.plugin.v1.Parameter
+	18,  // 17: labcentral.plugin.v1.DiscoverTargetRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	17,  // 18: labcentral.plugin.v1.DiscoverTargetResponse.capabilities:type_name -> labcentral.plugin.v1.Capability
+	67,  // 19: labcentral.plugin.v1.DiscoverTargetResponse.discovered_at:type_name -> google.protobuf.Timestamp
+	67,  // 20: labcentral.plugin.v1.DiscoverTargetResponse.valid_until:type_name -> google.protobuf.Timestamp
+	6,   // 21: labcentral.plugin.v1.ProviderState.schema:type_name -> labcentral.plugin.v1.SchemaVersion
+	22,  // 22: labcentral.plugin.v1.ResourceDependency.provider_state:type_name -> labcentral.plugin.v1.ProviderState
+	23,  // 23: labcentral.plugin.v1.ResourceDependency.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	66,  // 24: labcentral.plugin.v1.StructuredError.retry_after:type_name -> google.protobuf.Duration
+	25,  // 25: labcentral.plugin.v1.StructuredError.causes:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 26: labcentral.plugin.v1.ValidateLabRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 27: labcentral.plugin.v1.ValidateLabRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	25,  // 28: labcentral.plugin.v1.ValidateLabResponse.errors:type_name -> labcentral.plugin.v1.StructuredError
+	26,  // 29: labcentral.plugin.v1.ValidateLabResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	21,  // 30: labcentral.plugin.v1.ResourceMutationInput.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 31: labcentral.plugin.v1.ResourceMutationInput.target:type_name -> labcentral.plugin.v1.TargetContext
+	22,  // 32: labcentral.plugin.v1.ResourceMutationInput.prior_state:type_name -> labcentral.plugin.v1.ProviderState
+	24,  // 33: labcentral.plugin.v1.ResourceMutationInput.dependencies:type_name -> labcentral.plugin.v1.ResourceDependency
+	23,  // 34: labcentral.plugin.v1.ResourceMutationInput.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	67,  // 35: labcentral.plugin.v1.Progress.occurred_at:type_name -> google.protobuf.Timestamp
+	22,  // 36: labcentral.plugin.v1.ResourceResult.provider_state:type_name -> labcentral.plugin.v1.ProviderState
+	26,  // 37: labcentral.plugin.v1.ResourceResult.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 38: labcentral.plugin.v1.ResourceResult.error:type_name -> labcentral.plugin.v1.StructuredError
+	30,  // 39: labcentral.plugin.v1.InvocationEvent.progress:type_name -> labcentral.plugin.v1.Progress
+	31,  // 40: labcentral.plugin.v1.InvocationEvent.result:type_name -> labcentral.plugin.v1.ResourceResult
+	29,  // 41: labcentral.plugin.v1.PlanResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	23,  // 42: labcentral.plugin.v1.PlanResourceRequest.excluded_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	26,  // 43: labcentral.plugin.v1.PlanResourceResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 44: labcentral.plugin.v1.PlanResourceResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	23,  // 45: labcentral.plugin.v1.PlanResourceResponse.proposed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	29,  // 46: labcentral.plugin.v1.ApplyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	32,  // 47: labcentral.plugin.v1.ApplyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	29,  // 48: labcentral.plugin.v1.ReadResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	31,  // 49: labcentral.plugin.v1.ReadResourceResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
+	29,  // 50: labcentral.plugin.v1.DestroyResourceRequest.input:type_name -> labcentral.plugin.v1.ResourceMutationInput
+	32,  // 51: labcentral.plugin.v1.DestroyResourceResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	21,  // 52: labcentral.plugin.v1.LifecycleRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 53: labcentral.plugin.v1.LifecycleRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	0,   // 54: labcentral.plugin.v1.LifecycleRequest.action:type_name -> labcentral.plugin.v1.LifecycleAction
+	22,  // 55: labcentral.plugin.v1.LifecycleRequest.prior_state:type_name -> labcentral.plugin.v1.ProviderState
+	32,  // 56: labcentral.plugin.v1.LifecycleResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	21,  // 57: labcentral.plugin.v1.GetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 58: labcentral.plugin.v1.GetInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	31,  // 59: labcentral.plugin.v1.GetInvocationResponse.result:type_name -> labcentral.plugin.v1.ResourceResult
+	21,  // 60: labcentral.plugin.v1.CancelInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 61: labcentral.plugin.v1.CancelInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	3,   // 62: labcentral.plugin.v1.CancelInvocationResponse.outcome:type_name -> labcentral.plugin.v1.CancelInvocationResponse.Outcome
+	21,  // 63: labcentral.plugin.v1.MigrateStateRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 64: labcentral.plugin.v1.MigrateStateRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	22,  // 65: labcentral.plugin.v1.MigrateStateRequest.state:type_name -> labcentral.plugin.v1.ProviderState
+	6,   // 66: labcentral.plugin.v1.MigrateStateRequest.destination:type_name -> labcentral.plugin.v1.SchemaVersion
+	22,  // 67: labcentral.plugin.v1.MigrateStateResponse.state:type_name -> labcentral.plugin.v1.ProviderState
+	26,  // 68: labcentral.plugin.v1.MigrateStateResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 69: labcentral.plugin.v1.MigrateStateResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 70: labcentral.plugin.v1.DiscoverAccessEndpointRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 71: labcentral.plugin.v1.DiscoverAccessEndpointRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	22,  // 72: labcentral.plugin.v1.DiscoverAccessEndpointRequest.resource_state:type_name -> labcentral.plugin.v1.ProviderState
+	67,  // 73: labcentral.plugin.v1.DiscoverAccessEndpointResponse.valid_until:type_name -> google.protobuf.Timestamp
+	26,  // 74: labcentral.plugin.v1.DiscoverAccessEndpointResponse.warnings:type_name -> labcentral.plugin.v1.Warning
+	25,  // 75: labcentral.plugin.v1.DiscoverAccessEndpointResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	6,   // 76: labcentral.plugin.v1.DiscoverAccessEndpointResponse.endpoint_schema:type_name -> labcentral.plugin.v1.SchemaVersion
+	21,  // 77: labcentral.plugin.v1.ListImagesRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 78: labcentral.plugin.v1.ListImagesRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	52,  // 79: labcentral.plugin.v1.ListImagesResponse.images:type_name -> labcentral.plugin.v1.ImageRecord
+	21,  // 80: labcentral.plugin.v1.ImportImageRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 81: labcentral.plugin.v1.ImportImageRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	32,  // 82: labcentral.plugin.v1.ImportImageResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
+	21,  // 83: labcentral.plugin.v1.CreateAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	67,  // 84: labcentral.plugin.v1.CreateAccessRequest.expires_at:type_name -> google.protobuf.Timestamp
+	6,   // 85: labcentral.plugin.v1.CreateAccessRequest.endpoint_schema:type_name -> labcentral.plugin.v1.SchemaVersion
+	67,  // 86: labcentral.plugin.v1.CreateAccessResponse.valid_until:type_name -> google.protobuf.Timestamp
+	25,  // 87: labcentral.plugin.v1.CreateAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	6,   // 88: labcentral.plugin.v1.CreateAccessResponse.access_state_schema:type_name -> labcentral.plugin.v1.SchemaVersion
+	21,  // 89: labcentral.plugin.v1.RevokeAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	25,  // 90: labcentral.plugin.v1.RevokeAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	67,  // 91: labcentral.plugin.v1.ExchangeAccessTokenResponse.valid_until:type_name -> google.protobuf.Timestamp
+	66,  // 92: labcentral.plugin.v1.ExchangeAccessTokenResponse.recheck_after:type_name -> google.protobuf.Duration
+	25,  // 93: labcentral.plugin.v1.ExchangeAccessTokenResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	67,  // 94: labcentral.plugin.v1.RecheckAccessLeaseResponse.valid_until:type_name -> google.protobuf.Timestamp
+	66,  // 95: labcentral.plugin.v1.RecheckAccessLeaseResponse.recheck_after:type_name -> google.protobuf.Duration
+	25,  // 96: labcentral.plugin.v1.RecheckAccessLeaseResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	25,  // 97: labcentral.plugin.v1.EndAccessLeaseResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	8,   // 98: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:input_type -> labcentral.plugin.v1.RegisterPluginRequest
+	10,  // 99: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:input_type -> labcentral.plugin.v1.HeartbeatRequest
+	12,  // 100: labcentral.plugin.v1.PluginRuntimeService.Health:input_type -> labcentral.plugin.v1.HealthRequest
+	19,  // 101: labcentral.plugin.v1.ProviderService.DiscoverTarget:input_type -> labcentral.plugin.v1.DiscoverTargetRequest
+	27,  // 102: labcentral.plugin.v1.ProviderService.ValidateLab:input_type -> labcentral.plugin.v1.ValidateLabRequest
+	33,  // 103: labcentral.plugin.v1.ProviderService.PlanResource:input_type -> labcentral.plugin.v1.PlanResourceRequest
+	35,  // 104: labcentral.plugin.v1.ProviderService.ApplyResource:input_type -> labcentral.plugin.v1.ApplyResourceRequest
+	37,  // 105: labcentral.plugin.v1.ProviderService.ReadResource:input_type -> labcentral.plugin.v1.ReadResourceRequest
+	39,  // 106: labcentral.plugin.v1.ProviderService.DestroyResource:input_type -> labcentral.plugin.v1.DestroyResourceRequest
+	41,  // 107: labcentral.plugin.v1.ProviderService.Lifecycle:input_type -> labcentral.plugin.v1.LifecycleRequest
+	43,  // 108: labcentral.plugin.v1.ProviderService.GetInvocation:input_type -> labcentral.plugin.v1.GetInvocationRequest
+	45,  // 109: labcentral.plugin.v1.ProviderService.CancelInvocation:input_type -> labcentral.plugin.v1.CancelInvocationRequest
+	47,  // 110: labcentral.plugin.v1.ProviderService.MigrateState:input_type -> labcentral.plugin.v1.MigrateStateRequest
+	49,  // 111: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:input_type -> labcentral.plugin.v1.DiscoverAccessEndpointRequest
+	51,  // 112: labcentral.plugin.v1.ProviderService.ListImages:input_type -> labcentral.plugin.v1.ListImagesRequest
+	54,  // 113: labcentral.plugin.v1.ProviderService.ImportImage:input_type -> labcentral.plugin.v1.ImportImageRequest
+	56,  // 114: labcentral.plugin.v1.AccessService.CreateAccess:input_type -> labcentral.plugin.v1.CreateAccessRequest
+	58,  // 115: labcentral.plugin.v1.AccessService.RevokeAccess:input_type -> labcentral.plugin.v1.RevokeAccessRequest
+	60,  // 116: labcentral.plugin.v1.AccessAuthorizationService.ExchangeAccessToken:input_type -> labcentral.plugin.v1.ExchangeAccessTokenRequest
+	62,  // 117: labcentral.plugin.v1.AccessAuthorizationService.RecheckAccessLease:input_type -> labcentral.plugin.v1.RecheckAccessLeaseRequest
+	64,  // 118: labcentral.plugin.v1.AccessAuthorizationService.EndAccessLease:input_type -> labcentral.plugin.v1.EndAccessLeaseRequest
+	9,   // 119: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:output_type -> labcentral.plugin.v1.RegisterPluginResponse
+	11,  // 120: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:output_type -> labcentral.plugin.v1.HeartbeatResponse
+	13,  // 121: labcentral.plugin.v1.PluginRuntimeService.Health:output_type -> labcentral.plugin.v1.HealthResponse
+	20,  // 122: labcentral.plugin.v1.ProviderService.DiscoverTarget:output_type -> labcentral.plugin.v1.DiscoverTargetResponse
+	28,  // 123: labcentral.plugin.v1.ProviderService.ValidateLab:output_type -> labcentral.plugin.v1.ValidateLabResponse
+	34,  // 124: labcentral.plugin.v1.ProviderService.PlanResource:output_type -> labcentral.plugin.v1.PlanResourceResponse
+	36,  // 125: labcentral.plugin.v1.ProviderService.ApplyResource:output_type -> labcentral.plugin.v1.ApplyResourceResponse
+	38,  // 126: labcentral.plugin.v1.ProviderService.ReadResource:output_type -> labcentral.plugin.v1.ReadResourceResponse
+	40,  // 127: labcentral.plugin.v1.ProviderService.DestroyResource:output_type -> labcentral.plugin.v1.DestroyResourceResponse
+	42,  // 128: labcentral.plugin.v1.ProviderService.Lifecycle:output_type -> labcentral.plugin.v1.LifecycleResponse
+	44,  // 129: labcentral.plugin.v1.ProviderService.GetInvocation:output_type -> labcentral.plugin.v1.GetInvocationResponse
+	46,  // 130: labcentral.plugin.v1.ProviderService.CancelInvocation:output_type -> labcentral.plugin.v1.CancelInvocationResponse
+	48,  // 131: labcentral.plugin.v1.ProviderService.MigrateState:output_type -> labcentral.plugin.v1.MigrateStateResponse
+	50,  // 132: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:output_type -> labcentral.plugin.v1.DiscoverAccessEndpointResponse
+	53,  // 133: labcentral.plugin.v1.ProviderService.ListImages:output_type -> labcentral.plugin.v1.ListImagesResponse
+	55,  // 134: labcentral.plugin.v1.ProviderService.ImportImage:output_type -> labcentral.plugin.v1.ImportImageResponse
+	57,  // 135: labcentral.plugin.v1.AccessService.CreateAccess:output_type -> labcentral.plugin.v1.CreateAccessResponse
+	59,  // 136: labcentral.plugin.v1.AccessService.RevokeAccess:output_type -> labcentral.plugin.v1.RevokeAccessResponse
+	61,  // 137: labcentral.plugin.v1.AccessAuthorizationService.ExchangeAccessToken:output_type -> labcentral.plugin.v1.ExchangeAccessTokenResponse
+	63,  // 138: labcentral.plugin.v1.AccessAuthorizationService.RecheckAccessLease:output_type -> labcentral.plugin.v1.RecheckAccessLeaseResponse
+	65,  // 139: labcentral.plugin.v1.AccessAuthorizationService.EndAccessLease:output_type -> labcentral.plugin.v1.EndAccessLeaseResponse
+	119, // [119:140] is the sub-list for method output_type
+	98,  // [98:119] is the sub-list for method input_type
+	98,  // [98:98] is the sub-list for extension type_name
+	98,  // [98:98] is the sub-list for extension extendee
+	0,   // [0:98] is the sub-list for field type_name
 }
 
 func init() { file_plugin_v1_plugin_proto_init() }
@@ -4532,9 +5186,9 @@ func file_plugin_v1_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_v1_plugin_proto_rawDesc), len(file_plugin_v1_plugin_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   56,
+			NumMessages:   62,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_plugin_v1_plugin_proto_goTypes,
 		DependencyIndexes: file_plugin_v1_plugin_proto_depIdxs,

@@ -45,6 +45,17 @@ const (
 	OperationPartial         OperationState = "partial"
 )
 
+type AccessSessionState string
+
+const (
+	AccessSessionPending AccessSessionState = "pending"
+	AccessSessionReady   AccessSessionState = "ready"
+	AccessSessionActive  AccessSessionState = "active"
+	AccessSessionExpired AccessSessionState = "expired"
+	AccessSessionRevoked AccessSessionState = "revoked"
+	AccessSessionFailed  AccessSessionState = "failed"
+)
+
 var instanceTransitions = map[InstancePhase]map[InstancePhase]struct{}{
 	InstancePending:    setOf(InstanceValidating),
 	InstanceValidating: setOf(InstancePlanned),

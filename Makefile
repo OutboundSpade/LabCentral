@@ -1,4 +1,4 @@
-.PHONY: build build-proxmox-provider build-proxmox-qualification build-proxmox-probe-agent web test run release image compose-config clean
+.PHONY: build build-access-plugin build-proxmox-provider build-proxmox-qualification build-proxmox-probe-agent web test run release image compose-config clean
 
 GO ?= go
 BUN ?= bun
@@ -14,13 +14,20 @@ PROXMOX_SOURCE_TREE_DIGEST ?= sha256:$(shell git archive --format=tar HEAD | sha
 build: web
 	mkdir -p bin
 	$(GO) build -trimpath -o bin/lab-provider-docker ./cmd/lab-provider-docker
+	$(GO) build -trimpath -o bin/lab-access-novnc ./cmd/lab-access-novnc
 	$(GO) build -trimpath -ldflags "-X main.version=$$(git describe --always --dirty)" -o bin/labd ./cmd/labd
 	sha256sum bin/lab-provider-docker | cut -d' ' -f1 > bin/lab-provider-docker.sha256
+	sha256sum bin/lab-access-novnc | cut -d' ' -f1 > bin/lab-access-novnc.sha256
 
 build-proxmox-provider:
 	mkdir -p bin
 	$(GO) build -trimpath -ldflags "-X main.sourceTreeDigest=$(PROXMOX_SOURCE_TREE_DIGEST)" -o bin/lab-provider-proxmox ./cmd/lab-provider-proxmox
 	sha256sum bin/lab-provider-proxmox | cut -d' ' -f1 > bin/lab-provider-proxmox.sha256
+
+build-access-plugin:
+	mkdir -p bin
+	$(GO) build -trimpath -o bin/lab-access-novnc ./cmd/lab-access-novnc
+	sha256sum bin/lab-access-novnc | cut -d' ' -f1 > bin/lab-access-novnc.sha256
 
 build-proxmox-qualification:
 	mkdir -p bin

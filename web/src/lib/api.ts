@@ -52,6 +52,25 @@ export type Instance = {
   resources?: Array<{ id: string; kind: string; phase: string; errorCode?: string }>;
 };
 
+export type AccessSession = {
+  id: string;
+  subjectId: string;
+  instanceId: string;
+  resourceId: string;
+  method: 'vnc' | 'ssh';
+  state: 'pending' | 'ready' | 'active' | 'expired' | 'revoked' | 'failed';
+  expiresAt: string;
+  leaseExpiresAt?: string;
+  closureRequired: boolean;
+  resourceVersion: number;
+};
+
+export type AccessLaunch = {
+  session: AccessSession;
+  launchUrl: string;
+  oneTimeToken: string;
+};
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;

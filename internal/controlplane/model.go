@@ -10,11 +10,13 @@ import (
 )
 
 var (
-	ErrNoWork           = errors.New("no claimable local operation")
-	ErrNotFound         = errors.New("local control-plane record not found")
-	ErrAlreadyExists    = errors.New("control-plane record already exists")
-	ErrVersionConflict  = errors.New("control-plane resource version conflict")
-	ErrAuthorityChanged = errors.New("control-plane authority changed before mutation")
+	ErrNoWork            = errors.New("no claimable local operation")
+	ErrNotFound          = errors.New("local control-plane record not found")
+	ErrAlreadyExists     = errors.New("control-plane record already exists")
+	ErrVersionConflict   = errors.New("control-plane resource version conflict")
+	ErrAuthorityChanged  = errors.New("control-plane authority changed before mutation")
+	ErrAccessUnavailable = errors.New("access service unavailable")
+	ErrAccessUnsupported = errors.New("access method unsupported")
 )
 
 type OperationKind string
@@ -275,6 +277,150 @@ type InstanceBatchRecord struct {
 	Replay           bool
 }
 
+const (
+	MaximumAccessSessionDuration = time.Hour
+	DefaultAccessSessionDuration = 30 * time.Minute
+	DefaultAccessLaunchTTL       = 5 * time.Minute
+	DefaultAccessLeaseDuration   = 15 * time.Second
+)
+
+type AccessSessionRecord struct {
+	ID                   domain.AccessSessionID
+	SubjectID            domain.UserID
+	OrganizationID       domain.OrganizationID
+	ProjectID            domain.ProjectID
+	InstanceID           domain.InstanceID
+	ResourceID           domain.LogicalResourceID
+	Method               string
+	TargetID             domain.ProviderTargetID
+	AccessPluginID       string
+	AccessPluginVersion  string
+	AccessPluginInstance string
+	AccessKind           string
+	Audience             string
+	EndpointSchemaName   string
+	EndpointSchemaMajor  uint32
+	EndpointSchemaMinor  uint32
+	EndpointDigest       domain.SHA256Digest
+	ProviderStateDigest  domain.SHA256Digest
+	ResourceGeneration   domain.Generation
+	State                domain.AccessSessionState
+	LaunchTokenKeyID     string
+	LaunchTokenHash      string
+	LaunchExpiresAt      time.Time
+	LeaseKeyID           string
+	LeaseHash            string
+	LeaseExpiresAt       time.Time
+	LastAuthorizedAt     time.Time
+	ExpiresAt            time.Time
+	RevokedAt            time.Time
+	RevokedBy            domain.UserID
+	RevocationReason     string
+	AccessStateSchema    string
+	AccessStateMajor     uint32
+	AccessStateMinor     uint32
+	AccessStateDigest    domain.SHA256Digest
+	AccessState          []byte
+	ClosureRequired      bool
+	ResourceVersion      domain.ResourceVersion
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	Replay               bool
+}
+
+type BeginAccessSessionRequest struct {
+	GovernanceRecordIDs
+	ID                   domain.AccessSessionID
+	SubjectID            domain.UserID
+	InstanceID           domain.InstanceID
+	ResourceID           domain.LogicalResourceID
+	Method               string
+	AccessPluginID       string
+	AccessPluginVersion  string
+	AccessPluginInstance string
+	AccessKind           string
+	Audience             string
+	ProviderStateDigest  domain.SHA256Digest
+	ResourceGeneration   domain.Generation
+	RequestedDuration    time.Duration
+	IdempotencyKey       string
+	RequestDigest        domain.SHA256Digest
+}
+
+type FinalizeAccessSessionRequest struct {
+	GovernanceRecordIDs
+	ID                  domain.AccessSessionID
+	SubjectID           domain.UserID
+	EndpointSchemaName  string
+	EndpointSchemaMajor uint32
+	EndpointSchemaMinor uint32
+	EndpointDigest      domain.SHA256Digest
+	ProviderStateDigest domain.SHA256Digest
+	LaunchToken         application.KeyedTokenHash
+	LaunchExpiresAt     time.Time
+	ExpiresAt           time.Time
+	AccessStateSchema   string
+	AccessStateMajor    uint32
+	AccessStateMinor    uint32
+	AccessStateDigest   domain.SHA256Digest
+	AccessState         []byte
+}
+
+type FailAccessSessionRequest struct {
+	GovernanceRecordIDs
+	ID                domain.AccessSessionID
+	ActorID           domain.UserID
+	Reason            string
+	AccessStateSchema string
+	AccessStateMajor  uint32
+	AccessStateMinor  uint32
+	AccessStateDigest domain.SHA256Digest
+	AccessState       []byte
+	ClosureRequired   bool
+}
+
+type AccessExchangeRequest struct {
+	GovernanceRecordIDs
+	ID            domain.AccessSessionID
+	Identity      application.AccessCallbackIdentity
+	TokenHashes   []application.KeyedTokenHash
+	NewLease      application.KeyedTokenHash
+	LeaseDuration time.Duration
+}
+
+type AccessLeaseRecheckRequest struct {
+	GovernanceRecordIDs
+	ID            domain.AccessSessionID
+	Identity      application.AccessCallbackIdentity
+	LeaseHashes   []application.KeyedTokenHash
+	NewLease      application.KeyedTokenHash
+	LeaseDuration time.Duration
+}
+
+type EndAccessLeaseRequest struct {
+	GovernanceRecordIDs
+	ID          domain.AccessSessionID
+	Identity    application.AccessCallbackIdentity
+	LeaseHashes []application.KeyedTokenHash
+	Reason      string
+}
+
+type RevokeAccessSessionRequest struct {
+	GovernanceRecordIDs
+	ID                      domain.AccessSessionID
+	ActorID                 domain.UserID
+	Reason                  string
+	ExpectedResourceVersion domain.ResourceVersion
+	IdempotencyKey          string
+	RequestDigest           domain.SHA256Digest
+}
+
+type AccessReconciliationResult struct {
+	Expired         uint32
+	ClosuresRetried uint32
+	ClosuresClosed  uint32
+}
+
 type CreateInstanceBatchRequest struct {
 	GovernanceRecordIDs
 	ID             domain.InstanceBatchID
@@ -434,6 +580,17 @@ type Store interface {
 	CreateInstance(context.Context, CreateInstanceRequest) (EnqueueResult, error)
 	CreateInstanceBatch(context.Context, CreateInstanceBatchRequest) (InstanceBatchRecord, error)
 	GetInstanceBatch(context.Context, domain.InstanceBatchID) (InstanceBatchRecord, error)
+	BeginAccessSession(context.Context, BeginAccessSessionRequest) (AccessSessionRecord, error)
+	FinalizeAccessSession(context.Context, FinalizeAccessSessionRequest) (AccessSessionRecord, error)
+	FailAccessSession(context.Context, FailAccessSessionRequest) (AccessSessionRecord, error)
+	GetAccessSession(context.Context, domain.AccessSessionID) (AccessSessionRecord, error)
+	ExchangeAccessToken(context.Context, AccessExchangeRequest) (AccessSessionRecord, bool, error)
+	RecheckAccessLease(context.Context, AccessLeaseRecheckRequest) (AccessSessionRecord, bool, error)
+	EndAccessLease(context.Context, EndAccessLeaseRequest) (AccessSessionRecord, bool, error)
+	RevokeAccessSession(context.Context, RevokeAccessSessionRequest) (AccessSessionRecord, error)
+	MarkAccessClosureComplete(context.Context, domain.AccessSessionID) error
+	ListAccessSessionsForReconciliation(context.Context, uint32) ([]AccessSessionRecord, error)
+	ExpireAccessSession(context.Context, domain.AccessSessionID, GovernanceRecordIDs) (AccessSessionRecord, bool, error)
 	SaveTargetSnapshot(context.Context, TargetSnapshot) error
 	GetTargetSnapshot(context.Context, domain.ProviderTargetID) (TargetSnapshot, error)
 	QueueDestroy(context.Context, QueueDestroyRequest) (EnqueueResult, error)

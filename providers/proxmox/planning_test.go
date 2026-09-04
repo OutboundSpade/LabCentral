@@ -61,6 +61,30 @@ func mutationTestPermissionScopes() []PermissionScope {
 	}
 }
 
+func TestConsoleAccessRequiresV12AndExactConsolePermission(t *testing.T) {
+	target := mutationTestTarget(t)
+	var config TargetConfig
+	if err := json.Unmarshal(target.GetConfigEnvelope(), &config); err != nil {
+		t.Fatal(err)
+	}
+	config.ConsoleAccess = ConsoleAccessConfig{Enabled: true, MaximumDurationSeconds: 1800}
+	if err := config.validateMutation(); err == nil || !strings.Contains(err.Error(), targetConfigV12) {
+		t.Fatalf("v1.1 console config error = %v", err)
+	}
+	config.SchemaVersion = targetConfigV12
+	if err := config.validateMutation(); err == nil || !strings.Contains(err.Error(), "permission scope") {
+		t.Fatalf("console config without VM.Console error = %v", err)
+	}
+	for index := range config.PermissionScopes {
+		if config.PermissionScopes[index].Path == "/pool/lab" {
+			config.PermissionScopes[index].Privileges = append(config.PermissionScopes[index].Privileges, "VM.Console")
+		}
+	}
+	if err := config.validateMutation(); err != nil {
+		t.Fatalf("valid console config: %v", err)
+	}
+}
+
 func mutationTestInventory() Inventory {
 	return Inventory{
 		Version:   Version{Release: "9.0", Version: "pve-manager/9.0.3/abcd1234", RepoID: "abcd1234"},

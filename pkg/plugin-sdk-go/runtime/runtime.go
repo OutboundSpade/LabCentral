@@ -17,14 +17,26 @@ import (
 )
 
 type Services struct {
-	Info     *pluginv1.PluginInfo
-	Runtime  pluginv1.PluginRuntimeServiceServer
-	Provider pluginv1.ProviderServiceServer
+	Info                     *pluginv1.PluginInfo
+	Runtime                  pluginv1.PluginRuntimeServiceServer
+	Provider                 pluginv1.ProviderServiceServer
+	Access                   pluginv1.AccessServiceServer
+	ConfigureAccessCallbacks func(AccessCallbacks) error
+}
+
+// AccessCallbacks contains the host-authenticated callback channel supplied to
+// one access-only plugin process. Credential is launch scoped and must never be
+// logged, persisted, or sent to a browser.
+type AccessCallbacks struct {
+	Authorization pluginv1.AccessAuthorizationServiceClient
+	Credential    string
+	Audience      string
+	Protocol      *pluginv1.ProtocolVersion
 }
 
 func Serve(ctx context.Context, services Services) error {
-	if services.Info == nil || services.Runtime == nil || services.Provider == nil {
-		return fmt.Errorf("plugin info, runtime service, and provider service are required")
+	if err := validateServices(services); err != nil {
+		return err
 	}
 	registrationPath, err := environmentUnixPath(launch.RegistrationEndpoint)
 	if err != nil {
@@ -48,7 +60,12 @@ func Serve(ctx context.Context, services Services) error {
 	}
 	server := grpc.NewServer(grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
 	pluginv1.RegisterPluginRuntimeServiceServer(server, services.Runtime)
-	pluginv1.RegisterProviderServiceServer(server, services.Provider)
+	if services.Provider != nil {
+		pluginv1.RegisterProviderServiceServer(server, services.Provider)
+	}
+	if services.Access != nil {
+		pluginv1.RegisterAccessServiceServer(server, services.Access)
+	}
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Serve(listener) }()
 	defer server.Stop()
@@ -77,8 +94,22 @@ func Serve(ctx context.Context, services Services) error {
 	if err != nil {
 		return fmt.Errorf("register plugin: %w", err)
 	}
-	if !supportsProtocol(services.Info.GetSupportedProtocols(), response.GetSelectedProtocol()) {
+	selected, ranges := selectedProtocol(services.Info, response)
+	if !supportsProtocol(ranges, selected) {
 		return fmt.Errorf("host selected unsupported protocol")
+	}
+	if services.Access != nil {
+		if response.GetAccessCallbackCredential() == "" || response.GetAccessAudience() == "" {
+			return fmt.Errorf("host omitted access callback binding")
+		}
+		if err := services.ConfigureAccessCallbacks(AccessCallbacks{
+			Authorization: pluginv1.NewAccessAuthorizationServiceClient(connection),
+			Credential:    response.GetAccessCallbackCredential(),
+			Audience:      response.GetAccessAudience(),
+			Protocol:      selected,
+		}); err != nil {
+			return fmt.Errorf("configure access callbacks: %w", err)
+		}
 	}
 	heartbeatInterval := response.GetHeartbeatInterval().AsDuration()
 	if heartbeatInterval <= 0 {
@@ -96,6 +127,50 @@ func Serve(ctx context.Context, services Services) error {
 	case err := <-serverDone:
 		return err
 	}
+}
+
+func validateServices(services Services) error {
+	if services.Info == nil || services.Runtime == nil {
+		return fmt.Errorf("plugin info and runtime service are required")
+	}
+	provider, access := services.Provider != nil, services.Access != nil
+	if provider == access {
+		return fmt.Errorf("exactly one provider or access service is required")
+	}
+	if provider {
+		if !contains(services.Info.GetCategories(), "provider") || services.ConfigureAccessCallbacks != nil {
+			return fmt.Errorf("provider service metadata is invalid")
+		}
+		return nil
+	}
+	if !contains(services.Info.GetCategories(), "access") || services.ConfigureAccessCallbacks == nil {
+		return fmt.Errorf("access service metadata and callback configuration are required")
+	}
+	return nil
+}
+
+func selectedProtocol(info *pluginv1.PluginInfo, response *pluginv1.RegisterPluginResponse) (*pluginv1.ProtocolVersion, []*pluginv1.ProtocolVersionRange) {
+	if contains(info.GetCategories(), "access") {
+		return response.GetSelectedAccessProtocol(), info.GetSupportedAccessProtocols()
+	}
+	ranges := info.GetSupportedProviderProtocols()
+	if len(ranges) == 0 {
+		ranges = info.GetSupportedProtocols()
+	}
+	selected := response.GetSelectedProviderProtocol()
+	if selected == nil {
+		selected = response.GetSelectedProtocol()
+	}
+	return selected, ranges
+}
+
+func contains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func supportsProtocol(ranges []*pluginv1.ProtocolVersionRange, selected *pluginv1.ProtocolVersion) bool {

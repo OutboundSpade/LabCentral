@@ -32,6 +32,7 @@ type AuthenticationOptions struct {
 	OIDCIssuer     string
 	Repository     application.AuthRepository
 	Authorizer     application.Authorizer
+	TokenHasher    application.KeyedTokenHasher
 	PublicOrigin   string
 	SecureCookies  bool
 	TrustedProxies []*net.IPNet

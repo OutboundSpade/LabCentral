@@ -1231,6 +1231,13 @@ func (s *Store) renewInstanceLifetime(ctx context.Context, request controlplane.
 // serializable transaction that changes expiry. This closes the handler-check /
 // mutation race when an administrator revokes authority concurrently.
 func (s *Store) requireInstanceTTLRenewalAuthorizationTx(ctx context.Context, tx *sql.Tx, instance controlplane.InstanceRecord, actorID domain.UserID, now time.Time) error {
+	return s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, actorID, now)
+}
+
+// requireInstanceOwnerAuthorizationTx is shared by TTL and access commands,
+// whose accepted RBAC matrix is identical: administrators/instructors may act
+// within scope, while participants remain restricted to their user/team owner.
+func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql.Tx, instance controlplane.InstanceRecord, actorID domain.UserID, now time.Time) error {
 	if instance.ProjectID == "project.local" && actorID == controlplane.LocalAdminID {
 		return nil
 	}
@@ -1292,7 +1299,7 @@ func (s *Store) requireInstanceTTLRenewalAuthorizationTx(ctx context.Context, tx
 		actorID,
 	).Scan(&allowed)
 	if err != nil {
-		return fmt.Errorf("recheck instance TTL authority: %w", err)
+		return fmt.Errorf("recheck instance authority: %w", err)
 	}
 	if allowed != 1 {
 		return controlplane.ErrAuthorityChanged

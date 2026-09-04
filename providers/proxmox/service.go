@@ -95,6 +95,10 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 	capabilities := makeCapabilities(inventory, digest, request.GetTarget().GetConfigFingerprint())
 	if enabled, evidence := service.mutationCapabilityGate(ctx, request.GetTarget(), client, inventory, mutationDigest); enabled {
 		enableMutationCapabilities(capabilities, evidence)
+		var config TargetConfig
+		if decodeEnvelope(request.GetTarget().GetConfigEnvelope(), maximumConfigBytes, &config) == nil && config.ConsoleAccess.Enabled {
+			enableConsoleAccessCapability(capabilities, evidence, config.ConsoleAccess.MaximumDurationSeconds)
+		}
 	}
 	return &pluginv1.DiscoverTargetResponse{
 		Capabilities:         capabilities,
@@ -135,7 +139,7 @@ func makeCapabilities(inventory Inventory, digest, fingerprint string) []*plugin
 	}
 	mutationConstraint := []string{"production mutation gate remains closed pending exact-target qualification"}
 	result := []*pluginv1.Capability{
-		capability("access.providerNativeURL", pluginv1.Capability_SUPPORT_UNSUPPORTED, baseEvidence+"; access discovery not implemented", mutationConstraint),
+		capability("access.vnc", pluginv1.Capability_SUPPORT_UNSUPPORTED, baseEvidence+"; qualified console access is unavailable", mutationConstraint),
 		capability("lifecycle.clone", pluginv1.Capability_SUPPORT_UNSUPPORTED, baseEvidence+"; clone compatibility not probed", mutationConstraint),
 		capability("lifecycle.restore", pluginv1.Capability_SUPPORT_UNSUPPORTED, baseEvidence+"; restore compatibility not probed", mutationConstraint),
 		capability("lifecycle.snapshot", pluginv1.Capability_SUPPORT_UNSUPPORTED, baseEvidence+"; snapshot compatibility is storage and disk-format specific", mutationConstraint),
@@ -242,6 +246,17 @@ func enableMutationCapabilities(capabilities []*pluginv1.Capability, evidence st
 			value.Evidence += "; " + evidence
 			value.Constraints = []string{"fixed node", "Linux amd64", "full clone", "approved storage and VLAN-aware bridge", "static IPv4", "signed exact-target qualification"}
 		}
+	}
+}
+
+func enableConsoleAccessCapability(capabilities []*pluginv1.Capability, evidence string, maximumDuration uint32) {
+	for _, value := range capabilities {
+		if value.GetFeatureId() != "access.vnc" {
+			continue
+		}
+		value.Support = pluginv1.Capability_SUPPORT_NATIVE
+		value.Evidence = evidence + "; exact-resource ownership and VM.Console are rechecked before each endpoint"
+		value.Constraints = []string{fmt.Sprintf("VNC sessions are limited to %d seconds", maximumDuration), "browser access uses the separate noVNC access plugin"}
 	}
 }
 

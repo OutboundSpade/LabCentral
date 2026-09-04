@@ -29,7 +29,7 @@ cases:
   - id: TEST-ACCESS-004
     title: Concurrent one-time exchange has exactly one winner
     goTest: TestAccessContract004ConcurrentExchangeHasOneWinner
-    postgresqlGoTest: TestPostgreSQLAccessConformance
+    postgresqlGoTest: TestPostgreSQLAccessSessionConformance
     setup: {replicas: 8, sameLaunchToken: true}
     expect: {successfulExchanges: 1, reusableLaunchTokens: 0}
   - id: TEST-ACCESS-005
@@ -93,7 +93,7 @@ cases:
   - id: TEST-ACCESS-016
     title: Proxmox noVNC discovery uses only qualified exact-target console APIs
     goTest: TestAccessContract016ProxmoxNoVNCExactTarget
-    setup: {transport: verified-https, endpointSchema: proxmox.novnc-endpoint/v1.0}
+    setup: {transport: verified-https, endpointSchema: proxmox.vnc-endpoint/v1.0}
     expect:
       exactTargetAndResource: true
       approvedConsoleAPIsOnly: true
@@ -110,9 +110,10 @@ cases:
     title: Disposable target proves launch isolation revocation and management-origin secrecy
     protectedGoTest: TestProxmoxAccessSessionQualification
     defaultBehavior: skipped_before_file_or_network_access
+    setup: {method: vnc, imageTrustsConfiguredSSHUserCA: false}
     expect:
-      browserSSHWhenQualified: succeeds
       browserNoVNC: succeeds
+      browserSSH: unsupported_without_user_ca
       crossTenantLaunch: denied
       activeRevocationCloses: true
       managementOriginExposed: false

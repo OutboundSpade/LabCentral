@@ -36,6 +36,7 @@ const (
 	auditMigrationID         = "0008_governance_audit_events"
 	quotaMigrationID         = "0009_classroom_quota_expiration"
 	batchMigrationID         = "0010_classroom_instance_batches"
+	accessMigrationID        = "0011_controlled_access_sessions"
 	migrationLockID          = int64(0x4c616243656e7472)
 )
 
@@ -192,6 +193,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return err
 	}
 	if err := s.applyMigration(ctx, batchMigrationID, instanceBatchMigrationStatements(s.integerType())); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, accessMigrationID, accessSessionMigrationStatements(s.integerType(), s.blobType())); err != nil {
 		return err
 	}
 	return s.backfillLegacyInstanceQuota(ctx)

@@ -156,10 +156,6 @@ func TestServiceLeavesMutationExecutionAndUnrelatedRPCsUnimplemented(t *testing.
 			_, err := service.MigrateState(ctx, &pluginv1.MigrateStateRequest{})
 			return err
 		},
-		"DiscoverAccessEndpoint": func() error {
-			_, err := service.DiscoverAccessEndpoint(ctx, &pluginv1.DiscoverAccessEndpointRequest{})
-			return err
-		},
 		"ListImages": func() error {
 			_, err := service.ListImages(ctx, &pluginv1.ListImagesRequest{})
 			return err

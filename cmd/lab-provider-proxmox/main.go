@@ -58,17 +58,20 @@ func main() {
 		SupportedProtocols: []*pluginv1.ProtocolVersionRange{
 			{Major: 1, MinMinor: 0, MaxMinor: 1},
 		},
-		Categories:    []string{"provider"},
-		ProviderKinds: []string{"proxmox"},
+		SupportedProviderProtocols: []*pluginv1.ProtocolVersionRange{{Major: 1, MinMinor: 0, MaxMinor: 1}},
+		Categories:                 []string{"provider"},
+		ProviderKinds:              []string{"proxmox"},
 		Schemas: []*pluginv1.SchemaVersion{
 			{Name: "proxmox.target-config", Major: 1, Minor: 0},
 			{Name: "proxmox.target-config", Major: 1, Minor: 1},
+			{Name: "proxmox.target-config", Major: 1, Minor: 2},
 			{Name: "proxmox.api-token-credentials", Major: 1, Minor: 0},
 			{Name: "proxmox.capacity", Major: 1, Minor: 0},
 			{Name: "proxmox.validation-plan", Major: 1, Minor: 0},
 			{Name: "proxmox.qemu-plan", Major: 1, Minor: 0},
 			{Name: "proxmox.qemu-state", Major: 1, Minor: 0},
 			{Name: "proxmox.invocation-journal", Major: 1, Minor: 0},
+			{Name: "proxmox.vnc-endpoint", Major: 1, Minor: 0},
 		},
 		Features: []string{
 			"target-discovery",
@@ -76,6 +79,7 @@ func main() {
 			"target-scoped-api-token",
 			plugincontract.FeatureOpaqueAllocationClaimsV1,
 			plugincontract.FeatureDependencyResourceInputV1,
+			"proxmox-vnc-endpoint-v1",
 		},
 	}
 	if err := pluginruntime.Serve(ctx, pluginruntime.Services{Info: info, Runtime: service, Provider: service}); err != nil {

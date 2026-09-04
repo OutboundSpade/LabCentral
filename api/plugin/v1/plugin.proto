@@ -34,6 +34,10 @@ message PluginInfo {
   repeated string access_kinds = 7;
   repeated SchemaVersion schemas = 8;
   repeated string features = 9;
+  repeated ProtocolVersionRange supported_provider_protocols = 10;
+  repeated ProtocolVersionRange supported_access_protocols = 11;
+  repeated string supported_access_methods = 12;
+  repeated SchemaVersion accepted_access_endpoint_schemas = 13;
 }
 
 message RegisterPluginRequest {
@@ -49,6 +53,10 @@ message RegisterPluginResponse {
   google.protobuf.Duration heartbeat_interval = 2;
   uint64 max_request_bytes = 3;
   uint64 max_response_bytes = 4;
+  ProtocolVersion selected_provider_protocol = 5;
+  ProtocolVersion selected_access_protocol = 6;
+  string access_callback_credential = 7;
+  string access_audience = 8;
 }
 
 message HeartbeatRequest {
@@ -351,6 +359,13 @@ message DiscoverAccessEndpointResponse {
   google.protobuf.Timestamp valid_until = 2;
   repeated Warning warnings = 3;
   StructuredError error = 4;
+  SchemaVersion endpoint_schema = 5;
+  string endpoint_digest = 6;
+  string target_id = 7;
+  string lab_instance_id = 8;
+  string logical_resource_id = 9;
+  string method = 10;
+  string provider_state_digest = 11;
 }
 
 message ListImagesRequest {
@@ -392,6 +407,10 @@ message CreateAccessRequest {
   string method = 4;
   google.protobuf.Timestamp expires_at = 5;
   bytes opaque_connection_data = 6;
+  SchemaVersion endpoint_schema = 7;
+  string endpoint_digest = 8;
+  string provider_state_digest = 9;
+  string audience = 10;
 }
 
 message CreateAccessResponse {
@@ -400,6 +419,8 @@ message CreateAccessResponse {
   string one_time_token = 3;
   google.protobuf.Timestamp valid_until = 4;
   StructuredError error = 5;
+  SchemaVersion access_state_schema = 6;
+  string access_state_digest = 7;
 }
 
 message RevokeAccessRequest {
@@ -410,6 +431,47 @@ message RevokeAccessRequest {
 
 message RevokeAccessResponse {
   bool active_connections_closed = 1;
+  StructuredError error = 2;
+}
+
+message ExchangeAccessTokenRequest {
+  string callback_credential = 1;
+  string access_session_id = 2;
+  string audience = 3;
+  string one_time_token = 4;
+}
+
+message ExchangeAccessTokenResponse {
+  string authorization_lease = 1;
+  google.protobuf.Timestamp valid_until = 2;
+  google.protobuf.Duration recheck_after = 3;
+  StructuredError error = 4;
+}
+
+message RecheckAccessLeaseRequest {
+  string callback_credential = 1;
+  string access_session_id = 2;
+  string audience = 3;
+  string authorization_lease = 4;
+}
+
+message RecheckAccessLeaseResponse {
+  string authorization_lease = 1;
+  google.protobuf.Timestamp valid_until = 2;
+  google.protobuf.Duration recheck_after = 3;
+  StructuredError error = 4;
+}
+
+message EndAccessLeaseRequest {
+  string callback_credential = 1;
+  string access_session_id = 2;
+  string audience = 3;
+  string authorization_lease = 4;
+  string reason = 5;
+}
+
+message EndAccessLeaseResponse {
+  bool ended = 1;
   StructuredError error = 2;
 }
 
@@ -441,4 +503,10 @@ service ProviderService {
 service AccessService {
   rpc CreateAccess(CreateAccessRequest) returns (CreateAccessResponse);
   rpc RevokeAccess(RevokeAccessRequest) returns (RevokeAccessResponse);
+}
+
+service AccessAuthorizationService {
+  rpc ExchangeAccessToken(ExchangeAccessTokenRequest) returns (ExchangeAccessTokenResponse);
+  rpc RecheckAccessLease(RecheckAccessLeaseRequest) returns (RecheckAccessLeaseResponse);
+  rpc EndAccessLease(EndAccessLeaseRequest) returns (EndAccessLeaseResponse);
 }

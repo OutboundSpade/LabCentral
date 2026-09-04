@@ -46,7 +46,19 @@ Scoped governance now exposes `GET|PUT /quotas/{scopeKind}/{scopeId}/{dimension}
 
 `POST /lab-instances/{id}/actions/extend-ttl` requires `instance.ttl.extend`, `If-Match`, and an idempotency key. The response is a deliberately narrow lifetime snapshot rather than a mixed current/historical Instance: expiry, maximum expiry, warning/grace, renewal policy, policy digest, resource version, and update time. Authorization occurs before object mutation and the store repeats active actor, role, membership, participant-owner, and target-grant checks inside the serializable write transaction. Expiration is internal policy work and is not exposed as a caller-spoofable system identity.
 
-`POST /lab-instance-batches` requires an immutable `revisionId`, project, common target/lifetime/override, and 1–100 unique `user|team` owners. It is instructor/platform-administrator only, returns `202` with a durable batch resource and each independently observable Operation, and binds replay to the entire ordered request. Admission is all-or-nothing across authorization, quotas, claims, Instances, jobs, Operations, audit/event/outbox, and idempotency. `GET /lab-instance-batches/{id}` reauthorizes every owner at read time. SSE, cancellation, access sessions, and the remaining resource surface are not yet implemented.
+`POST /lab-instance-batches` requires an immutable `revisionId`, project, common target/lifetime/override, and 1–100 unique `user|team` owners. It is instructor/platform-administrator only, returns `202` with a durable batch resource and each independently observable Operation, and binds replay to the entire ordered request. Admission is all-or-nothing across authorization, quotas, claims, Instances, jobs, Operations, audit/event/outbox, and idempotency. `GET /lab-instance-batches/{id}` reauthorizes every owner at read time.
+
+`POST /access-sessions`, `GET /access-sessions/{id}`, and
+`POST /access-sessions/{id}/actions/revoke` implement the VNC access lifecycle.
+Creation requires owner-scoped authorization and idempotency, returns `201`
+with `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, a token-free
+launch URL, and one one-time token. The DTO excludes endpoint bytes, provider
+state, keyed hashes, plugin opaque state, and callback leases. Reads and
+version-pinned revocation reauthorize the exact Instance. The static router
+supports `/access/{id}` deep links; the browser passes launch material from
+same-tab session storage as the first same-origin WebSocket frame.
+
+SSE, cancellation, and the remaining resource surface are not yet implemented.
 
 ## Versioning and retries
 

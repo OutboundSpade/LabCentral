@@ -94,11 +94,14 @@ func (e *ValidationError) Error() string {
 }
 
 type Service struct {
-	renderer  *render.Renderer
-	store     Store
-	artifacts application.ArtifactStore
-	targets   *TargetRegistry
-	ids       IDSource
+	renderer    *render.Renderer
+	store       Store
+	artifacts   application.ArtifactStore
+	targets     *TargetRegistry
+	access      *AccessRegistry
+	authorizer  application.Authorizer
+	tokenHasher application.KeyedTokenHasher
+	ids         IDSource
 }
 
 func NewService(renderer *render.Renderer, store Store, provider pluginv1.ProviderServiceClient, ids IDSource) (*Service, error) {
@@ -124,6 +127,18 @@ func (s *Service) SetArtifactStore(artifacts application.ArtifactStore) error {
 	}
 	s.artifacts = artifacts
 	return nil
+}
+
+func (s *Service) SetAccessRuntime(registry *AccessRegistry, authorizer application.Authorizer, tokenHasher application.KeyedTokenHasher) error {
+	if s == nil || registry == nil || authorizer == nil || tokenHasher == nil {
+		return fmt.Errorf("access registry, authorizer, and keyed token hasher are required")
+	}
+	s.access, s.authorizer, s.tokenHasher = registry, authorizer, tokenHasher
+	return nil
+}
+
+func (s *Service) AccessAvailable() bool {
+	return s != nil && s.access != nil && s.authorizer != nil && s.tokenHasher != nil
 }
 
 func (s *Service) Validate(ctx context.Context, source []byte, acknowledged bool) (ValidationResult, error) {

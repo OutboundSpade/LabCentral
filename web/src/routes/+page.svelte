@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import RFB from '@novnc/novnc';
   import {
     api,
     ApiError,
@@ -8,7 +9,8 @@
     type Operation,
     type ProviderTarget,
     type ServerInfo,
-    type Session
+    type Session,
+		type AccessLaunch
   } from '$lib/api';
 
   type ProjectChoice = { id: string; organizationId?: string; name: string };
@@ -27,6 +29,11 @@
   let targets = $state<ProviderTarget[]>([]);
   let selectedTargetId = $state('');
   let providerOverride = $state('');
+	let accessSessionId = $state('');
+	let consoleStatus = $state('Connecting to the authorized console…');
+	let consoleTarget = $state<HTMLDivElement>();
+	let consoleClient: RFB | null = null;
+	let consoleSocket: WebSocket | null = null;
 
   let username = $state('');
   let password = $state('');
@@ -48,7 +55,65 @@
   let platformAdministrator = $derived(session?.roles.includes('platform-administrator') ?? false);
   let workspaceReady = $derived(authState === 'signed-in' && (!authenticated || selectedProjectId !== '') && !showProjectChooser);
 
-  onMount(bootstrap);
+  onMount(() => {
+		const match = window.location.pathname.match(/^\/access\/([A-Za-z][A-Za-z0-9_.-]{0,127})$/);
+		if (match) {
+			accessSessionId = match[1];
+			void tick().then(connectConsole);
+		} else {
+			void bootstrap();
+		}
+		return () => {
+			consoleClient?.disconnect();
+			consoleSocket?.close();
+		};
+	});
+
+	async function connectConsole() {
+		const tokenKey = `labcentral.access-token.v1.${accessSessionId}`;
+		const token = sessionStorage.getItem(tokenKey);
+		sessionStorage.removeItem(tokenKey);
+		if (!token || !consoleTarget) {
+			consoleStatus = 'This launch token is absent or has already been consumed. Return to the lab and request a new console.';
+			return;
+		}
+		const target = consoleTarget;
+		const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const socket = new WebSocket(`${scheme}//${window.location.host}/access-proxy/v1/access/${encodeURIComponent(accessSessionId)}/websocket`, ['binary']);
+		consoleSocket = socket;
+		socket.binaryType = 'arraybuffer';
+		socket.addEventListener('open', () => {
+			socket.send(JSON.stringify({ accessSessionId, oneTimeToken: token }));
+		}, { once: true });
+		socket.addEventListener('message', (event) => {
+			if (event.data !== '{"authorized":true}') {
+				consoleStatus = 'The console authorization response was invalid.';
+				socket.close();
+				return;
+			}
+			try {
+				consoleClient = new RFB(target, socket, { shared: false });
+				consoleClient.scaleViewport = true;
+				consoleClient.resizeSession = true;
+				consoleClient.addEventListener('connect', () => {
+					consoleStatus = 'Connected';
+					consoleClient?.focus();
+				});
+				consoleClient.addEventListener('disconnect', () => {
+					consoleStatus = 'Console disconnected. Return to the lab to request a new session.';
+				});
+				consoleClient.addEventListener('securityfailure', () => {
+					consoleStatus = 'Console security negotiation failed.';
+				});
+			} catch {
+				consoleStatus = 'The console client could not start.';
+				socket.close();
+			}
+		}, { once: true });
+		socket.addEventListener('error', () => {
+			if (!consoleClient) consoleStatus = 'The console proxy is unavailable.';
+		}, { once: true });
+	}
 
   async function bootstrap() {
     try {
@@ -341,6 +406,23 @@
     }
   }
 
+	async function openConsole(instance: Instance, resourceId: string) {
+		busy = true;
+		error = '';
+		try {
+			const launch = await api<AccessLaunch>('/access-sessions', {
+				method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() },
+				body: JSON.stringify({ instanceId: instance.id, resourceId, method: 'vnc', durationSeconds: 1800 })
+			});
+			if (!launch.oneTimeToken || !launch.launchUrl) throw new Error('The access service returned an incomplete launch.');
+			sessionStorage.setItem(`labcentral.access-token.v1.${launch.session.id}`, launch.oneTimeToken);
+			window.location.assign(launch.launchUrl);
+		} catch (cause) {
+			handleFailure(cause);
+			busy = false;
+		}
+	}
+
   async function poll(id: string) {
     while (true) {
       activeOperation = await api<Operation>(`/operations/${id}`);
@@ -360,8 +442,15 @@
   }
 </script>
 
-<svelte:head><title>LabCentral</title></svelte:head>
+<svelte:head><title>{accessSessionId ? 'Lab console · LabCentral' : 'LabCentral'}</title></svelte:head>
 
+{#if accessSessionId}
+	<main class="flex min-h-screen flex-col bg-black p-3 text-white">
+		<header class="mb-3 flex items-center justify-between gap-4"><div><p class="text-xs tracking-widest text-primary uppercase">Authorized VNC session</p><p class="font-mono text-xs opacity-60">{accessSessionId}</p></div><a class="btn btn-sm btn-outline" href="/">Return to labs</a></header>
+		<p class="mb-2 text-sm" aria-live="polite">{consoleStatus}</p>
+		<div bind:this={consoleTarget} class="min-h-0 flex-1 overflow-hidden rounded-lg border border-white/20 bg-black"></div>
+	</main>
+{:else}
 <main class="mx-auto min-h-screen max-w-7xl p-5 md:p-10">
   <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
     <div>
@@ -507,10 +596,11 @@
       {:else}
         <div class="grid gap-4 md:grid-cols-2">
           {#each instances as instance}
-            <article class="card border border-base-300 bg-base-200/75"><div class="card-body gap-4"><div class="flex items-center justify-between gap-3"><span class="font-mono text-xs text-base-content/55">{instance.id}</span><span class="badge badge-outline">{instance.phase}</span></div>{#if instance.outputs['web-url']}<a class="link link-primary break-all text-sm" href={String(instance.outputs['web-url'])} target="_blank" rel="noreferrer">{String(instance.outputs['web-url'])}</a>{/if}<div class="grid grid-cols-2 gap-2">{#each instance.resources ?? [] as resource}<div class="rounded-lg bg-base-100 px-3 py-2"><p class="truncate font-mono text-[11px]">{resource.id}</p><p class="mt-1 text-xs text-base-content/50">{resource.phase}</p></div>{/each}</div><div class="card-actions justify-end"><button class="btn btn-sm btn-error btn-outline" disabled={busy || instance.phase === 'destroyed' || instance.phase === 'destroying'} onclick={() => destroy(instance)}>Destroy</button></div></div></article>
+            <article class="card border border-base-300 bg-base-200/75"><div class="card-body gap-4"><div class="flex items-center justify-between gap-3"><span class="font-mono text-xs text-base-content/55">{instance.id}</span><span class="badge badge-outline">{instance.phase}</span></div>{#if instance.outputs['web-url']}<a class="link link-primary break-all text-sm" href={String(instance.outputs['web-url'])} target="_blank" rel="noreferrer">{String(instance.outputs['web-url'])}</a>{/if}<div class="grid grid-cols-2 gap-2">{#each instance.resources ?? [] as resource}<div class="rounded-lg bg-base-100 px-3 py-2"><p class="truncate font-mono text-[11px]">{resource.id}</p><div class="mt-1 flex items-center justify-between gap-2"><p class="text-xs text-base-content/50">{resource.phase}</p>{#if server?.uiFeatures.includes('browser-vnc') && resource.kind === 'VM' && resource.phase === 'ready'}<button class="btn btn-xs btn-primary btn-outline" disabled={busy} onclick={() => openConsole(instance, resource.id)}>Console</button>{/if}</div></div>{/each}</div><div class="card-actions justify-end"><button class="btn btn-sm btn-error btn-outline" disabled={busy || instance.phase === 'destroyed' || instance.phase === 'destroying'} onclick={() => destroy(instance)}>Destroy</button></div></div></article>
           {/each}
         </div>
       {/if}
     </section>
   {/if}
 </main>
+{/if}

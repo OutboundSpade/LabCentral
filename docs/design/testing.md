@@ -36,7 +36,40 @@ The same package runs all fourteen `TEST-ALLOC-*` cases from [`allocation-claims
 
 `TASK-PROD-002` adds SQLite/PostgreSQL conformance for atomic bootstrap/mode selection, identity uniqueness, versioned concurrent administration, authority renewal/revocation, last-platform-administrator protection, cross-organization owner/scope refusal, the complete one-role-at-a-time permission matrix, active-membership evaluation, target grants, SQL-prefiltered instance visibility, session/recovery/OIDC one-use state, database-time concurrent authentication limits, rolling-key rate buckets, and authentication-mode downgrade/legacy-data refusal. HTTP/startup tests cover explicit auth selection at both process and server-construction boundaries, zero external activity before auth preflight, exact public origins, trusted-proxy spoofing and client-chain parsing, TLS 1.3 configuration, secure cookie/CSRF/logout behavior, typed bearer issuance/revocation, browser/bearer replay separation and mixed-credential refusal, target-granted refresh, account/global/IP rate limiting with `Retry-After`, local recovery, first-admin tenancy setup, object hiding, and non-loopback refusal. OIDC fake-provider tests bind code exchange, S256 PKCE, issuer, single/multiple audience plus `azp`, nonce, signature/JWKS rotation, browser state and parallel flows, redirect safety, identity pre-linking, response bounds, retained/retired keys, and replay. Password-worker tests prove the Argon2 concurrency cap and cancellation while queued.
 
-The first `TASK-PROD-003` conformance slice runs Lab Template/revision and generalized audit/event tests against SQLite and the disposable PostgreSQL adapter. It covers scoped name uniqueness, sequential and concurrent mutation replay, conflicting idempotency reuse, one optimistic metadata-update winner, concurrent revision numbering, immutable revision/audit/event triggers, project-bound revision instance creation, atomic rollback when governance IDs conflict, independent stream/per-aggregate sequences, concurrent event writers, outbox insertion, cursor pagination, bounded NDJSON export/retention, undelivered-event preservation, malformed or duplicate JSON, and secret-bearing payload-key refusal. Authenticated HTTP tests exercise project/organization denial before persistence or artifact access, opaque typed cursor round trips, paginated audit serialization, bounded raw NDJSON headers/body, malformed scope rejection, and OpenAPI route presence. [`access-conformance.yaml`](../../design/contracts/access-conformance.yaml) fixes eighteen upcoming access cases; those Go bindings and the protected noVNC/SSH target case must exist before `TASK-PROD-003` is complete.
+The first `TASK-PROD-003` conformance slice runs Lab Template/revision and generalized audit/event tests against SQLite and the disposable PostgreSQL adapter. It covers scoped name uniqueness, sequential and concurrent mutation replay, conflicting idempotency reuse, one optimistic metadata-update winner, concurrent revision numbering, immutable revision/audit/event triggers, project-bound revision instance creation, atomic rollback when governance IDs conflict, independent stream/per-aggregate sequences, concurrent event writers, outbox insertion, cursor pagination, bounded NDJSON export/retention, undelivered-event preservation, malformed or duplicate JSON, and secret-bearing payload-key refusal. Authenticated HTTP tests exercise project/organization denial before persistence or artifact access, opaque typed cursor round trips, paginated audit serialization, bounded raw NDJSON headers/body, malformed scope rejection, and OpenAPI route presence.
+
+[`access-conformance.yaml`](../../design/contracts/access-conformance.yaml) binds
+all eighteen access cases to Go tests. Normal CI covers pre-plugin denial,
+exact endpoint/state/audience binding, tight expiry, one-winner exchange on both
+databases, authority loss, 30-second outage semantics, core-first/idempotent
+revocation, lost responses, restart denial, protocol/schema downgrade,
+secret-free sinks and URLs, exact Proxmox VNC calls, and unsupported SSH. A
+real TLS RFB fake proves that the access process consumes the Proxmox VNC
+password before the browser gets a no-auth RFB stream. The separate-process
+host test proves access-only registration plus the launch-scoped private core
+callback.
+
+`TEST-ACCESS-018` is the protected black-box gate. With no access environment
+it skips before files or network. Run it only against an already-qualified,
+disposable authenticated installation containing a running owned VM and two
+bounded bearer identities:
+
+```console
+LABCENTRAL_PROXMOX_ACCESS_EXECUTE=I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_ACCESS_TEST \
+LABCENTRAL_PROXMOX_ACCESS_BASE_URL=https://labcentral.example.edu \
+LABCENTRAL_PROXMOX_ACCESS_OWNER_TOKEN_FILE=/secure/owner.token \
+LABCENTRAL_PROXMOX_ACCESS_DENIED_TOKEN_FILE=/secure/other-tenant.token \
+LABCENTRAL_PROXMOX_ACCESS_INSTANCE_ID=instance.example \
+LABCENTRAL_PROXMOX_ACCESS_RESOURCE_ID=vm.example \
+LABCENTRAL_PROXMOX_ACCESS_MANAGEMENT_ORIGIN=https://pve.example.internal:8006 \
+go test -run '^TestProxmoxAccessSessionQualification$' -count=1 -v ./access/novnc
+```
+
+Token files must be absolute private regular files. Set the optional
+`LABCENTRAL_PROXMOX_ACCESS_PUBLIC_CA_FILE` for a private public-origin CA. The
+test proves cross-tenant denial, no management-origin/token URL disclosure,
+same-origin one-time exchange, downstream RFB, core-first revocation, and
+active-stream closure. It does not create or destroy the VM.
 
 The quota/lifetime slice binds [`governance-quotas.yaml`](../../design/contracts/governance-quotas.yaml) on SQLite and PostgreSQL. It proves atomic multi-scope admission, concurrent over-limit winners, post-admission policy backfill, DB-time defaults/maxima, exact renewal replay, optimistic preconditions, transaction-local authority revocation, one-shot warning predicates, convergent manual/timer destruction, invocation-free quota/allocation release, retained unknown outcomes, and queued/expired-lease sweeper races. Real pre-`0009` fixtures verify committed versus retained legacy backfill and restart idempotency. A lost-response gRPC integration executes a Docker mutation once, expires the worker lease, requires `GetInvocation`, and reaches ready without redispatch. Huma tests pin the closed OpenAPI paths, conditional headers, malformed scopes, exact-scope authorization-before-store, narrow lifetime replay DTO, and `no-store` dynamic usage response.
 
