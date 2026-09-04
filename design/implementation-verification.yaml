@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T05:10:51Z"
+verifiedAt: "2026-09-04T05:28:59Z"
 result: pass
-scope: task_prod_004_observability_checkpoint
+scope: task_prod_004_shared_proxmox_coordination_checkpoint
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -76,6 +76,10 @@ commands:
   - go vet ./... and python3 tools/verify_phase0.py after the production-observability contract
   - bun run check && bun run build after public-handler instrumentation
   - docker build the scratch image, then clean named-volume Compose start, /ready healthcheck, public request, metrics scrape, restart, and /ready healthcheck
+  - go test -run TestInvocationJournalLease -count=1 ./providers/proxmox with a real child test process contending for the held journal lease
+  - go test -count=1 ./... after shared Proxmox journal coordination and multi-replica admission
+  - go test -race -count=1 ./... after shared Proxmox journal coordination and multi-replica admission
+  - go vet ./... and python3 tools/verify_phase0.py after TEST-PROXMOX-029
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -256,15 +260,21 @@ checks:
   - sse_flush_and_websocket_hijack_preserved_by_instrumentation
   - baseline_prometheus_availability_plugin_and_error_alerts
   - clean_named_volume_private_mountpoint_and_restart
+  - proxmox_journal_wide_cross_process_mutation_lease
+  - proxmox_journal_lock_mode_and_filesystem_exclusion_self_test
+  - proxmox_journal_wait_cancellation_before_provider_access
+  - multi_replica_proxmox_journal_bound_to_shared_artifact_root
+  - test_proxmox_029_shared_provider_process_coordination
 notes:
-  - The first TASK-PROD-004 checkpoint is intentionally partial. Kubernetes topology, process-safe shared Proxmox coordination, expanded queue/outbox/SLO metrics, automated encrypted recovery, resilience/load evidence, and signed publisher releases remain open.
+  - TASK-PROD-004 remains intentionally partial. Kubernetes topology, dedicated plugin container identities, expanded queue/outbox/SLO metrics, automated encrypted recovery, shared-RWX failover/chaos evidence, load evidence, and signed publisher releases remain open.
   - TEST-PROD-OBS-001 through TEST-PROD-OBS-007 passed normal and race-enabled CI. Metrics and recorded spans contained no seeded raw path, query, tenant, token, or error canaries.
   - A real scratch-image/Compose rehearsal started from a newly created named volume, proved the copied-up state root was mode 0700, reached container healthy through /ready, served the public API, emitted bounded metrics, and remained healthy after restart. The disposable container and volumes created by both the diagnostic failure and passing rehearsal were removed.
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
-  - Every TEST-PROXMOX-001 through TEST-PROXMOX-028 case has an executable normal-CI binding. The required target-applicable credentialed T3 cases, real guest probes, signed artifact assembly, and read-only prior-build state/journal rehearsal passed on the disposable testbed.
+  - Every TEST-PROXMOX-001 through TEST-PROXMOX-029 case has an executable normal-CI binding. The required target-applicable credentialed T3 cases, real guest probes, signed artifact assembly, and read-only prior-build state/journal rehearsal passed on the disposable testbed.
+  - TEST-PROXMOX-029 used an actual child test process plus independent file descriptions to prove journal-wide advisory exclusion and canceled wait behavior. Multi-replica startup now admits Proxmox only when the signed journal path is the exact proxmox-journal child of the already verified shared artifact root. No Proxmox endpoint was contacted.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
   - The qualification review tool creates protected non-overwriting Ed25519 reviewer keypairs and signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or self-approval command; the native release includes it so reviewers can work from an offline host.

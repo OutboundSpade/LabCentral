@@ -39,14 +39,12 @@ func (service *Service) ApplyResource(request *pluginv1.ApplyResourceRequest, st
 	if stream == nil {
 		return fmt.Errorf("Proxmox apply stream is required")
 	}
-	service.executionMu.Lock()
-	defer service.executionMu.Unlock()
 	input := request.GetInput()
 	prepared, failure := service.prepareExecution(stream.Context(), input, "apply")
 	if failure != nil {
 		return stream.Send(&pluginv1.ApplyResourceResponse{Event: resultInvocationEvent(failure)})
 	}
-	defer prepared.client.CloseIdleConnections()
+	defer prepared.close()
 	if cached := prepared.cachedResult(); cached != nil {
 		return stream.Send(&pluginv1.ApplyResourceResponse{Event: resultInvocationEvent(cached)})
 	}
@@ -116,14 +114,12 @@ func (service *Service) DestroyResource(request *pluginv1.DestroyResourceRequest
 	if stream == nil {
 		return fmt.Errorf("Proxmox destroy stream is required")
 	}
-	service.executionMu.Lock()
-	defer service.executionMu.Unlock()
 	input := request.GetInput()
 	prepared, failure := service.prepareExecution(stream.Context(), input, "destroy")
 	if failure != nil {
 		return stream.Send(&pluginv1.DestroyResourceResponse{Event: resultInvocationEvent(failure)})
 	}
-	defer prepared.client.CloseIdleConnections()
+	defer prepared.close()
 	if cached := prepared.cachedResult(); cached != nil {
 		return stream.Send(&pluginv1.DestroyResourceResponse{Event: resultInvocationEvent(cached)})
 	}
@@ -328,8 +324,6 @@ func (service *Service) Lifecycle(request *pluginv1.LifecycleRequest, stream grp
 	if stream == nil {
 		return fmt.Errorf("Proxmox lifecycle stream is required")
 	}
-	service.executionMu.Lock()
-	defer service.executionMu.Unlock()
 	result := service.lifecycle(stream.Context(), request)
 	return stream.Send(&pluginv1.LifecycleResponse{Event: resultInvocationEvent(result)})
 }
@@ -359,12 +353,17 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 	if err != nil {
 		return executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
 	}
+	lease, err := journal.Acquire(ctx)
+	if err != nil {
+		return executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
+	}
+	defer lease.Close()
 	marker, err := encodeOwnershipMarker(*state.Ownership)
 	if err != nil {
 		return executionFailure("ownership_mismatch", "ownership_mismatch", "Proxmox ownership marker is invalid", false, resourceID)
 	}
 	record := JournalRecord{SchemaVersion: journalV10, InvocationID: call.GetInvocationId(), TargetID: state.TargetID, Action: action, RequestDigest: digestDocument(append([]byte(action+"\x00"), request.GetPriorState().GetOpaque()...)), Node: state.Node, VMID: state.VMID, OwnershipDigest: digestDocument([]byte(marker)), Phase: "prepared"}
-	if stored, readErr := journal.Read(record.InvocationID); readErr == nil {
+	if stored, readErr := lease.Read(record.InvocationID); readErr == nil {
 		if stored.TargetID != record.TargetID || stored.Action != record.Action || stored.RequestDigest != record.RequestDigest || stored.OwnershipDigest != record.OwnershipDigest {
 			return executionFailure("invocation_binding_mismatch", "conflict", "Invocation ID is already bound to a different request", false, resourceID)
 		}
@@ -374,7 +373,7 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 		record = stored
 	} else if !errors.Is(readErr, os.ErrNotExist) {
 		return executionFailure("journal_corrupt", "state_version_incompatible", "Proxmox invocation journal record is invalid", false, resourceID)
-	} else if journal.Write(record) != nil {
+	} else if lease.Write(record) != nil {
 		return executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal could not be persisted", true, resourceID)
 	}
 	created, err := service.factory.New(request.GetTarget().GetConfigEnvelope(), request.GetTarget().GetCredentialEnvelope())
@@ -401,49 +400,49 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 	if record.Phase == "lifecycle-submitted" {
 		upid, parseErr := ParseUPID(record.TaskUPID)
 		if parseErr != nil || upid.validateObject(state.Node, state.VMID, allowedType) != nil {
-			return lifecycleJournalFailure(journal, record, "invalid_task_identity", "provider_protocol_error", "Persisted Proxmox lifecycle task identity is invalid", false, resourceID)
+			return lifecycleJournalFailure(lease, record, "invalid_task_identity", "provider_protocol_error", "Persisted Proxmox lifecycle task identity is invalid", false, resourceID)
 		}
 		if waitErr := service.waitTask(ctx, client, state.Node, upid); waitErr != nil {
 			if !errors.Is(waitErr, errTaskReportedFailure) {
-				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Persisted Proxmox lifecycle task outcome is unknown", true, resourceID)
+				return lifecycleJournalFailure(lease, record, "unknown_lifecycle_outcome", "unknown_outcome", "Persisted Proxmox lifecycle task outcome is unknown", true, resourceID)
 			}
 			record.TaskUPID = ""
 			record.Phase = "prepared"
 			record.LastSafeObservation = "persisted lifecycle task failed"
-			if journal.Write(record) != nil {
+			if lease.Write(record) != nil {
 				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle retry could not be persisted", true, resourceID)
 			}
 		}
 	}
 	current, exists, err := readOptionalVMConfig(ctx, client, state.Node, state.VMID)
 	if err != nil || !exists || verifyOwnership(current.Description, *state.Ownership) != nil {
-		return lifecycleJournalFailure(journal, record, "ownership_mismatch", "ownership_mismatch", "Proxmox VM ownership could not be verified", false, resourceID)
+		return lifecycleJournalFailure(lease, record, "ownership_mismatch", "ownership_mismatch", "Proxmox VM ownership could not be verified", false, resourceID)
 	}
 	status, err := client.VMStatus(ctx, state.Node, state.VMID)
 	if err != nil {
-		return lifecycleJournalFailure(journal, record, "provider_read_failed", "provider_unavailable", "Proxmox VM status could not be read", true, resourceID)
+		return lifecycleJournalFailure(lease, record, "provider_read_failed", "provider_unavailable", "Proxmox VM status could not be read", true, resourceID)
 	}
 	if status.Status != desired {
 		for attempt := 0; attempt < maximumLifecycleAttempts && status.Status != desired; attempt++ {
 			if !validLifecycleSource(action, status.Status) {
-				return lifecycleJournalFailure(journal, record, "invalid_lifecycle_transition", "conflict", "Proxmox VM is not in a state that permits this lifecycle action", false, resourceID)
+				return lifecycleJournalFailure(lease, record, "invalid_lifecycle_transition", "conflict", "Proxmox VM is not in a state that permits this lifecycle action", false, resourceID)
 			}
 			upid, actionErr := client.LifecycleVM(ctx, LifecycleRequest{Node: state.Node, VMID: state.VMID, Action: action})
 			if actionErr != nil {
 				observed, readErr := client.VMStatus(ctx, state.Node, state.VMID)
 				if readErr != nil || observed.Status != desired {
-					return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
+					return lifecycleJournalFailure(lease, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
 				}
 				status = observed
 				break
 			}
 			if upid.validateObject(state.Node, state.VMID, allowedType) != nil {
-				return lifecycleJournalFailure(journal, record, "invalid_task_identity", "provider_protocol_error", "Proxmox lifecycle returned an invalid task identity", false, resourceID)
+				return lifecycleJournalFailure(lease, record, "invalid_task_identity", "provider_protocol_error", "Proxmox lifecycle returned an invalid task identity", false, resourceID)
 			}
 			record.TaskUPID = upid.Raw
 			record.Phase = "lifecycle-submitted"
 			record.LastSafeObservation = "lifecycle task accepted"
-			if journal.Write(record) != nil {
+			if lease.Write(record) != nil {
 				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle task could not be persisted", true, resourceID)
 			}
 			waitErr := service.waitTask(ctx, client, state.Node, upid)
@@ -451,29 +450,29 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 				break
 			}
 			if !errors.Is(waitErr, errTaskReportedFailure) {
-				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle task outcome is unknown", true, resourceID)
+				return lifecycleJournalFailure(lease, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle task outcome is unknown", true, resourceID)
 			}
 			status, err = client.VMStatus(ctx, state.Node, state.VMID)
 			if err != nil {
-				return lifecycleJournalFailure(journal, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
+				return lifecycleJournalFailure(lease, record, "unknown_lifecycle_outcome", "unknown_outcome", "Proxmox lifecycle outcome is unknown", true, resourceID)
 			}
 			if status.Status == desired {
 				break
 			}
 			if attempt+1 == maximumLifecycleAttempts {
-				return lifecycleJournalFailure(journal, record, "provider_task_failed", "provider_failure", "Proxmox lifecycle task did not complete successfully", false, resourceID)
+				return lifecycleJournalFailure(lease, record, "provider_task_failed", "provider_failure", "Proxmox lifecycle task did not complete successfully", false, resourceID)
 			}
 			record.TaskUPID = ""
 			record.Phase = "prepared"
 			record.LastSafeObservation = "lifecycle task failed before state change"
-			if journal.Write(record) != nil {
+			if lease.Write(record) != nil {
 				return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle retry could not be persisted", true, resourceID)
 			}
 			service.sleep(2 * time.Second)
 		}
 		status, err = client.VMStatus(ctx, state.Node, state.VMID)
 		if err != nil || status.Status != desired {
-			return lifecycleJournalFailure(journal, record, "lifecycle_not_confirmed", "unknown_outcome", "Proxmox lifecycle state could not be confirmed", true, resourceID)
+			return lifecycleJournalFailure(lease, record, "lifecycle_not_confirmed", "unknown_outcome", "Proxmox lifecycle state could not be confirmed", true, resourceID)
 		}
 	}
 	state.Phase = desired
@@ -482,7 +481,7 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 	result := successResult(&state, observed, request.GetPriorState().GetOwnershipIds())
 	record.Phase = "ready"
 	record.Result = &JournalResult{State: &state, Observed: observed, CompensationComplete: true}
-	if journal.Write(record) != nil {
+	if lease.Write(record) != nil {
 		return executionFailure("journal_unavailable", "unknown_outcome", "Proxmox lifecycle result could not be persisted", true, resourceID)
 	}
 	return result
@@ -524,7 +523,7 @@ func lifecycleNames(action pluginv1.LifecycleAction) (string, string, string) {
 	}
 }
 
-func lifecycleJournalFailure(journal *InvocationJournal, record JournalRecord, code, class, message string, retryable bool, resource string) *pluginv1.ResourceResult {
+func lifecycleJournalFailure(journal *InvocationLease, record JournalRecord, code, class, message string, retryable bool, resource string) *pluginv1.ResourceResult {
 	failure := &JournalError{Code: code, Class: class, SafeMessage: message, Retryable: retryable}
 	record.Phase = "failed"
 	record.Result = &JournalResult{Observed: &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "VM", Node: record.Node, VMID: record.VMID}, Error: failure}
@@ -566,7 +565,7 @@ type preparedExecution struct {
 	config        TargetConfig
 	plan          QEMUPlan
 	client        MutationAPI
-	journal       *InvocationJournal
+	journal       *InvocationLease
 	record        JournalRecord
 	existing      *JournalRecord
 	ownershipText string
@@ -605,27 +604,36 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 	if err != nil {
 		return nil, executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
 	}
+	lease, err := journal.Acquire(ctx)
+	if err != nil {
+		return nil, executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
+	}
 	created, err := service.factory.New(input.GetTarget().GetConfigEnvelope(), input.GetTarget().GetCredentialEnvelope())
 	if err != nil {
+		_ = lease.Close()
 		return nil, executionFailure("invalid_target_credentials", "provider_unavailable", "Proxmox target credentials are invalid", false, resourceID)
 	}
 	client, ok := created.(MutationAPI)
 	if !ok {
 		created.CloseIdleConnections()
+		_ = lease.Close()
 		return nil, executionFailure("mutation_client_unavailable", "provider_unavailable", "Proxmox mutation client is unavailable", false, resourceID)
 	}
 	inventory, err := client.Discover(ctx)
 	if err != nil || inventory.normalize() != nil {
 		client.CloseIdleConnections()
+		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
 	mutationDigest, err := inventory.MutationDigest()
 	if err != nil || mutationDigest != config.Qualification.InventoryDigest {
 		client.CloseIdleConnections()
+		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
 	if _, err := service.authorizeMutation(ctx, input.GetTarget(), config, inventory, mutationDigest); err != nil {
 		client.CloseIdleConnections()
+		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
 	ownershipText := input.GetOwnershipTokens()[0]
@@ -633,6 +641,7 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 		encoded, encodeErr := encodeOwnershipMarker(*plan.Ownership)
 		if encodeErr != nil {
 			client.CloseIdleConnections()
+			_ = lease.Close()
 			return nil, executionFailure("invalid_ownership_marker", "invalid_declaration", "Proxmox ownership marker is invalid", false, resourceID)
 		}
 		ownershipText = encoded
@@ -647,21 +656,29 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 		record.VMID = planVMID(plan)
 	}
 	var existing *JournalRecord
-	stored, readErr := journal.Read(call.GetInvocationId())
+	stored, readErr := lease.Read(call.GetInvocationId())
 	if readErr == nil {
 		if stored.TargetID != record.TargetID || stored.Action != action || stored.RequestDigest != record.RequestDigest || stored.Node != record.Node || stored.VMID != record.VMID || stored.OwnershipDigest != record.OwnershipDigest {
 			client.CloseIdleConnections()
+			_ = lease.Close()
 			return nil, executionFailure("invocation_binding_mismatch", "conflict", "Invocation ID is already bound to a different request", false, resourceID)
 		}
 		existing = &stored
 	} else if !errors.Is(readErr, os.ErrNotExist) {
 		client.CloseIdleConnections()
+		_ = lease.Close()
 		return nil, executionFailure("journal_corrupt", "state_version_incompatible", "Proxmox invocation journal record is invalid", false, resourceID)
-	} else if err := journal.Write(record); err != nil {
+	} else if err := lease.Write(record); err != nil {
 		client.CloseIdleConnections()
+		_ = lease.Close()
 		return nil, executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal could not be persisted", true, resourceID)
 	}
-	return &preparedExecution{service: service, input: input, config: config, plan: plan, client: client, journal: journal, record: record, existing: existing, ownershipText: ownershipText}, nil
+	return &preparedExecution{service: service, input: input, config: config, plan: plan, client: client, journal: lease, record: record, existing: existing, ownershipText: ownershipText}, nil
+}
+
+func (prepared *preparedExecution) close() {
+	prepared.client.CloseIdleConnections()
+	_ = prepared.journal.Close()
 }
 
 func (prepared *preparedExecution) cachedResult() *pluginv1.ResourceResult {

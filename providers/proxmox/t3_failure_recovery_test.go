@@ -808,6 +808,9 @@ func runT3RestartCheckpoints(t *testing.T, ctx context.Context, base t3SmokeProf
 		if err := prepared.journal.Write(prepared.record); err != nil {
 			t.Fatal(err)
 		}
+		if err := prepared.journal.Close(); err != nil {
+			t.Fatal(err)
+		}
 		before := control.counts()
 		stream := &applyCapture{grpcServerStream: grpcServerStream{ctx: ctx}}
 		if err := newT3FaultService(control).ApplyResource(&pluginv1.ApplyResourceRequest{Input: input}, stream); err != nil {
@@ -845,6 +848,9 @@ func runT3RestartCheckpoints(t *testing.T, ctx context.Context, base t3SmokeProf
 	if err := prepared.journal.Write(prepared.record); err != nil {
 		t.Fatal(err)
 	}
+	if err := prepared.journal.Close(); err != nil {
+		t.Fatal(err)
+	}
 	beforeDestroy := control.counts()
 	destroyStream := &destroyCapture{grpcServerStream: grpcServerStream{ctx: ctx}}
 	if err := newT3FaultService(control).DestroyResource(&pluginv1.DestroyResourceRequest{Input: destroyInput}, destroyStream); err != nil {
@@ -875,6 +881,9 @@ func runT3RestartCheckpoints(t *testing.T, ctx context.Context, base t3SmokeProf
 	}
 	corruptPath := corruptPrepared.journal.recordPath(corruptPrepared.record.InvocationID)
 	if err := os.WriteFile(corruptPath, envelopeBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := corruptPrepared.journal.Close(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(corruptPath) })

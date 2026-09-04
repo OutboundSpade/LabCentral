@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,15 +12,32 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-const maximumJournalBytes = 1 << 20
+const (
+	maximumJournalBytes = 1 << 20
+	journalLockName     = ".labcentral-mutation.lock"
+	journalLockRetry    = 10 * time.Millisecond
+)
 
 var invocationIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$`)
 
 type InvocationJournal struct {
 	directory string
 	mu        sync.Mutex
+}
+
+// InvocationLease holds the journal-wide mutation lock. A single conservative
+// lock deliberately serializes every Proxmox write using a target journal,
+// including calls from independently running provider processes. The kernel
+// releases the lease if a provider exits, after which the next process resumes
+// from the last durable journal checkpoint.
+type InvocationLease struct {
+	journal *InvocationJournal
+	file    *os.File
 }
 
 func OpenInvocationJournal(directory string) (*InvocationJournal, error) {
@@ -37,6 +55,13 @@ func OpenInvocationJournal(directory string) (*InvocationJournal, error) {
 		return nil, fmt.Errorf("invocation journal directory mode must be 0700")
 	}
 	journal := &InvocationJournal{directory: directory}
+	lock, err := journal.openLock()
+	if err != nil {
+		return nil, err
+	}
+	if err := lock.Close(); err != nil {
+		return nil, fmt.Errorf("close invocation journal lock: %w", err)
+	}
 	if err := journal.selfTest(); err != nil {
 		return nil, err
 	}
@@ -65,10 +90,89 @@ func (journal *InvocationJournal) selfTest() error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close invocation journal self-test: %w", err)
 	}
+	first, err := os.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("open invocation journal lock self-test: %w", err)
+	}
+	defer first.Close()
+	second, err := os.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("reopen invocation journal lock self-test: %w", err)
+	}
+	defer second.Close()
+	if err := unix.Flock(int(first.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		return fmt.Errorf("acquire invocation journal lock self-test: %w", err)
+	}
+	defer unix.Flock(int(first.Fd()), unix.LOCK_UN) //nolint:errcheck
+	if err := unix.Flock(int(second.Fd()), unix.LOCK_EX|unix.LOCK_NB); !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+		if err == nil {
+			_ = unix.Flock(int(second.Fd()), unix.LOCK_UN)
+		}
+		return fmt.Errorf("invocation journal filesystem does not enforce advisory locks")
+	}
 	return nil
 }
 
 func (journal *InvocationJournal) Write(record JournalRecord) error {
+	lease, err := journal.Acquire(context.Background())
+	if err != nil {
+		return err
+	}
+	writeErr := lease.Write(record)
+	return errors.Join(writeErr, lease.Close())
+}
+
+// Acquire waits for the process-safe mutation lease or returns when ctx is
+// canceled. Callers must hold the returned lease for the complete remote
+// mutation, not only while reading or writing a checkpoint.
+func (journal *InvocationJournal) Acquire(ctx context.Context) (*InvocationLease, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("invocation journal lock context is required")
+	}
+	file, err := journal.openLock()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		if err == nil {
+			return &InvocationLease{journal: journal, file: file}, nil
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+			_ = file.Close()
+			return nil, fmt.Errorf("lock invocation journal: %w", err)
+		}
+		timer := time.NewTimer(journalLockRetry)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			_ = file.Close()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (journal *InvocationJournal) openLock() (*os.File, error) {
+	path := filepath.Join(journal.directory, journalLockName)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open invocation journal lock: %w", err)
+	}
+	opened, statErr := file.Stat()
+	pathInfo, pathErr := os.Lstat(path)
+	if statErr != nil || pathErr != nil || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, pathInfo) {
+		_ = file.Close()
+		return nil, fmt.Errorf("invocation journal lock type or mode is invalid")
+	}
+	return file, nil
+}
+
+func (lease *InvocationLease) Write(record JournalRecord) error {
+	if lease == nil || lease.journal == nil || lease.file == nil {
+		return fmt.Errorf("invocation journal lease is unavailable")
+	}
+	journal := lease.journal
 	journal.mu.Lock()
 	defer journal.mu.Unlock()
 	if err := validateJournalRecord(record); err != nil {
@@ -123,6 +227,34 @@ func (journal *InvocationJournal) Write(record JournalRecord) error {
 	defer directory.Close()
 	if err := directory.Sync(); err != nil {
 		return fmt.Errorf("sync invocation journal directory: %w", err)
+	}
+	return nil
+}
+
+func (lease *InvocationLease) Read(invocationID string) (JournalRecord, error) {
+	if lease == nil || lease.journal == nil || lease.file == nil {
+		return JournalRecord{}, fmt.Errorf("invocation journal lease is unavailable")
+	}
+	return lease.journal.Read(invocationID)
+}
+
+func (lease *InvocationLease) recordPath(invocationID string) string {
+	return lease.journal.recordPath(invocationID)
+}
+
+func (lease *InvocationLease) Close() error {
+	if lease == nil || lease.file == nil {
+		return nil
+	}
+	file := lease.file
+	lease.file = nil
+	unlockErr := unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	closeErr := file.Close()
+	if unlockErr != nil {
+		return fmt.Errorf("unlock invocation journal: %w", unlockErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close invocation journal lock: %w", closeErr)
 	}
 	return nil
 }

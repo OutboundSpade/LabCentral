@@ -14,6 +14,19 @@ schemas:
   plan: {name: proxmox.qemu-plan, version: 1.0}
   providerState: {name: proxmox.qemu-state, version: 1.0}
   invocationJournal: {name: proxmox.invocation-journal, version: 1.0}
+sharedInvocationCoordination:
+  status: implemented_t0_verified
+  primitive: kernel_flock_exclusive_nonblocking_retry
+  scope: complete_mutating_rpc_per_journal
+  lockFile: .labcentral-mutation.lock
+  lockFileMode: "0600"
+  crashBehavior: kernel_releases_lock_then_next_process_recovers_from_durable_checkpoint
+  cancellation: waiting_rpc_returns_without_provider_client_or_mutation
+  startupAdmission:
+    multiReplicaJournal: exact_shared_artifact_root_child
+    requiredRelativePath: proxmox-journal
+    filesystemSelfTest: independent_file_descriptions_must_exclude
+  remainingProductionEvidence: shared_RWX_filesystem_chaos_and_replica_failover
 requiredProtocolFeatures:
   - stable_instance_identity_before_plan
   - opaque-allocation-claims-v1
@@ -453,3 +466,11 @@ cases:
     testBinding: "providers/proxmox/upgrade_rehearsal_test.go#TestContractTESTPROXMOX028UpgradeReadabilityRunnerIsExplicitAndReadOnly"
     credentialedBinding: "providers/proxmox/upgrade_rehearsal_test.go#TestProxmoxT4UpgradeReadability"
     expect: {defaultMutations: 0, priorJournalChecksumsValidated: true, networkStateV10Readable: true, vmStateV10Readable: true, destroyTombstoneReadable: true, providerClientConstructed: false}
+  - id: TEST-PROXMOX-029
+    title: Shared journal serializes complete mutations across provider processes
+    layer: T0
+    testBinding: "providers/proxmox/execution_test.go#TestContractTESTPROXMOX029JournalLeasePrecedesProviderAccess"
+    companionBindings:
+      - "providers/proxmox/journal_test.go#TestInvocationJournalLeaseSerializesProviderProcesses"
+      - "cmd/labd/main_test.go#TestMultiReplicaProxmoxJournalMustUseSharedArtifactFilesystem"
+    expect: {crossProcessExclusion: true, cancellationBounded: true, crashRelease: true, nodeLocalJournalRejected: true, lockMode: "0600", mutationBeforeLease: false}

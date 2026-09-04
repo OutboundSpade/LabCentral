@@ -646,9 +646,6 @@ func validateConfig(configuration config) error {
 		if !filepath.IsAbs(configuration.artifactDir) || filepath.Clean(configuration.artifactDir) != configuration.artifactDir || configuration.artifactDir == "/" {
 			return fmt.Errorf("multi-replica mode requires an absolute clean non-root --artifact-dir")
 		}
-		if configuration.proxmoxPlugin != "" {
-			return fmt.Errorf("multi-replica mode does not yet support the process-local Proxmox invocation journal")
-		}
 		if configuration.authMode == httpapi.AuthModeNone {
 			return fmt.Errorf("multi-replica mode requires local or OIDC authentication")
 		}
@@ -1061,6 +1058,9 @@ func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParen
 	if err != nil {
 		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, fmt.Errorf("read Proxmox target configuration: %w", err)
 	}
+	if err := validateProxmoxJournalTopology(configuration, configEnvelope); err != nil {
+		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
+	}
 	example, err := proxmoxAuthoringExample(configEnvelope)
 	if err != nil {
 		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
@@ -1086,6 +1086,24 @@ func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParen
 		CredentialRef: &domain.SecretRef{Source: "file", Name: credentialPath, Key: "value"}, CredentialResolver: resolver,
 		ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures(),
 	}, client, example, nil
+}
+
+func validateProxmoxJournalTopology(configuration config, configEnvelope []byte) error {
+	if configuration.deploymentMode != deploymentModeMultiReplica {
+		return nil
+	}
+	var targetConfig proxmoxprovider.TargetConfig
+	if err := json.Unmarshal(configEnvelope, &targetConfig); err != nil {
+		return fmt.Errorf("decode Proxmox target configuration for shared journal validation")
+	}
+	expected := filepath.Join(configuration.artifactDir, "proxmox-journal")
+	if targetConfig.JournalDirectory != expected {
+		return fmt.Errorf("multi-replica Proxmox requires journalDirectory %q on the shared artifact filesystem", expected)
+	}
+	if _, err := proxmoxprovider.OpenInvocationJournal(expected); err != nil {
+		return fmt.Errorf("multi-replica Proxmox shared invocation journal is unavailable")
+	}
+	return nil
 }
 
 func proxmoxAuthoringExample(configEnvelope []byte) (httpapi.ProviderExample, error) {

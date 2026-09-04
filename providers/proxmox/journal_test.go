@@ -1,11 +1,15 @@
 package proxmox
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInvocationJournalSurvivesRestartWithProtectedChecksummedRecords(t *testing.T) {
@@ -34,13 +38,110 @@ func TestInvocationJournalSurvivesRestartWithProtectedChecksummedRecords(t *test
 		t.Fatalf("record = %#v, err = %v", got, err)
 	}
 	entries, err := os.ReadDir(directory)
-	if err != nil || len(entries) != 1 {
+	if err != nil || len(entries) != 2 {
 		t.Fatalf("entries = %d, err = %v", len(entries), err)
 	}
-	info, err := entries[0].Info()
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("record mode = %v, err = %v", info.Mode(), err)
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			t.Fatal(infoErr)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+			t.Fatalf("entry %s mode = %v", entry.Name(), info.Mode())
+		}
 	}
+}
+
+func TestInvocationJournalLeaseSerializesIndependentHandlesAndHonorsCancellation(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	first, err := OpenInvocationJournal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := OpenInvocationJournal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := first.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockedContext, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := second.Acquire(blockedContext); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second journal acquired a held process-safe lease: %v", err)
+	}
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	retryContext, retryCancel := context.WithTimeout(context.Background(), time.Second)
+	defer retryCancel()
+	retried, err := second.Acquire(retryContext)
+	if err != nil {
+		t.Fatalf("second journal did not acquire the released lease: %v", err)
+	}
+	if err := retried.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInvocationJournalLeaseSerializesProviderProcesses(t *testing.T) {
+	const directoryEnvironment = "LABCENTRAL_TEST_PROXMOX_JOURNAL_DIRECTORY"
+	const expectedEnvironment = "LABCENTRAL_TEST_PROXMOX_JOURNAL_EXPECTED"
+	if directory := os.Getenv(directoryEnvironment); directory != "" {
+		journal, err := OpenInvocationJournal(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+		defer cancel()
+		lease, err := journal.Acquire(ctx)
+		switch os.Getenv(expectedEnvironment) {
+		case "blocked":
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("child acquired parent-held lease: %v", err)
+			}
+		case "available":
+			if err != nil {
+				t.Fatalf("child did not acquire released lease: %v", err)
+			}
+			if err := lease.Close(); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatal("child lock expectation is invalid")
+		}
+		return
+	}
+
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenInvocationJournal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := journal.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runJournalChild := func(expected string) {
+		t.Helper()
+		command := exec.Command(os.Args[0], "-test.run=^TestInvocationJournalLeaseSerializesProviderProcesses$")
+		command.Env = append(os.Environ(), directoryEnvironment+"="+directory, expectedEnvironment+"="+expected)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("journal child %s failed: %v\n%s", expected, err, output)
+		}
+	}
+	runJournalChild("blocked")
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+	runJournalChild("available")
 }
 
 func TestInvocationJournalRejectsCorruptionUnknownVersionAndUnsafeModes(t *testing.T) {
@@ -80,6 +181,15 @@ func TestInvocationJournalRejectsCorruptionUnknownVersionAndUnsafeModes(t *testi
 	}
 	if _, err := OpenInvocationJournal(directory); err == nil || !strings.Contains(err.Error(), "0700") {
 		t.Fatalf("unsafe directory mode accepted: %v", err)
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(directory, journalLockName), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenInvocationJournal(directory); err == nil || !strings.Contains(err.Error(), "lock type or mode") {
+		t.Fatalf("unsafe lock mode accepted: %v", err)
 	}
 }
 

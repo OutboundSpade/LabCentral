@@ -413,6 +413,40 @@ func applyVMFixture(t *testing.T, fixture *executionFixture) *pluginv1.ResourceR
 	return result
 }
 
+func TestContractTESTPROXMOX029JournalLeasePrecedesProviderAccess(t *testing.T) {
+	fixture := newExecutionFixture(t)
+	var targetConfig TargetConfig
+	if err := json.Unmarshal(fixture.target.GetConfigEnvelope(), &targetConfig); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenInvocationJournal(targetConfig.JournalDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := journal.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	factoryCalls := 0
+	service := newT0MutationService(ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) {
+		factoryCalls++
+		return fixture.fake, nil
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	stream := &applyCapture{grpcServerStream: grpcServerStream{ctx: ctx}}
+	if err := service.ApplyResource(&pluginv1.ApplyResourceRequest{Input: fixture.vmInput}, stream); err != nil {
+		t.Fatal(err)
+	}
+	if len(stream.events) != 1 || stream.events[0].GetEvent().GetResult().GetError().GetCode() != "journal_unavailable" {
+		t.Fatalf("blocked mutation result = %#v", stream.events)
+	}
+	if factoryCalls != 0 || fixture.fake.cloneCalls != 0 {
+		t.Fatalf("provider accessed before journal lease: factory=%d clone=%d", factoryCalls, fixture.fake.cloneCalls)
+	}
+}
+
 func TestT0ApplyReadLifecycleDestroyAndRestartReplay(t *testing.T) {
 	fixture := newExecutionFixture(t)
 	result := applyVMFixture(t, fixture)
@@ -587,6 +621,9 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 			if err := prepared.journal.Write(prepared.record); err != nil {
 				t.Fatal(err)
 			}
+			if err := prepared.journal.Close(); err != nil {
+				t.Fatal(err)
+			}
 			baselineClone, baselineConfig, baselineStart := fixture.fake.cloneCalls, fixture.fake.configureCalls, fixture.fake.lifecycleCalls["start"]
 			restarted := newT0MutationService(ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) { return fixture.fake, nil }))
 			fixture.service = restarted
@@ -622,6 +659,9 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 		prepared.record.Phase = "destroy-submitted"
 		prepared.record.TaskUPID = fakeUPID("pve-a", "qmdestroy", 100).Raw
 		if err := prepared.journal.Write(prepared.record); err != nil {
+			t.Fatal(err)
+		}
+		if err := prepared.journal.Close(); err != nil {
 			t.Fatal(err)
 		}
 		restarted := newT0MutationService(ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) { return fixture.fake, nil }))
@@ -660,6 +700,9 @@ func TestContractTESTPROXMOX011RestartsAtEveryPersistedMutationCheckpoint(t *tes
 			prepared.record.Phase = checkpoint.phase
 			prepared.record.TaskUPID = fakeUPID("pve-a", checkpoint.taskType, 100).Raw
 			if err := prepared.journal.Write(prepared.record); err != nil {
+				t.Fatal(err)
+			}
+			if err := prepared.journal.Close(); err != nil {
 				t.Fatal(err)
 			}
 			restarted := newT0MutationService(ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) { return fixture.fake, nil }))

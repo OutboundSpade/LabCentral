@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,6 +20,7 @@ import (
 
 	httpapi "github.com/OutboundSpade/LabCentral/api/http"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	proxmoxprovider "github.com/OutboundSpade/LabCentral/providers/proxmox"
 )
 
 func TestDeploymentModeStorageContract(t *testing.T) {
@@ -58,7 +60,6 @@ func TestDeploymentModeStorageContract(t *testing.T) {
 		"default replica":    func(candidate *config) { candidate.replicaID = "local-worker" },
 		"local artifacts":    func(candidate *config) { candidate.artifactMode = artifactModeLocal },
 		"relative artifacts": func(candidate *config) { candidate.artifactDir = "artifacts" },
-		"Proxmox journal":    func(candidate *config) { candidate.proxmoxPlugin = "/opt/labcentral/lab-provider-proxmox" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := multi
@@ -67,6 +68,35 @@ func TestDeploymentModeStorageContract(t *testing.T) {
 				t.Fatal("unsafe multi-replica configuration was accepted")
 			}
 		})
+	}
+}
+
+func TestMultiReplicaProxmoxJournalMustUseSharedArtifactFilesystem(t *testing.T) {
+	shared := t.TempDir()
+	journalDirectory := filepath.Join(shared, "proxmox-journal")
+	if err := os.Mkdir(journalDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configuration := config{deploymentMode: deploymentModeMultiReplica, artifactDir: shared}
+	target := proxmoxprovider.TargetConfig{JournalDirectory: journalDirectory}
+	envelope, err := json.Marshal(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateProxmoxJournalTopology(configuration, envelope); err != nil {
+		t.Fatalf("valid shared journal rejected: %v", err)
+	}
+
+	target.JournalDirectory = filepath.Join(t.TempDir(), "proxmox-journal")
+	envelope, err = json.Marshal(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateProxmoxJournalTopology(configuration, envelope); err == nil || !strings.Contains(err.Error(), "shared artifact filesystem") {
+		t.Fatalf("journal outside shared artifacts accepted: %v", err)
+	}
+	if err := validateProxmoxJournalTopology(configuration, []byte(`{"journalDirectory":`)); err == nil || strings.Contains(err.Error(), "journalDirectory") {
+		t.Fatalf("invalid envelope was accepted or reflected: %v", err)
 	}
 }
 

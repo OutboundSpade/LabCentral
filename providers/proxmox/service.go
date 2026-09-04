@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
@@ -32,7 +31,6 @@ type Service struct {
 	sleep              func(time.Duration)
 	allowT0Mutation    bool
 	mutationAuthorizer MutationAuthorizer
-	executionMu        sync.Mutex
 }
 
 func NewService() *Service {
