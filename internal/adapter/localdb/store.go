@@ -1887,4 +1887,17 @@ func (s *Store) Close() error {
 	return nil
 }
 
+// Ping verifies that this process can still obtain and use a database
+// connection. It is intentionally narrower than migration or application
+// health and is used by the private readiness endpoint.
+func (s *Store) Ping(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("control-plane database is unavailable")
+	}
+	if err := s.db.PingContext(ctx); err != nil {
+		return fmt.Errorf("control-plane database ping failed: %w", err)
+	}
+	return nil
+}
+
 var _ controlplane.Store = (*Store)(nil)

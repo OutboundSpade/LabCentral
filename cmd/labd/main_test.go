@@ -211,6 +211,48 @@ func TestAuthenticationModeMustBeExplicit(t *testing.T) {
 	}
 }
 
+func TestObservabilityConfigurationFailsClosed(t *testing.T) {
+	base := config{observabilityListen: "127.0.0.1:9090", traceSampleRatio: 0.05}
+	if err := validateObservabilityConfig(base); err != nil {
+		t.Fatalf("valid private observability configuration: %v", err)
+	}
+	for name, mutate := range map[string]func(*config){
+		"hostname listener": func(candidate *config) { candidate.observabilityListen = "localhost:9090" },
+		"missing port":      func(candidate *config) { candidate.observabilityListen = "127.0.0.1" },
+		"excessive sample":  func(candidate *config) { candidate.traceSampleRatio = 1.01 },
+		"plaintext remote":  func(candidate *config) { candidate.otlpTracesEndpoint = "http://collector.example.test:4318/v1/traces" },
+		"endpoint secret": func(candidate *config) {
+			candidate.otlpTracesEndpoint = "https://user:password@collector.example.test/v1/traces"
+		},
+		"partial mTLS": func(candidate *config) {
+			candidate.otlpTracesEndpoint = "https://collector.example.test/v1/traces"
+			candidate.otlpTracesClientCertificate = "/run/secrets/client.crt"
+		},
+		"orphan CA": func(candidate *config) { candidate.otlpTracesCAFile = "/run/secrets/ca.crt" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := base
+			mutate(&candidate)
+			if err := validateObservabilityConfig(candidate); err == nil {
+				t.Fatal("unsafe observability configuration was accepted")
+			}
+		})
+	}
+	loopback := base
+	loopback.otlpTracesEndpoint = "http://127.0.0.1:4318/v1/traces"
+	if err := validateObservabilityConfig(loopback); err != nil {
+		t.Fatalf("loopback OTLP collector was rejected: %v", err)
+	}
+	https := base
+	https.otlpTracesEndpoint = "https://collector.example.test/v1/traces"
+	https.otlpTracesCAFile = "/run/secrets/ca.crt"
+	https.otlpTracesClientCertificate = "/run/secrets/client.crt"
+	https.otlpTracesClientKey = "/run/secrets/client.key"
+	if err := validateObservabilityConfig(https); err != nil {
+		t.Fatalf("mTLS OTLP collector was rejected: %v", err)
+	}
+}
+
 func TestFirstLocalStartupBootstrapsExactlyOnceFromPrivateFiles(t *testing.T) {
 	directory := t.TempDir()
 	keyringPath := filepath.Join(directory, "session-keys.json")
@@ -443,7 +485,7 @@ func TestPackagedProxmoxServiceUsesAdjacentChecksumFile(t *testing.T) {
 	if !strings.Contains(contents, "--proxmox-plugin=/opt/labcentral/lab-provider-proxmox") {
 		t.Fatal("packaged service does not select the Proxmox provider")
 	}
-	for _, required := range []string{"--auth-mode=${LABCENTRAL_AUTH_MODE}", "--public-origin=${LABCENTRAL_PUBLIC_ORIGIN}", "--session-keyring-file=${LABCENTRAL_SESSION_KEYRING_FILE}"} {
+	for _, required := range []string{"--auth-mode=${LABCENTRAL_AUTH_MODE}", "--public-origin=${LABCENTRAL_PUBLIC_ORIGIN}", "--session-keyring-file=${LABCENTRAL_SESSION_KEYRING_FILE}", "--observability-listen=${LABCENTRAL_OBSERVABILITY_LISTEN}"} {
 		if !strings.Contains(contents, required) {
 			t.Fatalf("packaged service is missing authenticated option %q", required)
 		}

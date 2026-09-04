@@ -46,6 +46,15 @@ The authoritative owner/control/test mapping is machine-readable in [`design/con
 - **Deployment-enforced:** management-plane separation, host/Kubernetes/Docker socket protection, TLS/key custody, database/artifact encryption/backups, plugin sandboxing, patching, reverse-proxy correctness.
 - **Operator-owned:** select suitable isolation, maintain safe base images, configure provider targets and allowlists, investigate leftovers/drift, rotate credentials, accept Docker laptop risks.
 
+Operational telemetry is a separate private deployment surface. Its listener is
+not routed through the public product origin; Kubernetes or host policy admits
+only the monitoring identity. Metrics contain fixed low-cardinality labels and
+never tenant/object IDs, raw paths/queries, or error strings. Exported server
+spans use only endpoint families plus HTTP method/status, and remote OTLP/HTTP
+requires TLS 1.3 with optional mTLS. Collector storage and access remain
+operator-controlled sensitive data. Tests seed tenant/token canaries through
+metrics and spans and require them to be absent.
+
 Access is a split trust path. Core alone decides whether a subject may use an exact instance/resource/method, stores only keyed launch/lease hashes, and re-evaluates current authorization at exchange and throughout a short active lease. The provider plugin receives the provider credential only while discovering one exact endpoint. The access plugin receives that bounded opaque endpoint but no provider credential, database connection, role policy, or unrelated tenant data. A malicious access plugin remains capable of abusing the endpoint it was given, so production deployment must verify its executable, isolate its OS/network identity, restrict its egress to the intended endpoint classes, and close all streams when authorization recheck is denied or unavailable. The browser never receives the provider management origin, console ticket, SSH CA, or callback credential.
 
 ## Docker laptop limitations

@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-03T21:43:37Z"
+verifiedAt: "2026-09-04T05:10:51Z"
 result: pass
-scope: phase_2_proxmox_single_operator_production_complete
+scope: task_prod_004_observability_checkpoint
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -70,6 +70,12 @@ commands:
   - exact af33267 packaged-provider TestCredentialedProxmoxT3Smoke, TestCredentialedProxmoxT3FailureRecovery, and TestCredentialedProxmoxT3Isolation on the disposable PVE 9.2.2 target
   - lab-proxmox-qualification sign and verify against exact af33267 binary/source/target/live-profile expectations
   - extracted labd Proxmox-only target status, HTTP validate/plan/create, durable ready-state restart, destroy, and independent PVE VMID/storage/task absence checks
+  - go test -count=1 ./... after the private operations and OTLP trace implementation
+  - go test -race -count=1 ./... after the private operations and OTLP trace implementation
+  - LABCENTRAL_TEST_POSTGRES_DSN=<isolated-postgresql-18-url> go test -count=1 ./internal/adapter/localdb ./internal/controlplane
+  - go vet ./... and python3 tools/verify_phase0.py after the production-observability contract
+  - bun run check && bun run build after public-handler instrumentation
+  - docker build the scratch image, then clean named-volume Compose start, /ready healthcheck, public request, metrics scrape, restart, and /ready healthcheck
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -239,7 +245,21 @@ checks:
   - exact_release_full_credentialed_t3_matrix
   - exact_release_signed_evidence_qualifies_without_reasons
   - packaged_public_api_create_restart_destroy_and_independent_absence
+  - separate_private_operations_listener
+  - process_liveness_and_dependency_backed_readiness
+  - shared_two_second_parallel_readiness_deadline
+  - prometheus_process_http_plugin_and_background_metrics
+  - metrics_exclude_path_query_tenant_token_and_error_values
+  - w3c_trace_context_and_otlp_http_export
+  - remote_tls_1_3_and_private_ca_mtls_trace_transport
+  - trace_attributes_exclude_path_query_tenant_and_token_values
+  - sse_flush_and_websocket_hijack_preserved_by_instrumentation
+  - baseline_prometheus_availability_plugin_and_error_alerts
+  - clean_named_volume_private_mountpoint_and_restart
 notes:
+  - The first TASK-PROD-004 checkpoint is intentionally partial. Kubernetes topology, process-safe shared Proxmox coordination, expanded queue/outbox/SLO metrics, automated encrypted recovery, resilience/load evidence, and signed publisher releases remain open.
+  - TEST-PROD-OBS-001 through TEST-PROD-OBS-007 passed normal and race-enabled CI. Metrics and recorded spans contained no seeded raw path, query, tenant, token, or error canaries.
+  - A real scratch-image/Compose rehearsal started from a newly created named volume, proved the copied-up state root was mode 0700, reached container healthy through /ready, served the public API, emitted bounded metrics, and remained healthy after restart. The disposable container and volumes created by both the diagnostic failure and passing rehearsal were removed.
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
   - The PostgreSQL container and its per-case schemas were removed after verification.

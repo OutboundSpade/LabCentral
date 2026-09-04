@@ -255,12 +255,14 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	for sourcePath, destination := range map[string]string{
+		"deploy/observability/prometheus-alerts.yaml":       "deploy/prometheus-alerts.yaml",
 		"deploy/proxmox/labcentral.service":              "deploy/labcentral.service",
 		"deploy/proxmox/environment.example":             "deploy/environment.example",
 		"deploy/proxmox/proxmox-target.json.example":     "deploy/proxmox-target.json.example",
 		"deploy/proxmox/proxmox-credential.json.example": "deploy/proxmox-credential.json.example",
 		"deploy/proxmox/proxmox-trust.json.example":      "deploy/proxmox-trust.json.example",
 		"docs/operations/proxmox-deployment.md":          "docs/proxmox-deployment.md",
+		"docs/operations/observability.md":               "docs/observability.md",
 	} {
 		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
 			return err

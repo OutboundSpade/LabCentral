@@ -48,6 +48,15 @@ canaries are scanned from stored payloads, and audit/event pair insertion is
 independently forced through a duplicate-event failure to prove there is no
 retained audit half.
 
+The first `TASK-PROD-004` suite is indexed by
+[`production-observability.yaml`](../../design/contracts/production-observability.yaml).
+It distinguishes process liveness from dependency-backed readiness, bounds all
+parallel readiness checks to one deadline, preserves SSE flush and WebSocket
+hijack behavior through HTTP instrumentation, and scans Prometheus exposition
+and recorded OTLP span attributes for raw paths, queries, tenant IDs, tokens,
+and error text. Startup configuration tests require TLS for every non-loopback
+OTLP endpoint and a complete certificate/key pair for mTLS.
+
 [`access-conformance.yaml`](../../design/contracts/access-conformance.yaml) binds
 all eighteen access cases to Go tests. Normal CI covers pre-plugin denial,
 exact endpoint/state/audience binding, tight expiry, one-winner exchange on both
@@ -92,6 +101,11 @@ The credentialed laptop smoke test is intentionally opt-in because it pulls imag
 `TASK-RELEASE-001` adds deterministic archive unit/integration checks and a credentialed Compose gate. The release check builds twice from one `SOURCE_DATE_EPOCH`, compares the compressed bytes, extracts the archive, verifies `SHA256SUMS` and the provider-specific checksum, and executes the packaged `labd --help`. Archive tests independently pin lexical entry order, fixed ownership/timestamps, directory/file modes, and byte-for-byte repeatability.
 
 The container gate builds from digest-pinned Go 1.27.1 and Bun 1.3.14 stages, inspects the `scratch` filesystem for only `labd`, `lab-provider-docker`, and its checksum, and checks the configured health command. The Compose gate confirms a read-only root filesystem, dropped capabilities, `no-new-privileges`, host networking, and distinct live `labd`/provider processes. It applies Example A, waits for `ready`, observes `{"service":"LabCentral Example A","visits":1}` through the provider-selected loopback URL, destroys the instance, finds zero labeled containers/networks/volumes, restarts the service to prove the destroyed record persisted, and finally removes the isolated test volume.
+
+The `TASK-PROD-004` observability checkpoint repeats a truly empty named-volume
+start after adding the private operations listener. It verifies the image's
+`0700` state mountpoint, container health through `/ready`, public server-info,
+metrics after live traffic, and a healthy restart using the same volume.
 
 `TASK-PROXMOX-001` adds the normal-CI T0 HTTPS discovery fake. `TASK-PROXMOX-004` extends T0 with closed-schema planning/state/journal tests, a stateful mutation fake, and an HTTPS method/path/form fake. Tests pin the API-token header, private-CA verification, redirect refusal, envelope/response/inventory bounds, provider-returned paths, deterministic evidence, every allowed mutation endpoint and safe field, committed claims/dependency state, ownership, optimistic config, UPID/task bounds, compensation, absence-confirmed destroy, lifecycle idempotency, restart at every checkpoint, and credential/guest/upstream canary absence. The default constructor is asserted closed; separate production-constructor tests require a non-nil authorizer and prove authorization on discovery plus fail-closed reviewer rejection. Build the binary with `make build-proxmox-provider`; the disposable testbed T3 evidence package and read-only cross-build T4 rehearsal pass.
 

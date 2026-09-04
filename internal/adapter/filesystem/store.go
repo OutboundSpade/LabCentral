@@ -83,6 +83,24 @@ func newStore(path string, verifySharedLock bool) (*Store, error) {
 
 func (s *Store) Close() error { return s.root.Close() }
 
+// Check verifies that the opened artifact root and its two required
+// directories remain available. It performs no mutation and exposes no path.
+func (s *Store) Check(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s == nil || s.root == nil {
+		return fmt.Errorf("artifact store is unavailable")
+	}
+	for _, name := range []string{".", stagingDirectory, objectsDirectory} {
+		info, err := s.root.Stat(name)
+		if err != nil || !info.IsDir() {
+			return fmt.Errorf("artifact store directory is unavailable")
+		}
+	}
+	return nil
+}
+
 func (s *Store) Stage(ctx context.Context, expected application.VerifiedManifest) (domain.UploadID, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err

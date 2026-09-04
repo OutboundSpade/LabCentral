@@ -672,6 +672,28 @@ func (c *Client) ExitError() error {
 	return c.process.result()
 }
 
+// CheckHealth performs one bounded runtime health RPC for private readiness
+// evaluation. It reports a terminated child even if the gRPC connection has
+// not observed closure yet.
+func (c *Client) CheckHealth(ctx context.Context) error {
+	if c == nil || c.Runtime == nil || c.process == nil {
+		return fmt.Errorf("plugin runtime is unavailable")
+	}
+	select {
+	case <-c.process.done:
+		return fmt.Errorf("plugin process exited")
+	default:
+	}
+	health, err := c.Runtime.Health(ctx, &pluginv1.HealthRequest{})
+	if err != nil {
+		return fmt.Errorf("plugin health RPC failed: %w", err)
+	}
+	if health.GetStatus() != pluginv1.HealthResponse_STATUS_HEALTHY {
+		return fmt.Errorf("plugin is not healthy")
+	}
+	return nil
+}
+
 func (c *Client) Logs() (stdout, stderr string) {
 	return c.stdout.String(), c.stderr.String()
 }

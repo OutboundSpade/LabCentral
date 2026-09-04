@@ -23,6 +23,7 @@ COPY . .
 COPY --from=web-build /src/web/build ./web/build
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p -m 0700 /out/data && \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     go build -trimpath -buildvcs=false -ldflags "-buildid= -s -w -X=main.version=$VERSION" -o /out/labd ./cmd/labd && \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
@@ -40,9 +41,10 @@ LABEL org.opencontainers.image.title="LabCentral" \
 COPY --from=go-build --chmod=0755 /out/labd /usr/local/bin/labd
 COPY --from=go-build --chmod=0755 /out/lab-provider-docker /usr/local/bin/lab-provider-docker
 COPY --from=go-build --chmod=0444 /out/lab-provider-docker.sha256 /usr/local/bin/lab-provider-docker.sha256
+COPY --from=go-build --chmod=0700 /out/data /var/lib/labcentral
 VOLUME ["/var/lib/labcentral"]
-EXPOSE 8080
+EXPOSE 8080 9090
 USER 0:0
 HEALTHCHECK --interval=10s --timeout=4s --start-period=10s --retries=3 CMD ["/usr/local/bin/labd", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/labd"]
-CMD ["--listen", "127.0.0.1:8080", "--data-dir", "/var/lib/labcentral", "--auth-mode", "none"]
+CMD ["--listen", "127.0.0.1:8080", "--observability-listen", "127.0.0.1:9090", "--data-dir", "/var/lib/labcentral", "--auth-mode", "none"]

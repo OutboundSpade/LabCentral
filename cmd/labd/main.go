@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -31,6 +32,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/authorization"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
+	"github.com/OutboundSpade/LabCentral/internal/observability"
 	"github.com/OutboundSpade/LabCentral/internal/pluginhost"
 	"github.com/OutboundSpade/LabCentral/internal/render"
 	dockerprovider "github.com/OutboundSpade/LabCentral/providers/docker"
@@ -52,6 +54,12 @@ const (
 
 type config struct {
 	listen                       string
+	observabilityListen          string
+	otlpTracesEndpoint           string
+	otlpTracesCAFile             string
+	otlpTracesClientCertificate  string
+	otlpTracesClientKey          string
+	traceSampleRatio             float64
 	dataDir                      string
 	deploymentMode               string
 	postgresDSNFile              string
@@ -104,7 +112,7 @@ func main() {
 func healthcheck() error {
 	endpoint := strings.TrimSpace(os.Getenv("LABCENTRAL_HEALTHCHECK_URL"))
 	if endpoint == "" {
-		endpoint = "http://127.0.0.1:8080/api/v1/server-info"
+		endpoint = "http://127.0.0.1:9090/ready"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -122,12 +130,13 @@ func healthcheck() error {
 	}
 	var info struct {
 		APIVersion string `json:"apiVersion"`
+		Status     string `json:"status"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil {
 		return fmt.Errorf("decode server info: %w", err)
 	}
-	if info.APIVersion != "v1" {
-		return fmt.Errorf("server reported unexpected API version %q", info.APIVersion)
+	if info.APIVersion != "v1" && info.Status != "ready" {
+		return fmt.Errorf("server reported an unexpected health contract")
 	}
 	return nil
 }
@@ -138,9 +147,29 @@ func run(logger *slog.Logger) error {
 }
 
 func runConfigured(logger *slog.Logger, configuration config) error {
+	configuration = withRuntimeDefaults(configuration)
 	if err := validateConfig(configuration); err != nil {
 		return err
 	}
+	otlpTLS, err := loadOTLPTLSConfiguration(configuration)
+	if err != nil {
+		return err
+	}
+	shutdownTracing, err := observability.ConfigureTracing(context.Background(), observability.TraceConfig{
+		Endpoint: configuration.otlpTracesEndpoint, ServiceVersion: version, ReplicaID: configuration.replicaID,
+		SampleRatio: configuration.traceSampleRatio, TLSConfig: otlpTLS,
+		OnError: func(error) { logger.Warn("OTLP trace export failed") },
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := shutdownTracing(shutdownContext); err != nil {
+			logger.Warn("OTLP trace shutdown failed")
+		}
+	}()
 	if configuration.dockerPlugin == "" && configuration.dockerPluginHash != "" {
 		return fmt.Errorf("--docker-plugin-sha256 requires --docker-plugin")
 	}
@@ -296,18 +325,61 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 			logger.Error("configured provider target discovery failed; cached evidence remains authoritative", "target", target, "error", err)
 		}
 	}
+	readinessChecks := []observability.Check{
+		{Name: "database", Run: store.Ping},
+		{Name: "artifacts", Run: artifacts.Check},
+	}
+	if dockerPlugin != nil {
+		client := dockerPlugin
+		readinessChecks = append(readinessChecks, observability.Check{Name: "docker_plugin", Run: client.CheckHealth})
+	}
+	if proxmoxPlugin != nil {
+		client := proxmoxPlugin
+		readinessChecks = append(readinessChecks, observability.Check{Name: "proxmox_plugin", Run: client.CheckHealth})
+	}
+	if accessPlugin != nil {
+		client := accessPlugin
+		readinessChecks = append(readinessChecks, observability.Check{Name: "access_plugin", Run: client.CheckHealth})
+	}
+	telemetry, err := observability.New(version, configuration.replicaID, readinessChecks)
+	if err != nil {
+		return err
+	}
+	if dockerPlugin != nil {
+		telemetry.SetPlugin("provider", "docker", true)
+	}
+	if proxmoxPlugin != nil {
+		telemetry.SetPlugin("provider", "proxmox", true)
+	}
+	if accessPlugin != nil {
+		telemetry.SetPlugin("access", "novnc", true)
+	}
+	operationsListener, err := net.Listen("tcp", configuration.observabilityListen)
+	if err != nil {
+		return fmt.Errorf("listen for operations: %w", err)
+	}
+	defer operationsListener.Close()
+	operationsServer := &http.Server{
+		Handler: telemetry.Handler(), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 10 * time.Second,
+		WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
+	}
+	operationsDone := make(chan error, 1)
+	go func() { operationsDone <- operationsServer.Serve(operationsListener) }()
 	refreshContext, cancelRefresh := context.WithCancel(ctx)
 	defer cancelRefresh()
-	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger)
+	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger, telemetry)
 	expirationContext, cancelExpiration := context.WithCancel(ctx)
 	defer cancelExpiration()
-	go sweepExpiredInstances(expirationContext, control, logger)
+	go sweepExpiredInstances(expirationContext, control, logger, telemetry)
 	if control.AccessAvailable() {
-		go sweepAccessSessions(expirationContext, control, logger)
+		go sweepAccessSessions(expirationContext, control, logger, telemetry)
 	}
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
 		Owner: configuration.replicaID, Authorizer: authenticationOptions.Authorizer,
-		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
+		OnError: func(err error) {
+			telemetry.ObserveBackground("durable_worker", err)
+			logger.Error("durable worker iteration failed", "error", err)
+		},
 	})
 	if err != nil {
 		return err
@@ -327,6 +399,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if accessPlugin != nil {
 		handler = withAccessProxy(handler, configuration.accessProxyListen)
 	}
+	handler = telemetry.InstrumentHTTP(handler)
 	server := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -348,8 +421,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		}
 		serveDone <- server.ServeTLS(listener, "", "")
 	}()
-	providerFailure := make(chan error, 2)
-	monitorProvider := func(label string, client *pluginhost.Client) {
+	telemetry.MarkStartupComplete()
+	providerFailure := make(chan error, 3)
+	monitorProvider := func(label, category, kind string, client *pluginhost.Client) {
 		if client == nil {
 			return
 		}
@@ -358,13 +432,14 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 			case <-ctx.Done():
 				return
 			case <-client.Done():
-				providerFailure <- fmt.Errorf("%s provider process exited: %v", label, client.ExitError())
+				telemetry.SetPlugin(category, kind, false)
+				providerFailure <- fmt.Errorf("%s plugin process exited: %v", label, client.ExitError())
 			}
 		}()
 	}
-	monitorProvider("Docker", dockerPlugin)
-	monitorProvider("Proxmox", proxmoxPlugin)
-	monitorProvider("noVNC access", accessPlugin)
+	monitorProvider("Docker", "provider", "docker", dockerPlugin)
+	monitorProvider("Proxmox", "provider", "proxmox", proxmoxPlugin)
+	monitorProvider("noVNC access", "access", "novnc", accessPlugin)
 	if configuration.authMode == httpapi.AuthModeNone {
 		logger.Warn("LabCentral started in no-auth development mode", "listen", listener.Addr().String(), "version", version, "warning", warning)
 	} else {
@@ -379,6 +454,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		if err := server.Shutdown(shutdownContext); err != nil {
 			return err
 		}
+		if err := operationsServer.Shutdown(shutdownContext); err != nil {
+			return err
+		}
 		if err := <-workerDone; err != nil {
 			return err
 		}
@@ -388,6 +466,11 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 			return nil
 		}
 		return err
+	case err := <-operationsDone:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("operations server stopped: %w", err)
 	case err := <-workerDone:
 		return fmt.Errorf("durable worker stopped: %w", err)
 	case err := <-providerFailure:
@@ -401,6 +484,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		if shutdownErr := server.Shutdown(shutdownContext); shutdownErr != nil {
 			return errors.Join(err, shutdownErr)
 		}
+		if shutdownErr := operationsServer.Shutdown(shutdownContext); shutdownErr != nil {
+			return errors.Join(err, shutdownErr)
+		}
 		if workerErr := <-workerDone; workerErr != nil {
 			return errors.Join(err, workerErr)
 		}
@@ -408,7 +494,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	}
 }
 
-func refreshProviderTargets(ctx context.Context, control *controlplane.Service, targets []domain.ProviderTargetID, logger *slog.Logger) {
+func refreshProviderTargets(ctx context.Context, control *controlplane.Service, targets []domain.ProviderTargetID, logger *slog.Logger, telemetry *observability.System) {
 	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -417,7 +503,9 @@ func refreshProviderTargets(ctx context.Context, control *controlplane.Service, 
 			return
 		case <-ticker.C:
 			for _, target := range targets {
-				if err := control.RefreshTarget(ctx, target); err != nil {
+				err := control.RefreshTarget(ctx, target)
+				telemetry.ObserveBackground("target_refresh", err)
+				if err != nil {
 					logger.Error("provider target refresh failed; cached evidence remains authoritative", "target", target, "error", err)
 				}
 			}
@@ -425,10 +513,11 @@ func refreshProviderTargets(ctx context.Context, control *controlplane.Service, 
 	}
 }
 
-func sweepExpiredInstances(ctx context.Context, control *controlplane.Service, logger *slog.Logger) {
+func sweepExpiredInstances(ctx context.Context, control *controlplane.Service, logger *slog.Logger, telemetry *observability.System) {
 	const batchSize = uint32(200)
 	run := func() {
 		result, err := control.RunExpirationSweep(ctx, batchSize)
+		telemetry.ObserveBackground("expiration_sweep", err)
 		if err != nil {
 			if ctx.Err() == nil {
 				logger.Error("instance expiration sweep failed", "error", err)
@@ -453,10 +542,11 @@ func sweepExpiredInstances(ctx context.Context, control *controlplane.Service, l
 	}
 }
 
-func sweepAccessSessions(ctx context.Context, control *controlplane.Service, logger *slog.Logger) {
+func sweepAccessSessions(ctx context.Context, control *controlplane.Service, logger *slog.Logger, telemetry *observability.System) {
 	const batchSize = uint32(200)
 	run := func() {
 		result, err := control.RunAccessReconciliation(ctx, batchSize)
+		telemetry.ObserveBackground("access_sweep", err)
 		if err != nil {
 			if ctx.Err() == nil {
 				logger.Error("access session reconciliation failed", "error", err)
@@ -486,6 +576,12 @@ func parseFlags() config {
 	defaultPlugin := filepath.Join(filepath.Dir(executable), "lab-provider-docker")
 	var result config
 	flag.StringVar(&result.listen, "listen", "127.0.0.1:8080", "HTTP listen address")
+	flag.StringVar(&result.observabilityListen, "observability-listen", "127.0.0.1:9090", "private operations listen address for /live, /ready, and /metrics")
+	flag.StringVar(&result.otlpTracesEndpoint, "otlp-traces-endpoint", "", "optional exact OTLP/HTTP traces endpoint")
+	flag.StringVar(&result.otlpTracesCAFile, "otlp-traces-ca-file", "", "optional protected PEM CA for the OTLP/HTTP endpoint")
+	flag.StringVar(&result.otlpTracesClientCertificate, "otlp-traces-client-certificate-file", "", "optional protected PEM client certificate for OTLP mTLS")
+	flag.StringVar(&result.otlpTracesClientKey, "otlp-traces-client-key-file", "", "optional owner-only PEM client key for OTLP mTLS")
+	flag.Float64Var(&result.traceSampleRatio, "trace-sample-ratio", 0.05, "root trace sample ratio from 0 to 1")
 	flag.StringVar(&result.dataDir, "data-dir", "./labcentral-data", "local SQLite, artifact, and runtime directory")
 	flag.StringVar(&result.deploymentMode, "deployment-mode", deploymentModeSingleNode, "deployment topology: single-node or multi-replica")
 	flag.StringVar(&result.postgresDSNFile, "postgres-dsn-file", "", "owner-only file containing the PostgreSQL connection URL")
@@ -523,6 +619,9 @@ func parseFlags() config {
 }
 
 func validateConfig(configuration config) error {
+	if err := validateObservabilityConfig(configuration); err != nil {
+		return err
+	}
 	if configuration.authMode == "" {
 		return fmt.Errorf("--auth-mode must be explicitly set to none, local, or oidc")
 	}
@@ -598,6 +697,89 @@ func validateConfig(configuration config) error {
 		return err
 	}
 	return nil
+}
+
+func validateObservabilityConfig(configuration config) error {
+	configuration = withRuntimeDefaults(configuration)
+	host, port, err := net.SplitHostPort(configuration.observabilityListen)
+	if err != nil || port == "" || net.ParseIP(host) == nil {
+		return fmt.Errorf("--observability-listen must be an explicit IP address and port")
+	}
+	if configuration.traceSampleRatio < 0 || configuration.traceSampleRatio > 1 {
+		return fmt.Errorf("--trace-sample-ratio must be between 0 and 1")
+	}
+	clientPairConfigured := configuration.otlpTracesClientCertificate != "" || configuration.otlpTracesClientKey != ""
+	if (configuration.otlpTracesClientCertificate == "") != (configuration.otlpTracesClientKey == "") {
+		return fmt.Errorf("OTLP client certificate and key must be configured together")
+	}
+	if configuration.otlpTracesEndpoint == "" {
+		if configuration.otlpTracesCAFile != "" || clientPairConfigured {
+			return fmt.Errorf("OTLP TLS inputs require --otlp-traces-endpoint")
+		}
+		return nil
+	}
+	endpoint, err := url.Parse(configuration.otlpTracesEndpoint)
+	if err != nil || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || endpoint.String() != configuration.otlpTracesEndpoint {
+		return fmt.Errorf("--otlp-traces-endpoint must be an exact URL without user information, query, or fragment")
+	}
+	switch endpoint.Scheme {
+	case "https":
+		return nil
+	case "http":
+		hostname := endpoint.Hostname()
+		ip := net.ParseIP(hostname)
+		if hostname != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return fmt.Errorf("plaintext OTLP is allowed only to an explicit loopback collector")
+		}
+		if configuration.otlpTracesCAFile != "" || clientPairConfigured {
+			return fmt.Errorf("OTLP TLS inputs cannot be used with a plaintext endpoint")
+		}
+		return nil
+	default:
+		return fmt.Errorf("--otlp-traces-endpoint must use HTTPS or loopback HTTP")
+	}
+}
+
+func withRuntimeDefaults(configuration config) config {
+	if configuration.observabilityListen == "" {
+		configuration.observabilityListen = "127.0.0.1:9090"
+	}
+	return configuration
+}
+
+func loadOTLPTLSConfiguration(configuration config) (*tls.Config, error) {
+	if configuration.otlpTracesEndpoint == "" || strings.HasPrefix(configuration.otlpTracesEndpoint, "http://") {
+		return nil, nil
+	}
+	result := &tls.Config{MinVersion: tls.VersionTLS13}
+	if configuration.otlpTracesCAFile != "" {
+		certificateBytes, err := readRegularFile(configuration.otlpTracesCAFile, 4<<20)
+		if err != nil {
+			return nil, fmt.Errorf("read OTLP CA: %w", err)
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(certificateBytes) {
+			return nil, fmt.Errorf("parse OTLP CA: no certificates found")
+		}
+		result.RootCAs = roots
+	}
+	if configuration.otlpTracesClientCertificate != "" {
+		certificateBytes, err := readRegularFile(configuration.otlpTracesClientCertificate, 4<<20)
+		if err != nil {
+			return nil, fmt.Errorf("read OTLP client certificate: %w", err)
+		}
+		privateKeyBytes, err := readPrivateRegularFile(configuration.otlpTracesClientKey, 4<<20)
+		if err != nil {
+			return nil, fmt.Errorf("read OTLP client key: %w", err)
+		}
+		pair, err := tls.X509KeyPair(certificateBytes, privateKeyBytes)
+		clear(privateKeyBytes)
+		if err != nil {
+			return nil, fmt.Errorf("parse OTLP client certificate and key: %w", err)
+		}
+		result.Certificates = []tls.Certificate{pair}
+	}
+	return result, nil
 }
 
 func configureHTTPAuthentication(ctx context.Context, configuration config, store *localdb.Store) (httpapi.AuthenticationOptions, error) {

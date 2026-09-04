@@ -22,6 +22,11 @@ The server always refuses a non-loopback no-auth listener. No-auth is an explici
 - `make image VERSION=<version> IMAGE=<tag>` uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing only the two static executables and provider checksum. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
 - `docker compose up -d --build` persists `/var/lib/labcentral` in the named `labcentral-data` volume, mounts the explicitly selected `${DOCKER_SOCKET_PATH:-/var/run/docker.sock}`, and uses host networking. `LABCENTRAL_PORT`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` override the loopback port, image, and volume name. `docker compose down` preserves state; `docker compose down --volumes` deliberately removes it.
 
+The scratch image creates `/var/lib/labcentral` as mode `0700` before declaring
+it as a volume, so Docker's first-use copy-up preserves the private mountpoint
+required by `labd`. A clean named-volume start and restart are executable gates;
+the data layout remains at the original mount root.
+
 Host networking is part of the laptop correctness boundary: it preserves a true host-loopback no-auth listener and lets the containerized control plane probe provider-published `127.0.0.1` ports. It is supported directly by Docker Engine on Linux; Docker Desktop 4.34 or newer requires the host-networking setting to be enabled. This Compose form is not declared supported on other platforms.
 
 The image runs as root because common Linux Docker sockets are root-owned. A read-only socket bind prevents changing the socket inode through that mount; it does **not** make Docker Engine commands read-only. Anyone controlling `labd` or its provider through this socket effectively controls the Docker host. Compose also uses a read-only root filesystem, drops Linux capabilities, applies `no-new-privileges`, bounds PIDs, and mounts only the selected socket and data volume, but none of those settings reduce Docker socket authority. The socket never reaches created lab guests.
@@ -59,6 +64,25 @@ The current executable is configured with explicit flags; secret values are read
 Use OpenTelemetry-compatible traces/metrics and structured JSON logs. Required dimensions: request/operation/instance/resource/target/plugin/invocation IDs, error class, lifecycle timings; tenant/user IDs are access-controlled and bounded to avoid metric cardinality. Metrics cover API latency/errors, queue depth/lease age, operation duration/result, plugin health/restarts, target capability age, resource lifecycle, outbox lag, access sessions, and cleanup leftovers. Trace/log field allowlists and secret tainting prevent values from entering telemetry.
 
 Health endpoints distinguish liveness (process), readiness (database/migrations/artifacts/worker eligibility), and degraded dependencies (individual plugins/targets do not necessarily make all API unready).
+
+The first `TASK-PROD-004` runtime checkpoint implements a separate operations
+listener (loopback `127.0.0.1:9090` by default) with `/live`, `/ready`, and
+`/metrics`. Readiness starts only after startup preflight, plugin handshakes,
+initial target refresh, and worker construction, then checks database,
+artifact-root, and configured-plugin health in parallel under one two-second
+deadline. A target capability outage remains degraded target state rather than
+making every API replica unready. Prometheus metrics use fixed method/status,
+endpoint-family, component, plugin, and check labels; object, tenant, request
+path/query, and error values are prohibited.
+
+Opt-in OTLP/HTTP server spans use W3C trace context and the same fixed endpoint
+families. Remote export requires TLS 1.3 or newer and may use private-CA mTLS;
+plaintext is accepted only to a loopback Collector. Raw URL paths, queries,
+tenant/object identifiers, and error strings are not trace attributes. The
+operator contract, alert rules, and certificate rotation procedure are in
+[`../operations/observability.md`](../operations/observability.md). Queue/outbox,
+operation-SLO, access-session, and cleanup-leftover instrumentation remains in
+the next production-observability slice.
 
 ## Upgrade
 

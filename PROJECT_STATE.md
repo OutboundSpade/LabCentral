@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. The final supported classroom topology follows in `TASK-PROD-004`.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its first production-observability checkpoint is implemented but the topology, resilience, and signed-release gates remain open.
 **Updated:** 2026-09-04
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -104,6 +104,18 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   browser sees only a same-origin, token-free noVNC route. All eighteen normal
   or protected `TEST-ACCESS-*` bindings exist and SQLite/PostgreSQL access-state
   conformance passes.
+- The first `TASK-PROD-004` checkpoint adds a separate private operations
+  listener with process liveness, database/artifact/plugin-backed readiness,
+  Prometheus runtime/API/plugin/background metrics, fixed-cardinality labels,
+  and opt-in W3C/OTLP HTTP server traces. Remote trace export requires TLS 1.3
+  and supports private-CA mTLS; metrics and trace tests reject path, query,
+  tenant, token, and error-text canaries. Native/Compose healthchecks now use
+  `/ready`, the deterministic release includes baseline Prometheus alerts and
+  an observability/identity-rotation runbook, and the public Huma API remains
+  separate from the operations listener. A clean-volume Compose rehearsal also
+  corrected the scratch image's state mountpoint to mode `0700`; fresh named
+  volumes now start without weakening `labd`'s private-directory refusal and
+  retain the existing on-volume layout across restart.
 
 ## Open questions and risks
 
