@@ -192,6 +192,17 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   `d5686a105ace30c8977ec4d324f2b3e7e66064e071cb1469b3d3d2c5c7b28b33`;
   the external/archive-wide checksums, packaged executable smoke, release
   inventory, compatibility matrix, and verification guide all passed.
+- Clean revision `961e826` was compiled into protected-runner test binary
+  SHA-256 `b30e33abaf5b20fd2de2ad2149a956c1a74b3ffa9ba9fe4e7372790f9c5db2c2`.
+  On the disposable PVE 9.2.2 target, a fresh lifecycle smoke passed in 72.39
+  seconds and the real failure/recovery matrix passed in 177.63 seconds. The
+  isolated `lc-runner` then passed the three-guest probe in 140.25 seconds:
+  intended traffic 3/3, management 0/3, cross-Instance 0/3, transcript
+  `sha256:2bc75441926c5a9e11ca0625be4e168bc3834f39d25e8a957698ed155f100500`,
+  followed by owned reverse cleanup. The temporary runner credential and
+  staged secrets/binary were removed. This target remains intentionally capped
+  at three VMs and two VLANs, so it supplies current-build functional evidence,
+  not the still-open 100-VM live load/soak claim or a new reviewer signature.
 
 ## Open questions and risks
 
