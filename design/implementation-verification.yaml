@@ -1,15 +1,20 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T05:28:59Z"
+verifiedAt: "2026-09-04T06:25:17Z"
 result: pass
-scope: task_prod_004_shared_proxmox_coordination_checkpoint
+scope: task_prod_004_kubernetes_topology_checkpoint
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
   dockerEngine: "29.7.2 / API 1.55 / linux amd64"
   dockerCompose: "5.5.0"
   dockerBuildx: "0.36.1"
+  kubernetes: "k3s v1.34.6+k3s1 / kustomize v5.7.1"
 commands:
   - BUFBIN=<buf-1.72.0> BUN=<bun-1.3.14> python3 tools/verify_phase0.py
+  - kubectl kustomize deploy/kubernetes
+  - kubectl apply --dry-run=server against disposable k3s v1.34.6
+  - make image VERSION=topology-check IMAGE=labcentral:topology-check
+  - inspect/export Kubernetes-capable scratch image filesystem and runtime configuration; remove disposable image
   - buf lint && buf generate
   - go test -count=1 ./...
   - go test -race -count=1 ./...
@@ -266,15 +271,20 @@ checks:
   - multi_replica_proxmox_journal_bound_to_shared_artifact_root
   - test_proxmox_029_shared_provider_process_coordination
 notes:
-  - TASK-PROD-004 remains intentionally partial. Kubernetes topology, dedicated plugin container identities, expanded queue/outbox/SLO metrics, automated encrypted recovery, shared-RWX failover/chaos evidence, load evidence, and signed publisher releases remain open.
+  - TASK-PROD-004 remains intentionally partial. Native multi-service assets, expanded queue/outbox/SLO metrics, automated encrypted recovery, shared-RWX failover/chaos evidence, 100-instance load/soak evidence, disaster-recovery evidence, and signed publisher releases remain open.
+  - TEST-PROD-TOPOLOGY-001 through TEST-PROD-TOPOLOGY-006 passed. The checked-in base remains fail-closed behind an all-zero OCI digest, RFC 5737 egress sentinels, and separately created configuration/secrets.
+  - Disposable k3s v1.34.6 accepted the rendered Namespace, ServiceAccount, Services, PVC, StatefulSet, PDB, and NetworkPolicies under server-side dry-run with Restricted Pod Security. The temporary namespace was deleted and the pre-existing disabled k3s service was returned to inactive state.
+  - Attached provider startup passed with host-first and provider-first ordering over exact 0770/0660 IPC, protected token-file authentication, separate plugin identity, and persistent-health-failure supervision. These tests used local Unix sockets and contacted no provider.
+  - The topology-check scratch image built successfully and exported labd, all three official runtime binaries/checksums, the Proxmox source digest, and the system CA bundle without a shell or toolchain. It was a disposable working-tree build, not signed release evidence, and was removed after inspection.
+  - The full normal and race-enabled Go suites passed with the disposable PostgreSQL 18 test database. The existing operator-provided test container was retained; every test used its own isolated schema.
   - TEST-PROD-OBS-001 through TEST-PROD-OBS-007 passed normal and race-enabled CI. Metrics and recorded spans contained no seeded raw path, query, tenant, token, or error canaries.
   - A real scratch-image/Compose rehearsal started from a newly created named volume, proved the copied-up state root was mode 0700, reached container healthy through /ready, served the public API, emitted bounded metrics, and remained healthy after restart. The disposable container and volumes created by both the diagnostic failure and passing rehearsal were removed.
   - Protocol v1.1 is additive; the original descriptor remains the Buf FILE breaking baseline and the Docker provider continues to negotiate v1.0.
   - Fourteen allocation cases passed normal SQLite CI; all applicable cases and the existing job suite passed three race-enabled repetitions on isolated PostgreSQL 18.
-  - The PostgreSQL container and its per-case schemas were removed after verification.
+  - The earlier PostgreSQL verification container and its per-case schemas were removed after that checkpoint. The current operator-provided disposable PostgreSQL 18 container was retained, while every current test removed its own isolated schema.
   - The Proxmox QEMU T0 suite used only in-memory and local TLS fake APIs with synthetic token/guest/upstream canaries; it contacted no Proxmox target and performed no external mutation.
   - Every TEST-PROXMOX-001 through TEST-PROXMOX-029 case has an executable normal-CI binding. The required target-applicable credentialed T3 cases, real guest probes, signed artifact assembly, and read-only prior-build state/journal rehearsal passed on the disposable testbed.
-  - TEST-PROXMOX-029 used an actual child test process plus independent file descriptions to prove journal-wide advisory exclusion and canceled wait behavior. Multi-replica startup now admits Proxmox only when the signed journal path is the exact proxmox-journal child of the already verified shared artifact root. No Proxmox endpoint was contacted.
+  - TEST-PROXMOX-029 used an actual child test process plus independent file descriptions to prove journal-wide advisory exclusion and canceled wait behavior. Multi-replica startup now admits Proxmox only when the signed journal path is the exact proxmox-journal sibling of the artifact directory on the already verified shared mount. No Proxmox endpoint was contacted.
   - TEST-PROXMOX-023 used an in-process protocol-v1.1 gRPC provider, synthetic scoped credential canary, and migrated SQLite store; it contacted no external endpoint.
   - TEST-PROXMOX-024 used deterministic synthetic evidence and an in-memory Ed25519 key; it contacted no external endpoint and did not change the production provider gate.
   - The qualification review tool creates protected non-overwriting Ed25519 reviewer keypairs and signs or verifies only closed evidence files. It has no provider client, target execution, claim mutation, or self-approval command; the native release includes it so reviewers can work from an offline host.
@@ -301,7 +311,7 @@ notes:
   - Two consecutive WEB_VERSION=dev builds with source scanning bounded to web/src had identical content-tree SHA-256 052b33c10a58f9b68ec2d04ebec03e3002bdaf5d70b1c9f9a1b1aa5917b4f05e.
   - Two native linux/amd64 archives built from the same source epoch had identical SHA-256 2d9fd674c84eaabb2dcdf337f6c6eec50cc04f623d843e42da678d67558a8238; every packaged checksum verified.
   - The emitted SBOM passed the official CycloneDX 1.6 JSON schema with 142 application/library components.
-  - The final scratch image was 14,895,823 compressed bytes and exported only labd, lab-provider-docker, and the provider checksum beyond Docker runtime mount points; no shell or build toolchain was present.
+  - The earlier laptop-release scratch image was 14,895,823 compressed bytes and exported only labd, lab-provider-docker, and the provider checksum beyond Docker runtime mount points; no shell or build toolchain was present.
   - Compose exposed labd only at 127.0.0.1:18082 through host networking. docker top showed docker-init, labd, and a distinct lab-provider-docker child.
   - The first request immediately after ready received one connection reset; the bounded retry returned {"service":"LabCentral Example A","visits":1}. Destroy then left zero labeled objects.
   - Restarting the Compose service retained the destroyed instance record in the named volume. The isolated test container and volume were removed after verification.

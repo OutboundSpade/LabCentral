@@ -51,7 +51,7 @@ release:
 	$(GO) run ./tools/release -version "$(VERSION)" -goos "$(RELEASE_GOOS)" -goarch "$(RELEASE_GOARCH)"
 
 image:
-	$(DOCKER) build --build-arg VERSION="$(VERSION)" --build-arg VCS_REF="$(VCS_REF)" --tag "$(IMAGE)" .
+	$(DOCKER) build --build-arg VERSION="$(VERSION)" --build-arg VCS_REF="$(VCS_REF)" --build-arg PROXMOX_SOURCE_TREE_DIGEST="$(PROXMOX_SOURCE_TREE_DIGEST)" --tag "$(IMAGE)" .
 
 compose-config:
 	LABCENTRAL_VERSION="$(VERSION)" LABCENTRAL_VCS_REF="$(VCS_REF)" $(DOCKER) compose config --quiet

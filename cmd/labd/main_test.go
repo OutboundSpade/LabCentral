@@ -17,10 +17,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	httpapi "github.com/OutboundSpade/LabCentral/api/http"
+	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/pluginhost"
 	proxmoxprovider "github.com/OutboundSpade/LabCentral/providers/proxmox"
+	"google.golang.org/grpc"
 )
 
 func TestDeploymentModeStorageContract(t *testing.T) {
@@ -73,11 +77,12 @@ func TestDeploymentModeStorageContract(t *testing.T) {
 
 func TestMultiReplicaProxmoxJournalMustUseSharedArtifactFilesystem(t *testing.T) {
 	shared := t.TempDir()
+	artifactDirectory := filepath.Join(shared, "artifacts")
 	journalDirectory := filepath.Join(shared, "proxmox-journal")
 	if err := os.Mkdir(journalDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	configuration := config{deploymentMode: deploymentModeMultiReplica, artifactDir: shared}
+	configuration := config{deploymentMode: deploymentModeMultiReplica, artifactDir: artifactDirectory}
 	target := proxmoxprovider.TargetConfig{JournalDirectory: journalDirectory}
 	envelope, err := json.Marshal(target)
 	if err != nil {
@@ -92,11 +97,115 @@ func TestMultiReplicaProxmoxJournalMustUseSharedArtifactFilesystem(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateProxmoxJournalTopology(configuration, envelope); err == nil || !strings.Contains(err.Error(), "shared artifact filesystem") {
+	if err := validateProxmoxJournalTopology(configuration, envelope); err == nil || !strings.Contains(err.Error(), "shared artifact directory") {
 		t.Fatalf("journal outside shared artifacts accepted: %v", err)
 	}
 	if err := validateProxmoxJournalTopology(configuration, []byte(`{"journalDirectory":`)); err == nil || strings.Contains(err.Error(), "journalDirectory") {
 		t.Fatalf("invalid envelope was accepted or reflected: %v", err)
+	}
+}
+
+func TestExternalPluginModeIsExplicitAndExclusive(t *testing.T) {
+	base := config{
+		deploymentMode: deploymentModeSingleNode, replicaID: "local-worker", artifactMode: artifactModeLocal,
+		authMode: httpapi.AuthModeNone, dockerPluginRuntimeDir: "/run/labcentral/docker", dockerPluginTokenFile: "/run/secrets/docker-token", dockerPluginInstanceID: "plugin.test-docker",
+	}
+	if err := validateConfig(base); err != nil {
+		t.Fatalf("valid external plugin configuration: %v", err)
+	}
+	for name, mutate := range map[string]func(*config){
+		"missing token":      func(candidate *config) { candidate.dockerPluginTokenFile = "" },
+		"relative runtime":   func(candidate *config) { candidate.dockerPluginRuntimeDir = "run/docker" },
+		"local and external": func(candidate *config) { candidate.dockerPlugin = "/opt/lab-provider-docker" },
+		"hash without local": func(candidate *config) { candidate.dockerPluginHash = strings.Repeat("a", 64) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := base
+			mutate(&candidate)
+			if err := validateConfig(candidate); err == nil {
+				t.Fatal("unsafe plugin execution mode was accepted")
+			}
+		})
+	}
+	accessWithoutProvider := base
+	accessWithoutProvider.accessPluginRuntimeDir = "/run/labcentral/access"
+	accessWithoutProvider.accessPluginTokenFile = "/run/secrets/access-token"
+	accessWithoutProvider.accessPluginInstanceID = "plugin.test-access"
+	if err := validateConfig(accessWithoutProvider); err == nil || !strings.Contains(err.Error(), "browser console access") {
+		t.Fatalf("external access plugin without Proxmox/authentication error = %v", err)
+	}
+}
+
+func TestAttachedPluginMonitorRequiresConsecutiveFailures(t *testing.T) {
+	runtimeClient := &sequencedRuntimeClient{healthy: []bool{false, true, false, false}}
+	client := &pluginhost.Client{Runtime: runtimeClient}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := waitForAttachedPluginFailure(ctx, client, time.Millisecond, 2); err == nil || !strings.Contains(err.Error(), "2 consecutive") {
+		t.Fatalf("attached plugin monitor error = %v", err)
+	}
+	if calls := runtimeClient.calls.Load(); calls != 4 {
+		t.Fatalf("health calls = %d, want 4", calls)
+	}
+}
+
+type sequencedRuntimeClient struct {
+	healthy []bool
+	calls   atomic.Int32
+}
+
+func (client *sequencedRuntimeClient) Health(context.Context, *pluginv1.HealthRequest, ...grpc.CallOption) (*pluginv1.HealthResponse, error) {
+	call := int(client.calls.Add(1)) - 1
+	healthy := call < len(client.healthy) && client.healthy[call]
+	status := pluginv1.HealthResponse_STATUS_UNHEALTHY
+	if healthy {
+		status = pluginv1.HealthResponse_STATUS_HEALTHY
+	}
+	return &pluginv1.HealthResponse{Status: status}, nil
+}
+
+func TestPluginRegistrationTokenFileAllowsOnlyOwnerOrReadOnlyGroup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plugin-token")
+	token := strings.Repeat("b", 64)
+	if err := os.WriteFile(path, []byte(token+"\n"), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := readPluginRegistrationTokenFile(path)
+	if err != nil || string(trimOneLineEnding(contents)) != token {
+		t.Fatalf("read group-projected token: %v", err)
+	}
+	clear(contents)
+	for _, mode := range []os.FileMode{0o444, 0o460, 0o660} {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readPluginRegistrationTokenFile(path); err == nil || strings.Contains(err.Error(), token) {
+			t.Fatalf("unsafe mode %o accepted or reflected: %v", mode, err)
+		}
+	}
+}
+
+func TestOrchestratorProjectedSecretRequiresExplicitReadOnlyGroupOptIn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "projected-secret")
+	canary := []byte("projected-secret-canary")
+	if err := os.WriteFile(path, canary, 0o440); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readConfiguredSecretFile(config{}, path, 1024); err == nil {
+		t.Fatal("group-readable secret was accepted without orchestrator opt-in")
+	}
+	contents, err := readConfiguredSecretFile(config{allowGroupReadableSecrets: true}, path, 1024)
+	if err != nil || string(contents) != string(canary) {
+		t.Fatalf("read group-projected secret = %q, %v", contents, err)
+	}
+	clear(contents)
+	for _, mode := range []os.FileMode{0o444, 0o460, 0o660} {
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readConfiguredSecretFile(config{allowGroupReadableSecrets: true}, path, 1024); err == nil || strings.Contains(err.Error(), string(canary)) {
+			t.Fatalf("unsafe projected-secret mode %o accepted or reflected: %v", mode, err)
+		}
 	}
 }
 

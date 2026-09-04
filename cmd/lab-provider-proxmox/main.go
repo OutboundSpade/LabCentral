@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
@@ -29,9 +30,16 @@ func main() {
 	flags.SetOutput(io.Discard)
 	qualificationDocument := flags.String("qualification-document", "", "signed qualification evidence")
 	qualificationTrust := flags.String("qualification-trust", "", "qualification reviewer trust policy")
+	journalDirectory := flags.String("initialize-journal-directory", "", "create and verify the configured shared invocation journal directory")
 	if err := flags.Parse(os.Args[1:]); err != nil || flags.NArg() != 0 {
 		logger.Error("parse Proxmox provider arguments")
 		os.Exit(1)
+	}
+	if *journalDirectory != "" {
+		if err := prepareJournalDirectory(*journalDirectory); err != nil {
+			logger.Error("prepare Proxmox invocation journal")
+			os.Exit(1)
+		}
 	}
 	buildDigest := executableDigest()
 	service := proxmox.NewService()
@@ -86,6 +94,29 @@ func main() {
 		logger.Error("serve Proxmox provider plugin", "error", err)
 		os.Exit(1)
 	}
+}
+
+func prepareJournalDirectory(path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" {
+		return fmt.Errorf("journal path is invalid")
+	}
+	parent := filepath.Dir(path)
+	resolvedParent, resolveErr := filepath.EvalSymlinks(parent)
+	parentInfo, parentErr := os.Lstat(parent)
+	if resolveErr != nil || parentErr != nil || resolvedParent != parent || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 || parentInfo.Mode().Perm()&0o002 != 0 {
+		return fmt.Errorf("journal parent must be a protected real directory")
+	}
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(path, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create journal directory: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("inspect journal directory: %w", err)
+	}
+	if _, err := proxmox.OpenInvocationJournal(path); err != nil {
+		return err
+	}
+	return nil
 }
 
 func executableDigest() string {

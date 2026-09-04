@@ -2,7 +2,9 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -50,12 +52,25 @@ func Serve(ctx context.Context, services Services) error {
 	if err := requireConfinedPath(servicePath, runtimeDir); err != nil {
 		return err
 	}
+	socketMode, err := configuredSocketMode()
+	if err != nil {
+		return err
+	}
+	if err := prepareRuntimeDirectory(runtimeDir, socketMode); err != nil {
+		return err
+	}
+	if err := removeStaleSocket(servicePath); err != nil {
+		return err
+	}
 	listener, err := net.Listen("unix", servicePath)
 	if err != nil {
 		return fmt.Errorf("listen on plugin service socket: %w", err)
 	}
-	defer listener.Close()
-	if err := os.Chmod(servicePath, 0o600); err != nil {
+	defer func() {
+		_ = listener.Close()
+		_ = os.Remove(servicePath)
+	}()
+	if err := os.Chmod(servicePath, socketMode); err != nil {
 		return fmt.Errorf("restrict plugin service socket: %w", err)
 	}
 	server := grpc.NewServer(grpc.MaxRecvMsgSize(8<<20), grpc.MaxSendMsgSize(8<<20))
@@ -82,14 +97,22 @@ func Serve(ctx context.Context, services Services) error {
 	}
 	defer connection.Close()
 	registration := pluginv1.NewPluginRegistrationServiceClient(connection)
-	registerContext, cancel := context.WithTimeout(ctx, 8*time.Second)
+	launchToken, err := configuredLaunchToken()
+	if err != nil {
+		return err
+	}
+	registrationTimeout := 8 * time.Second
+	if socketMode == 0o660 {
+		registrationTimeout = 2 * time.Minute
+	}
+	registerContext, cancel := context.WithTimeout(ctx, registrationTimeout)
 	response, err := registration.RegisterPlugin(registerContext, &pluginv1.RegisterPluginRequest{
-		LaunchToken:        os.Getenv(launch.Token),
+		LaunchToken:        launchToken,
 		ConfiguredPluginId: os.Getenv(launch.ConfiguredPluginID),
 		PluginInstanceId:   os.Getenv(launch.PluginInstanceID),
 		ServiceEndpoint:    "unix://" + servicePath,
 		Plugin:             services.Info,
-	})
+	}, grpc.WaitForReady(true))
 	cancel()
 	if err != nil {
 		return fmt.Errorf("register plugin: %w", err)
@@ -127,6 +150,119 @@ func Serve(ctx context.Context, services Services) error {
 	case err := <-serverDone:
 		return err
 	}
+}
+
+func configuredSocketMode() (os.FileMode, error) {
+	switch os.Getenv(launch.SocketMode) {
+	case "", "0600":
+		return 0o600, nil
+	case "0660":
+		return 0o660, nil
+	default:
+		return 0, fmt.Errorf("plugin socket mode is invalid")
+	}
+}
+
+func configuredLaunchToken() (string, error) {
+	direct, path := os.Getenv(launch.Token), os.Getenv(launch.TokenFile)
+	if (direct == "") == (path == "") {
+		return "", fmt.Errorf("exactly one plugin launch token source is required")
+	}
+	if direct != "" {
+		if !validLaunchToken(direct) {
+			return "", fmt.Errorf("plugin launch token is invalid")
+		}
+		return direct, nil
+	}
+	info, err := os.Lstat(path)
+	mode := os.FileMode(0)
+	if err == nil {
+		mode = info.Mode().Perm()
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || mode&0o400 == 0 || mode&0o027 != 0 || info.Size() < 64 || info.Size() > 65 {
+		return "", fmt.Errorf("plugin launch token file is not a protected bounded regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open plugin launch token file: %w", err)
+	}
+	after, statErr := file.Stat()
+	contents, readErr := io.ReadAll(io.LimitReader(file, 66))
+	closeErr := file.Close()
+	if statErr != nil || !os.SameFile(info, after) || after.Mode().Perm() != mode || readErr != nil || closeErr != nil || len(contents) > 65 {
+		clear(contents)
+		return "", fmt.Errorf("read plugin launch token file")
+	}
+	token := strings.TrimSuffix(string(contents), "\n")
+	clear(contents)
+	if !validLaunchToken(token) {
+		return "", fmt.Errorf("plugin launch token file is invalid")
+	}
+	return token, nil
+}
+
+func validLaunchToken(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' && character < 'a' || character > 'f' {
+			return false
+		}
+	}
+	return true
+}
+
+func prepareRuntimeDirectory(path string, socketMode os.FileMode) error {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" {
+		return fmt.Errorf("plugin runtime directory is invalid")
+	}
+	if socketMode == 0o660 {
+		parent := filepath.Dir(path)
+		resolvedParent, resolveErr := filepath.EvalSymlinks(parent)
+		parentInfo, parentErr := os.Lstat(parent)
+		if resolveErr != nil || parentErr != nil || resolvedParent != parent || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 || parentInfo.Mode().Perm()&0o002 != 0 {
+			return fmt.Errorf("shared plugin runtime parent must be a protected real directory")
+		}
+		if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(path, 0o770); err != nil && !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("create shared plugin runtime directory: %w", err)
+			}
+			if err := os.Chmod(path, 0o770); err != nil {
+				return fmt.Errorf("protect shared plugin runtime directory: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("inspect shared plugin runtime directory: %w", err)
+		}
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o007 != 0 {
+		return fmt.Errorf("plugin runtime directory is not a protected real directory")
+	}
+	if socketMode == 0o600 && info.Mode().Perm() != 0o700 {
+		return fmt.Errorf("private plugin runtime directory mode must be 0700")
+	}
+	if socketMode == 0o660 && info.Mode().Perm()&0o070 != 0o070 {
+		return fmt.Errorf("shared plugin runtime directory must grant group access")
+	}
+	return nil
+}
+
+func removeStaleSocket(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect plugin service socket: %w", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("plugin service path contains a non-socket entry")
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("remove stale plugin service socket: %w", err)
+	}
+	return nil
 }
 
 func validateServices(services Services) error {

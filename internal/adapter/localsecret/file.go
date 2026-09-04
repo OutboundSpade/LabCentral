@@ -14,11 +14,23 @@ import (
 const defaultMaximumSecretBytes = 64 << 10
 
 type FileResolver struct {
-	allowed  map[string]struct{}
-	maxBytes int64
+	allowed        map[string]struct{}
+	maxBytes       int64
+	allowGroupRead bool
+}
+
+type Options struct {
+	// AllowGroupRead permits immutable orchestrator projections whose group has
+	// read, but never write/execute, permission. The projected volume must be
+	// mounted only into the control plane container.
+	AllowGroupRead bool
 }
 
 func NewFileResolver(allowedFiles []string, maximumBytes int64) (*FileResolver, error) {
+	return NewFileResolverWithOptions(allowedFiles, maximumBytes, Options{})
+}
+
+func NewFileResolverWithOptions(allowedFiles []string, maximumBytes int64, options Options) (*FileResolver, error) {
 	if len(allowedFiles) == 0 || len(allowedFiles) > 64 {
 		return nil, fmt.Errorf("local secret resolver requires between 1 and 64 allowed files")
 	}
@@ -28,7 +40,7 @@ func NewFileResolver(allowedFiles []string, maximumBytes int64) (*FileResolver, 
 	if maximumBytes < 1 || maximumBytes > 1<<20 {
 		return nil, fmt.Errorf("local secret size limit must be between 1 byte and 1 MiB")
 	}
-	resolver := &FileResolver{allowed: make(map[string]struct{}, len(allowedFiles)), maxBytes: maximumBytes}
+	resolver := &FileResolver{allowed: make(map[string]struct{}, len(allowedFiles)), maxBytes: maximumBytes, allowGroupRead: options.AllowGroupRead}
 	for _, configured := range allowedFiles {
 		if !filepath.IsAbs(configured) || filepath.Clean(configured) != configured {
 			return nil, fmt.Errorf("allowed local secret paths must be absolute and clean")
@@ -59,7 +71,7 @@ func (resolver *FileResolver) Resolve(ctx context.Context, request application.A
 		return nil, fmt.Errorf("local secret invocation scope is invalid")
 	}
 	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o077 != 0 || before.Mode().Perm()&0o400 == 0 {
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || !resolver.allowedMode(before.Mode().Perm()) {
 		return nil, fmt.Errorf("local secret file is unavailable or insufficiently protected")
 	}
 	file, err := os.Open(path)
@@ -68,7 +80,7 @@ func (resolver *FileResolver) Resolve(ctx context.Context, request application.A
 	}
 	defer file.Close()
 	after, err := file.Stat()
-	if err != nil || !os.SameFile(before, after) || !after.Mode().IsRegular() || after.Mode().Perm()&0o077 != 0 {
+	if err != nil || !os.SameFile(before, after) || !after.Mode().IsRegular() || after.Mode().Perm() != before.Mode().Perm() || !resolver.allowedMode(after.Mode().Perm()) {
 		return nil, fmt.Errorf("local secret file identity changed")
 	}
 	contents, err := io.ReadAll(io.LimitReader(file, resolver.maxBytes+1))
@@ -80,6 +92,16 @@ func (resolver *FileResolver) Resolve(ctx context.Context, request application.A
 		return nil, fmt.Errorf("local secret file is empty or exceeds its size limit")
 	}
 	return application.NewEphemeralSecret(contents), nil
+}
+
+func (resolver *FileResolver) allowedMode(mode os.FileMode) bool {
+	if mode&0o400 == 0 {
+		return false
+	}
+	if resolver.allowGroupRead {
+		return mode&0o027 == 0
+	}
+	return mode&0o077 == 0
 }
 
 func zero(value []byte) {

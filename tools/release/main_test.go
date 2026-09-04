@@ -49,6 +49,9 @@ func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	if !strings.Contains(readme, "lab-access-novnc") {
 		t.Fatal("release instructions omit the access plugin")
 	}
+	if !strings.Contains(readme, "kubernetes-proxmox.md") {
+		t.Fatal("release instructions omit the Kubernetes deployment runbook")
+	}
 }
 
 func TestWriteArchiveIsDeterministicAndNormalized(t *testing.T) {

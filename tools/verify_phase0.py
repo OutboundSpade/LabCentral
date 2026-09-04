@@ -56,6 +56,10 @@ def load_yaml(path: Path) -> Any:
     return yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
 
 
+def load_yaml_documents(path: Path) -> list[Any]:
+    return list(yaml.load_all(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader))
+
+
 def run(command: list[str], *, input_text: str | None = None) -> str:
     completed = subprocess.run(
         command,
@@ -98,6 +102,8 @@ def verify_yaml_and_json() -> None:
     ]
     for path in yaml_paths:
         load_yaml(path)
+    for path in ROOT.glob("deploy/kubernetes/*.yaml"):
+        load_yaml_documents(path)
     json.loads((ROOT / "schemas/lab-v1alpha1.schema.json").read_text(encoding="utf-8"))
     for path in ROOT.glob("design/contracts/*.json"):
         schema = json.loads(path.read_text(encoding="utf-8"))
@@ -295,6 +301,8 @@ def collect_test_ids() -> set[str]:
         ROOT / "design/contracts/rendering-cases.yaml",
         ROOT / "design/contracts/job-invariants.yaml",
         ROOT / "design/contracts/access-conformance.yaml",
+        ROOT / "design/contracts/production-observability.yaml",
+        ROOT / "design/contracts/production-topology.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
         ROOT / "schemas/fixtures/parser/cases.yaml",
         ROOT / "schemas/fixtures/canonical/vectors.yaml",
@@ -652,6 +660,21 @@ def verify_contract_catalogs() -> None:
             assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
                 f"access case references missing PostgreSQL test: {case['id']}: {postgresql_test}"
             )
+    topology = load_yaml(ROOT / "design/contracts/production-topology.yaml")
+    assert topology["suite"] == "labcentral.production-topology/v1alpha1"
+    assert len(topology["cases"]) == 6, "production topology suite must retain all six checkpoint cases"
+    for case in topology["cases"]:
+        for field in ["binding", "startupOrderBinding", "healthBinding", "processBinding"]:
+            binding = case.get(field)
+            if not binding:
+                continue
+            relative_path, function_name = binding.split("#", 1)
+            source = (ROOT / relative_path).read_text(encoding="utf-8")
+            if relative_path.endswith(".go"):
+                marker = f"func {function_name}("
+            else:
+                marker = f"def {function_name}("
+            assert marker in source, f"production topology binding is missing: {case['id']}: {binding}"
     security = load_yaml(ROOT / "design/contracts/security-controls.yaml")
     threat_ids: set[str] = set()
     for threat in security["threats"]:
@@ -662,6 +685,107 @@ def verify_contract_catalogs() -> None:
         assert threat["tests"], f"threat has no tests: {threat['id']}"
         missing = set(threat["tests"]) - tests
         assert not missing, f"threat references undefined tests: {threat['id']}: {sorted(missing)}"
+
+
+def verify_kubernetes_topology() -> None:
+    deployment_root = ROOT / "deploy/kubernetes"
+    kustomization = load_yaml(deployment_root / "kustomization.yaml")
+    resources = set(kustomization["resources"])
+    assert resources == {
+        "namespace.yaml",
+        "service-account.yaml",
+        "shared-storage.yaml",
+        "services.yaml",
+        "statefulset.yaml",
+        "disruption-budget.yaml",
+        "network-policies.yaml",
+    }, "Kubernetes base resources changed without updating the production topology contract"
+    assert "config.example.yaml" not in resources and "secrets.example.yaml" not in resources
+
+    namespace = load_yaml(deployment_root / "namespace.yaml")
+    labels = namespace["metadata"]["labels"]
+    assert labels["pod-security.kubernetes.io/enforce"] == "restricted"
+    assert labels["pod-security.kubernetes.io/audit"] == "restricted"
+    assert labels["pod-security.kubernetes.io/warn"] == "restricted"
+
+    service_account = load_yaml(deployment_root / "service-account.yaml")
+    assert service_account["automountServiceAccountToken"] is False
+
+    stateful_set = load_yaml(deployment_root / "statefulset.yaml")
+    spec = stateful_set["spec"]
+    assert spec["replicas"] == 2 and spec["updateStrategy"]["type"] == "RollingUpdate"
+    pod = spec["template"]["spec"]
+    assert pod["automountServiceAccountToken"] is False and pod["enableServiceLinks"] is False
+    anti_affinity = pod["affinity"]["podAntiAffinity"]["requiredDuringSchedulingIgnoredDuringExecution"]
+    assert anti_affinity and anti_affinity[0]["topologyKey"] == "kubernetes.io/hostname"
+    assert not any("hostPath" in volume for volume in pod["volumes"])
+    volumes = {volume["name"]: volume for volume in pod["volumes"]}
+    for name in ["core-secrets", "proxmox-secrets", "proxmox-registration", "access-registration"]:
+        assert volumes[name]["secret"]["defaultMode"] == 0o440
+
+    containers = {container["name"]: container for container in pod["containers"]}
+    assert set(containers) == {"labd", "proxmox-provider", "novnc-access"}
+    expected_uids = {"labd": 10000, "proxmox-provider": 11000, "novnc-access": 12000}
+    placeholder_digest = "sha256:" + "0" * 64
+    for name, container in containers.items():
+        security_context = container["securityContext"]
+        assert security_context["runAsUser"] == expected_uids[name]
+        assert security_context["runAsGroup"] == 20000
+        assert security_context["allowPrivilegeEscalation"] is False
+        assert security_context["readOnlyRootFilesystem"] is True
+        assert security_context["capabilities"]["drop"] == ["ALL"]
+        assert container["image"].endswith("@" + placeholder_digest)
+
+    core_mounts = {mount["name"] for mount in containers["labd"]["volumeMounts"]}
+    proxmox_mounts = {mount["name"] for mount in containers["proxmox-provider"]["volumeMounts"]}
+    access_mounts = {mount["name"] for mount in containers["novnc-access"]["volumeMounts"]}
+    assert "core-secrets" in core_mounts and "core-secrets" not in proxmox_mounts | access_mounts
+    assert "proxmox-secrets" in core_mounts and "proxmox-secrets" not in proxmox_mounts | access_mounts
+    assert "proxmox-registration" in core_mounts & proxmox_mounts and "proxmox-registration" not in access_mounts
+    assert "access-registration" in core_mounts & access_mounts and "access-registration" not in proxmox_mounts
+    assert "shared-state" in core_mounts & proxmox_mounts and "shared-state" not in access_mounts
+
+    core_args = containers["labd"]["args"]
+    assert containers["labd"]["startupProbe"]["failureThreshold"] >= 180
+    assert "--deployment-mode=multi-replica" in core_args
+    assert "--artifact-mode=shared-filesystem" in core_args
+    assert "--artifact-dir=/var/lib/labcentral/shared/artifacts" in core_args
+    assert "--allow-group-readable-secret-files" in core_args
+    assert "--bootstrap-oidc-subject=$(BOOTSTRAP_OIDC_SUBJECT)" in core_args
+    assert "--proxmox-plugin-runtime-dir=/run/labcentral/proxmox/ipc" in core_args
+    assert "--access-plugin-runtime-dir=/run/labcentral/access/ipc" in core_args
+    assert "--docker-plugin=" in core_args
+    proxmox_args = containers["proxmox-provider"]["args"]
+    assert "--initialize-journal-directory=/var/lib/labcentral/shared/proxmox-journal" in proxmox_args
+
+    for name in ["proxmox-provider", "novnc-access"]:
+        environment = {entry["name"]: entry.get("value") for entry in containers[name]["env"]}
+        assert environment["LABCENTRAL_PLUGIN_SOCKET_MODE"] == "0660"
+        assert environment["LABCENTRAL_PLUGIN_LAUNCH_TOKEN_FILE"]
+        assert "LABCENTRAL_PLUGIN_LAUNCH_TOKEN" not in environment
+
+    pdb = load_yaml(deployment_root / "disruption-budget.yaml")
+    assert pdb["spec"]["minAvailable"] == 1
+    assert pdb["spec"]["unhealthyPodEvictionPolicy"] == "AlwaysAllow"
+    pvc = load_yaml(deployment_root / "shared-storage.yaml")
+    assert pvc["spec"]["accessModes"] == ["ReadWriteMany"]
+
+    policies = {document["metadata"]["name"]: document for document in load_yaml_documents(deployment_root / "network-policies.yaml")}
+    deny = policies["labcentral-default-deny"]["spec"]
+    assert set(deny["policyTypes"]) == {"Ingress", "Egress"}
+    assert "ingress" not in deny and "egress" not in deny
+    egress = policies["labcentral-allowed-egress"]["spec"]["egress"]
+    cidrs = {
+        target["ipBlock"]["cidr"]
+        for rule in egress
+        for target in rule.get("to", [])
+        if "ipBlock" in target
+    }
+    assert cidrs == {"192.0.2.10/32", "192.0.2.20/32", "192.0.2.30/32"}
+
+    example_config = load_yaml_documents(deployment_root / "config.example.yaml")
+    proxmox_config = next(document for document in example_config if document["metadata"]["name"] == "labcentral-proxmox")
+    assert "/var/lib/labcentral/shared/proxmox-journal" in proxmox_config["data"]["target.json"]
 
 
 def verify_markdown_links_and_state() -> None:
@@ -720,6 +844,7 @@ def main() -> int:
         ("Protobuf format/lint/breaking baseline", lambda: verify_proto(buf)),
         ("provider/job/security contract catalogs", verify_contract_catalogs),
         ("Proxmox QEMU mutation design contract", verify_proxmox_mutation_contract),
+        ("Kubernetes production topology", verify_kubernetes_topology),
         ("documentation links and project state", verify_markdown_links_and_state),
     ]
     for label, check in checks:

@@ -53,7 +53,7 @@ The credentialed failure/recovery executor has the same test-only packaging and 
 
 Production defaults: TLS (or trusted TLS-terminating proxy with strict header trust), OIDC/local auth, PostgreSQL, durable shared artifacts, separate provider credentials, management network routes/firewalls, plugin sandbox identities, encrypted backups, audit retention, metrics/traces, and deny-egress policy. Multi-replica requires PostgreSQL, shared artifacts, stable encryption/session keys, and compatible job leasing.
 
-`TASK-PROD-001` implements the storage/fencing prerequisite. `--deployment-mode=single-node` is the default and permits only SQLite plus `--artifact-mode=local-filesystem`. `--deployment-mode=multi-replica` requires a unique DNS-label-like `--replica-id`, a non-symlink PostgreSQL URL file with no group/other permissions and `sslmode=verify-full`, `--artifact-mode=shared-filesystem` with an absolute non-root shared path, and local or OIDC authentication. Startup migrates under a PostgreSQL advisory lock and self-tests shared staging locks before serving. When Proxmox is enabled, its signed target configuration must use the exact `<artifact-dir>/proxmox-journal` directory. The provider self-tests advisory exclusion there and holds one journal-wide kernel lease for the complete mutating RPC, so a process crash releases execution to a peer that resumes from the last checksummed checkpoint. A node-local or differently located journal is refused before plugin launch. Shared-RWX failover evidence remains part of `TASK-PROD-004`; the qualified single-node topology is unchanged. See [`../operations/postgresql-control-plane.md`](../operations/postgresql-control-plane.md).
+`TASK-PROD-001` implements the storage/fencing prerequisite. `--deployment-mode=single-node` is the default and permits only SQLite plus `--artifact-mode=local-filesystem`. `--deployment-mode=multi-replica` requires a unique DNS-label-like `--replica-id`, a non-symlink PostgreSQL URL file with verified TLS, `--artifact-mode=shared-filesystem` with an absolute non-root shared path, and local or OIDC authentication. Startup migrates under a PostgreSQL advisory lock and self-tests shared staging locks before serving. When Proxmox is enabled, its signed target configuration must use the exact `proxmox-journal` sibling of the artifact directory on the same shared mount. The provider self-tests advisory exclusion there and holds one journal-wide kernel lease for the complete mutating RPC, so a process crash releases execution to a peer that resumes from the last checksummed checkpoint. Keeping the core-owned artifact directory and provider-owned journal as siblings supports distinct runtime UIDs without widening either directory from mode `0700`. A node-local or differently located journal is refused before plugin launch. Shared-RWX failover evidence remains part of `TASK-PROD-004`; the qualified single-node topology is unchanged. See [`../operations/postgresql-control-plane.md`](../operations/postgresql-control-plane.md).
 
 ## Configuration and secrets
 
@@ -83,6 +83,46 @@ operator contract, alert rules, and certificate rotation procedure are in
 [`../operations/observability.md`](../operations/observability.md). Queue/outbox,
 operation-SLO, access-session, and cleanup-leftover instrumentation remains in
 the next production-observability slice.
+
+## Kubernetes production base
+
+The first Kubernetes checkpoint is a two-replica StatefulSet with stable Pod
+names used as fencing-worker and plugin-instance identities. Required hostname
+anti-affinity prevents both replicas from sharing one worker, a PDB retains one
+Ready replica during eviction-aware maintenance, and rolling updates stop on an
+unready ordinal. A PDB does not constrain the StatefulSet controller's own
+rollout, so the operator must watch every ordinal and retain a compatible prior
+image/evidence pair for rollback.
+
+The Pod has three digest-identical but command-separated containers: `labd`
+runs as UID 10000, the Proxmox provider as UID 11000, and noVNC as UID 12000.
+All use the dedicated IPC/storage GID 20000 so either startup order creates
+group-reachable sockets; mode-`0700` artifact/journal directories still enforce
+the distinct owning UIDs.
+Each has a read-only root, no added capability, no privilege escalation, a
+RuntimeDefault seccomp profile, bounded resources/tmpfs, and no Kubernetes API
+token. Core secrets and the Proxmox credential mount only into `labd`;
+provider/access registration tokens and IPC volumes are separate. The official
+plugins attach over group-restricted Unix sockets and never receive database
+access or authorization policy.
+
+One RWX mount contains sibling mode-`0700` directories: core owns `artifacts`
+and the provider owns `proxmox-journal`. Startup verifies the shared artifact
+locking primitive, while the provider initializes and verifies its journal.
+NetworkPolicy defaults both directions to deny and lists DNS, PostgreSQL,
+Proxmox, OIDC, ingress, and monitoring as explicit site-replaced classes. The
+CNI must prove enforcement. Because containers in a Pod share its network
+namespace, this topology supports only the bundled official plugins; it does
+not claim per-plugin network isolation for third-party code.
+
+The base intentionally references an all-zero OCI digest, RFC 5737 egress
+addresses, and no ConfigMap or Secret resources. Operators must create the
+inputs separately, enable Secret encryption/RBAC, replace every sentinel, and
+qualify the exact image/target before rollout. The complete procedure and
+rotation/backup boundaries are in
+[`../operations/kubernetes-proxmox.md`](../operations/kubernetes-proxmox.md),
+and the machine-readable checkpoint is
+[`../../design/contracts/production-topology.yaml`](../../design/contracts/production-topology.yaml).
 
 ## Upgrade
 

@@ -98,7 +98,7 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer os.RemoveAll(temporary)
 	root := filepath.Join(temporary, baseName)
-	for _, directory := range []string{"plugins", "deploy", "docs"} {
+	for _, directory := range []string{"plugins", "deploy", "deploy/kubernetes", "docs"} {
 		if err := os.MkdirAll(filepath.Join(root, directory), 0o755); err != nil {
 			return err
 		}
@@ -255,13 +255,24 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	for sourcePath, destination := range map[string]string{
-		"deploy/observability/prometheus-alerts.yaml":       "deploy/prometheus-alerts.yaml",
+		"deploy/observability/prometheus-alerts.yaml":    "deploy/prometheus-alerts.yaml",
+		"deploy/kubernetes/config.example.yaml":          "deploy/kubernetes/config.example.yaml",
+		"deploy/kubernetes/disruption-budget.yaml":       "deploy/kubernetes/disruption-budget.yaml",
+		"deploy/kubernetes/kustomization.yaml":           "deploy/kubernetes/kustomization.yaml",
+		"deploy/kubernetes/namespace.yaml":               "deploy/kubernetes/namespace.yaml",
+		"deploy/kubernetes/network-policies.yaml":        "deploy/kubernetes/network-policies.yaml",
+		"deploy/kubernetes/secrets.example.yaml":         "deploy/kubernetes/secrets.example.yaml",
+		"deploy/kubernetes/service-account.yaml":         "deploy/kubernetes/service-account.yaml",
+		"deploy/kubernetes/services.yaml":                "deploy/kubernetes/services.yaml",
+		"deploy/kubernetes/shared-storage.yaml":          "deploy/kubernetes/shared-storage.yaml",
+		"deploy/kubernetes/statefulset.yaml":             "deploy/kubernetes/statefulset.yaml",
 		"deploy/proxmox/labcentral.service":              "deploy/labcentral.service",
 		"deploy/proxmox/environment.example":             "deploy/environment.example",
 		"deploy/proxmox/proxmox-target.json.example":     "deploy/proxmox-target.json.example",
 		"deploy/proxmox/proxmox-credential.json.example": "deploy/proxmox-credential.json.example",
 		"deploy/proxmox/proxmox-trust.json.example":      "deploy/proxmox-trust.json.example",
 		"docs/operations/proxmox-deployment.md":          "docs/proxmox-deployment.md",
+		"docs/operations/kubernetes-proxmox.md":          "docs/kubernetes-proxmox.md",
 		"docs/operations/observability.md":               "docs/observability.md",
 	} {
 		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
@@ -498,7 +509,9 @@ The Docker provider uses DOCKER_HOST, or the platform's default Docker Engine
 endpoint when it is unset. Access to a Docker socket is effectively host-level
 control. This command explicitly selects no authentication; LabCentral refuses non-loopback
 listeners by default, and is not a sandbox for hostile workloads. For Proxmox,
-follow docs/proxmox-deployment.md. Production VM mutation remains closed unless
+follow docs/proxmox-deployment.md. For the two-replica Kubernetes topology,
+follow docs/kubernetes-proxmox.md and replace every fail-closed deployment
+placeholder. Production VM mutation remains closed unless
 signed exact-target evidence matches the installed provider build and fresh
 live target inventory.
 

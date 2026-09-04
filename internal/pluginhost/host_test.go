@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -25,7 +27,7 @@ const helperAccessPluginID = "io.labcentral.access.helper"
 const inheritedEnvironmentCanary = "LABCENTRAL_PLUGIN_ENV_SECRET_CANARY"
 
 func TestMain(m *testing.M) {
-	if os.Getenv(launch.Token) != "" {
+	if os.Getenv(launch.Token) != "" || os.Getenv(launch.TokenFile) != "" {
 		if os.Getenv(inheritedEnvironmentCanary) != "" {
 			os.Exit(9)
 		}
@@ -61,6 +63,161 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+func TestAttachUsesGroupRestrictedIPCAndProtectedTokenFile(t *testing.T) {
+	runtimeDirectory := filepath.Join(t.TempDir(), "attached-runtime")
+	tokenFile := filepath.Join(t.TempDir(), "launch-token")
+	token := strings.Repeat("a", 64)
+	if err := os.WriteFile(tokenFile, []byte(token+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	type attachResult struct {
+		client *pluginhost.Client
+		err    error
+	}
+	attached := make(chan attachResult, 1)
+	go func() {
+		client, err := pluginhost.Attach(ctx, pluginhost.Config{
+			RuntimeParent: runtimeDirectory, LaunchToken: token, SocketMode: 0o660,
+			ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_attached_test",
+		})
+		attached <- attachResult{client: client, err: err}
+	}()
+	registrationPath := filepath.Join(runtimeDirectory, "registration.sock")
+	for {
+		if info, err := os.Lstat(registrationPath); err == nil && info.Mode()&os.ModeSocket != 0 {
+			if info.Mode().Perm() != 0o660 {
+				t.Fatalf("registration socket mode = %v", info.Mode())
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("attached registration socket was not created")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(ctx, executable)
+	command.Env = append(os.Environ(),
+		launch.RegistrationEndpoint+"=unix://"+registrationPath,
+		launch.ServiceEndpoint+"=unix://"+filepath.Join(runtimeDirectory, "service.sock"),
+		launch.Token+"=",
+		launch.TokenFile+"="+tokenFile,
+		launch.ConfiguredPluginID+"="+dockerprovider.PluginID,
+		launch.PluginInstanceID+"=plugin_attached_test",
+		launch.RuntimeDirectory+"="+runtimeDirectory,
+		launch.SocketMode+"=0660",
+	)
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	result := <-attached
+	if result.err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		t.Fatal(result.err)
+	}
+	if result.client.Done() != nil {
+		t.Fatal("attached plugin was represented as a supervised child")
+	}
+	discovery, err := result.client.Provider.DiscoverTarget(ctx, &pluginv1.DiscoverTargetRequest{})
+	if err != nil || len(discovery.GetCapabilities()) == 0 {
+		t.Fatalf("attached discovery = %#v, %v", discovery, err)
+	}
+	if err := result.client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- command.Wait() }()
+	select {
+	case err := <-waited:
+		var exitError *exec.ExitError
+		if err != nil && (!errors.As(err, &exitError) || exitError.ExitCode() != 2) {
+			t.Fatalf("attached plugin exit = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("attached plugin did not exit after host shutdown")
+	}
+}
+
+func TestAttachAcceptsPluginStartedBeforeRegistrationSocket(t *testing.T) {
+	runtimeParent, err := os.MkdirTemp("", "lca-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(runtimeParent) })
+	runtimeDirectory := filepath.Join(runtimeParent, "ipc")
+	tokenFile := filepath.Join(t.TempDir(), "launch-token")
+	token := strings.Repeat("c", 64)
+	if err := os.WriteFile(tokenFile, []byte(token+"\n"), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	registrationPath := filepath.Join(runtimeDirectory, "registration.sock")
+	servicePath := filepath.Join(runtimeDirectory, "service.sock")
+	command := exec.CommandContext(ctx, executable)
+	command.Env = append(os.Environ(),
+		launch.RegistrationEndpoint+"=unix://"+registrationPath,
+		launch.ServiceEndpoint+"=unix://"+servicePath,
+		launch.Token+"=",
+		launch.TokenFile+"="+tokenFile,
+		launch.ConfiguredPluginID+"="+dockerprovider.PluginID,
+		launch.PluginInstanceID+"=plugin_started_first",
+		launch.RuntimeDirectory+"="+runtimeDirectory,
+		launch.SocketMode+"=0660",
+	)
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if info, err := os.Lstat(servicePath); err == nil && info.Mode()&os.ModeSocket != 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			_ = command.Wait()
+			t.Fatal("plugin service socket was not created")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	client, err := pluginhost.Attach(ctx, pluginhost.Config{
+		RuntimeParent: runtimeDirectory, LaunchToken: token, SocketMode: 0o660,
+		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_started_first",
+	})
+	if err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		t.Fatal(err)
+	}
+	if err := client.CheckHealth(ctx); err != nil {
+		t.Fatalf("attached plugin health: %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- command.Wait() }()
+	select {
+	case err := <-waited:
+		var exitError *exec.ExitError
+		if err != nil && (!errors.As(err, &exitError) || exitError.ExitCode() != 2) {
+			t.Fatalf("attached plugin exit = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("attached plugin did not exit after host shutdown")
+	}
 }
 
 func TestLaunchAccessPluginBindsPrivateAuthorizationCallback(t *testing.T) {

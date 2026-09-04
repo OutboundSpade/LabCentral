@@ -1,0 +1,31 @@
+formatVersion: 1
+suite: labcentral.production-topology/v1alpha1
+status: kubernetes_base_implemented_native_and_resilience_gates_open
+cases:
+  - id: TEST-PROD-TOPOLOGY-001
+    title: Kubernetes base is closed until deployment-specific inputs replace every placeholder
+    binding: tools/verify_phase0.py#verify_kubernetes_topology
+    expect: {taggedImages: false, exampleSecretsApplied: false, exampleConfigApplied: false, placeholderEgressAllowed: false}
+  - id: TEST-PROD-TOPOLOGY-002
+    title: Replicas have stable identities and disruption-aware placement
+    binding: tools/verify_phase0.py#verify_kubernetes_topology
+    expect: {replicas: 2, stableReplicaIdentity: true, requiredNodeAntiAffinity: true, minimumAvailable: 1}
+  - id: TEST-PROD-TOPOLOGY-003
+    title: Core and official plugins run as distinct restricted identities
+    binding: tools/verify_phase0.py#verify_kubernetes_topology
+    expect: {distinctUIDs: true, readOnlyRoots: true, privilegeEscalation: false, capabilitiesDropped: all, serviceAccountTokenMounted: false}
+  - id: TEST-PROD-TOPOLOGY-004
+    title: Sidecar IPC uses bounded group-only sockets and rollout tokens
+    binding: internal/pluginhost/host_test.go#TestAttachUsesGroupRestrictedIPCAndProtectedTokenFile
+    startupOrderBinding: internal/pluginhost/host_test.go#TestAttachAcceptsPluginStartedBeforeRegistrationSocket
+    healthBinding: cmd/labd/main_test.go#TestAttachedPluginMonitorRequiresConsecutiveFailures
+    expect: {runtimeDirectoryMode: "0770", socketMode: "0660", tokenBytes: 32, directTokenEnvironment: false, crossPluginTokenMount: false}
+  - id: TEST-PROD-TOPOLOGY-005
+    title: Shared storage and Proxmox mutation journal have separate identities and process-safe coordination
+    binding: cmd/labd/main_test.go#TestMultiReplicaProxmoxJournalMustUseSharedArtifactFilesystem
+    processBinding: providers/proxmox/journal_test.go#TestInvocationJournalLeaseSerializesProviderProcesses
+    expect: {artifactMode: shared-filesystem, journalIsArtifactSibling: true, journalOwner: proxmox-provider, lockScope: completeMutationRPC}
+  - id: TEST-PROD-TOPOLOGY-006
+    title: Network policy defaults to deny and names every required production egress class
+    binding: tools/verify_phase0.py#verify_kubernetes_topology
+    expect: {defaultDenyIngress: true, defaultDenyEgress: true, dns: explicit, postgresql: explicit, proxmox: explicit, oidc: explicit}

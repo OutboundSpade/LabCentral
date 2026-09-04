@@ -6,12 +6,14 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +27,8 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+var localIdentityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 type Config struct {
 	Executable             string
@@ -40,6 +44,8 @@ type Config struct {
 	RegistrationTimeout    time.Duration
 	RPCMaxBytes            int
 	LogMaxBytes            int
+	LaunchToken            string
+	SocketMode             os.FileMode
 }
 
 type Client struct {
@@ -49,16 +55,17 @@ type Client struct {
 	Info             *pluginv1.PluginInfo
 	SelectedProtocol *pluginv1.ProtocolVersion
 
-	connection *grpc.ClientConn
-	command    *exec.Cmd
-	cancel     context.CancelFunc
-	server     *grpc.Server
-	listener   net.Listener
-	runtimeDir string
-	process    *processState
-	closeOnce  sync.Once
-	stdout     *boundedWriter
-	stderr     *boundedWriter
+	connection    *grpc.ClientConn
+	command       *exec.Cmd
+	cancel        context.CancelFunc
+	server        *grpc.Server
+	listener      net.Listener
+	runtimeDir    string
+	process       *processState
+	closeOnce     sync.Once
+	stdout        *boundedWriter
+	stderr        *boundedWriter
+	removeRuntime bool
 }
 
 type processState struct {
@@ -215,8 +222,91 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 		process:          process,
 		stdout:           stdout,
 		stderr:           stderr,
+		removeRuntime:    true,
 	}
 	cleanupDir = false
+	return client, nil
+}
+
+// Attach accepts a plugin started by an external service manager, such as a
+// Kubernetes sidecar running under a distinct UID. The two processes share
+// only one group-restricted runtime directory and a rollout-scoped
+// registration token; target credentials continue to travel solely in
+// bounded protocol calls.
+func Attach(ctx context.Context, config Config) (*Client, error) {
+	config = withDefaults(config)
+	if config.SocketMode == 0 {
+		config.SocketMode = 0o660
+	}
+	if err := validateAttachConfig(config); err != nil {
+		return nil, err
+	}
+	runtimeDir := config.RuntimeParent
+	if err := prepareAttachedRuntimeDirectory(runtimeDir); err != nil {
+		return nil, err
+	}
+	registrationPath := filepath.Join(runtimeDir, "registration.sock")
+	if err := removeStaleSocket(registrationPath); err != nil {
+		return nil, err
+	}
+	listener, err := net.Listen("unix", registrationPath)
+	if err != nil {
+		return nil, fmt.Errorf("listen on attached plugin registration socket: %w", err)
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = listener.Close()
+			_ = os.Remove(registrationPath)
+		}
+	}()
+	if err := os.Chmod(registrationPath, config.SocketMode); err != nil {
+		return nil, fmt.Errorf("restrict attached plugin registration socket: %w", err)
+	}
+	callbackCredential := ""
+	if config.ConfiguredAccessKind != "" {
+		callbackCredential, err = randomToken(32)
+		if err != nil {
+			return nil, err
+		}
+	}
+	registration := newRegistrationServer(config.LaunchToken, callbackCredential, config, runtimeDir)
+	server := grpc.NewServer(grpc.MaxRecvMsgSize(config.RPCMaxBytes), grpc.MaxSendMsgSize(config.RPCMaxBytes))
+	pluginv1.RegisterPluginRegistrationServiceServer(server, registration)
+	if config.AccessAuthorization != nil {
+		pluginv1.RegisterAccessAuthorizationServiceServer(server, &accessAuthorizationServer{registration: registration, handler: config.AccessAuthorization})
+	}
+	go func() { _ = server.Serve(listener) }()
+	timer := time.NewTimer(config.RegistrationTimeout)
+	defer timer.Stop()
+	var accepted registrationResult
+	select {
+	case accepted = <-registration.accepted:
+	case <-timer.C:
+		server.Stop()
+		return nil, fmt.Errorf("attached plugin registration timed out after %s", config.RegistrationTimeout)
+	case <-ctx.Done():
+		server.Stop()
+		return nil, ctx.Err()
+	}
+	connection, err := dialUnix(ctx, accepted.servicePath, config.RPCMaxBytes)
+	if err != nil {
+		server.Stop()
+		return nil, fmt.Errorf("connect to attached plugin service: %w", err)
+	}
+	runtimeClient := pluginv1.NewPluginRuntimeServiceClient(connection)
+	if _, err := waitForHealthy(ctx, runtimeClient, nil, 5*time.Second); err != nil {
+		_ = connection.Close()
+		server.Stop()
+		return nil, fmt.Errorf("attached plugin did not become healthy: %w", err)
+	}
+	_, cancel := context.WithCancel(context.Background())
+	client := &Client{
+		Provider: pluginv1.NewProviderServiceClient(connection), Access: pluginv1.NewAccessServiceClient(connection), Runtime: runtimeClient,
+		Info: accepted.info, SelectedProtocol: accepted.selectedProtocol, connection: connection, cancel: cancel,
+		server: server, listener: listener, runtimeDir: runtimeDir, stdout: newBoundedWriter(config.LogMaxBytes), stderr: newBoundedWriter(config.LogMaxBytes),
+	}
+	cleanup = false
 	return client, nil
 }
 
@@ -226,6 +316,10 @@ func waitForHealthy(ctx context.Context, client pluginv1.PluginRuntimeServiceCli
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	var lastMessage string
+	var processDone <-chan struct{}
+	if process != nil {
+		processDone = process.done
+	}
 	for {
 		callContext, cancel := context.WithTimeout(ctx, time.Second)
 		health, err := client.Health(callContext, &pluginv1.HealthRequest{})
@@ -241,7 +335,7 @@ func waitForHealthy(ctx context.Context, client pluginv1.PluginRuntimeServiceCli
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-process.done:
+		case <-processDone:
 			return nil, fmt.Errorf("plugin exited: %v", process.result())
 		case <-deadline.C:
 			return nil, fmt.Errorf("health timeout: %s", lastMessage)
@@ -264,6 +358,9 @@ func withDefaults(config Config) Config {
 }
 
 func validateConfig(config Config) error {
+	if config.LaunchToken != "" || config.SocketMode != 0 {
+		return fmt.Errorf("local plugin launch cannot configure attached-plugin credentials")
+	}
 	if config.Executable == "" || !filepath.IsAbs(config.Executable) {
 		return fmt.Errorf("plugin executable must be an absolute path")
 	}
@@ -278,7 +375,27 @@ func validateConfig(config Config) error {
 			return fmt.Errorf("configured plugin argument is invalid")
 		}
 	}
-	if config.ConfiguredPluginID == "" || config.PluginInstanceID == "" {
+	return validateIdentityConfig(config)
+}
+
+func validateAttachConfig(config Config) error {
+	if config.Executable != "" || config.ExecutableSHA256 != "" || len(config.Args) != 0 {
+		return fmt.Errorf("attached plugins cannot configure a local executable")
+	}
+	if !filepath.IsAbs(config.RuntimeParent) || filepath.Clean(config.RuntimeParent) != config.RuntimeParent || config.RuntimeParent == "/" {
+		return fmt.Errorf("attached plugin runtime directory must be an absolute clean non-root path")
+	}
+	if !validToken(config.LaunchToken) {
+		return fmt.Errorf("attached plugin launch token must be 64 lowercase hexadecimal characters")
+	}
+	if config.SocketMode != 0o660 {
+		return fmt.Errorf("attached plugin socket mode must be 0660")
+	}
+	return validateIdentityConfig(config)
+}
+
+func validateIdentityConfig(config Config) error {
+	if !localIdentityPattern.MatchString(config.ConfiguredPluginID) || !localIdentityPattern.MatchString(config.PluginInstanceID) {
 		return fmt.Errorf("configured plugin and instance IDs are required")
 	}
 	provider, access := config.ConfiguredProviderKind != "", config.ConfiguredAccessKind != ""
@@ -294,6 +411,59 @@ func validateConfig(config Config) error {
 	}
 	if config.RPCMaxBytes < 1024 || config.RPCMaxBytes > 64<<20 {
 		return fmt.Errorf("plugin RPC size limit must be between 1 KiB and 64 MiB")
+	}
+	return nil
+}
+
+func validToken(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' && character < 'a' || character > 'f' {
+			return false
+		}
+	}
+	return true
+}
+
+func prepareAttachedRuntimeDirectory(path string) error {
+	parent := filepath.Dir(path)
+	resolvedParent, resolveErr := filepath.EvalSymlinks(parent)
+	parentInfo, parentErr := os.Lstat(parent)
+	if resolveErr != nil || parentErr != nil || resolvedParent != parent || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 || parentInfo.Mode().Perm()&0o002 != 0 {
+		return fmt.Errorf("attached plugin runtime parent must be a protected real directory")
+	}
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(path, 0o770); err != nil && !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create attached plugin runtime directory: %w", err)
+		}
+		if err := os.Chmod(path, 0o770); err != nil {
+			return fmt.Errorf("protect attached plugin runtime directory: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("inspect attached plugin runtime directory: %w", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o770 {
+		return fmt.Errorf("attached plugin runtime directory must be a real mode-0770 directory")
+	}
+	return nil
+}
+
+func removeStaleSocket(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("inspect stale plugin socket: %w", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("plugin socket path contains a non-socket entry")
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("remove stale plugin socket: %w", err)
 	}
 	return nil
 }
@@ -419,7 +589,11 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 		}
 		selectedProtocol = selectedAccess
 	}
-	servicePath, err := confinedUnixEndpoint(request.GetServiceEndpoint(), s.runtimeDir)
+	expectedSocketMode := s.config.SocketMode
+	if expectedSocketMode == 0 {
+		expectedSocketMode = 0o600
+	}
+	servicePath, err := confinedUnixEndpoint(request.GetServiceEndpoint(), s.runtimeDir, expectedSocketMode)
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +752,7 @@ func contains(values []string, expected string) bool {
 	return false
 }
 
-func confinedUnixEndpoint(endpoint, runtimeDir string) (string, error) {
+func confinedUnixEndpoint(endpoint, runtimeDir string, expectedMode os.FileMode) (string, error) {
 	const prefix = "unix://"
 	if !strings.HasPrefix(endpoint, prefix) {
 		return "", fmt.Errorf("local plugin service endpoint must use a Unix socket")
@@ -595,8 +769,8 @@ func confinedUnixEndpoint(endpoint, runtimeDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("inspect registered plugin service endpoint: %w", err)
 	}
-	if info.Mode()&os.ModeSocket == 0 {
-		return "", fmt.Errorf("registered plugin service endpoint is not a socket")
+	if info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != expectedMode {
+		return "", fmt.Errorf("registered plugin service endpoint type or mode is invalid")
 	}
 	return servicePath, nil
 }
@@ -635,20 +809,36 @@ func (c *Client) SupportsFeatures(minor uint32, required ...string) bool {
 func (c *Client) Close() error {
 	var result error
 	c.closeOnce.Do(func() {
-		_ = c.connection.Close()
-		c.cancel()
-		select {
-		case <-c.process.done:
-		case <-time.After(3 * time.Second):
-			if c.command.Process != nil {
-				_ = c.command.Process.Kill()
-			}
-			<-c.process.done
+		if c.connection != nil {
+			_ = c.connection.Close()
 		}
-		c.server.Stop()
-		_ = c.listener.Close()
-		if err := os.RemoveAll(c.runtimeDir); err != nil && result == nil {
-			result = err
+		if c.cancel != nil {
+			c.cancel()
+		}
+		if c.process != nil {
+			select {
+			case <-c.process.done:
+			case <-time.After(3 * time.Second):
+				if c.command != nil && c.command.Process != nil {
+					_ = c.command.Process.Kill()
+				}
+				<-c.process.done
+			}
+		}
+		if c.server != nil {
+			c.server.Stop()
+		}
+		if c.listener != nil {
+			_ = c.listener.Close()
+		}
+		if c.removeRuntime {
+			if err := os.RemoveAll(c.runtimeDir); err != nil && result == nil {
+				result = err
+			}
+		} else if c.runtimeDir != "" {
+			if err := os.Remove(filepath.Join(c.runtimeDir, "registration.sock")); err != nil && !errors.Is(err, os.ErrNotExist) && result == nil {
+				result = err
+			}
 		}
 	})
 	return result
@@ -676,13 +866,15 @@ func (c *Client) ExitError() error {
 // evaluation. It reports a terminated child even if the gRPC connection has
 // not observed closure yet.
 func (c *Client) CheckHealth(ctx context.Context) error {
-	if c == nil || c.Runtime == nil || c.process == nil {
+	if c == nil || c.Runtime == nil {
 		return fmt.Errorf("plugin runtime is unavailable")
 	}
-	select {
-	case <-c.process.done:
-		return fmt.Errorf("plugin process exited")
-	default:
+	if c.process != nil {
+		select {
+		case <-c.process.done:
+			return fmt.Errorf("plugin process exited")
+		default:
+		}
 	}
 	health, err := c.Runtime.Health(ctx, &pluginv1.HealthRequest{})
 	if err != nil {
@@ -695,6 +887,9 @@ func (c *Client) CheckHealth(ctx context.Context) error {
 }
 
 func (c *Client) Logs() (stdout, stderr string) {
+	if c == nil || c.stdout == nil || c.stderr == nil {
+		return "", ""
+	}
 	return c.stdout.String(), c.stderr.String()
 }
 

@@ -66,3 +66,34 @@ func TestFileResolverRejectsUnprotectedUnlistedAndSymlinkFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestFileResolverAllowsReadOnlyGroupOnlyWhenExplicitlyConfigured(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "projected-secret")
+	if err := os.WriteFile(path, []byte("projected"), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	strict, err := NewFileResolver([]string{path}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := NewFileResolverWithOptions([]string{path}, 0, Options{AllowGroupRead: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := application.InvocationScope{InvocationID: "inv_test", InstanceID: "inst_test", ResourceID: "vm.test", ExpiresAt: time.Now().Add(time.Minute)}
+	request := application.AuthorizedSecretRef{Reference: domain.SecretRef{Source: "file", Name: path, Key: "value"}, SubjectID: "local-admin"}
+	if _, err := strict.Resolve(context.Background(), request, scope); err == nil {
+		t.Fatal("strict resolver accepted group-readable secret")
+	}
+	secret, err := shared.Resolve(context.Background(), request, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret.Destroy()
+	if err := os.Chmod(path, 0o460); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := shared.Resolve(context.Background(), request, scope); err == nil {
+		t.Fatal("resolver accepted group-writable secret")
+	}
+}

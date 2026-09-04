@@ -257,7 +257,7 @@ tasks:
       - A separate access plugin issues short-lived ownership-bound SSH/console sessions without exposing provider credentials or management endpoints and supports revocation plus authorization recheck.
   - id: TASK-PROD-004
     title: Validate and package the supported classroom production topology
-    status: proposed
+    status: in_progress
     dependencies: [TASK-PROD-003]
     relatedAdrs: [ADR-0001, ADR-0002, ADR-0006, ADR-0008, ADR-0011]
     relatedDocuments: [deploy, tools/release, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md]

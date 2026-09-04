@@ -15,6 +15,7 @@ FROM golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 ARG VERSION=dev
+ARG PROXMOX_SOURCE_TREE_DIGEST=unavailable
 ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -28,22 +29,35 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -buildvcs=false -ldflags "-buildid= -s -w -X=main.version=$VERSION" -o /out/labd ./cmd/labd && \
     CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
     go build -trimpath -buildvcs=false -ldflags "-buildid= -s -w" -o /out/lab-provider-docker ./cmd/lab-provider-docker && \
-    sha256sum /out/lab-provider-docker | cut -d' ' -f1 > /out/lab-provider-docker.sha256
+    CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -trimpath -buildvcs=false -ldflags "-buildid= -s -w -X=main.sourceTreeDigest=$PROXMOX_SOURCE_TREE_DIGEST" -o /out/lab-provider-proxmox ./cmd/lab-provider-proxmox && \
+    CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -trimpath -buildvcs=false -ldflags "-buildid= -s -w" -o /out/lab-access-novnc ./cmd/lab-access-novnc && \
+    sha256sum /out/lab-provider-docker | cut -d' ' -f1 > /out/lab-provider-docker.sha256 && \
+    sha256sum /out/lab-provider-proxmox | cut -d' ' -f1 > /out/lab-provider-proxmox.sha256 && \
+    printf '%s\n' "$PROXMOX_SOURCE_TREE_DIGEST" > /out/lab-provider-proxmox.source.sha256 && \
+    sha256sum /out/lab-access-novnc | cut -d' ' -f1 > /out/lab-access-novnc.sha256
 
 FROM scratch
 ARG VERSION=dev
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="LabCentral" \
-      org.opencontainers.image.description="Trusted-laptop declarative Docker lab control plane" \
+      org.opencontainers.image.description="Declarative isolated-lab control plane and official plugins" \
       org.opencontainers.image.source="https://github.com/OutboundSpade/LabCentral" \
       org.opencontainers.image.version="$VERSION" \
       org.opencontainers.image.revision="$VCS_REF"
 COPY --from=go-build --chmod=0755 /out/labd /usr/local/bin/labd
 COPY --from=go-build --chmod=0755 /out/lab-provider-docker /usr/local/bin/lab-provider-docker
 COPY --from=go-build --chmod=0444 /out/lab-provider-docker.sha256 /usr/local/bin/lab-provider-docker.sha256
+COPY --from=go-build --chmod=0755 /out/lab-provider-proxmox /usr/local/bin/lab-provider-proxmox
+COPY --from=go-build --chmod=0444 /out/lab-provider-proxmox.sha256 /usr/local/bin/lab-provider-proxmox.sha256
+COPY --from=go-build --chmod=0444 /out/lab-provider-proxmox.source.sha256 /usr/local/bin/lab-provider-proxmox.source.sha256
+COPY --from=go-build --chmod=0755 /out/lab-access-novnc /usr/local/bin/lab-access-novnc
+COPY --from=go-build --chmod=0444 /out/lab-access-novnc.sha256 /usr/local/bin/lab-access-novnc.sha256
+COPY --from=go-build --chmod=0444 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-build --chmod=0700 /out/data /var/lib/labcentral
 VOLUME ["/var/lib/labcentral"]
-EXPOSE 8080 9090
+EXPOSE 8080 8443 9090
 USER 0:0
 HEALTHCHECK --interval=10s --timeout=4s --start-period=10s --retries=3 CMD ["/usr/local/bin/labd", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/labd"]
