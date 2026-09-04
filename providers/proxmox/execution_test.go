@@ -49,6 +49,7 @@ type fakeMutationAPI struct {
 	agentFailuresRemaining   int
 	agentCalls               int
 	missingConfigStatusCode  int
+	hiddenConfigs            map[uint32]bool
 	completeTaskOnPoll       bool
 	deferLifecycleState      bool
 	closed                   bool
@@ -57,7 +58,7 @@ type fakeMutationAPI struct {
 func newFakeMutationAPI() *fakeMutationAPI {
 	return &fakeMutationAPI{
 		configs:  map[uint32]VMConfig{9000: {Digest: strings40("c"), Fields: map[string]string{"digest": strings40("c"), "agent": "1", "scsi0": "local-lvm:base-9000-disk-0,size=8G", "ide2": "local-lvm:cloudinit"}}},
-		statuses: map[uint32]string{9000: "stopped"}, lifecycleCalls: make(map[string]int), lifecycleErrorAfter: make(map[string]bool), taskFailuresRemaining: make(map[string]int), taskReadErrorsRemaining: make(map[string]int),
+		statuses: map[uint32]string{9000: "stopped"}, lifecycleCalls: make(map[string]int), lifecycleErrorAfter: make(map[string]bool), taskFailuresRemaining: make(map[string]int), taskReadErrorsRemaining: make(map[string]int), hiddenConfigs: make(map[uint32]bool),
 	}
 }
 
@@ -100,7 +101,7 @@ func (fake *fakeMutationAPI) VMConfig(_ context.Context, _ string, vmid uint32) 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	config, exists := fake.configs[vmid]
-	if !exists {
+	if !exists || fake.hiddenConfigs[vmid] {
 		statusCode := fake.missingConfigStatusCode
 		if statusCode == 0 {
 			statusCode = 404
@@ -110,17 +111,33 @@ func (fake *fakeMutationAPI) VMConfig(_ context.Context, _ string, vmid uint32) 
 	return cloneVMConfig(config), nil
 }
 
-func TestReadOptionalVMConfigConfirmsPVE500AbsenceWithExactNextID(t *testing.T) {
-	fake := newFakeMutationAPI()
-	fake.missingConfigStatusCode = http.StatusInternalServerError
-	config, exists, err := readOptionalVMConfig(context.Background(), fake, "pve-a", 101)
-	if err != nil || exists || config.Fields != nil {
-		t.Fatalf("missing PVE 9.2 config = %#v, exists %t, err %v", config, exists, err)
+func TestReadOptionalVMConfigConfirmsAmbiguousPVEAbsenceWithExactNextID(t *testing.T) {
+	for _, statusCode := range []int{http.StatusInternalServerError, http.StatusForbidden} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			fake := newFakeMutationAPI()
+			fake.missingConfigStatusCode = statusCode
+			config, exists, err := readOptionalVMConfig(context.Background(), fake, "pve-a", 101)
+			if err != nil || exists || config.Fields != nil {
+				t.Fatalf("missing PVE 9.2 config = %#v, exists %t, err %v", config, exists, err)
+			}
+
+			fake.configs[101] = VMConfig{Digest: strings40("a"), Fields: map[string]string{"digest": strings40("a")}}
+			fake.hiddenConfigs[101] = true
+			if _, _, err := readOptionalVMConfig(context.Background(), fake, "pve-a", 101); err == nil {
+				t.Fatal("occupied VMID hidden by an ambiguous API response was treated as absent")
+			}
+			fake.hiddenConfigs[101] = false
+			config, exists, err = readOptionalVMConfig(context.Background(), fake, "pve-a", 101)
+			if err != nil || !exists || config.Digest != strings40("a") {
+				t.Fatalf("existing PVE config = %#v, exists %t, err %v", config, exists, err)
+			}
+		})
 	}
-	fake.configs[101] = VMConfig{Digest: strings40("a"), Fields: map[string]string{"digest": strings40("a")}}
-	config, exists, err = readOptionalVMConfig(context.Background(), fake, "pve-a", 101)
-	if err != nil || !exists || config.Digest != strings40("a") {
-		t.Fatalf("existing PVE config = %#v, exists %t, err %v", config, exists, err)
+
+	fake := newFakeMutationAPI()
+	fake.missingConfigStatusCode = http.StatusUnauthorized
+	if _, _, err := readOptionalVMConfig(context.Background(), fake, "pve-a", 101); err == nil {
+		t.Fatal("unrelated API error was treated as VM absence")
 	}
 }
 func (fake *fakeMutationAPI) CloneVM(_ context.Context, request CloneRequest) (UPID, error) {

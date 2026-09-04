@@ -1228,12 +1228,14 @@ func readOptionalVMConfig(ctx context.Context, client MutationAPI, node string, 
 	if errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
 		return VMConfig{}, false, nil
 	}
-	// PVE 9.2 returns HTTP 500 with a missing-config message for an unused
-	// VMID. Error bodies are intentionally never parsed because they can
-	// contain attacker-controlled or secret material. Treat that response as
-	// absence only when the separate typed nextid check positively confirms
-	// the exact VMID is available; otherwise preserve the original error.
-	if errors.As(err, &status) && status.StatusCode == http.StatusInternalServerError {
+	// PVE 9.2 returns HTTP 500 for an unused VMID when the caller can inspect
+	// the VM root, and HTTP 403 for a least-privilege pool-scoped caller because
+	// a not-yet-created VM cannot belong to the pool. Error bodies are
+	// intentionally never parsed because they can contain attacker-controlled
+	// or secret material. Treat either response as absence only when the
+	// separate typed nextid check positively confirms the exact VMID is
+	// available; an occupied or ambiguous VMID remains fail-closed.
+	if errors.As(err, &status) && (status.StatusCode == http.StatusInternalServerError || status.StatusCode == http.StatusForbidden) {
 		if available, checkErr := client.AdvisoryVMIDAvailable(ctx, vmid); checkErr == nil && available {
 			return VMConfig{}, false, nil
 		}

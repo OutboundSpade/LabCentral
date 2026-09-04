@@ -42,6 +42,13 @@ Validation accepts only isolated static-IPv4 Network resources and Linux/amd64 V
 
 Apply rebinds every decoded plan field to the canonical resource and configured VMID, template, storage, bridge, VLAN, hardware, disk, and ownership profiles. It rejects any stale digest, missing/extra committed claim, mismatched dependency state, substituted provider-state address, template drift, foreign destination, or permission/inventory regression before its first write. It uses only the allowlisted clone, safe config, status, guest-agent, task, lifecycle, and exact-VM delete APIs. Full ownership is placed in the clone description and checked on every later operation. Config writes use the observed PVE digest; lost responses are reconciled by exact VMID, marker, lock, task, and readback state. Cleanup never uses force, skip-lock, purge, or unreferenced-volume deletion and reports an owned leftover when absence is ambiguous.
 
+PVE may return `500` for a missing QEMU configuration to a broad reader, or
+`403` to a pool-scoped token because a not-yet-created VM cannot belong to the
+destination pool. LabCentral does not inspect the error body. It treats either
+status as absence only when the separate typed `/cluster/nextid?vmid=...`
+request confirms that exact VMID is free. An occupied VMID, failed check, or
+any other status remains an error; the advisory check is never a reservation.
+
 The invocation journal uses an operator-created `0700` directory, atomic/checksummed `0600` records, file and directory sync, bounded closed JSON, and hashed filenames. It stores no token, upstream body, task log, or guest data. A mode-`0600` advisory-lock file serializes each complete apply, destroy, or lifecycle RPC across independently running provider processes; lock acquisition honors request cancellation, and process death releases the kernel lock so another process can recover from the last durable checkpoint. Multi-replica startup additionally requires this directory to be the exact `proxmox-journal` sibling of the verified shared artifact directory on the same mount. Submitted clone/lifecycle/destroy UPIDs survive restart and are polled before any action can be reissued; unknown versions, corruption, identity reuse, malformed UPIDs, ownership drift, or a terminal-result persistence failure fail closed. The conservative journal-wide lease limits one target journal to one concurrent mutation until finer resource-scoped coordination is independently proven.
 
 ## Transport and operator boundary
