@@ -90,3 +90,16 @@ column. Begin/finalize/exchange/recheck/end/revoke transactions use database
 time, repeat current authority and owned-resource checks, clear consumed or
 denied hash material, and atomically append redacted access audit/event/outbox
 records. The same concurrency and restart cases pass on SQLite and PostgreSQL.
+
+The final `TASK-PROD-003` producer pass retains the `0008` schema and completes
+its transactional use. Authentication session/recovery/OIDC state,
+administrator identity/tenancy/authority mutations, target discovery
+snapshots, and Operation queue/finalization now append the generalized audit,
+event, and outbox rows in the same transaction as state. Authorization has no
+aggregate mutation, so the evaluator uses an atomic audit+event append boundary
+for allowed, denied, and failed decisions. One authorization record is emitted
+per boundary call rather than per SQL-prefiltered Instance; successful
+`audit.read` decisions are deliberately not appended to the stream being paged
+because doing so would create an inexhaustible cursor tail. Denied and failed
+audit reads remain recorded. The executable producer catalog is
+[`design/contracts/governance-audit-producers.yaml`](../../design/contracts/governance-audit-producers.yaml).

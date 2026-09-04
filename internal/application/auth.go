@@ -156,6 +156,8 @@ const (
 
 type SessionRecord struct {
 	ID            string
+	AuditID       string
+	EventID       string
 	UserID        domain.UserID
 	Kind          SessionKind
 	TokenHash     string

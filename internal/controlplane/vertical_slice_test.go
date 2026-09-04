@@ -631,6 +631,18 @@ func runExampleAStoreConformance(t *testing.T, store *localdb.Store, db *sql.DB)
 	if err != nil || operation.State != domain.OperationSucceeded {
 		t.Fatalf("destroy operation = %#v, %v", operation, err)
 	}
+	for table, want := range map[string]int{
+		"labcentral_audit_records": 4, "labcentral_events": 4, "labcentral_event_outbox_deliveries": 4,
+	} {
+		var count int
+		query := "SELECT COUNT(*) FROM " + table
+		if table == "labcentral_audit_records" {
+			query += " WHERE category = 'operation'"
+		}
+		if err := db.QueryRowContext(ctx, query).Scan(&count); err != nil || count != want {
+			t.Fatalf("generalized operation %s count=%d want=%d err=%v", table, count, want, err)
+		}
+	}
 }
 
 func TestWorkerReauthorizesQueuedActorBeforeProviderAccess(t *testing.T) {

@@ -562,10 +562,14 @@ func (s *Service) listProviderTargets(ctx context.Context, allowed map[domain.Pr
 }
 
 func (s *Service) RefreshTarget(ctx context.Context, targetID domain.ProviderTargetID) error {
-	return s.RefreshTargetAs(ctx, LocalAdminID, targetID)
+	return s.refreshTarget(ctx, LocalAdminID, application.RecordActor{Kind: application.RecordActorSystem, ID: "system.target-refresh"}, targetID)
 }
 
 func (s *Service) RefreshTargetAs(ctx context.Context, subjectID domain.UserID, targetID domain.ProviderTargetID) error {
+	return s.refreshTarget(ctx, subjectID, application.RecordActor{Kind: application.RecordActorUser, ID: string(subjectID)}, targetID)
+}
+
+func (s *Service) refreshTarget(ctx context.Context, subjectID domain.UserID, actor application.RecordActor, targetID domain.ProviderTargetID) error {
 	if _, err := domain.NewUserID(string(subjectID)); err != nil {
 		return err
 	}
@@ -611,7 +615,12 @@ func (s *Service) RefreshTargetAs(ctx context.Context, subjectID domain.UserID, 
 	for feature := range session.features {
 		features = append(features, feature)
 	}
+	recordIDs, err := s.newGovernanceRecordIDs()
+	if err != nil {
+		return err
+	}
 	return s.store.SaveTargetSnapshot(ctx, TargetSnapshot{
+		GovernanceRecordIDs: recordIDs, Actor: actor,
 		ID: targetID, ProviderKind: session.ProviderKind, ConfigFingerprint: session.Context.GetConfigFingerprint(),
 		ProtocolMajor: session.ProtocolMajor, ProtocolMinor: session.ProtocolMinor, Features: features,
 		DiscoveryJSON: encoded, DiscoveredAt: discoveredAt, ValidUntil: validUntil,

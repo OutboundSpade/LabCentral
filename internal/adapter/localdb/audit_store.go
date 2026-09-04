@@ -204,6 +204,44 @@ func (s *Store) AppendEventRecord(ctx context.Context, appendRecord application.
 	}
 }
 
+func (s *Store) AppendGovernanceRecords(ctx context.Context, audit application.AppendAuditRecord, event application.AppendEventRecord) (application.AuditRecord, application.EventRecord, error) {
+	if err := application.ValidateAppendAuditRecord(audit); err != nil {
+		return application.AuditRecord{}, application.EventRecord{}, err
+	}
+	if err := application.ValidateAppendEventRecord(event); err != nil {
+		return application.AuditRecord{}, application.EventRecord{}, err
+	}
+	for attempt := 0; ; attempt++ {
+		auditRecord, eventRecord, err := s.appendGovernanceRecords(ctx, audit, event)
+		if !isRetryableTransactionConflict(err) || attempt == 7 {
+			return auditRecord, eventRecord, err
+		}
+		if err := waitTransactionRetry(ctx, attempt); err != nil {
+			return application.AuditRecord{}, application.EventRecord{}, err
+		}
+	}
+}
+
+func (s *Store) appendGovernanceRecords(ctx context.Context, audit application.AppendAuditRecord, event application.AppendEventRecord) (application.AuditRecord, application.EventRecord, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return application.AuditRecord{}, application.EventRecord{}, fmt.Errorf("begin governance append: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	auditRecord, err := s.appendAuditRecordTx(ctx, tx, audit)
+	if err != nil {
+		return application.AuditRecord{}, application.EventRecord{}, err
+	}
+	eventRecord, err := s.appendEventRecordTx(ctx, tx, event)
+	if err != nil {
+		return application.AuditRecord{}, application.EventRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return application.AuditRecord{}, application.EventRecord{}, fmt.Errorf("commit governance append: %w", err)
+	}
+	return auditRecord, eventRecord, nil
+}
+
 func (s *Store) appendEventRecord(ctx context.Context, appendRecord application.AppendEventRecord) (application.EventRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {

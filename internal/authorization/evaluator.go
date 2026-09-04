@@ -17,6 +17,7 @@ var ErrDenied = errors.New("authorization denied")
 
 type Evaluator struct {
 	repository application.AuthRepository
+	recorder   application.GovernanceRecordStore
 	now        func() time.Time
 }
 
@@ -24,12 +25,23 @@ func New(repository application.AuthRepository) (*Evaluator, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("authorization repository is required")
 	}
-	return &Evaluator{repository: repository, now: time.Now}, nil
+	recorder, _ := repository.(application.GovernanceRecordStore)
+	return &Evaluator{repository: repository, recorder: recorder, now: time.Now}, nil
 }
 
 func (e *Evaluator) Authorize(ctx context.Context, request application.AuthorizationRequest) error {
+	scope, decisionErr := e.evaluate(ctx, request)
+	if e.recorder != nil {
+		if err := e.recordDecision(ctx, request, scope, decisionErr); err != nil {
+			return fmt.Errorf("record authorization decision: %w", err)
+		}
+	}
+	return decisionErr
+}
+
+func (e *Evaluator) evaluate(ctx context.Context, request application.AuthorizationRequest) (application.RecordScope, error) {
 	if request.SubjectID == "" || request.Action == "" || request.ScopeKind == "" || request.ScopeID == "" {
-		return ErrDenied
+		return application.RecordScope{}, ErrDenied
 	}
 	if request.Now.IsZero() {
 		request.Now = e.now().UTC()
@@ -37,28 +49,29 @@ func (e *Evaluator) Authorize(ctx context.Context, request application.Authoriza
 	snapshot, err := e.repository.AuthorizationSnapshot(ctx, request.SubjectID, request.Now)
 	if err != nil {
 		if errors.Is(err, application.ErrAuthRecordNotFound) {
-			return ErrDenied
+			return application.RecordScope{}, ErrDenied
 		}
-		return fmt.Errorf("load authorization snapshot: %w", err)
+		return application.RecordScope{}, fmt.Errorf("load authorization snapshot: %w", err)
 	}
 	hierarchy, err := e.repository.ResolveScope(ctx, request.ScopeKind, request.ScopeID)
 	if err != nil {
 		if errors.Is(err, application.ErrAuthRecordNotFound) {
-			return ErrDenied
+			return application.RecordScope{}, ErrDenied
 		}
-		return fmt.Errorf("resolve authorization scope: %w", err)
+		return application.RecordScope{}, fmt.Errorf("resolve authorization scope: %w", err)
 	}
+	recordScope := application.RecordScope{OrganizationID: hierarchy.OrganizationID, ProjectID: hierarchy.ProjectID}
 	if request.OwnerKind != "" && validatesRequestedOwner(request.Action) {
 		belongs, err := e.repository.OwnerBelongsToScope(ctx, request.OwnerKind, request.OwnerID, hierarchy, request.Now)
 		if err != nil {
-			return fmt.Errorf("resolve owner relationship: %w", err)
+			return recordScope, fmt.Errorf("resolve owner relationship: %w", err)
 		}
 		if !belongs {
-			return ErrDenied
+			return recordScope, ErrDenied
 		}
 	}
 	if requiresTargetGrant(request.Action) && request.TargetID == "" {
-		return ErrDenied
+		return recordScope, ErrDenied
 	}
 	for _, assignment := range snapshot.Assignments {
 		if !roleAllows(assignment.Role, request.Action) || !assignmentCovers(assignment, hierarchy, request, snapshot) {
@@ -75,9 +88,53 @@ func (e *Evaluator) Authorize(ctx context.Context, request application.Authoriza
 			!hasTargetGrant(request, hierarchy, snapshot) {
 			continue
 		}
+		return recordScope, nil
+	}
+	return recordScope, ErrDenied
+}
+
+type authorizationDecisionPayload struct {
+	Action      application.PermissionAction `json:"action"`
+	Decision    string                       `json:"decision"`
+	ScopeKind   application.ScopeKind        `json:"scopeKind"`
+	TargetBound bool                         `json:"targetBound"`
+	OwnerKind   application.OwnerKind        `json:"ownerKind,omitempty"`
+}
+
+func (e *Evaluator) recordDecision(ctx context.Context, request application.AuthorizationRequest, scope application.RecordScope, decisionErr error) error {
+	// Recording a successful read into the same stream being paged would make
+	// cursor exhaustion impossible: every next-page request would append a new
+	// tail record. Denied and failed audit reads remain security events.
+	if request.Action == application.ActionAuditRead && decisionErr == nil {
 		return nil
 	}
-	return ErrDenied
+	outcome := application.AuditSucceeded
+	decision := "allowed"
+	if decisionErr != nil {
+		outcome = application.AuditFailed
+		decision = "failed"
+		if errors.Is(decisionErr, ErrDenied) {
+			outcome = application.AuditDenied
+			decision = "denied"
+		}
+	}
+	actor := application.RecordActor{Kind: application.RecordActorAnonymous}
+	aggregateID := "anonymous"
+	if request.SubjectID != "" {
+		actor = application.RecordActor{Kind: application.RecordActorUser, ID: string(request.SubjectID)}
+		aggregateID = string(request.SubjectID)
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthorization, Action: "authorization.evaluate", Outcome: outcome,
+		EventType: "authorization.decision", Scope: scope, Actor: actor,
+		AggregateType: "authorization-subject", AggregateID: aggregateID,
+		Payload: authorizationDecisionPayload{Action: request.Action, Decision: decision, ScopeKind: request.ScopeKind, TargetBound: request.TargetID != "", OwnerKind: request.OwnerKind},
+	})
+	if err != nil {
+		return err
+	}
+	_, _, err = e.recorder.AppendGovernanceRecords(ctx, audit, event)
+	return err
 }
 
 func validatesRequestedOwner(action application.PermissionAction) bool {
@@ -89,7 +146,13 @@ func (e *Evaluator) AuthorizeInstance(ctx context.Context, subjectID domain.User
 	access, err := e.repository.InstanceAccess(ctx, instanceID)
 	if err != nil {
 		if errors.Is(err, application.ErrAuthRecordNotFound) {
+			if recordErr := e.recordDecisionIfConfigured(ctx, application.AuthorizationRequest{SubjectID: subjectID, Action: action}, application.RecordScope{}, ErrDenied); recordErr != nil {
+				return application.InstanceAccessRecord{}, recordErr
+			}
 			return application.InstanceAccessRecord{}, ErrDenied
+		}
+		if recordErr := e.recordDecisionIfConfigured(ctx, application.AuthorizationRequest{SubjectID: subjectID, Action: action}, application.RecordScope{}, err); recordErr != nil {
+			return application.InstanceAccessRecord{}, recordErr
 		}
 		return application.InstanceAccessRecord{}, err
 	}
@@ -100,7 +163,13 @@ func (e *Evaluator) AuthorizeOperation(ctx context.Context, subjectID domain.Use
 	access, err := e.repository.OperationInstanceAccess(ctx, operationID)
 	if err != nil {
 		if errors.Is(err, application.ErrAuthRecordNotFound) {
+			if recordErr := e.recordDecisionIfConfigured(ctx, application.AuthorizationRequest{SubjectID: subjectID, Action: action}, application.RecordScope{}, ErrDenied); recordErr != nil {
+				return application.InstanceAccessRecord{}, recordErr
+			}
 			return application.InstanceAccessRecord{}, ErrDenied
+		}
+		if recordErr := e.recordDecisionIfConfigured(ctx, application.AuthorizationRequest{SubjectID: subjectID, Action: action}, application.RecordScope{}, err); recordErr != nil {
+			return application.InstanceAccessRecord{}, recordErr
 		}
 		return application.InstanceAccessRecord{}, err
 	}
@@ -108,25 +177,42 @@ func (e *Evaluator) AuthorizeOperation(ctx context.Context, subjectID domain.Use
 }
 
 func (e *Evaluator) AuthorizeInstanceBatch(ctx context.Context, subjectID domain.UserID, action application.PermissionAction, batchID domain.InstanceBatchID) (application.InstanceBatchAccessRecord, error) {
+	decisionRequest := application.AuthorizationRequest{SubjectID: subjectID, Action: action}
 	access, err := e.repository.InstanceBatchAccess(ctx, batchID)
 	if err != nil {
 		if errors.Is(err, application.ErrAuthRecordNotFound) {
+			if recordErr := e.recordDecisionIfConfigured(ctx, decisionRequest, application.RecordScope{}, ErrDenied); recordErr != nil {
+				return application.InstanceBatchAccessRecord{}, recordErr
+			}
 			return application.InstanceBatchAccessRecord{}, ErrDenied
 		}
 		return application.InstanceBatchAccessRecord{}, err
 	}
+	decisionRequest.ScopeKind, decisionRequest.ScopeID, decisionRequest.TargetID = application.ScopeProject, string(access.ProjectID), access.TargetID
 	if action != application.ActionInstanceBatchCreate || len(access.Owners) == 0 {
+		if recordErr := e.recordDecisionIfConfigured(ctx, decisionRequest, application.RecordScope{}, ErrDenied); recordErr != nil {
+			return application.InstanceBatchAccessRecord{}, recordErr
+		}
 		return application.InstanceBatchAccessRecord{}, ErrDenied
 	}
+	var decisionScope application.RecordScope
 	for _, owner := range access.Owners {
 		request := application.AuthorizationRequest{
 			SubjectID: subjectID, Action: action, ScopeKind: application.ScopeProject,
 			ScopeID: string(access.ProjectID), TargetID: access.TargetID,
 			OwnerKind: owner.OwnerKind, OwnerID: owner.OwnerID,
 		}
-		if err := e.Authorize(ctx, request); err != nil {
+		scope, err := e.evaluate(ctx, request)
+		decisionScope = scope
+		if err != nil {
+			if recordErr := e.recordDecisionIfConfigured(ctx, decisionRequest, decisionScope, err); recordErr != nil {
+				return application.InstanceBatchAccessRecord{}, recordErr
+			}
 			return application.InstanceBatchAccessRecord{}, err
 		}
+	}
+	if err := e.recordDecisionIfConfigured(ctx, decisionRequest, decisionScope, nil); err != nil {
+		return application.InstanceBatchAccessRecord{}, err
 	}
 	return access, nil
 }
@@ -149,7 +235,7 @@ func (e *Evaluator) AuthorizedInstanceIDs(ctx context.Context, subjectID domain.
 	for _, access := range accessRecords {
 		request := instanceRequest(subjectID, action, access)
 		request.Now = now
-		err := e.Authorize(ctx, request)
+		_, err := e.evaluate(ctx, request)
 		if err == nil {
 			result = append(result, access.InstanceID)
 			continue
@@ -158,7 +244,22 @@ func (e *Evaluator) AuthorizedInstanceIDs(ctx context.Context, subjectID domain.
 			return nil, err
 		}
 	}
+	if err := e.recordDecisionIfConfigured(ctx, application.AuthorizationRequest{
+		SubjectID: subjectID, Action: action, ScopeKind: application.ScopePlatform, ScopeID: "platform",
+	}, application.RecordScope{}, nil); err != nil {
+		return nil, err
+	}
 	return result, nil
+}
+
+func (e *Evaluator) recordDecisionIfConfigured(ctx context.Context, request application.AuthorizationRequest, scope application.RecordScope, decisionErr error) error {
+	if e.recorder == nil {
+		return nil
+	}
+	if err := e.recordDecision(ctx, request, scope, decisionErr); err != nil {
+		return fmt.Errorf("record authorization decision: %w", err)
+	}
+	return nil
 }
 
 func instanceAccessFilter(snapshot application.AuthorizationSnapshot, action application.PermissionAction) application.InstanceAccessFilter {

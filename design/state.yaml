@@ -223,6 +223,7 @@ completedTasks:
   - TASK-PROXMOX-006
   - TASK-PROD-001
   - TASK-PROD-002
-currentTasks:
   - TASK-PROD-003
-nextRecommendedTasks: []
+currentTasks: []
+nextRecommendedTasks:
+  - TASK-PROD-004

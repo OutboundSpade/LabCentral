@@ -162,7 +162,9 @@ type PublishTemplateRevisionRequest struct {
 }
 
 type TargetSnapshot struct {
+	GovernanceRecordIDs
 	ID                domain.ProviderTargetID
+	Actor             application.RecordActor
 	ProviderKind      string
 	ConfigFingerprint string
 	ProtocolMajor     uint32

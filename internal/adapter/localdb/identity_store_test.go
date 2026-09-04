@@ -253,6 +253,13 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	createAccessTestInstance(t, store, "instance.alpha-user", "project.alpha", application.OwnerUser, "user.alice", "user.alice")
 	createAccessTestInstance(t, store, "instance.alpha-team", "project.alpha", application.OwnerTeam, "team.alpha", "user.alice")
 	createAccessTestInstance(t, store, "instance.beta-user", "project.beta", application.OwnerUser, "user.bob", "user.bob")
+	appendAuditConflict(t, store, "audit.instance.audit-conflict")
+	if err := tryCreateAccessTestInstance(store, "instance.audit-conflict", "project.alpha", application.OwnerUser, "user.alice", "user.alice"); err == nil {
+		t.Fatal("operation governance conflict did not abort instance admission")
+	}
+	if _, err := store.GetInstance(ctx, "instance.audit-conflict"); !errors.Is(err, controlplane.ErrNotFound) {
+		t.Fatalf("operation governance conflict retained instance: %v", err)
+	}
 	for _, invalid := range []struct {
 		name      string
 		projectID domain.ProjectID
@@ -350,7 +357,7 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		t.Fatalf("external identity user = %#v, %v", external, err)
 	}
 	session := application.SessionRecord{
-		ID: "session.old", UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-old", CSRFHash: "csrf-old", KeyID: "key-1", ExpiresAt: now.Add(time.Hour),
+		ID: "session.old", AuditID: "audit.session-old", EventID: "event.session-old", UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-old", CSRFHash: "csrf-old", KeyID: "key-1", ExpiresAt: now.Add(time.Hour),
 	}
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
@@ -359,7 +366,7 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		t.Fatalf("session lookup = %#v, %v", found, err)
 	}
 	replacement := application.SessionRecord{
-		ID: "session.new", UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-new", CSRFHash: "csrf-new", KeyID: "key-2",
+		ID: "session.new", AuditID: "audit.session-new", EventID: "event.session-new", UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-new", CSRFHash: "csrf-new", KeyID: "key-2",
 		ExpiresAt: now.Add(2 * time.Hour), RotatedFromID: session.ID,
 	}
 	if err := store.RotateSession(ctx, session.ID, replacement, now); err != nil {
@@ -373,6 +380,86 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	}
 	if _, err := store.SessionByTokenHash(ctx, "token-new", now); !errors.Is(err, application.ErrAuthRecordNotFound) {
 		t.Fatalf("revoked session remained valid: %v", err)
+	}
+	appendAuditConflict(t, store, "audit.session-rollback")
+	if err := store.CreateSession(ctx, application.SessionRecord{
+		ID: "session.rollback", AuditID: "audit.session-rollback", EventID: "event.session-rollback",
+		UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-rollback", CSRFHash: "csrf-rollback", KeyID: "key-1", ExpiresAt: now.Add(time.Hour),
+	}); err == nil {
+		t.Fatal("authentication governance conflict did not abort session creation")
+	}
+	if _, err := store.SessionByTokenHash(ctx, "token-rollback", now); !errors.Is(err, application.ErrAuthRecordNotFound) {
+		t.Fatalf("authentication governance conflict retained session: %v", err)
+	}
+
+	actorContext, err := application.WithRecordActor(ctx, application.RecordActor{Kind: application.RecordActorUser, ID: "user.admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateOrganization(actorContext, application.OrganizationRecord{ID: "org.audit", Name: "audit-org"}); err != nil {
+		t.Fatal(err)
+	}
+	targetSnapshot := controlplane.TargetSnapshot{
+		GovernanceRecordIDs: controlplane.GovernanceRecordIDs{AuditID: "audit.target-refresh", EventID: "event.target-refresh"},
+		ID:                  "target.audit", Actor: application.RecordActor{Kind: application.RecordActorUser, ID: "user.admin"}, ProviderKind: "proxmox", ConfigFingerprint: "sha256:" + strings.Repeat("a", 64),
+		ProtocolMajor: 1, ProtocolMinor: 2, Features: []string{"target-discovery-v1"}, DiscoveryJSON: []byte(`{"capabilities":[]}`),
+		DiscoveredAt: now, ValidUntil: now.Add(time.Hour),
+	}
+	if err := store.SaveTargetSnapshot(actorContext, targetSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	failedTargetUpdate := targetSnapshot
+	failedTargetUpdate.ProviderKind = "tampered"
+	failedTargetUpdate.DiscoveryJSON = []byte(`{"capabilities":["tampered"]}`)
+	if err := store.SaveTargetSnapshot(actorContext, failedTargetUpdate); err == nil {
+		t.Fatal("target governance conflict did not abort snapshot update")
+	}
+	loadedTarget, err := store.GetTargetSnapshot(ctx, targetSnapshot.ID)
+	if err != nil || loadedTarget.ProviderKind != targetSnapshot.ProviderKind || string(loadedTarget.DiscoveryJSON) != string(targetSnapshot.DiscoveryJSON) {
+		t.Fatalf("target governance conflict changed snapshot: %#v, %v", loadedTarget, err)
+	}
+	for _, category := range []application.AuditCategory{
+		application.AuditAuthentication, application.AuditAuthorization, application.AuditTarget,
+		application.AuditOperation, application.AuditAdministrator,
+	} {
+		var count int
+		if err := store.db.QueryRowContext(ctx, store.bind(`SELECT COUNT(*) FROM labcentral_audit_records WHERE category = ?`), category).Scan(&count); err != nil || count == 0 {
+			t.Fatalf("generalized %s producer count=%d err=%v", category, count, err)
+		}
+	}
+	rows, err := store.db.QueryContext(ctx, `SELECT payload_json FROM labcentral_audit_records`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(payload), "token-old") || strings.Contains(string(payload), "csrf-old") {
+			t.Fatal("authentication secret appeared in audit payload")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func appendAuditConflict(t *testing.T, store *Store, id string) {
+	t.Helper()
+	audit, _, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		AuditID: id, Category: application.AuditAdministrator, Action: "fault-injection.prepare", Outcome: application.AuditSucceeded,
+		EventType: "fault-injection.prepared", Actor: application.RecordActor{Kind: application.RecordActorSystem, ID: "system.test"},
+		AggregateType: "fault-injection", AggregateID: id, Payload: struct {
+			State string `json:"state"`
+		}{"prepared"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendAuditRecord(context.Background(), audit); err != nil {
+		t.Fatal(err)
 	}
 }
 

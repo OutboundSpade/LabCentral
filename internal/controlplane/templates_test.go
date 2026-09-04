@@ -122,7 +122,9 @@ func TestTemplatePublicationUsesVerifiedImmutableArtifactAndAtomicRecords(t *tes
 	}
 
 	for table, want := range map[string]int{
-		"labcentral_audit_records": 4, "labcentral_events": 4, "labcentral_event_outbox_deliveries": 4,
+		// Three Template mutations, two independently queued operations, and
+		// the classroom-batch acceptance each emit one generalized pair.
+		"labcentral_audit_records": 6, "labcentral_events": 6, "labcentral_event_outbox_deliveries": 6,
 	} {
 		var count int
 		if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count); err != nil || count != want {

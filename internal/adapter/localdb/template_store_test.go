@@ -375,6 +375,10 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 			t.Fatalf("%s rows=%d want=%d err=%v", table, rows, want, err)
 		}
 	}
+	var templateAudits int
+	if err := store.db.QueryRowContext(ctx, store.bind(`SELECT COUNT(*) FROM labcentral_audit_records WHERE category = ?`), application.AuditTemplate).Scan(&templateAudits); err != nil || templateAudits != 11 {
+		t.Fatalf("Template audit producer rows=%d want=11 err=%v", templateAudits, err)
+	}
 
 	validInstanceID := "instance.revision-bound"
 	if err := createRevisionBoundTestInstance(store, validInstanceID, "project.alpha", loadedRevision.ID); err != nil {

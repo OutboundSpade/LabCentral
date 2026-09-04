@@ -84,7 +84,12 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 		}
 		if s.options.Mode == AuthModeNone {
 			user := application.UserRecord{ID: controlplane.LocalAdminID, Username: "local-admin", DisplayName: "Local administrator"}
-			next.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), principalContextKey{}, principal{user: user})))
+			ctx, err := application.WithRecordActor(request.Context(), application.RecordActor{Kind: application.RecordActorUser, ID: string(user.ID)})
+			if err != nil {
+				writeProblem(response, http.StatusInternalServerError, "actor_context_invalid", "The request actor could not be established.")
+				return
+			}
+			next.ServeHTTP(response, request.WithContext(context.WithValue(ctx, principalContextKey{}, principal{user: user})))
 			return
 		}
 		if !s.validPublicRequest(request) {
@@ -152,7 +157,12 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 				return
 			}
 		}
-		request = request.WithContext(context.WithValue(request.Context(), principalContextKey{}, principal{user: user, session: credentials.Session, bearer: bearerSupplied}))
+		actorContext, err := application.WithRecordActor(request.Context(), application.RecordActor{Kind: application.RecordActorUser, ID: string(user.ID)})
+		if err != nil {
+			writeProblem(response, http.StatusInternalServerError, "actor_context_invalid", "The request actor could not be established.")
+			return
+		}
+		request = request.WithContext(context.WithValue(actorContext, principalContextKey{}, principal{user: user, session: credentials.Session, bearer: bearerSupplied}))
 		next.ServeHTTP(response, request)
 	})
 }

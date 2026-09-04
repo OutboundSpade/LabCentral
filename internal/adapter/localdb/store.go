@@ -851,11 +851,26 @@ func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request c
 }
 
 func (s *Store) SaveTargetSnapshot(ctx context.Context, snapshot controlplane.TargetSnapshot) error {
+	for attempt := 0; ; attempt++ {
+		err := s.saveTargetSnapshot(ctx, snapshot)
+		if !isRetryableTransactionConflict(err) || attempt == 7 {
+			return err
+		}
+		if err := waitTransactionRetry(ctx, attempt); err != nil {
+			return err
+		}
+	}
+}
+
+func (s *Store) saveTargetSnapshot(ctx context.Context, snapshot controlplane.TargetSnapshot) error {
 	if _, err := domain.NewProviderTargetID(string(snapshot.ID)); err != nil {
 		return err
 	}
 	if snapshot.ProviderKind == "" || !strings.HasPrefix(snapshot.ConfigFingerprint, "sha256:") || snapshot.ProtocolMajor != 1 || len(snapshot.DiscoveryJSON) == 0 || len(snapshot.DiscoveryJSON) > 8<<20 || snapshot.DiscoveredAt.IsZero() || !snapshot.ValidUntil.After(snapshot.DiscoveredAt) {
 		return fmt.Errorf("provider target snapshot is incomplete")
+	}
+	if err := validateGovernanceRecordIDs(snapshot.GovernanceRecordIDs); err != nil {
+		return err
 	}
 	if _, err := domain.ParseSHA256Digest(strings.TrimPrefix(snapshot.ConfigFingerprint, "sha256:")); err != nil {
 		return fmt.Errorf("provider target config fingerprint is invalid: %w", err)
@@ -866,7 +881,12 @@ func (s *Store) SaveTargetSnapshot(ctx context.Context, snapshot controlplane.Ta
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_provider_targets
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("begin provider target snapshot: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_provider_targets
 		(target_id, provider_kind, config_fingerprint, protocol_major, protocol_minor, features_json, discovery_json,
 		 discovered_at_us, valid_until_us, updated_at_us)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
@@ -879,6 +899,34 @@ func (s *Store) SaveTargetSnapshot(ctx context.Context, snapshot controlplane.Ta
 		encodedFeatures, snapshot.DiscoveryJSON, snapshot.DiscoveredAt.UnixMicro(), snapshot.ValidUntil.UnixMicro())
 	if err != nil {
 		return fmt.Errorf("persist provider target snapshot: %w", err)
+	}
+	discoveryDigest := sha256.Sum256(snapshot.DiscoveryJSON)
+	payload := struct {
+		TargetID        domain.ProviderTargetID `json:"targetId"`
+		ProviderKind    string                  `json:"providerKind"`
+		ProtocolMajor   uint32                  `json:"protocolMajor"`
+		ProtocolMinor   uint32                  `json:"protocolMinor"`
+		FeatureCount    int                     `json:"featureCount"`
+		DiscoveryDigest string                  `json:"discoveryDigest"`
+		ValidUntil      time.Time               `json:"validUntil"`
+	}{snapshot.ID, snapshot.ProviderKind, snapshot.ProtocolMajor, snapshot.ProtocolMinor, len(features), hex.EncodeToString(discoveryDigest[:]), snapshot.ValidUntil.UTC()}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		AuditID: snapshot.AuditID, EventID: snapshot.EventID, Category: application.AuditTarget,
+		Action: "provider-target.discovery.refresh", Outcome: application.AuditSucceeded,
+		EventType: "provider-target.discovery-refreshed", Actor: snapshot.Actor,
+		AggregateType: "provider-target", AggregateID: string(snapshot.ID), Payload: payload,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return fmt.Errorf("append provider target audit: %w", err)
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return fmt.Errorf("append provider target event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit provider target snapshot: %w", err)
 	}
 	return nil
 }
@@ -1218,6 +1266,38 @@ func (s *Store) enqueue(ctx context.Context, tx *sql.Tx, instanceID domain.Insta
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_outbox_deliveries
 		(event_id, sink, payload, available_at_us) VALUES (?, 'local-events', ?, `+s.nowMicros()+`)`), eventID, eventPayload); err != nil {
 		return err
+	}
+	var organizationID domain.OrganizationID
+	var projectID domain.ProjectID
+	if err := tx.QueryRowContext(ctx, s.bind(`SELECT project.organization_id, instance.project_id
+		FROM labcentral_local_instances instance JOIN labcentral_projects project ON project.project_id = instance.project_id
+		WHERE instance.instance_id = ?`), instanceID).Scan(&organizationID, &projectID); err != nil {
+		return fmt.Errorf("load operation governance scope: %w", err)
+	}
+	actor := application.RecordActor{Kind: application.RecordActorUser, ID: string(subjectID)}
+	if subjectID == controlplane.SystemExpirationActorID {
+		actor = application.RecordActor{Kind: application.RecordActorSystem, ID: string(subjectID)}
+	}
+	governancePayload := struct {
+		OperationID domain.OperationID `json:"operationId"`
+		InstanceID  domain.InstanceID  `json:"instanceId"`
+		Kind        string             `json:"kind"`
+		State       string             `json:"state"`
+	}{operationID, instanceID, string(kind), string(domain.OperationQueued)}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		AuditID: auditID, EventID: eventID, Category: application.AuditOperation,
+		Action: "operation.queue", Outcome: application.AuditAccepted, EventType: "operation.queued",
+		Scope: application.RecordScope{OrganizationID: organizationID, ProjectID: projectID}, Actor: actor,
+		AggregateType: "operation", AggregateID: string(operationID), Links: application.RecordLinks{OperationID: operationID}, Payload: governancePayload,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return fmt.Errorf("append queued operation audit: %w", err)
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return fmt.Errorf("append queued operation event: %w", err)
 	}
 	return nil
 }
@@ -1677,6 +1757,45 @@ func (s *Store) Finalize(ctx context.Context, request controlplane.FinalizeReque
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_outbox_deliveries
 		(event_id, sink, payload, available_at_us) VALUES (?, 'local-events', ?, `+s.nowMicros()+`)`), request.EventID, eventPayload); err != nil {
 		return err
+	}
+	var organizationID domain.OrganizationID
+	var projectID domain.ProjectID
+	if err := tx.QueryRowContext(ctx, s.bind(`SELECT project.organization_id, instance.project_id
+		FROM labcentral_local_instances instance JOIN labcentral_projects project ON project.project_id = instance.project_id
+		WHERE instance.instance_id = ?`), instanceID).Scan(&organizationID, &projectID); err != nil {
+		return fmt.Errorf("load finalized operation governance scope: %w", err)
+	}
+	outcome := application.AuditFailed
+	if request.State == domain.OperationSucceeded {
+		outcome = application.AuditSucceeded
+	}
+	actor := application.RecordActor{Kind: application.RecordActorUser, ID: string(request.ActorID)}
+	if request.ActorID == controlplane.SystemExpirationActorID {
+		actor = application.RecordActor{Kind: application.RecordActorSystem, ID: string(request.ActorID)}
+	}
+	governancePayload := struct {
+		OperationID   domain.OperationID    `json:"operationId"`
+		InstanceID    domain.InstanceID     `json:"instanceId"`
+		Kind          string                `json:"kind"`
+		State         domain.OperationState `json:"state"`
+		InstancePhase domain.InstancePhase  `json:"instancePhase"`
+		ErrorCode     string                `json:"errorCode,omitempty"`
+	}{request.Fence.OperationID, domain.InstanceID(instanceID), string(request.OperationKind), request.State, request.InstancePhase, request.ErrorCode}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		AuditID: request.AuditID, EventID: request.EventID, Category: application.AuditOperation,
+		Action: "operation.complete", Outcome: outcome, EventType: "operation.completed",
+		Scope:         application.RecordScope{OrganizationID: organizationID, ProjectID: projectID},
+		Actor:         actor,
+		AggregateType: "operation", AggregateID: string(request.Fence.OperationID), Links: application.RecordLinks{OperationID: request.Fence.OperationID}, Payload: governancePayload,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return fmt.Errorf("append finalized operation audit: %w", err)
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return fmt.Errorf("append finalized operation event: %w", err)
 	}
 	return tx.Commit()
 }

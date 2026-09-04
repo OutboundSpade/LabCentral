@@ -127,6 +127,9 @@ func (s *Store) CreateBootstrapAdministrator(ctx context.Context, user applicati
 	if affected, _ := modeResult.RowsAffected(); affected != 1 {
 		return false, fmt.Errorf("bootstrap authentication mode conflicts with installation mode")
 	}
+	if err := s.appendAdministratorGovernanceTx(ctx, tx, application.ScopePlatform, "platform", "installation.bootstrap-administrator", "installation.bootstrap-administrator-created", "user", string(user.ID), 1, "active"); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
@@ -203,6 +206,9 @@ func (s *Store) CreateUser(ctx context.Context, record application.UserRecord, i
 			(issuer, subject, user_id, created_at_us) VALUES (?, ?, ?, `+s.nowMicros()+`)`), identity.Issuer, identity.Subject, identity.UserID); err != nil {
 			return fmt.Errorf("create external identity: %w", err)
 		}
+	}
+	if err := s.appendAdministratorGovernanceTx(ctx, tx, application.ScopePlatform, "platform", "user.create", "user.created", "user", string(record.ID), 1, "active"); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -527,15 +533,26 @@ func (s *Store) CreateSession(ctx context.Context, record application.SessionRec
 	if err := validateSession(record); err != nil {
 		return err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
 	if !record.CreatedAt.IsZero() {
-		if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_sessions WHERE expires_at_us <= ?`), record.CreatedAt.UTC().UnixMicro()); err != nil {
+		if _, err := tx.ExecContext(ctx, s.bind(`DELETE FROM labcentral_sessions WHERE expires_at_us <= ?`), record.CreatedAt.UTC().UnixMicro()); err != nil {
 			return fmt.Errorf("prune expired sessions: %w", err)
 		}
 	}
-	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_sessions
+	_, err = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_sessions
 		(session_id, user_id, credential_kind, token_hash, csrf_hash, key_id, expires_at_us, rotated_from_id, created_at_us)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), record.ID, record.UserID, record.Kind, record.TokenHash, record.CSRFHash, record.KeyID, record.ExpiresAt.UnixMicro(), record.RotatedFromID)
-	return wrapIdentityError("create session", err)
+	if err != nil {
+		return wrapIdentityError("create session", err)
+	}
+	if err := s.appendAuthenticationSessionTx(ctx, tx, record, "authentication.session.issue", "authentication.session-issued"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash string, now time.Time) (application.SessionRecord, error) {
@@ -561,7 +578,7 @@ func (s *Store) RotateSession(ctx context.Context, oldID string, replacement app
 	if err := validateSession(replacement); err != nil || replacement.RotatedFromID != oldID {
 		return fmt.Errorf("replacement session is invalid")
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -583,18 +600,49 @@ func (s *Store) RotateSession(ctx context.Context, oldID string, replacement app
 	if err != nil {
 		return err
 	}
+	if err := s.appendAuthenticationSessionTx(ctx, tx, replacement, "authentication.session.rotate", "authentication.session-rotated"); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 func (s *Store) RevokeSession(ctx context.Context, sessionID string, now time.Time) error {
-	result, err := s.db.ExecContext(ctx, s.bind(`UPDATE labcentral_sessions SET revoked_at_us = ? WHERE session_id = ? AND revoked_at_us = 0`), now.UTC().UnixMicro(), sessionID)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if affected, _ := result.RowsAffected(); affected != 1 {
+	defer func() { _ = tx.Rollback() }()
+	var userID domain.UserID
+	err = tx.QueryRowContext(ctx, s.bind(`UPDATE labcentral_sessions SET revoked_at_us = ?
+		WHERE session_id = ? AND revoked_at_us = 0 RETURNING user_id`), now.UTC().UnixMicro(), sessionID).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return application.ErrAuthRecordNotFound
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	actor, ok := application.RecordActorFromContext(ctx)
+	if !ok {
+		actor = application.RecordActor{Kind: application.RecordActorUser, ID: string(userID)}
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthentication, Action: "authentication.session.revoke", Outcome: application.AuditSucceeded,
+		EventType: "authentication.session-revoked", Actor: actor, AggregateType: "authentication-session", AggregateID: sessionID,
+		Payload: struct {
+			SessionID string `json:"sessionId"`
+			State     string `json:"state"`
+		}{sessionID, "revoked"},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return err
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) CreatePasswordRecovery(ctx context.Context, record application.PasswordRecoveryRecord) error {
@@ -604,20 +652,51 @@ func (s *Store) CreatePasswordRecovery(ctx context.Context, record application.P
 	if _, err := domain.NewUserID(string(record.UserID)); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_password_recovery_tokens WHERE expires_at_us <= ?`), record.ExpiresAt.UTC().Add(-time.Hour).UnixMicro()); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, s.bind(`DELETE FROM labcentral_password_recovery_tokens WHERE expires_at_us <= ?`), record.ExpiresAt.UTC().Add(-time.Hour).UnixMicro()); err != nil {
 		return fmt.Errorf("prune expired password recovery tokens: %w", err)
 	}
-	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_password_recovery_tokens
+	_, err = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_password_recovery_tokens
 		(token_id, user_id, token_hash, key_id, expires_at_us, created_at_us)
 		VALUES (?, ?, ?, ?, ?, `+s.nowMicros()+`)`), record.ID, record.UserID, record.TokenHash, record.KeyID, record.ExpiresAt.UTC().UnixMicro())
-	return wrapIdentityError("create password recovery token", err)
+	if err != nil {
+		return wrapIdentityError("create password recovery token", err)
+	}
+	actor, ok := application.RecordActorFromContext(ctx)
+	if !ok {
+		actor = application.RecordActor{Kind: application.RecordActorSystem, ID: "system.authentication"}
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthentication, Action: "authentication.password-recovery.issue", Outcome: application.AuditSucceeded,
+		EventType: "authentication.password-recovery-issued", Actor: actor,
+		AggregateType: "password-recovery", AggregateID: record.ID,
+		Payload: struct {
+			RecoveryID string        `json:"recoveryId"`
+			UserID     domain.UserID `json:"userId"`
+			ExpiresAt  time.Time     `json:"expiresAt"`
+		}{record.ID, record.UserID, record.ExpiresAt.UTC()},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return err
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ConsumePasswordRecovery(ctx context.Context, tokenHash, keyID, passwordHash string, now time.Time) error {
 	if tokenHash == "" || keyID == "" || passwordHash == "" || len(passwordHash) > 1024 {
 		return application.ErrAuthRecordNotFound
 	}
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -645,6 +724,24 @@ func (s *Store) ConsumePasswordRecovery(ctx context.Context, tokenHash, keyID, p
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_sessions SET revoked_at_us = ? WHERE user_id = ? AND revoked_at_us = 0`), now.UTC().UnixMicro(), userID); err != nil {
+		return err
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthentication, Action: "authentication.password-recovery.consume", Outcome: application.AuditSucceeded,
+		EventType: "authentication.password-recovery-consumed", Actor: application.RecordActor{Kind: application.RecordActorAnonymous},
+		AggregateType: "authentication-subject", AggregateID: userID,
+		Payload: struct {
+			UserID string `json:"userId"`
+			State  string `json:"state"`
+		}{userID, "credentials-rotated"},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return err
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -683,18 +780,45 @@ func (s *Store) CreateOIDCFlow(ctx context.Context, record application.OIDCFlowR
 		len(record.PKCECiphertext) < 32 || len(record.PKCECiphertext) > 1024 || record.KeyID == "" || len(record.KeyID) > 64 || !safeRedirectPath(record.RedirectPath) || record.ExpiresAt.IsZero() {
 		return fmt.Errorf("OIDC flow record is invalid")
 	}
-	if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_oidc_flows WHERE expires_at_us <= ?`), record.ExpiresAt.UTC().Add(-10*time.Minute).UnixMicro()); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, s.bind(`DELETE FROM labcentral_oidc_flows WHERE expires_at_us <= ?`), record.ExpiresAt.UTC().Add(-10*time.Minute).UnixMicro()); err != nil {
 		return fmt.Errorf("prune expired OIDC flows: %w", err)
 	}
-	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_oidc_flows
+	_, err = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_oidc_flows
 		(flow_id, state_hash, browser_hash, nonce_hash, pkce_verifier, key_id, redirect_path, expires_at_us, created_at_us)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), record.ID, record.StateHash, record.BrowserHash, record.NonceHash, record.PKCECiphertext,
 		record.KeyID, record.RedirectPath, record.ExpiresAt.UTC().UnixMicro())
-	return wrapIdentityError("create OIDC flow", err)
+	if err != nil {
+		return wrapIdentityError("create OIDC flow", err)
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthentication, Action: "authentication.oidc.begin", Outcome: application.AuditAccepted,
+		EventType: "authentication.oidc-flow-created", Actor: application.RecordActor{Kind: application.RecordActorAnonymous},
+		AggregateType: "oidc-flow", AggregateID: record.ID,
+		Payload: struct {
+			FlowID       string    `json:"flowId"`
+			RedirectPath string    `json:"redirectPath"`
+			ExpiresAt    time.Time `json:"expiresAt"`
+		}{record.ID, record.RedirectPath, record.ExpiresAt.UTC()},
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return err
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ConsumeOIDCFlow(ctx context.Context, stateHash, browserHash, keyID string, now time.Time) (application.OIDCFlowRecord, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return application.OIDCFlowRecord{}, err
 	}
@@ -719,6 +843,24 @@ func (s *Store) ConsumeOIDCFlow(ctx context.Context, stateHash, browserHash, key
 	}
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return application.OIDCFlowRecord{}, application.ErrAuthRecordNotFound
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthentication, Action: "authentication.oidc.consume", Outcome: application.AuditSucceeded,
+		EventType: "authentication.oidc-flow-consumed", Actor: application.RecordActor{Kind: application.RecordActorAnonymous},
+		AggregateType: "oidc-flow", AggregateID: record.ID,
+		Payload: struct {
+			FlowID string `json:"flowId"`
+			State  string `json:"state"`
+		}{record.ID, "consumed"},
+	})
+	if err != nil {
+		return application.OIDCFlowRecord{}, err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return application.OIDCFlowRecord{}, err
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return application.OIDCFlowRecord{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return application.OIDCFlowRecord{}, err
@@ -879,11 +1021,36 @@ func (s *Store) OwnerBelongsToScope(ctx context.Context, kind application.OwnerK
 }
 
 func validateSession(record application.SessionRecord) error {
-	if record.ID == "" || len(record.ID) > 128 || record.Kind != application.SessionKindBrowser && record.Kind != application.SessionKindBearer || record.TokenHash == "" || len(record.TokenHash) > 256 || record.CSRFHash == "" || len(record.CSRFHash) > 256 || record.KeyID == "" || len(record.KeyID) > 64 || record.ExpiresAt.IsZero() {
+	if record.ID == "" || len(record.ID) > 128 || record.AuditID == "" || record.EventID == "" || record.Kind != application.SessionKindBrowser && record.Kind != application.SessionKindBearer || record.TokenHash == "" || len(record.TokenHash) > 256 || record.CSRFHash == "" || len(record.CSRFHash) > 256 || record.KeyID == "" || len(record.KeyID) > 64 || record.ExpiresAt.IsZero() {
 		return fmt.Errorf("session record is invalid")
 	}
 	_, err := domain.NewUserID(string(record.UserID))
 	return err
+}
+
+func (s *Store) appendAuthenticationSessionTx(ctx context.Context, tx *sql.Tx, record application.SessionRecord, action, eventType string) error {
+	payload := struct {
+		SessionID string                  `json:"sessionId"`
+		Kind      application.SessionKind `json:"kind"`
+		ExpiresAt time.Time               `json:"expiresAt"`
+		Rotated   bool                    `json:"rotated"`
+	}{record.ID, record.Kind, record.ExpiresAt.UTC(), record.RotatedFromID != ""}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		AuditID: record.AuditID, EventID: record.EventID, Category: application.AuditAuthentication,
+		Action: action, Outcome: application.AuditSucceeded, EventType: eventType,
+		Actor:         application.RecordActor{Kind: application.RecordActorUser, ID: string(record.UserID)},
+		AggregateType: "authentication-session", AggregateID: record.ID, Payload: payload,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := s.appendAuditRecordTx(ctx, tx, audit); err != nil {
+		return fmt.Errorf("append authentication audit: %w", err)
+	}
+	if _, err := s.appendEventRecordTx(ctx, tx, event); err != nil {
+		return fmt.Errorf("append authentication event: %w", err)
+	}
+	return nil
 }
 
 func validity(from, until time.Time) (int64, int64, error) {

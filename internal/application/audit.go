@@ -3,6 +3,7 @@ package application
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -133,6 +134,25 @@ type RecordActor struct {
 	ID   string          `json:"id,omitempty"`
 }
 
+type recordActorContextKey struct{}
+
+// WithRecordActor binds the authenticated or internal actor to persistence
+// work without coupling application ports to an HTTP principal type.
+func WithRecordActor(ctx context.Context, actor RecordActor) (context.Context, error) {
+	if err := validateRecordActor(actor); err != nil {
+		return nil, err
+	}
+	return context.WithValue(ctx, recordActorContextKey{}, actor), nil
+}
+
+// RecordActorFromContext returns the explicitly bound actor. Persistence
+// adapters may use a named system actor only for work that has no request
+// principal, such as bootstrap and reconciliation.
+func RecordActorFromContext(ctx context.Context) (RecordActor, bool) {
+	actor, ok := ctx.Value(recordActorContextKey{}).(RecordActor)
+	return actor, ok
+}
+
 type RecordLinks struct {
 	CorrelationID string             `json:"correlationId,omitempty"`
 	CausationID   string             `json:"causationId,omitempty"`
@@ -232,6 +252,86 @@ type AuditExportResult struct {
 type RetentionRequest struct {
 	OccurredBefore time.Time
 	BatchSize      uint32
+}
+
+// GovernanceRecordStore atomically appends the audit and domain-event views
+// of one decision or mutation. Producers use this boundary whenever the pair
+// is not already part of a larger aggregate transaction.
+type GovernanceRecordStore interface {
+	AppendGovernanceRecords(context.Context, AppendAuditRecord, AppendEventRecord) (AuditRecord, EventRecord, error)
+}
+
+type GovernanceRecordInput struct {
+	AuditID       string
+	EventID       string
+	Category      AuditCategory
+	Action        string
+	Outcome       AuditOutcome
+	EventType     string
+	Scope         RecordScope
+	Actor         RecordActor
+	AggregateType string
+	AggregateID   string
+	Links         RecordLinks
+	Payload       any
+}
+
+// NewGovernanceRecords constructs the two validated envelopes from one typed,
+// deliberately safe payload. IDs are generated when a transactional producer
+// does not already own stable retry IDs.
+func NewGovernanceRecords(input GovernanceRecordInput) (AppendAuditRecord, AppendEventRecord, error) {
+	if input.AuditID == "" {
+		id, err := newRecordID("audit")
+		if err != nil {
+			return AppendAuditRecord{}, AppendEventRecord{}, err
+		}
+		input.AuditID = id
+	}
+	if input.EventID == "" {
+		id, err := newRecordID("event")
+		if err != nil {
+			return AppendAuditRecord{}, AppendEventRecord{}, err
+		}
+		input.EventID = id
+	}
+	encoded, err := json.Marshal(input.Payload)
+	if err != nil {
+		return AppendAuditRecord{}, AppendEventRecord{}, fmt.Errorf("encode governance payload: %w", err)
+	}
+	auditPayload, err := NewRedactedAuditPayload(encoded)
+	if err != nil {
+		return AppendAuditRecord{}, AppendEventRecord{}, err
+	}
+	eventPayload, err := NewSafeEventPayload(encoded)
+	if err != nil {
+		return AppendAuditRecord{}, AppendEventRecord{}, err
+	}
+	audit := AppendAuditRecord{
+		ID: input.AuditID, SchemaVersion: "audit.labcentral.io/v1", Category: input.Category,
+		Action: input.Action, Outcome: input.Outcome, Scope: input.Scope, Actor: input.Actor,
+		AggregateType: input.AggregateType, AggregateID: input.AggregateID, Links: input.Links,
+		RedactedPayload: auditPayload,
+	}
+	event := AppendEventRecord{
+		ID: input.EventID, SchemaVersion: "event.labcentral.io/v1", Type: input.EventType,
+		Scope: input.Scope, Actor: input.Actor, AggregateType: input.AggregateType,
+		AggregateID: input.AggregateID, Links: input.Links, SafePayload: eventPayload,
+	}
+	if err := ValidateAppendAuditRecord(audit); err != nil {
+		return AppendAuditRecord{}, AppendEventRecord{}, err
+	}
+	if err := ValidateAppendEventRecord(event); err != nil {
+		return AppendAuditRecord{}, AppendEventRecord{}, err
+	}
+	return audit, event, nil
+}
+
+func newRecordID(prefix string) (string, error) {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return "", fmt.Errorf("generate %s record ID: %w", prefix, err)
+	}
+	return fmt.Sprintf("%s.%x", prefix, value), nil
 }
 
 // AuditEventStore is the read/export boundary for immutable audit and event

@@ -206,6 +206,28 @@ func runAuditEventStoreConformance(t *testing.T, store *Store) {
 	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_event_outbox_deliveries WHERE delivered_at_us = 0`).Scan(&outboxRows); err != nil || outboxRows != events-3 {
 		t.Fatalf("retention changed undelivered outbox rows=%d err=%v", outboxRows, err)
 	}
+
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		AuditID: "audit.atomic-pair", EventID: "event.07", Category: application.AuditAdministrator,
+		Action: "governance.atomic-test", Outcome: application.AuditSucceeded, EventType: "governance.atomic-test",
+		Actor:         application.RecordActor{Kind: application.RecordActorSystem, ID: "system.test"},
+		AggregateType: "governance-test", AggregateID: "pair", Payload: struct {
+			Result string `json:"result"`
+		}{"rollback"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.AppendGovernanceRecords(ctx, audit, event); err == nil {
+		t.Fatal("atomic governance pair accepted a duplicate event")
+	}
+	if _, err := store.GetAuditRecord(ctx, audit.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("audit half of failed governance pair was retained: %v", err)
+	}
+	event.ID = "event.atomic-pair"
+	if _, _, err := store.AppendGovernanceRecords(ctx, audit, event); err != nil {
+		t.Fatalf("append atomic governance pair: %v", err)
+	}
 }
 
 func TestAuditPayloadRejectsSecretKeysAndMalformedJSON(t *testing.T) {

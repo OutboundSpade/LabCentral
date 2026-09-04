@@ -450,6 +450,10 @@ func accessTestHash(value string) application.KeyedTokenHash {
 
 func assertAccessGovernanceRedacted(t *testing.T, store *Store, canaries ...string) {
 	t.Helper()
+	var count int
+	if err := store.db.QueryRowContext(context.Background(), store.bind(`SELECT COUNT(*) FROM labcentral_audit_records WHERE category = ?`), application.AuditAccess).Scan(&count); err != nil || count == 0 {
+		t.Fatalf("access governance producer count=%d err=%v", count, err)
+	}
 	rows, err := store.db.QueryContext(context.Background(), `SELECT payload_json FROM labcentral_audit_records
 		WHERE aggregate_type = 'access-session' UNION ALL SELECT payload_json FROM labcentral_events WHERE aggregate_type = 'access-session'`)
 	if err != nil {

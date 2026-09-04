@@ -105,6 +105,7 @@ type ManagerOptions struct {
 
 type Manager struct {
 	repository    application.AuthRepository
+	recorder      application.GovernanceRecordStore
 	keyring       *Keyring
 	lifetime      time.Duration
 	rotation      time.Duration
@@ -154,7 +155,8 @@ func NewManager(repository application.AuthRepository, keyring *Keyring, options
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{repository: repository, keyring: keyring, lifetime: options.SessionLifetime, rotation: options.RotationAge, recovery: options.RecoveryLifetime, now: options.Now, dummyHash: dummy, passwordSlots: make(chan struct{}, options.PasswordWorkers)}, nil
+	recorder, _ := repository.(application.GovernanceRecordStore)
+	return &Manager{repository: repository, recorder: recorder, keyring: keyring, lifetime: options.SessionLifetime, rotation: options.RotationAge, recovery: options.RecoveryLifetime, now: options.Now, dummyHash: dummy, passwordSlots: make(chan struct{}, options.PasswordWorkers)}, nil
 }
 
 func (m *Manager) BootstrapLocalAdministrator(ctx context.Context, id domain.UserID, username, displayName string, password []byte) error {
@@ -219,9 +221,15 @@ func (m *Manager) AuthenticateLocal(ctx context.Context, username string, passwo
 	user, err := m.repository.UserByUsername(ctx, username)
 	if err != nil {
 		_ = m.verifyPassword(ctx, m.dummyHash, password)
+		if recordErr := m.recordAuthenticationDenial(ctx, "password"); recordErr != nil {
+			return SessionCredentials{}, recordErr
+		}
 		return SessionCredentials{}, ErrInvalidCredentials
 	}
 	if user.Disabled || user.PasswordHash == "" || m.verifyPassword(ctx, user.PasswordHash, password) != nil {
+		if recordErr := m.recordAuthenticationDenial(ctx, "password"); recordErr != nil {
+			return SessionCredentials{}, recordErr
+		}
 		return SessionCredentials{}, ErrInvalidCredentials
 	}
 	return m.newSession(ctx, user.ID, "", application.SessionKindBrowser)
@@ -460,6 +468,14 @@ func (m *Manager) newSessionRecord(userID domain.UserID, rotatedFrom string, kin
 	if err != nil {
 		return SessionCredentials{}, err
 	}
+	auditID, err := randomID("audit")
+	if err != nil {
+		return SessionCredentials{}, err
+	}
+	eventID, err := randomID("event")
+	if err != nil {
+		return SessionCredentials{}, err
+	}
 	tokenBytes := make([]byte, 32)
 	csrfBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -474,12 +490,35 @@ func (m *Manager) newSessionRecord(userID domain.UserID, rotatedFrom string, kin
 	zero(csrfBytes)
 	now := m.now().UTC()
 	record := application.SessionRecord{
-		ID: sessionID, UserID: userID, Kind: kind,
+		ID: sessionID, AuditID: auditID, EventID: eventID, UserID: userID, Kind: kind,
 		TokenHash: keyedHash(m.keyring.current.material, "session", cookieToken),
 		CSRFHash:  keyedHash(m.keyring.current.material, "csrf", csrfToken),
 		KeyID:     m.keyring.current.id, ExpiresAt: now.Add(m.lifetime), RotatedFromID: rotatedFrom, CreatedAt: now,
 	}
 	return SessionCredentials{Session: record, RequestSession: record, CookieToken: cookieToken, CSRFToken: csrfToken}, nil
+}
+
+func (m *Manager) recordAuthenticationDenial(ctx context.Context, mechanism string) error {
+	if m.recorder == nil {
+		return nil
+	}
+	audit, event, err := application.NewGovernanceRecords(application.GovernanceRecordInput{
+		Category: application.AuditAuthentication, Action: "authentication.login", Outcome: application.AuditDenied,
+		EventType: "authentication.denied", Actor: application.RecordActor{Kind: application.RecordActorAnonymous},
+		AggregateType: "authentication-mechanism", AggregateID: mechanism,
+		Payload: struct {
+			Mechanism string `json:"mechanism"`
+			Decision  string `json:"decision"`
+		}{mechanism, "denied"},
+	})
+	if err != nil {
+		return err
+	}
+	_, _, err = m.recorder.AppendGovernanceRecords(ctx, audit, event)
+	if err != nil {
+		return fmt.Errorf("record denied authentication: %w", err)
+	}
+	return nil
 }
 
 func randomID(prefix string) (string, error) {

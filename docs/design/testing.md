@@ -38,6 +38,16 @@ The same package runs all fourteen `TEST-ALLOC-*` cases from [`allocation-claims
 
 The first `TASK-PROD-003` conformance slice runs Lab Template/revision and generalized audit/event tests against SQLite and the disposable PostgreSQL adapter. It covers scoped name uniqueness, sequential and concurrent mutation replay, conflicting idempotency reuse, one optimistic metadata-update winner, concurrent revision numbering, immutable revision/audit/event triggers, project-bound revision instance creation, atomic rollback when governance IDs conflict, independent stream/per-aggregate sequences, concurrent event writers, outbox insertion, cursor pagination, bounded NDJSON export/retention, undelivered-event preservation, malformed or duplicate JSON, and secret-bearing payload-key refusal. Authenticated HTTP tests exercise project/organization denial before persistence or artifact access, opaque typed cursor round trips, paginated audit serialization, bounded raw NDJSON headers/body, malformed scope rejection, and OpenAPI route presence.
 
+The completing producer suite is indexed by
+[`design/contracts/governance-audit-producers.yaml`](../../design/contracts/governance-audit-producers.yaml).
+Shared SQLite/PostgreSQL cases require all seven categories—authentication,
+authorization, target, template, operation, access, and administrator—and
+fault-inject duplicate governance IDs to prove session, Instance/Operation, and
+target state rolls back with its audit/event/outbox pair. Authentication
+canaries are scanned from stored payloads, and audit/event pair insertion is
+independently forced through a duplicate-event failure to prove there is no
+retained audit half.
+
 [`access-conformance.yaml`](../../design/contracts/access-conformance.yaml) binds
 all eighteen access cases to Go tests. Normal CI covers pre-plugin denial,
 exact endpoint/state/audience binding, tight expiry, one-winner exchange on both
