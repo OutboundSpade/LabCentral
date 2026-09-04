@@ -615,23 +615,50 @@ func TestPrivateDataDirectoryPermissions(t *testing.T) {
 	}
 }
 
-func TestPackagedProxmoxServiceUsesAdjacentChecksumFile(t *testing.T) {
+func TestPackagedProxmoxServicesUseExternalIdentityBoundary(t *testing.T) {
 	service, err := os.ReadFile(filepath.Join("..", "..", "deploy", "proxmox", "labcentral.service"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	contents := string(service)
-	if !strings.Contains(contents, "--proxmox-plugin=/opt/labcentral/lab-provider-proxmox") {
-		t.Fatal("packaged service does not select the Proxmox provider")
+	for _, required := range []string{
+		"--proxmox-plugin-runtime-dir=/run/labcentral-proxmox/ipc",
+		"--proxmox-plugin-token-file=${CREDENTIALS_DIRECTORY}/proxmox-registration.token",
+		"--proxmox-credential-file=${CREDENTIALS_DIRECTORY}/proxmox-credential.json",
+		"--access-plugin-runtime-dir=/run/labcentral-access/ipc",
+		"LoadCredential=proxmox-credential.json:/etc/labcentral/proxmox-credential.json",
+	} {
+		if !strings.Contains(contents, required) {
+			t.Fatalf("packaged core service is missing external boundary %q", required)
+		}
+	}
+	if strings.Contains(contents, "--proxmox-plugin=/opt") || strings.Contains(contents, "--access-plugin=/opt") {
+		t.Fatal("packaged core service launches a production plugin under the core identity")
 	}
 	for _, required := range []string{"--auth-mode=${LABCENTRAL_AUTH_MODE}", "--public-origin=${LABCENTRAL_PUBLIC_ORIGIN}", "--session-keyring-file=${LABCENTRAL_SESSION_KEYRING_FILE}", "--observability-listen=${LABCENTRAL_OBSERVABILITY_LISTEN}"} {
 		if !strings.Contains(contents, required) {
 			t.Fatalf("packaged service is missing authenticated option %q", required)
 		}
 	}
-	if strings.Contains(contents, "--proxmox-plugin-sha256") {
-		t.Fatal("packaged service passes the checksum filename as a literal digest")
+	provider, err := os.ReadFile(filepath.Join("..", "..", "deploy", "proxmox", "labcentral-proxmox-provider.service"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	providerContents := string(provider)
+	for _, required := range []string{
+		"User=labcentral-proxmox",
+		"Group=labcentral-proxmox-ipc",
+		"ExecStart=/opt/labcentral/lab-provider-proxmox",
+		"LoadCredential=proxmox-registration.token:/etc/labcentral/proxmox-registration.token",
+		"IPAddressDeny=any",
+	} {
+		if !strings.Contains(providerContents, required) {
+			t.Fatalf("packaged provider service is missing identity boundary %q", required)
+		}
+	}
+}
+
+func TestConfiguredPluginDigestReadsAdjacentChecksum(t *testing.T) {
 	directory := t.TempDir()
 	plugin := filepath.Join(directory, "lab-provider-proxmox")
 	if err := os.WriteFile(plugin+".sha256", []byte(strings.Repeat("a", 64)+"  lab-provider-proxmox\n"), 0o644); err != nil {

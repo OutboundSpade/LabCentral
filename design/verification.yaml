@@ -1,5 +1,5 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T06:25:17Z"
+verifiedAt: "2026-09-04T06:45:35Z"
 result: pass
 scope: design_only_phase_0
 command: "BUFBIN=/tmp/labcentral-buf python3 tools/verify_phase0.py"
@@ -19,10 +19,11 @@ checks:
   - provider_job_security_contract_catalogs
   - proxmox_qemu_mutation_design_contract
   - kubernetes_production_topology
+  - native_production_topology
   - provider_allocation_claim_contract_catalog
   - plugin_v1_1_current_descriptor_and_v1_0_breaking_baseline
   - documentation_links_and_project_state
 notes:
   - No provider was contacted and no lab workload was executed.
-  - The Kubernetes topology verifier parsed every base/example manifest with duplicate-key rejection and checked the six TEST-PROD-TOPOLOGY checkpoint bindings.
+  - The Kubernetes and native topology verifiers checked all eight TEST-PROD-TOPOLOGY checkpoint bindings, including duplicate-key-safe manifests and the three-service systemd identity/credential/network boundary.
   - The Proxmox mutation catalog has executable T0 bindings; the default constructor remains discovery-only, while the production constructor requires ADR-0014 signed authorization bound to fresh exact-target evidence.

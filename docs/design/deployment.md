@@ -2,7 +2,7 @@
 
 ## Forms
 
-- **Release archive/native:** `labd`, official provider/access executables, static UI, schemas, migrations, checksums. `labd` supervises configured children.
+- **Release archive/native:** `labd`, official provider/access executables, static UI, schemas, migrations, checksums. Local mode supervises configured children; the production Proxmox units attach three separately sandboxed systemd services.
 - **Docker:** one image may contain executables but starts them as separate processes. Docker provider access uses an explicitly mounted socket/endpoint only in acknowledged laptop mode; the socket never reaches guests.
 - **Compose:** `labd` + optional PostgreSQL/object-store-compatible service for evaluation; SQLite/filesystem remains the simplest default.
 - **Kubernetes:** `labd` Deployment, PostgreSQL/object storage external or managed, plugins as sidecar/separate pods under dedicated identities where local IPC/network policies preserve boundaries. Static assets are served by `labd` or a normal static server.
@@ -18,8 +18,8 @@ The server always refuses a non-loopback no-auth listener. No-auth is an explici
 `TASK-RELEASE-001` adds these supported laptop artifacts:
 
 - `make release VERSION=<version>` writes `dist/labcentral-<version>-<os>-<arch>.tar.gz` and its adjacent checksum. Archive headers, ordering, ownership, modes, gzip metadata, build IDs, and timestamps are normalized. `SOURCE_DATE_EPOCH` selects the timestamp and otherwise defaults to the Git commit time. Production release creation refuses a dirty Git worktree so embedded source provenance matches compiled code.
-- The archive contains `labd`, the Docker and Proxmox providers, the Proxmox qualification utility, provider checksums and v1 manifests, the build-embedded Proxmox source-tree digest, deployment examples/systemd unit/runbook, archive-wide `SHA256SUMS`, a CycloneDX 1.6 SBOM, release metadata, and source/build provenance. Provenance is neither signed nor a SLSA attestation. Linux amd64 is the verified target; Windows IPC remains gated by `OQ-GUEST-001`.
-- `make image VERSION=<version> IMAGE=<tag>` uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing only the two static executables and provider checksum. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
+- The archive contains `labd`, the Docker and Proxmox providers, the noVNC access plugin, the Proxmox qualification utility, provider checksums and v1 manifests, the build-embedded Proxmox source-tree digest, Kubernetes and three-service systemd assets, deployment examples/runbooks, archive-wide `SHA256SUMS`, a CycloneDX 1.6 SBOM, release metadata, and source/build provenance. Provenance is neither signed nor a SLSA attestation. Linux amd64 is the verified target; Windows IPC remains gated by `OQ-GUEST-001`.
+- `make image VERSION=<version> IMAGE=<tag>` uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing only `labd`, the three official runtime executables/checksums, the Proxmox source digest, and the system CA bundle. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
 - `docker compose up -d --build` persists `/var/lib/labcentral` in the named `labcentral-data` volume, mounts the explicitly selected `${DOCKER_SOCKET_PATH:-/var/run/docker.sock}`, and uses host networking. `LABCENTRAL_PORT`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` override the loopback port, image, and volume name. `docker compose down` preserves state; `docker compose down --volumes` deliberately removes it.
 
 The scratch image creates `/var/lib/labcentral` as mode `0700` before declaring
@@ -31,7 +31,8 @@ Host networking is part of the laptop correctness boundary: it preserves a true 
 
 The image runs as root because common Linux Docker sockets are root-owned. A read-only socket bind prevents changing the socket inode through that mount; it does **not** make Docker Engine commands read-only. Anyone controlling `labd` or its provider through this socket effectively controls the Docker host. Compose also uses a read-only root filesystem, drops Linux capabilities, applies `no-new-privileges`, bounds PIDs, and mounts only the selected socket and data volume, but none of those settings reduce Docker socket authority. The socket never reaches created lab guests.
 
-Kubernetes manifests remain a roadmap deployment form and are not produced by the laptop slice.
+The release also packages the fail-closed Kubernetes base described below; it
+is excluded from the laptop Compose path.
 
 For the isolated `TASK-PROXMOX-005` qualification environment, [`tools/provider-testenv`](../../tools/provider-testenv) provides an operator-side Debian/libvirt harness. It creates a private NAT management network and a separate IP-less, non-forwarded layer-2 trunk, uses digest-pinned base media, exposes nested VT-x through `host-passthrough`, leaves all guests disabled at host boot, and marks every disposable domain before allowing deletion. The protected runner and fixed Proxmox VE 9.2 target are installed; the target has an isolated VLAN-aware bridge, a dedicated least-privilege expiring token, and a digest-bound Debian qualification template. The lifecycle smoke and one three-guest source/peer/cross isolation probe have passed on this target. These runs cannot emulate Fly or AWS faithfully, advertise a production provider capability, or replace the remaining exact-target matrix.
 
@@ -39,7 +40,20 @@ For the isolated `TASK-PROXMOX-005` qualification environment, [`tools/provider-
 
 `make build-proxmox-qualification` builds `lab-proxmox-qualification`, which is also included in native release archives as an offline review tool. `sign` accepts a completed closed unsigned T3 artifact plus an unpadded-base64url Ed25519 private key from a non-symlink file with no group/other permissions and writes the canonical signed document to standard output. `verify` requires the trusted public key/key ID plus exact target, installation, target configuration, current capability/inventory/policy, PVE release/build, and provider binary/source-tree expectations; it exits unsuccessfully when authentic evidence does not qualify. Neither command contacts a target or changes provider state. The production provider independently consumes the signed artifact only when paired with a closed trust policy and re-verifies exact live bindings before every mutation. Signing-key custody, protected T3 execution, artifact retention, and reviewer separation remain deployment responsibilities.
 
-The native Proxmox package includes a systemd service restricted to loopback behind an explicitly trusted same-host TLS reverse proxy, local Argon2id authentication, a dedicated unprivileged `labcentral` identity, private state/journal modes, an immutable root filesystem view, no Linux capabilities, and common kernel/device/namespace hardening. Root-owned target/evidence/trust inputs and mode-`0600` runtime secrets remain outside `/var/lib/labcentral`. The exact install, authentication bootstrap, TLS proxy, qualification, verification, backup, update, rotation, and emergency-cleanup procedure is [`../operations/proxmox-deployment.md`](../operations/proxmox-deployment.md).
+The native Proxmox package includes three systemd services: core, provider,
+and access use distinct non-root users; provider and access each have a separate
+IPC group shared only with core. systemd credential projections deliver each
+registration token only to its pair and the Proxmox credential only to core.
+Core and provider state roots are separate mode-`0700` directories, and explicit
+inaccessible paths prevent the plugin sandboxes from traversing core state.
+Every unit starts with all non-loopback IP traffic denied; the operator must add
+the exact qualified Proxmox address to the two plugin units and retain a
+UID-scoped TCP/8006 host firewall rule. The services also use a strict read-only
+system view, an `@system-service` syscall allowlist, empty capabilities, and
+kernel/device/namespace/process hardening. The exact install, authentication
+bootstrap, TLS proxy, qualification, verification, backup, update, rotation,
+and emergency-cleanup procedure is
+[`../operations/proxmox-deployment.md`](../operations/proxmox-deployment.md).
 
 `make build-proxmox-probe-agent` builds a separate qualification fixture that is also excluded from production archives and images. An operator must bake that exact binary into the digest-pinned disposable qualification template, issue a short-lived server identity for its exact guest IPv4 address, and supply a dedicated CA that trusts only the protected runner identity. The agent requires three distinct absolute certificate/key paths, a mode-protected non-symlink server key, one exact non-loopback IPv4 listen address, and the operator-attested qualification image digest. It uses TLS 1.3 mutual authentication and has no shell or provider client. The dedicated CA and server identity must not be shared with participants or retained in classroom images; stop and remove the fixture after qualification. Its configured image digest is evidence binding, not runtime attestation, so the runner must separately rebind the approved template/content digest.
 

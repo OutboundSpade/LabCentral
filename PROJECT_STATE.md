@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, and fail-closed Kubernetes deployment checkpoints are implemented, while native multi-service, resilience/load, automated recovery, and signed-publisher release gates remain open.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, and native multi-service deployment checkpoints are implemented, while resilience/load, automated recovery, and signed-publisher release gates remain open.
 **Updated:** 2026-09-04
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -70,7 +70,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
 - Production authorization re-verifies an active non-revoked Ed25519 reviewer, deployment evidence-age limit, complete passing case/probe/cleanup document, target/configuration/capability/inventory/policy and exact PVE build, running executable/source-tree digests, protocol/plugin compatibility, and the normalized destination/VMID/storage/network/template/permission profile. Fresh discovery plus authorization runs during capability discovery and again before apply, destroy, or lifecycle writes.
 - `labd` now supports Proxmox-only startup without Docker socket authority, refreshes every target within the five-minute evidence TTL, and exposes redacted target freshness plus safe per-target authoring examples through Huma/OpenAPI and the static UI. The UI selects the correct Lab source and provider override instead of sending the Docker example to Proxmox.
 - The plugin host rejects indirect or group/world-writable executables, copies the same opened bytes it hashes into a private mode-`0500` runtime snapshot, and exposes terminal child exit so `labd` can stop and let systemd restart the complete single-node deployment. Proxmox target configuration is likewise rejected when indirect or group/world writable, preventing an unprivileged endpoint/CA swap before credentialed discovery.
-- The native release builder now requires a clean Git tree and packages both providers, the qualification utility, provider/source checksums, both manifests, expanded SBOM/provenance, strict configuration examples, a hardened systemd unit, and the end-to-end Proxmox deployment runbook.
+- The native release builder requires a clean Git tree and packages all official runtime binaries, the qualification utility, provider/source checksums, three plugin manifests, expanded SBOM/provenance, strict configuration examples, the hardened multi-service systemd assets, and both end-to-end Proxmox deployment runbooks.
 - Packaged-runtime rehearsal caught the systemd unit passing the adjacent checksum filename to a flag that accepts a literal digest. Startup failed closed before provider launch. The unit now relies on `labd`'s protected adjacent `<plugin>.sha256` default, with a regression test binding the packaged unit to that CLI contract; this correction is included in and qualified by the final candidate.
 - With that invocation corrected, the packaged `labd` and signed provider advertised native mutation and completed HTTP validation/planning, but the first public-API create exposed an unrealistically short seven-second guest-agent readiness window. The operation failed safely and the worker removed the owned VM. Readiness now permits approximately two minutes of bounded backoff without replaying start; deterministic tests prove delayed success and a bounded retryable timeout.
 - That failed create also exposed an aggregate reporting gap: the provider reported VMID `910001` as an owned leftover, but the worker described compensation of earlier ready resources as complete. Independent PVE inspection decoded and matched the exact LabCentral ownership marker before operator cleanup. Readiness/final-drift failures now enter provider compensation directly, and the worker treats incomplete attempted compensation or a non-empty provider leftover set on the failed resource as `partial_cleanup` instead of reporting full compensation.
@@ -130,6 +130,16 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   `TEST-PROD-TOPOLOGY-001` through `006` bind the static and process tests, and
   the deployment-specific procedure is
   [`docs/operations/kubernetes-proxmox.md`](docs/operations/kubernetes-proxmox.md).
+- The native `TASK-PROD-004` checkpoint replaces the shared-UID production
+  process tree with three systemd services. Core, Proxmox, and noVNC use
+  distinct users; two non-overlapping IPC groups share only the corresponding
+  mode-`0770` socket directory with core. systemd credential mounts expose each
+  registration token only to its pair and expose the root-owned Proxmox
+  credential only to core. Provider and core state are separate mode-`0700`
+  roots, plugin sandboxes cannot traverse core state, and all non-loopback
+  traffic is denied until the operator adds the exact qualified Proxmox address
+  plus a UID/port-scoped host firewall rule. `TEST-PROD-TOPOLOGY-007` and `008`
+  bind these assets and their release packaging.
 
 ## Open questions and risks
 

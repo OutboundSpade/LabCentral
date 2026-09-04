@@ -52,6 +52,9 @@ func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	if !strings.Contains(readme, "kubernetes-proxmox.md") {
 		t.Fatal("release instructions omit the Kubernetes deployment runbook")
 	}
+	if !strings.Contains(readme, "three OS identities") {
+		t.Fatal("release instructions omit the native identity boundary")
+	}
 }
 
 func TestWriteArchiveIsDeterministicAndNormalized(t *testing.T) {

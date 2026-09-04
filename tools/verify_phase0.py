@@ -662,7 +662,7 @@ def verify_contract_catalogs() -> None:
             )
     topology = load_yaml(ROOT / "design/contracts/production-topology.yaml")
     assert topology["suite"] == "labcentral.production-topology/v1alpha1"
-    assert len(topology["cases"]) == 6, "production topology suite must retain all six checkpoint cases"
+    assert len(topology["cases"]) == 8, "production topology suite must retain all eight checkpoint cases"
     for case in topology["cases"]:
         for field in ["binding", "startupOrderBinding", "healthBinding", "processBinding"]:
             binding = case.get(field)
@@ -788,6 +788,118 @@ def verify_kubernetes_topology() -> None:
     assert "/var/lib/labcentral/shared/proxmox-journal" in proxmox_config["data"]["target.json"]
 
 
+def systemd_values(path: Path, key: str) -> list[str]:
+    prefix = key + "="
+    return [
+        line.strip().split("=", 1)[1]
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith(prefix)
+    ]
+
+
+def verify_native_topology() -> None:
+    deployment_root = ROOT / "deploy/proxmox"
+    paths = {
+        "core": deployment_root / "labcentral.service",
+        "provider": deployment_root / "labcentral-proxmox-provider.service",
+        "access": deployment_root / "labcentral-novnc.service",
+    }
+    for path in paths.values():
+        assert path.is_file(), f"native service asset is missing: {path.name}"
+
+    expected_identities = {
+        "core": ("labcentral", "labcentral"),
+        "provider": ("labcentral-proxmox", "labcentral-proxmox-ipc"),
+        "access": ("labcentral-access", "labcentral-access-ipc"),
+    }
+    common_hardening = {
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProtectProc": "invisible",
+        "ProcSubset": "pid",
+        "ProtectSystem": "strict",
+        "RestrictNamespaces": "yes",
+        "RestrictSUIDSGID": "yes",
+        "SystemCallFilter": "@system-service",
+        "SystemCallErrorNumber": "EPERM",
+        "CapabilityBoundingSet": "",
+        "AmbientCapabilities": "",
+        "DevicePolicy": "closed",
+        "IPAddressDeny": "any",
+        "IPAddressAllow": "localhost",
+    }
+    for name, path in paths.items():
+        expected_user, expected_group = expected_identities[name]
+        assert systemd_values(path, "User") == [expected_user]
+        assert systemd_values(path, "Group") == [expected_group]
+        for key, expected in common_hardening.items():
+            assert systemd_values(path, key) == [expected], f"{path.name} has unsafe or missing {key}"
+
+    core_text = paths["core"].read_text(encoding="utf-8")
+    supplementary = systemd_values(paths["core"], "SupplementaryGroups")
+    assert supplementary == ["labcentral-proxmox-ipc labcentral-access-ipc"]
+    assert "--proxmox-plugin-runtime-dir=/run/labcentral-proxmox/ipc" in core_text
+    assert "--access-plugin-runtime-dir=/run/labcentral-access/ipc" in core_text
+    assert "--proxmox-plugin=/opt" not in core_text and "--access-plugin=/opt" not in core_text
+    assert set(systemd_values(paths["core"], "LoadCredential")) == {
+        "proxmox-credential.json:/etc/labcentral/proxmox-credential.json",
+        "proxmox-registration.token:/etc/labcentral/proxmox-registration.token",
+        "access-registration.token:/etc/labcentral/access-registration.token",
+    }
+    assert "${CREDENTIALS_DIRECTORY}/proxmox-registration.token" in core_text
+    assert "${CREDENTIALS_DIRECTORY}/access-registration.token" in core_text
+    assert "${CREDENTIALS_DIRECTORY}/proxmox-credential.json" in core_text
+
+    provider_text = paths["provider"].read_text(encoding="utf-8")
+    access_text = paths["access"].read_text(encoding="utf-8")
+    assert systemd_values(paths["provider"], "RuntimeDirectory") == ["labcentral-proxmox"]
+    assert systemd_values(paths["provider"], "RuntimeDirectoryMode") == ["0770"]
+    assert systemd_values(paths["provider"], "StateDirectory") == ["labcentral-proxmox"]
+    assert systemd_values(paths["provider"], "StateDirectoryMode") == ["0700"]
+    assert "--initialize-journal-directory=/var/lib/labcentral-proxmox/proxmox-journal" in provider_text
+    assert systemd_values(paths["access"], "RuntimeDirectory") == ["labcentral-access"]
+    assert systemd_values(paths["access"], "RuntimeDirectoryMode") == ["0770"]
+    assert "InaccessiblePaths=/var/lib/labcentral" in provider_text
+    assert "InaccessiblePaths=/var/lib/labcentral /var/lib/labcentral-proxmox" in access_text
+    for path, credential in [
+        (paths["provider"], "proxmox-registration.token"),
+        (paths["access"], "access-registration.token"),
+    ]:
+        text = path.read_text(encoding="utf-8")
+        assert f"LABCENTRAL_PLUGIN_LAUNCH_TOKEN_FILE=%d/{credential}" in text
+        assert "LABCENTRAL_PLUGIN_LAUNCH_TOKEN=" not in text
+        assert f"{credential}:/etc/labcentral/{credential}" in systemd_values(path, "LoadCredential")
+        assert "LABCENTRAL_PLUGIN_SOCKET_MODE=0660" in text
+
+    sysusers = (deployment_root / "labcentral.sysusers").read_text(encoding="utf-8")
+    for identity in ["labcentral", "labcentral-proxmox", "labcentral-access"]:
+        assert re.search(rf"^u\s+{re.escape(identity)}\s", sysusers, re.MULTILINE)
+    for membership in [
+        r"^m\s+labcentral\s+labcentral-proxmox-ipc$",
+        r"^m\s+labcentral-proxmox\s+labcentral-proxmox-ipc$",
+        r"^m\s+labcentral\s+labcentral-access-ipc$",
+        r"^m\s+labcentral-access\s+labcentral-access-ipc$",
+    ]:
+        assert re.search(membership, sysusers, re.MULTILINE)
+    assert not re.search(r"^m\s+labcentral-access\s+labcentral-proxmox-ipc$", sysusers, re.MULTILINE)
+    assert not re.search(r"^m\s+labcentral-proxmox\s+labcentral-access-ipc$", sysusers, re.MULTILINE)
+
+    network_dropin = (deployment_root / "provider-network.example.conf").read_text(encoding="utf-8")
+    assert "IPAddressAllow=192.0.2.20/32" in network_dropin
+    target = json.loads((deployment_root / "proxmox-target.json.example").read_text(encoding="utf-8"))
+    assert target["journalDirectory"] == "/var/lib/labcentral-proxmox/proxmox-journal"
+
+    release_source = (ROOT / "tools/release/main.go").read_text(encoding="utf-8")
+    for packaged in [
+        "labcentral-proxmox-provider.service",
+        "labcentral-novnc.service",
+        "labcentral.sysusers",
+        "provider-network.example.conf",
+    ]:
+        assert packaged in release_source, f"native asset is not packaged: {packaged}"
+
+
 def verify_markdown_links_and_state() -> None:
     link_pattern = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
     for markdown in ROOT.rglob("*.md"):
@@ -845,6 +957,7 @@ def main() -> int:
         ("provider/job/security contract catalogs", verify_contract_catalogs),
         ("Proxmox QEMU mutation design contract", verify_proxmox_mutation_contract),
         ("Kubernetes production topology", verify_kubernetes_topology),
+        ("native production topology", verify_native_topology),
         ("documentation links and project state", verify_markdown_links_and_state),
     ]
     for label, check in checks:

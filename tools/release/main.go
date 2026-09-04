@@ -255,25 +255,29 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	for sourcePath, destination := range map[string]string{
-		"deploy/observability/prometheus-alerts.yaml":    "deploy/prometheus-alerts.yaml",
-		"deploy/kubernetes/config.example.yaml":          "deploy/kubernetes/config.example.yaml",
-		"deploy/kubernetes/disruption-budget.yaml":       "deploy/kubernetes/disruption-budget.yaml",
-		"deploy/kubernetes/kustomization.yaml":           "deploy/kubernetes/kustomization.yaml",
-		"deploy/kubernetes/namespace.yaml":               "deploy/kubernetes/namespace.yaml",
-		"deploy/kubernetes/network-policies.yaml":        "deploy/kubernetes/network-policies.yaml",
-		"deploy/kubernetes/secrets.example.yaml":         "deploy/kubernetes/secrets.example.yaml",
-		"deploy/kubernetes/service-account.yaml":         "deploy/kubernetes/service-account.yaml",
-		"deploy/kubernetes/services.yaml":                "deploy/kubernetes/services.yaml",
-		"deploy/kubernetes/shared-storage.yaml":          "deploy/kubernetes/shared-storage.yaml",
-		"deploy/kubernetes/statefulset.yaml":             "deploy/kubernetes/statefulset.yaml",
-		"deploy/proxmox/labcentral.service":              "deploy/labcentral.service",
-		"deploy/proxmox/environment.example":             "deploy/environment.example",
-		"deploy/proxmox/proxmox-target.json.example":     "deploy/proxmox-target.json.example",
-		"deploy/proxmox/proxmox-credential.json.example": "deploy/proxmox-credential.json.example",
-		"deploy/proxmox/proxmox-trust.json.example":      "deploy/proxmox-trust.json.example",
-		"docs/operations/proxmox-deployment.md":          "docs/proxmox-deployment.md",
-		"docs/operations/kubernetes-proxmox.md":          "docs/kubernetes-proxmox.md",
-		"docs/operations/observability.md":               "docs/observability.md",
+		"deploy/observability/prometheus-alerts.yaml":        "deploy/prometheus-alerts.yaml",
+		"deploy/kubernetes/config.example.yaml":              "deploy/kubernetes/config.example.yaml",
+		"deploy/kubernetes/disruption-budget.yaml":           "deploy/kubernetes/disruption-budget.yaml",
+		"deploy/kubernetes/kustomization.yaml":               "deploy/kubernetes/kustomization.yaml",
+		"deploy/kubernetes/namespace.yaml":                   "deploy/kubernetes/namespace.yaml",
+		"deploy/kubernetes/network-policies.yaml":            "deploy/kubernetes/network-policies.yaml",
+		"deploy/kubernetes/secrets.example.yaml":             "deploy/kubernetes/secrets.example.yaml",
+		"deploy/kubernetes/service-account.yaml":             "deploy/kubernetes/service-account.yaml",
+		"deploy/kubernetes/services.yaml":                    "deploy/kubernetes/services.yaml",
+		"deploy/kubernetes/shared-storage.yaml":              "deploy/kubernetes/shared-storage.yaml",
+		"deploy/kubernetes/statefulset.yaml":                 "deploy/kubernetes/statefulset.yaml",
+		"deploy/proxmox/labcentral.service":                  "deploy/labcentral.service",
+		"deploy/proxmox/labcentral-proxmox-provider.service": "deploy/labcentral-proxmox-provider.service",
+		"deploy/proxmox/labcentral-novnc.service":            "deploy/labcentral-novnc.service",
+		"deploy/proxmox/labcentral.sysusers":                 "deploy/labcentral.sysusers",
+		"deploy/proxmox/provider-network.example.conf":       "deploy/provider-network.example.conf",
+		"deploy/proxmox/environment.example":                 "deploy/environment.example",
+		"deploy/proxmox/proxmox-target.json.example":         "deploy/proxmox-target.json.example",
+		"deploy/proxmox/proxmox-credential.json.example":     "deploy/proxmox-credential.json.example",
+		"deploy/proxmox/proxmox-trust.json.example":          "deploy/proxmox-trust.json.example",
+		"docs/operations/proxmox-deployment.md":              "docs/proxmox-deployment.md",
+		"docs/operations/kubernetes-proxmox.md":              "docs/kubernetes-proxmox.md",
+		"docs/operations/observability.md":                   "docs/observability.md",
 	} {
 		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
 			return err
@@ -497,9 +501,10 @@ func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxP
 This archive contains the trusted-laptop Docker distribution and the
 qualification-gated Proxmox distribution with its isolated noVNC access
 process. Keep %s, %s, %s, %s, and their adjacent
-checksum/source-provenance files together. The control plane verifies each
-provider digest and snapshots the protected executable before launching it as
-a separate process.
+checksum/source-provenance files together. Local child-process mode verifies
+and snapshots provider executables before launch. The native production units
+instead isolate the official processes under three OS identities; archive
+checksums and signed exact-build qualification bind the installed files.
 
 For the local Docker example, run:
 
