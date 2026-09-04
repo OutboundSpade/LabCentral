@@ -192,11 +192,16 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   `d5686a105ace30c8977ec4d324f2b3e7e66064e071cb1469b3d3d2c5c7b28b33`;
   the external/archive-wide checksums, packaged executable smoke, release
   inventory, compatibility matrix, and verification guide all passed.
-- Hosted `CI / verify` run `33857778783` passed on clean commit `6df0e5e`.
+- Hosted `CI / verify` run `33859734004` passed on clean commit `4ab1c9d`.
   It exercised the frozen static web build, pinned OSV scan of the exact Bun
   lockfile, design contracts, normal and race-enabled PostgreSQL suites, real
   recovery tooling, `go vet`, reachable Go vulnerability analysis, and the
-  clean-tree gate. The OSV gate had first identified low-severity
+  clean-tree gate. Predecessor run `33858967833` exposed an exhausted
+  five-attempt serialization retry while a destroy transaction appended its
+  audit record under the 100-Instance/four-worker load. Create and destroy now
+  use the same bounded eight-attempt conflict policy as the other serializable
+  stores; ten focused race-enabled 100-Instance repetitions and the complete
+  local race suite passed before the hosted rerun. The OSV gate had first identified low-severity
   `GHSA-pxg6-pf52-xh8x`; transitive `cookie` is now pinned to patched `0.7.2`.
 - Clean revision `961e826` was compiled into protected-runner test binary
   SHA-256 `b30e33abaf5b20fd2de2ad2149a956c1a74b3ffa9ba9fe4e7372790f9c5db2c2`.
