@@ -945,6 +945,12 @@ def verify_release_supply_chain() -> None:
     ci_text = ci_path.read_text(encoding="utf-8")
     publisher_text = publisher_path.read_text(encoding="utf-8")
 
+    web_audit_path = ROOT / "tools/audit_web_dependencies.sh"
+    web_audit = web_audit_path.read_text(encoding="utf-8")
+    assert web_audit_path.stat().st_mode & 0o111, "web audit gate must be executable"
+    assert "timeout 300s osv-scanner scan source --lockfile=bun.lock" in web_audit
+    assert 'while [ "$attempt" -le 2 ]' in web_audit
+
     assert ci["permissions"] == {"contents": "read"}, "normal CI must grant only repository-content read access"
     assert publisher["permissions"] == {}, "publisher must default to no GitHub token permissions"
     publish_job = publisher["jobs"]["publish"]
@@ -970,7 +976,8 @@ def verify_release_supply_chain() -> None:
         assert "go test -race -count=1 ./..." in text_value
         assert "go vet ./..." in text_value
         assert "timeout 300s govulncheck ./..." in text_value
-        assert "timeout 300s bun audit --audit-level=high" in text_value
+        assert "github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.5.0" in text_value
+        assert "tools/audit_web_dependencies.sh" in text_value
         assert "python3 tools/verify_phase0.py" in text_value
 
     required_publisher_fragments = [
