@@ -174,7 +174,8 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   exact confirmation, preserves every referenced object, removes only verified
   unreferenced objects and abandoned staging, and fsyncs affected directories.
   Tests prove live-runtime and unknown-schema refusal plus no partial deletion
-  for missing references or hard-linked objects.
+  for missing references or hard-linked objects. Exact implementation commit
+  `8384272` passed hosted CI run `33863691593`.
 - The first scale checkpoint drives one atomic 100-team classroom through four
   independent PostgreSQL worker pools, deliberately abandons one claimed job,
   and requires fencing takeover, 100 ready Instances, and complete 100-Instance
