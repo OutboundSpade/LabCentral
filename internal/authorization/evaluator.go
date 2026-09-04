@@ -81,7 +81,8 @@ func (e *Evaluator) Authorize(ctx context.Context, request application.Authoriza
 }
 
 func validatesRequestedOwner(action application.PermissionAction) bool {
-	return action == application.ActionInstanceValidate || action == application.ActionInstancePlan || action == application.ActionInstanceCreate
+	return action == application.ActionInstanceValidate || action == application.ActionInstancePlan ||
+		action == application.ActionInstanceCreate || action == application.ActionInstanceBatchCreate
 }
 
 func (e *Evaluator) AuthorizeInstance(ctx context.Context, subjectID domain.UserID, action application.PermissionAction, instanceID domain.InstanceID) (application.InstanceAccessRecord, error) {
@@ -224,27 +225,38 @@ func roleAllows(role application.Role, action application.PermissionAction) bool
 	case application.RoleOrganizationAdministrator:
 		switch action {
 		case application.ActionOrganizationManage, application.ActionProjectManage, application.ActionTeamManage,
-			application.ActionMembershipManage, application.ActionRoleAssignmentManage:
+			application.ActionMembershipManage, application.ActionRoleAssignmentManage,
+			application.ActionTemplateCreate, application.ActionTemplateRead, application.ActionTemplateUpdate,
+			application.ActionTemplateRevisionPublish, application.ActionQuotaManage, application.ActionAuditRead:
 			return true
 		}
 	case application.RoleProviderAdministrator:
 		return action == application.ActionProviderTargetHealthRead || action == application.ActionProviderTargetGrant
 	case application.RoleLabAuthor:
-		return action == application.ActionInstanceValidate || action == application.ActionInstancePlan
+		switch action {
+		case application.ActionTemplateCreate, application.ActionTemplateRead, application.ActionTemplateUpdate,
+			application.ActionTemplateRevisionPublish, application.ActionInstanceValidate, application.ActionInstancePlan:
+			return true
+		}
 	case application.RoleInstructor:
 		switch action {
-		case application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-			application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionProviderTargetHealthRead:
+		case application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
+			application.ActionInstanceCreate, application.ActionInstanceBatchCreate, application.ActionInstanceRead,
+			application.ActionInstanceTTLExtend, application.ActionInstanceDestroy, application.ActionAccessSessionCreate,
+			application.ActionAccessSessionRevoke, application.ActionProviderTargetHealthRead:
 			return true
 		}
 	case application.RoleParticipant:
 		switch action {
-		case application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-			application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionProviderTargetHealthRead:
+		case application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
+			application.ActionInstanceCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
+			application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
+			application.ActionProviderTargetHealthRead:
 			return true
 		}
 	case application.RoleViewer:
-		return action == application.ActionInstanceRead || action == application.ActionProviderTargetHealthRead
+		return action == application.ActionTemplateRead || action == application.ActionInstanceRead ||
+			action == application.ActionProviderTargetHealthRead || action == application.ActionAuditRead
 	}
 	return false
 }
@@ -252,8 +264,12 @@ func roleAllows(role application.Role, action application.PermissionAction) bool
 func knownAction(action application.PermissionAction) bool {
 	switch action {
 	case application.ActionProviderTargetHealthRead, application.ActionProviderTargetGrant,
+		application.ActionTemplateCreate, application.ActionTemplateRead, application.ActionTemplateUpdate,
+		application.ActionTemplateRevisionPublish,
 		application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-		application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionMembershipManage,
+		application.ActionInstanceBatchCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
+		application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
+		application.ActionQuotaManage, application.ActionAuditRead, application.ActionMembershipManage,
 		application.ActionRoleAssignmentManage, application.ActionOrganizationManage, application.ActionProjectManage,
 		application.ActionTeamManage:
 		return true
@@ -298,7 +314,8 @@ func requiresOwnerRelationship(role application.Role, action application.Permiss
 	}
 	switch action {
 	case application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-		application.ActionInstanceRead, application.ActionInstanceDestroy:
+		application.ActionInstanceBatchCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
+		application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke:
 		return true
 	default:
 		return false
@@ -328,7 +345,10 @@ func isTeamMember(teamID string, snapshot application.AuthorizationSnapshot) boo
 }
 
 func requiresTargetGrant(action application.PermissionAction) bool {
-	return action == application.ActionInstanceValidate || action == application.ActionInstancePlan || action == application.ActionInstanceCreate || action == application.ActionInstanceDestroy
+	return action == application.ActionInstanceValidate || action == application.ActionInstancePlan ||
+		action == application.ActionInstanceCreate || action == application.ActionInstanceBatchCreate ||
+		action == application.ActionInstanceDestroy || action == application.ActionInstanceTTLExtend ||
+		action == application.ActionAccessSessionCreate || action == application.ActionAccessSessionRevoke
 }
 
 func hasTargetGrant(request application.AuthorizationRequest, hierarchy application.ScopeHierarchy, snapshot application.AuthorizationSnapshot) bool {

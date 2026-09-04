@@ -94,10 +94,11 @@ func (e *ValidationError) Error() string {
 }
 
 type Service struct {
-	renderer *render.Renderer
-	store    Store
-	targets  *TargetRegistry
-	ids      IDSource
+	renderer  *render.Renderer
+	store     Store
+	artifacts application.ArtifactStore
+	targets   *TargetRegistry
+	ids       IDSource
 }
 
 func NewService(renderer *render.Renderer, store Store, provider pluginv1.ProviderServiceClient, ids IDSource) (*Service, error) {
@@ -113,6 +114,16 @@ func NewServiceWithTargets(renderer *render.Renderer, store Store, targets *Targ
 		return nil, fmt.Errorf("renderer, store, target registry, and ID source are required")
 	}
 	return &Service{renderer: renderer, store: store, targets: targets, ids: ids}, nil
+}
+
+// SetArtifactStore attaches the content-addressed store used for immutable
+// template revisions. It must be called during startup before serving requests.
+func (s *Service) SetArtifactStore(artifacts application.ArtifactStore) error {
+	if s == nil || artifacts == nil {
+		return fmt.Errorf("control-plane service and artifact store are required")
+	}
+	s.artifacts = artifacts
+	return nil
 }
 
 func (s *Service) Validate(ctx context.Context, source []byte, acknowledged bool) (ValidationResult, error) {
@@ -295,6 +306,17 @@ func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, ackno
 }
 
 func (s *Service) CreateInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, acknowledged, idempotencyKey, targetID, providerOverride)
+}
+
+func (s *Service) CreateInstanceRevisionTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+	if _, err := domain.NewRevisionID(string(revisionID)); err != nil {
+		return EnqueueResult{}, err
+	}
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, acknowledged, idempotencyKey, targetID, providerOverride)
+}
+
+func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
 	if _, err := domain.NewUserID(string(subjectID)); err != nil {
 		return EnqueueResult{}, err
 	}
@@ -328,6 +350,9 @@ func (s *Service) CreateInstanceTargetFor(ctx context.Context, subjectID domain.
 	operationID := domain.OperationID(operationValue)
 	payload, _ := json.Marshal(jobPayload{Version: jobPayloadVersion, Kind: OperationApply, InstanceID: instanceID})
 	requestDigest := digestBytes("labcentral.http.create-instance/v1", []byte(projectID), []byte(ownerKind), []byte(ownerID), source, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+	if revisionID != "" {
+		requestDigest = digestBytes("labcentral.http.create-instance-revision/v1", []byte(projectID), []byte(ownerKind), []byte(ownerID), []byte(revisionID), []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+	}
 	auditID, err := s.ids.New("audit")
 	if err != nil {
 		return EnqueueResult{}, err
@@ -356,7 +381,7 @@ func (s *Service) CreateInstanceTargetFor(ctx context.Context, subjectID domain.
 			})
 		}
 		result, createErr := s.store.CreateInstance(ctx, CreateInstanceRequest{
-			InstanceID: instanceID, ProjectID: projectID, OwnerKind: ownerKind, OwnerID: ownerID, CreatedBy: subjectID,
+			InstanceID: instanceID, RevisionID: revisionID, ProjectID: projectID, OwnerKind: ownerKind, OwnerID: ownerID, CreatedBy: subjectID,
 			ProviderTargetID: targetID, ProviderOverrideJSON: validation.EffectiveOverride,
 			OperationID: operationID, CanonicalDigest: validation.Canonical.Digest,
 			CanonicalJSON: validation.Canonical.CanonicalBytes, SourceYAML: source, Resources: resources, Acknowledged: acknowledged,

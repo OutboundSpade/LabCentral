@@ -31,7 +31,7 @@ Out-of-process plugins are not trusted merely because official. The host validat
 | THREAT-BUILD-001 | Build-context code execution | `labd` never builds; separate durable build job | disposable sandbox, no provider credentials, capped resources/network |
 | THREAT-PLUGIN-001 | Plugin credential theft | target-scoped just-in-time secrets, no DB access, process identity, response validation | OS/container sandbox, egress allowlist, separate credentials, executable verification |
 | THREAT-OWNERSHIP-001 | Resource tag spoofing/deletion | recorded immutable provider ID + ownership-token match; names insufficient | IAM prevents guests/users tagging or deleting management resources |
-| THREAT-ACCESS-001 | Console-token leakage | short TTL, one use/audience/resource binding, hashed storage, no URL logs | TLS, origin/CSP/referrer protections, access proxy redaction |
+| THREAT-ACCESS-001 | Console-token leakage or stale authorization | short TTL, one use/audience/resource binding, hashed storage, core exchange and active-lease recheck, core-first revocation, no URL logs | TLS, origin/CSP/referrer protections, access proxy redaction and fail-closed stream closure |
 | THREAT-SESSION-001 | CSRF/session theft | SameSite/Secure/HttpOnly cookie, CSRF tokens, origin checks, session rotation | TLS, trusted reverse-proxy config, OIDC redirect allowlist |
 | THREAT-SECRET-001 | Secret/log leakage | typed SecretRefs; central structured redaction; schema-marked sensitive fields | provider SDK redaction and operator log access controls |
 | THREAT-DELETE-001 | Destructive race/replay | ETag/generation, leases/fencing, idempotency, strong ownership, audit | provider APIs with least privilege and task polling |
@@ -45,6 +45,8 @@ The authoritative owner/control/test mapping is machine-readable in [`design/con
 - **Provider-enforced:** faithful primitive mapping, network/storage isolation, endpoint safety, cleanup, accurate capabilities, provider API least privilege.
 - **Deployment-enforced:** management-plane separation, host/Kubernetes/Docker socket protection, TLS/key custody, database/artifact encryption/backups, plugin sandboxing, patching, reverse-proxy correctness.
 - **Operator-owned:** select suitable isolation, maintain safe base images, configure provider targets and allowlists, investigate leftovers/drift, rotate credentials, accept Docker laptop risks.
+
+Access is a split trust path. Core alone decides whether a subject may use an exact instance/resource/method, stores only keyed launch/lease hashes, and re-evaluates current authorization at exchange and throughout a short active lease. The provider plugin receives the provider credential only while discovering one exact endpoint. The access plugin receives that bounded opaque endpoint but no provider credential, database connection, role policy, or unrelated tenant data. A malicious access plugin remains capable of abusing the endpoint it was given, so production deployment must verify its executable, isolate its OS/network identity, restrict its egress to the intended endpoint classes, and close all streams when authorization recheck is denied or unavailable. The browser never receives the provider management origin, console ticket, SSH CA, or callback credential.
 
 ## Docker laptop limitations
 

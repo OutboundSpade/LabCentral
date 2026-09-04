@@ -2,10 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"net/http"
 	"path"
 	"strconv"
@@ -83,7 +86,8 @@ type Session struct {
 }
 
 type LabRequest struct {
-	Source                         string          `json:"source" minLength:"1" maxLength:"8388608"`
+	Source                         string          `json:"source,omitempty" maxLength:"8388608"`
+	RevisionID                     string          `json:"revisionId,omitempty" maxLength:"128"`
 	AcknowledgeDockerIsolationRisk bool            `json:"acknowledgeDockerIsolationRisk"`
 	ProjectID                      string          `json:"projectId,omitempty" maxLength:"128"`
 	OwnerKind                      string          `json:"ownerKind,omitempty" enum:"user,team,project"`
@@ -135,6 +139,7 @@ type ResourceDTO struct {
 
 type InstanceDTO struct {
 	ID               string         `json:"id"`
+	RevisionID       string         `json:"revisionId,omitempty"`
 	ProjectID        string         `json:"projectId"`
 	OwnerKind        string         `json:"ownerKind"`
 	OwnerID          string         `json:"ownerId"`
@@ -150,6 +155,63 @@ type InstanceDTO struct {
 	ErrorMessage     string         `json:"errorMessage,omitempty"`
 	CreatedAt        time.Time      `json:"createdAt"`
 	UpdatedAt        time.Time      `json:"updatedAt"`
+}
+
+type LabTemplateDTO struct {
+	ID              string    `json:"id"`
+	ProjectID       string    `json:"projectId"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description"`
+	ResourceVersion uint64    `json:"resourceVersion"`
+	CreatedBy       string    `json:"createdBy"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type TemplateRevisionDTO struct {
+	ID               string    `json:"id"`
+	TemplateID       string    `json:"templateId"`
+	RevisionNumber   uint64    `json:"revisionNumber"`
+	BundleArtifact   string    `json:"bundleArtifact"`
+	BundleDigest     string    `json:"bundleDigest"`
+	BundleSizeBytes  uint64    `json:"bundleSizeBytes"`
+	AuthorAPIVersion string    `json:"authorApiVersion"`
+	RendererVersion  string    `json:"rendererVersion"`
+	CanonicalVersion string    `json:"canonicalVersion"`
+	CanonicalDigest  string    `json:"canonicalDigest"`
+	PublishedBy      string    `json:"publishedBy"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+type AuditRecordDTO struct {
+	ID             string                    `json:"id"`
+	StreamPosition uint64                    `json:"streamPosition"`
+	SchemaVersion  string                    `json:"schemaVersion"`
+	Category       application.AuditCategory `json:"category"`
+	Action         string                    `json:"action"`
+	Outcome        application.AuditOutcome  `json:"outcome"`
+	Scope          application.RecordScope   `json:"scope"`
+	Actor          application.RecordActor   `json:"actor"`
+	AggregateType  string                    `json:"aggregateType"`
+	AggregateID    string                    `json:"aggregateId"`
+	Links          application.RecordLinks   `json:"links"`
+	Payload        json.RawMessage           `json:"payload"`
+	OccurredAt     time.Time                 `json:"occurredAt"`
+}
+
+type EventRecordDTO struct {
+	ID                string                  `json:"id"`
+	StreamPosition    uint64                  `json:"streamPosition"`
+	AggregateSequence domain.EventSequence    `json:"aggregateSequence"`
+	SchemaVersion     string                  `json:"schemaVersion"`
+	Type              string                  `json:"type"`
+	Scope             application.RecordScope `json:"scope"`
+	Actor             application.RecordActor `json:"actor"`
+	AggregateType     string                  `json:"aggregateType"`
+	AggregateID       string                  `json:"aggregateId"`
+	Links             application.RecordLinks `json:"links"`
+	Payload           json.RawMessage         `json:"payload"`
+	OccurredAt        time.Time               `json:"occurredAt"`
 }
 
 func register(api huma.API, service *controlplane.Service, exampleSource []byte, options Options, security *requestSecurity) {
@@ -298,7 +360,13 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		return output, nil
 	})
 
+	registerTemplates(api, service, security)
+	registerAuditAndEvents(api, service, security)
+
 	huma.Post(api, "/lab-validations", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body ValidationBody }, error) {
+		if input.Body.Source == "" || input.Body.RevisionID != "" {
+			return nil, huma.Error400BadRequest("Validation requires inline source and does not accept revisionId")
+		}
 		targetID := requestTargetID(input.Body, options.DefaultProviderTargetID)
 		if _, _, _, _, err := authorizeLabRequest(ctx, security, input.Body, application.ActionInstanceValidate, targetID); err != nil {
 			return nil, err
@@ -314,6 +382,9 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 
 	huma.Post(api, "/lab-plans", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body controlplane.PlanResult }, error) {
+		if input.Body.Source == "" || input.Body.RevisionID != "" {
+			return nil, huma.Error400BadRequest("Planning requires inline source and does not accept revisionId")
+		}
 		targetID := requestTargetID(input.Body, options.DefaultProviderTargetID)
 		if _, _, _, _, err := authorizeLabRequest(ctx, security, input.Body, application.ActionInstancePlan, targetID); err != nil {
 			return nil, err
@@ -338,12 +409,31 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	}
 	huma.Register(api, huma.Operation{OperationID: "create-lab-instance", Method: http.MethodPost, Path: "/lab-instances", DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, input *CreateInput) (*AcceptedOutput, error) {
+			if (input.Body.Source == "") == (input.Body.RevisionID == "") {
+				return nil, huma.Error400BadRequest("Exactly one of source or revisionId is required")
+			}
 			targetID := requestTargetID(input.Body, options.DefaultProviderTargetID)
 			actor, projectID, ownerKind, ownerID, err := authorizeLabRequest(ctx, security, input.Body, application.ActionInstanceCreate, targetID)
 			if err != nil {
 				return nil, err
 			}
-			result, err := service.CreateInstanceTargetFor(ctx, actor.user.ID, projectID, ownerKind, ownerID, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
+			var result controlplane.EnqueueResult
+			if input.Body.RevisionID != "" {
+				if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateRead, ScopeKind: application.ScopeProject, ScopeID: string(projectID)}); err != nil {
+					return nil, err
+				}
+				revisionID, parseErr := domain.NewRevisionID(input.Body.RevisionID)
+				if parseErr != nil {
+					return nil, huma.Error404NotFound("Template revision was not found")
+				}
+				_, source, openErr := service.OpenTemplateRevisionForProject(ctx, actor.user.ID, projectID, revisionID)
+				if openErr != nil {
+					return nil, apiError(openErr)
+				}
+				result, err = service.CreateInstanceRevisionTargetFor(ctx, actor.user.ID, projectID, ownerKind, ownerID, revisionID, source, input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
+			} else {
+				result, err = service.CreateInstanceTargetFor(ctx, actor.user.ID, projectID, ownerKind, ownerID, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
+			}
 			if err != nil {
 				return nil, apiError(err)
 			}
@@ -653,6 +743,500 @@ func authenticationRateLimitError(window time.Duration) error {
 	return huma.ErrorWithHeaders(huma.Error429TooManyRequests("Too many authentication attempts"), http.Header{
 		"Retry-After": []string{strconv.FormatInt(retrySeconds, 10)},
 	})
+}
+
+func registerTemplates(api huma.API, service *controlplane.Service, security *requestSecurity) {
+	type projectInput struct {
+		ProjectID string `query:"projectId" required:"true" maxLength:"128"`
+		Cursor    string `query:"cursor" maxLength:"256"`
+		Limit     uint32 `query:"limit" default:"50" minimum:"1" maximum:"200"`
+	}
+	projectScope := func(value string) (domain.ProjectID, error) {
+		projectID, err := domain.NewProjectID(value)
+		if err != nil {
+			return "", huma.Error400BadRequest("Project ID is invalid")
+		}
+		return projectID, nil
+	}
+	huma.Get(api, "/lab-templates", func(ctx context.Context, input *projectInput) (*struct {
+		Body struct {
+			Items      []LabTemplateDTO `json:"items"`
+			NextCursor string           `json:"nextCursor,omitempty"`
+		}
+	}, error) {
+		projectID, err := projectScope(input.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateRead, ScopeKind: application.ScopeProject, ScopeID: string(projectID)}); err != nil {
+			return nil, err
+		}
+		after, err := decodeLabTemplateCursor(input.Cursor)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Lab Template cursor is invalid")
+		}
+		page, err := service.ListLabTemplates(ctx, controlplane.LabTemplateListRequest{ProjectID: projectID, After: after, Limit: input.Limit})
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct {
+			Body struct {
+				Items      []LabTemplateDTO `json:"items"`
+				NextCursor string           `json:"nextCursor,omitempty"`
+			}
+		}{}
+		output.Body.Items = make([]LabTemplateDTO, 0, len(page.Records))
+		for _, record := range page.Records {
+			output.Body.Items = append(output.Body.Items, labTemplateDTO(record))
+		}
+		output.Body.NextCursor = encodeLabTemplateCursor(page.NextCursor)
+		return output, nil
+	})
+
+	type createTemplateInput struct {
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           struct {
+			ProjectID   string `json:"projectId" minLength:"1" maxLength:"128"`
+			Name        string `json:"name" minLength:"1" maxLength:"63"`
+			Description string `json:"description,omitempty" maxLength:"4096"`
+		}
+	}
+	huma.Post(api, "/lab-templates", func(ctx context.Context, input *createTemplateInput) (*versionedOutput[LabTemplateDTO], error) {
+		projectID, err := projectScope(input.Body.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		actor, err := authorizeActor(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateCreate, ScopeKind: application.ScopeProject, ScopeID: string(projectID)})
+		if err != nil {
+			return nil, err
+		}
+		record, err := service.CreateLabTemplate(ctx, actor.user.ID, projectID, input.Body.Name, input.Body.Description, input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[LabTemplateDTO]{ETag: resourceETag(record.ResourceVersion), Body: labTemplateDTO(record)}, nil
+	})
+
+	type templateInput struct {
+		ID        string `path:"id" maxLength:"128"`
+		ProjectID string `query:"projectId" required:"true" maxLength:"128"`
+	}
+	loadTemplate := func(ctx context.Context, id, project string, action application.PermissionAction) (controlplane.LabTemplateRecord, error) {
+		projectID, err := projectScope(project)
+		if err != nil {
+			return controlplane.LabTemplateRecord{}, err
+		}
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: action, ScopeKind: application.ScopeProject, ScopeID: string(projectID)}); err != nil {
+			return controlplane.LabTemplateRecord{}, err
+		}
+		templateID, err := domain.NewTemplateID(id)
+		if err != nil {
+			return controlplane.LabTemplateRecord{}, huma.Error404NotFound("Lab template was not found")
+		}
+		record, err := service.GetLabTemplate(ctx, templateID)
+		if err != nil || record.ProjectID != projectID {
+			return controlplane.LabTemplateRecord{}, huma.Error404NotFound("Lab template was not found")
+		}
+		return record, nil
+	}
+	huma.Get(api, "/lab-templates/{id}", func(ctx context.Context, input *templateInput) (*versionedOutput[LabTemplateDTO], error) {
+		record, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
+		if err != nil {
+			return nil, err
+		}
+		return &versionedOutput[LabTemplateDTO]{ETag: resourceETag(record.ResourceVersion), Body: labTemplateDTO(record)}, nil
+	})
+
+	type updateTemplateInput struct {
+		ID             string `path:"id" maxLength:"128"`
+		ProjectID      string `query:"projectId" required:"true" maxLength:"128"`
+		IfMatch        string `header:"If-Match"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           struct {
+			Name        string `json:"name" minLength:"1" maxLength:"63"`
+			Description string `json:"description,omitempty" maxLength:"4096"`
+		}
+	}
+	huma.Put(api, "/lab-templates/{id}", func(ctx context.Context, input *updateTemplateInput) (*versionedOutput[LabTemplateDTO], error) {
+		record, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateUpdate)
+		if err != nil {
+			return nil, err
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		actor, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication is required")
+		}
+		record, err = service.UpdateLabTemplate(ctx, actor.user.ID, record.ID, input.Body.Name, input.Body.Description, expected, input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[LabTemplateDTO]{ETag: resourceETag(record.ResourceVersion), Body: labTemplateDTO(record)}, nil
+	})
+
+	type revisionListInput struct {
+		ID        string `path:"id" maxLength:"128"`
+		ProjectID string `query:"projectId" required:"true" maxLength:"128"`
+		Cursor    string `query:"cursor" maxLength:"256"`
+		Limit     uint32 `query:"limit" default:"50" minimum:"1" maximum:"200"`
+	}
+	huma.Get(api, "/lab-templates/{id}/revisions", func(ctx context.Context, input *revisionListInput) (*struct {
+		Body struct {
+			Items      []TemplateRevisionDTO `json:"items"`
+			NextCursor string                `json:"nextCursor,omitempty"`
+		}
+	}, error) {
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
+		if err != nil {
+			return nil, err
+		}
+		after, err := decodeTemplateRevisionCursor(input.Cursor)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Template Revision cursor is invalid")
+		}
+		page, err := service.ListTemplateRevisions(ctx, controlplane.TemplateRevisionListRequest{TemplateID: template.ID, After: after, Limit: input.Limit})
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct {
+			Body struct {
+				Items      []TemplateRevisionDTO `json:"items"`
+				NextCursor string                `json:"nextCursor,omitempty"`
+			}
+		}{}
+		output.Body.Items = make([]TemplateRevisionDTO, 0, len(page.Records))
+		for _, record := range page.Records {
+			output.Body.Items = append(output.Body.Items, templateRevisionDTO(record))
+		}
+		output.Body.NextCursor = encodeTemplateRevisionCursor(page.NextCursor)
+		return output, nil
+	})
+
+	type publishRevisionInput struct {
+		ID             string `path:"id" maxLength:"128"`
+		ProjectID      string `query:"projectId" required:"true" maxLength:"128"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           struct {
+			Source string `json:"source" minLength:"1" maxLength:"8388608"`
+		}
+	}
+	huma.Post(api, "/lab-templates/{id}/revisions", func(ctx context.Context, input *publishRevisionInput) (*struct{ Body TemplateRevisionDTO }, error) {
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRevisionPublish)
+		if err != nil {
+			return nil, err
+		}
+		actor, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication is required")
+		}
+		revision, err := service.PublishTemplateRevision(ctx, actor.user.ID, template.ID, []byte(input.Body.Source), input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &struct{ Body TemplateRevisionDTO }{Body: templateRevisionDTO(revision)}, nil
+	})
+
+	type revisionInput struct {
+		ID         string `path:"id" maxLength:"128"`
+		RevisionID string `path:"revisionId" maxLength:"128"`
+		ProjectID  string `query:"projectId" required:"true" maxLength:"128"`
+	}
+	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}", func(ctx context.Context, input *revisionInput) (*struct{ Body TemplateRevisionDTO }, error) {
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
+		if err != nil {
+			return nil, err
+		}
+		revisionID, err := domain.NewRevisionID(input.RevisionID)
+		if err != nil {
+			return nil, huma.Error404NotFound("Template revision was not found")
+		}
+		revision, err := service.GetTemplateRevision(ctx, revisionID)
+		if err != nil || revision.TemplateID != template.ID {
+			return nil, huma.Error404NotFound("Template revision was not found")
+		}
+		return &struct{ Body TemplateRevisionDTO }{Body: templateRevisionDTO(revision)}, nil
+	})
+}
+
+type RecordQueryInput struct {
+	OrganizationID string `query:"organizationId" maxLength:"128"`
+	ProjectID      string `query:"projectId" maxLength:"128"`
+	ActorID        string `query:"actorId" maxLength:"128"`
+	AggregateType  string `query:"aggregateType" maxLength:"128"`
+	AggregateID    string `query:"aggregateId" maxLength:"128"`
+	OccurredFrom   string `query:"occurredFrom" maxLength:"64"`
+	OccurredBefore string `query:"occurredBefore" maxLength:"64"`
+	Cursor         string `query:"cursor" maxLength:"64"`
+	Limit          uint32 `query:"limit" default:"50" minimum:"1" maximum:"200"`
+}
+
+func registerAuditAndEvents(api huma.API, service *controlplane.Service, security *requestSecurity) {
+	type auditInput struct {
+		RecordQueryInput
+		Category application.AuditCategory `query:"category" enum:"authentication,authorization,target,template,operation,access,administrator"`
+	}
+	huma.Get(api, "/audit-records", func(ctx context.Context, input *auditInput) (*struct {
+		Body struct {
+			Items      []AuditRecordDTO `json:"items"`
+			NextCursor string           `json:"nextCursor,omitempty"`
+		}
+	}, error) {
+		scope, from, before, after, err := authorizeRecordQuery(ctx, security, input.RecordQueryInput)
+		if err != nil {
+			return nil, err
+		}
+		filter := application.AuditRecordFilter{
+			Scope: scope, ActorID: input.ActorID, Category: input.Category, AggregateType: input.AggregateType,
+			AggregateID: input.AggregateID, OccurredFrom: from, OccurredBefore: before, After: after, Limit: input.Limit,
+		}
+		if err := application.ValidateAuditRecordFilter(filter); err != nil {
+			return nil, huma.Error400BadRequest("Audit record filter is invalid")
+		}
+		page, err := service.ListAuditRecords(ctx, filter)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct {
+			Body struct {
+				Items      []AuditRecordDTO `json:"items"`
+				NextCursor string           `json:"nextCursor,omitempty"`
+			}
+		}{}
+		output.Body.Items = make([]AuditRecordDTO, 0, len(page.Records))
+		for _, record := range page.Records {
+			output.Body.Items = append(output.Body.Items, auditRecordDTO(record))
+		}
+		output.Body.NextCursor = encodeRecordCursor(page.NextCursor)
+		return output, nil
+	})
+
+	type eventInput struct {
+		RecordQueryInput
+		Type string `query:"type" maxLength:"128"`
+	}
+	huma.Get(api, "/events", func(ctx context.Context, input *eventInput) (*struct {
+		Body struct {
+			Items      []EventRecordDTO `json:"items"`
+			NextCursor string           `json:"nextCursor,omitempty"`
+		}
+	}, error) {
+		scope, from, before, after, err := authorizeRecordQuery(ctx, security, input.RecordQueryInput)
+		if err != nil {
+			return nil, err
+		}
+		filter := application.EventRecordFilter{
+			Scope: scope, ActorID: input.ActorID, Type: input.Type, AggregateType: input.AggregateType,
+			AggregateID: input.AggregateID, OccurredFrom: from, OccurredBefore: before, After: after, Limit: input.Limit,
+		}
+		if err := application.ValidateEventRecordFilter(filter); err != nil {
+			return nil, huma.Error400BadRequest("Event record filter is invalid")
+		}
+		page, err := service.ListEventRecords(ctx, filter)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct {
+			Body struct {
+				Items      []EventRecordDTO `json:"items"`
+				NextCursor string           `json:"nextCursor,omitempty"`
+			}
+		}{}
+		output.Body.Items = make([]EventRecordDTO, 0, len(page.Records))
+		for _, record := range page.Records {
+			output.Body.Items = append(output.Body.Items, eventRecordDTO(record))
+		}
+		output.Body.NextCursor = encodeRecordCursor(page.NextCursor)
+		return output, nil
+	})
+
+	type exportInput struct {
+		RecordQueryInput
+		Category   application.AuditCategory `query:"category" enum:"authentication,authorization,target,template,operation,access,administrator"`
+		MaxRecords uint32                    `query:"maxRecords" default:"1000" minimum:"1" maximum:"10000"`
+		MaxBytes   uint64                    `query:"maxBytes" default:"8388608" minimum:"1" maximum:"67108864"`
+	}
+	type exportOutput struct {
+		ContentType        string `header:"Content-Type"`
+		ContentDisposition string `header:"Content-Disposition"`
+		Truncated          string `header:"X-LabCentral-Export-Truncated"`
+		NextCursor         string `header:"X-LabCentral-Next-Cursor"`
+		Body               []byte
+	}
+	huma.Get(api, "/audit-records/export", func(ctx context.Context, input *exportInput) (*exportOutput, error) {
+		scope, from, before, after, err := authorizeRecordQuery(ctx, security, input.RecordQueryInput)
+		if err != nil {
+			return nil, err
+		}
+		request := application.AuditExportRequest{
+			Filter: application.AuditRecordFilter{
+				Scope: scope, ActorID: input.ActorID, Category: input.Category, AggregateType: input.AggregateType,
+				AggregateID: input.AggregateID, OccurredFrom: from, OccurredBefore: before, After: after, Limit: 1,
+			},
+			MaxRecords: input.MaxRecords, MaxBytes: input.MaxBytes,
+		}
+		if err := application.ValidateAuditExportRequest(request); err != nil {
+			return nil, huma.Error400BadRequest("Audit export request is invalid")
+		}
+		result, body, err := service.ExportAuditRecords(ctx, request)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &exportOutput{
+			ContentType: "application/x-ndjson", ContentDisposition: `attachment; filename="labcentral-audit.ndjson"`,
+			Truncated: strconv.FormatBool(result.Truncated), NextCursor: encodeRecordCursor(result.Last), Body: body,
+		}, nil
+	})
+}
+
+func authorizeRecordQuery(ctx context.Context, security *requestSecurity, input RecordQueryInput) (application.RecordScope, time.Time, time.Time, *application.RecordCursor, error) {
+	var scope application.RecordScope
+	authorizationScope := application.AuthorizationRequest{Action: application.ActionAuditRead, ScopeKind: application.ScopePlatform, ScopeID: "platform"}
+	if input.OrganizationID != "" {
+		organizationID, err := domain.NewOrganizationID(input.OrganizationID)
+		if err != nil {
+			return scope, time.Time{}, time.Time{}, nil, huma.Error400BadRequest("Organization ID is invalid")
+		}
+		scope.OrganizationID = organizationID
+		authorizationScope.ScopeKind, authorizationScope.ScopeID = application.ScopeOrganization, string(organizationID)
+	}
+	if input.ProjectID != "" {
+		if scope.OrganizationID == "" {
+			return scope, time.Time{}, time.Time{}, nil, huma.Error400BadRequest("Project-scoped record queries require organizationId")
+		}
+		projectID, err := domain.NewProjectID(input.ProjectID)
+		if err != nil {
+			return scope, time.Time{}, time.Time{}, nil, huma.Error400BadRequest("Project ID is invalid")
+		}
+		scope.ProjectID = projectID
+		authorizationScope.ScopeKind, authorizationScope.ScopeID = application.ScopeProject, string(projectID)
+	}
+	if err := authorize(ctx, security, authorizationScope); err != nil {
+		return scope, time.Time{}, time.Time{}, nil, err
+	}
+	from, err := parseRecordTime(input.OccurredFrom)
+	if err != nil {
+		return scope, time.Time{}, time.Time{}, nil, huma.Error400BadRequest("occurredFrom must be an RFC3339 timestamp")
+	}
+	before, err := parseRecordTime(input.OccurredBefore)
+	if err != nil {
+		return scope, time.Time{}, time.Time{}, nil, huma.Error400BadRequest("occurredBefore must be an RFC3339 timestamp")
+	}
+	after, err := decodeRecordCursor(input.Cursor)
+	if err != nil {
+		return scope, time.Time{}, time.Time{}, nil, huma.Error400BadRequest("Record cursor is invalid")
+	}
+	return scope, from, before, after, nil
+}
+
+func parseRecordTime(value string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
+}
+
+func encodeRecordCursor(cursor *application.RecordCursor) string {
+	if cursor == nil || cursor.StreamPosition == 0 {
+		return ""
+	}
+	var bytes [9]byte
+	bytes[0] = 1
+	binary.BigEndian.PutUint64(bytes[1:], cursor.StreamPosition)
+	return base64.RawURLEncoding.EncodeToString(bytes[:])
+}
+
+func decodeRecordCursor(value string) (*application.RecordCursor, error) {
+	if value == "" {
+		return nil, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(decoded) != 9 || decoded[0] != 1 {
+		return nil, fmt.Errorf("invalid record cursor")
+	}
+	position := binary.BigEndian.Uint64(decoded[1:])
+	if position == 0 {
+		return nil, fmt.Errorf("invalid record cursor")
+	}
+	return &application.RecordCursor{StreamPosition: position}, nil
+}
+
+const (
+	templateCursorKind byte = 1
+	revisionCursorKind byte = 2
+)
+
+func encodeLabTemplateCursor(cursor *controlplane.LabTemplateCursor) string {
+	if cursor == nil || cursor.CreatedAt.IsZero() || cursor.CreatedAt.UTC().UnixMicro() <= 0 || cursor.ID == "" {
+		return ""
+	}
+	return encodeCollectionCursor(templateCursorKind, uint64(cursor.CreatedAt.UTC().UnixMicro()), string(cursor.ID))
+}
+
+func decodeLabTemplateCursor(value string) (*controlplane.LabTemplateCursor, error) {
+	if value == "" {
+		return nil, nil
+	}
+	position, id, err := decodeCollectionCursor(value, templateCursorKind)
+	if err != nil || position > math.MaxInt64 {
+		return nil, fmt.Errorf("invalid Lab Template cursor")
+	}
+	templateID, err := domain.NewTemplateID(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Lab Template cursor")
+	}
+	return &controlplane.LabTemplateCursor{CreatedAt: time.UnixMicro(int64(position)).UTC(), ID: templateID}, nil
+}
+
+func encodeTemplateRevisionCursor(cursor *controlplane.TemplateRevisionCursor) string {
+	if cursor == nil || cursor.RevisionNumber == 0 || cursor.ID == "" {
+		return ""
+	}
+	return encodeCollectionCursor(revisionCursorKind, cursor.RevisionNumber, string(cursor.ID))
+}
+
+func decodeTemplateRevisionCursor(value string) (*controlplane.TemplateRevisionCursor, error) {
+	if value == "" {
+		return nil, nil
+	}
+	position, id, err := decodeCollectionCursor(value, revisionCursorKind)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Template Revision cursor")
+	}
+	revisionID, err := domain.NewRevisionID(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Template Revision cursor")
+	}
+	return &controlplane.TemplateRevisionCursor{RevisionNumber: position, ID: revisionID}, nil
+}
+
+func encodeCollectionCursor(kind byte, position uint64, id string) string {
+	if position == 0 || len(id) == 0 || len(id) > 128 {
+		return ""
+	}
+	encoded := make([]byte, 10+len(id))
+	encoded[0], encoded[1] = 1, kind
+	binary.BigEndian.PutUint64(encoded[2:10], position)
+	copy(encoded[10:], id)
+	return base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+func decodeCollectionCursor(value string, expectedKind byte) (uint64, string, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(decoded) < 11 || len(decoded) > 138 || decoded[0] != 1 || decoded[1] != expectedKind {
+		return 0, "", fmt.Errorf("invalid collection cursor")
+	}
+	position := binary.BigEndian.Uint64(decoded[2:10])
+	if position == 0 {
+		return 0, "", fmt.Errorf("invalid collection cursor")
+	}
+	return position, string(decoded[10:]), nil
 }
 
 func registerAdministration(api huma.API, security *requestSecurity) {
@@ -1280,11 +1864,45 @@ func operationDTO(source controlplane.OperationRecord) OperationDTO {
 	return OperationDTO{ID: string(source.ID), InstanceID: string(source.InstanceID), Kind: string(source.Kind), State: string(source.State), Message: source.Message, ErrorCode: source.ErrorCode, Attempt: source.Attempt, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt}
 }
 
+func labTemplateDTO(source controlplane.LabTemplateRecord) LabTemplateDTO {
+	return LabTemplateDTO{
+		ID: string(source.ID), ProjectID: string(source.ProjectID), Name: source.Name, Description: source.Description,
+		ResourceVersion: uint64(source.ResourceVersion), CreatedBy: string(source.CreatedBy), CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt,
+	}
+}
+
+func templateRevisionDTO(source controlplane.TemplateRevisionRecord) TemplateRevisionDTO {
+	return TemplateRevisionDTO{
+		ID: string(source.ID), TemplateID: string(source.TemplateID), RevisionNumber: source.RevisionNumber,
+		BundleArtifact: string(source.BundleArtifact), BundleDigest: source.BundleDigest.String(), BundleSizeBytes: source.BundleSizeBytes,
+		AuthorAPIVersion: source.AuthorAPIVersion, RendererVersion: source.RendererVersion, CanonicalVersion: source.CanonicalVersion,
+		CanonicalDigest: source.CanonicalDigest.String(), PublishedBy: string(source.PublishedBy), CreatedAt: source.CreatedAt,
+	}
+}
+
+func auditRecordDTO(source application.AuditRecord) AuditRecordDTO {
+	return AuditRecordDTO{
+		ID: source.ID, StreamPosition: source.StreamPosition, SchemaVersion: source.SchemaVersion,
+		Category: source.Category, Action: source.Action, Outcome: source.Outcome, Scope: source.Scope,
+		Actor: source.Actor, AggregateType: source.AggregateType, AggregateID: source.AggregateID,
+		Links: source.Links, Payload: json.RawMessage(source.RedactedPayload.Bytes()), OccurredAt: source.OccurredAt,
+	}
+}
+
+func eventRecordDTO(source application.EventRecord) EventRecordDTO {
+	return EventRecordDTO{
+		ID: source.ID, StreamPosition: source.StreamPosition, AggregateSequence: source.AggregateSequence,
+		SchemaVersion: source.SchemaVersion, Type: source.Type, Scope: source.Scope, Actor: source.Actor,
+		AggregateType: source.AggregateType, AggregateID: source.AggregateID, Links: source.Links,
+		Payload: json.RawMessage(source.SafePayload.Bytes()), OccurredAt: source.OccurredAt,
+	}
+}
+
 func instanceDTO(source controlplane.InstanceRecord, resources []controlplane.ResourceRecord) InstanceDTO {
 	outputs := make(map[string]any)
 	_ = json.Unmarshal(source.OutputsJSON, &outputs)
 	result := InstanceDTO{
-		ID: string(source.ID), ProjectID: string(source.ProjectID), OwnerKind: string(source.OwnerKind), OwnerID: source.OwnerID, CreatedBy: string(source.CreatedBy),
+		ID: string(source.ID), RevisionID: string(source.RevisionID), ProjectID: string(source.ProjectID), OwnerKind: string(source.OwnerKind), OwnerID: source.OwnerID, CreatedBy: string(source.CreatedBy),
 		ProviderTargetID: string(source.ProviderTargetID), Phase: string(source.Phase), DesiredLifecycle: string(source.DesiredLifecycle),
 		CanonicalDigest: source.CanonicalDigest.String(), ResourceVersion: uint64(source.ResourceVersion), Outputs: outputs,
 		ErrorCode: source.ErrorCode, ErrorMessage: source.ErrorMessage, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt,
@@ -1320,6 +1938,12 @@ func apiError(err error) error {
 	}
 	if errors.Is(err, controlplane.ErrNotFound) {
 		return huma.Error404NotFound("Resource was not found")
+	}
+	if errors.Is(err, controlplane.ErrAlreadyExists) {
+		return huma.Error409Conflict("A resource with the same identity or scoped name already exists")
+	}
+	if errors.Is(err, controlplane.ErrVersionConflict) {
+		return huma.NewError(http.StatusPreconditionFailed, "The resource version no longer matches")
 	}
 	var domainError *domain.DomainError
 	if errors.As(err, &domainError) && domainError.Code == "idempotency_conflict" {

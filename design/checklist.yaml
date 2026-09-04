@@ -247,10 +247,10 @@ tasks:
       - No-auth remains an explicit loopback-only development mode, while production startup refuses non-loopback operation without TLS and an authenticated mode.
   - id: TASK-PROD-003
     title: Implement classroom governance, reusable templates, expiration, audit, and controlled access
-    status: proposed
+    status: in_progress
     dependencies: [TASK-PROD-002]
     relatedAdrs: [ADR-0004, ADR-0006, ADR-0008, ADR-0009, ADR-0010]
-    relatedDocuments: [api/http, internal/controlplane, web, docs/design/access-sessions.md, docs/design/auth-tenancy-rbac.md, docs/design/http-api.md, docs/design/reconciliation-and-jobs.md, docs/design/security-threat-model.md]
+    relatedDocuments: [api/http, internal/application, internal/adapter/localdb, internal/controlplane, web, docs/design/access-sessions.md, docs/design/auth-tenancy-rbac.md, docs/design/database-schema.md, docs/design/http-api.md, docs/design/persistence-and-artifacts.md, docs/design/reconciliation-and-jobs.md, docs/design/security-threat-model.md, design/contracts/access-conformance.yaml]
     acceptanceCriteria:
       - Versioned Lab Templates/revisions and classroom batch instantiation support 20-100 concurrent isolated instances with per-scope quotas, reservations, expiration, renewal, and safe cleanup/orphan review.
       - Append-only audit/event records cover authentication, authorization, target, template, operation, access, and administrator actions with bounded redacted retention/export.

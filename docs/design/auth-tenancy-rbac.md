@@ -24,7 +24,9 @@ Organization contains Projects; Teams belong to an Organization and may be grant
 | Participant / Student | create within grants/quotas, view/use own or team labs, allowed lifecycle/access actions |
 | Viewer / Auditor | read permitted resources/events/audit; no access session unless separately granted |
 
-Fine-grained stable actions include `providerTarget.register|configure|health.read|grant`, `template.create|revision.publish`, `instance.create|batchCreate|read|start|stop|reset|ttl.extend|snapshot|restore|clone|destroy`, `accessSession.create|revoke`, `quota.manage`, `membership.manage`, `audit.read`.
+Fine-grained stable actions include `providerTarget.register|configure|health.read|grant`, `template.create|read|update|revision.publish`, `instance.create|batchCreate|read|start|stop|reset|ttl.extend|snapshot|restore|clone|destroy`, `accessSession.create|revoke`, `quota.manage`, `membership.manage`, `audit.read`.
+
+The implemented policy matrix grants template metadata/revision management to Lab Authors and scoped administrators, template reads to classroom roles, batch creation to instructors, own-instance TTL/access actions to participants, and scoped audit/event reads to administrators and viewers. Audit/event endpoints authorize the requested platform, organization, or project scope before issuing their filtered query; a project query must include its organization scope. Quota, batch, TTL, and access actions are registered policy identifiers but their production command paths remain part of the unfinished `TASK-PROD-003` work.
 
 Authorization evaluates actor, action, resource/scope ancestry, membership validity, instance ownership/shares, target grant, quota/policy constraints, and sensitive subfield. List endpoints apply the identical predicate in query filters and cannot reveal existence across tenants. Operations capture the actor and reauthorize at execution for destructive/credential-sensitive steps; loss of permission stops at a safe boundary.
 

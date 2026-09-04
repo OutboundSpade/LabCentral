@@ -14,11 +14,21 @@ import (
 var implementedActions = []application.PermissionAction{
 	application.ActionProviderTargetHealthRead,
 	application.ActionProviderTargetGrant,
+	application.ActionTemplateCreate,
+	application.ActionTemplateRead,
+	application.ActionTemplateUpdate,
+	application.ActionTemplateRevisionPublish,
 	application.ActionInstanceValidate,
 	application.ActionInstancePlan,
 	application.ActionInstanceCreate,
+	application.ActionInstanceBatchCreate,
 	application.ActionInstanceRead,
+	application.ActionInstanceTTLExtend,
 	application.ActionInstanceDestroy,
+	application.ActionAccessSessionCreate,
+	application.ActionAccessSessionRevoke,
+	application.ActionQuotaManage,
+	application.ActionAuditRead,
 	application.ActionMembershipManage,
 	application.ActionRoleAssignmentManage,
 	application.ActionOrganizationManage,
@@ -46,6 +56,8 @@ func TestRoleMaximumPermissionMatrix(t *testing.T) {
 			scopeKind: application.ScopeOrganization, scopeID: "org.alpha", allowed: actionSet(
 				application.ActionOrganizationManage, application.ActionProjectManage, application.ActionTeamManage,
 				application.ActionMembershipManage, application.ActionRoleAssignmentManage,
+				application.ActionTemplateCreate, application.ActionTemplateRead, application.ActionTemplateUpdate,
+				application.ActionTemplateRevisionPublish, application.ActionQuotaManage, application.ActionAuditRead,
 			),
 		},
 		{
@@ -57,27 +69,33 @@ func TestRoleMaximumPermissionMatrix(t *testing.T) {
 		{
 			role: application.RoleLabAuthor, subjectID: "user.lab-author",
 			scopeKind: application.ScopeProject, scopeID: "project.alpha", allowed: actionSet(
-				application.ActionInstanceValidate, application.ActionInstancePlan,
+				application.ActionTemplateCreate, application.ActionTemplateRead, application.ActionTemplateUpdate,
+				application.ActionTemplateRevisionPublish, application.ActionInstanceValidate, application.ActionInstancePlan,
 			),
 		},
 		{
 			role: application.RoleInstructor, subjectID: "user.instructor",
 			scopeKind: application.ScopeProject, scopeID: "project.alpha", allowed: actionSet(
-				application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-				application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionProviderTargetHealthRead,
+				application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
+				application.ActionInstanceCreate, application.ActionInstanceBatchCreate, application.ActionInstanceRead,
+				application.ActionInstanceTTLExtend, application.ActionInstanceDestroy, application.ActionAccessSessionCreate,
+				application.ActionAccessSessionRevoke, application.ActionProviderTargetHealthRead,
 			),
 		},
 		{
 			role: application.RoleParticipant, subjectID: "user.participant",
 			scopeKind: application.ScopeProject, scopeID: "project.alpha", allowed: actionSet(
-				application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-				application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionProviderTargetHealthRead,
+				application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
+				application.ActionInstanceCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
+				application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
+				application.ActionProviderTargetHealthRead,
 			),
 		},
 		{
 			role: application.RoleViewer, subjectID: "user.viewer",
 			scopeKind: application.ScopeProject, scopeID: "project.alpha", allowed: actionSet(
-				application.ActionInstanceRead, application.ActionProviderTargetHealthRead,
+				application.ActionTemplateRead, application.ActionInstanceRead, application.ActionProviderTargetHealthRead,
+				application.ActionAuditRead,
 			),
 		},
 	}

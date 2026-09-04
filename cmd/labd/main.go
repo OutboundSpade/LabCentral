@@ -247,6 +247,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err != nil {
 		return err
 	}
+	if err := control.SetArtifactStore(artifacts); err != nil {
+		return err
+	}
 	for _, target := range targets.IDs() {
 		if err := control.RefreshTarget(ctx, target); err != nil {
 			logger.Error("configured provider target discovery failed; cached evidence remains authoritative", "target", target, "error", err)

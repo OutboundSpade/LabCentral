@@ -10,8 +10,10 @@ import (
 )
 
 var (
-	ErrNoWork   = errors.New("no claimable local operation")
-	ErrNotFound = errors.New("local control-plane record not found")
+	ErrNoWork          = errors.New("no claimable local operation")
+	ErrNotFound        = errors.New("local control-plane record not found")
+	ErrAlreadyExists   = errors.New("control-plane record already exists")
+	ErrVersionConflict = errors.New("control-plane resource version conflict")
 )
 
 type OperationKind string
@@ -23,6 +25,7 @@ const (
 
 type InstanceRecord struct {
 	ID                           domain.InstanceID
+	RevisionID                   domain.RevisionID
 	ProjectID                    domain.ProjectID
 	OwnerKind                    application.OwnerKind
 	OwnerID                      string
@@ -42,6 +45,109 @@ type InstanceRecord struct {
 	ErrorMessage                 string
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+}
+
+type LabTemplateRecord struct {
+	ID              domain.TemplateID
+	ProjectID       domain.ProjectID
+	Name            string
+	Description     string
+	ResourceVersion domain.ResourceVersion
+	CreatedBy       domain.UserID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type GovernanceRecordIDs struct {
+	AuditID string
+	EventID string
+}
+
+type CreateLabTemplateRequest struct {
+	GovernanceRecordIDs
+	ID             domain.TemplateID
+	ProjectID      domain.ProjectID
+	Name           string
+	Description    string
+	CreatedBy      domain.UserID
+	IdempotencyKey string
+	RequestDigest  domain.SHA256Digest
+}
+
+type UpdateLabTemplateRequest struct {
+	GovernanceRecordIDs
+	ID                      domain.TemplateID
+	UpdatedBy               domain.UserID
+	Name                    string
+	Description             string
+	ExpectedResourceVersion domain.ResourceVersion
+	IdempotencyKey          string
+	RequestDigest           domain.SHA256Digest
+}
+
+type TemplateRevisionRecord struct {
+	ID               domain.RevisionID
+	TemplateID       domain.TemplateID
+	RevisionNumber   uint64
+	BundleArtifact   domain.ArtifactRef
+	BundleDigest     domain.SHA256Digest
+	BundleSizeBytes  uint64
+	AuthorAPIVersion string
+	RendererVersion  string
+	CanonicalVersion string
+	CanonicalDigest  domain.SHA256Digest
+	PublishedBy      domain.UserID
+	CreatedAt        time.Time
+}
+
+const MaximumTemplatePageSize uint32 = 200
+
+type LabTemplateCursor struct {
+	CreatedAt time.Time
+	ID        domain.TemplateID
+}
+
+type LabTemplateListRequest struct {
+	ProjectID domain.ProjectID
+	After     *LabTemplateCursor
+	Limit     uint32
+}
+
+type LabTemplatePage struct {
+	Records    []LabTemplateRecord
+	NextCursor *LabTemplateCursor
+}
+
+type TemplateRevisionCursor struct {
+	RevisionNumber uint64
+	ID             domain.RevisionID
+}
+
+type TemplateRevisionListRequest struct {
+	TemplateID domain.TemplateID
+	After      *TemplateRevisionCursor
+	Limit      uint32
+}
+
+type TemplateRevisionPage struct {
+	Records    []TemplateRevisionRecord
+	NextCursor *TemplateRevisionCursor
+}
+
+type PublishTemplateRevisionRequest struct {
+	GovernanceRecordIDs
+	ID               domain.RevisionID
+	TemplateID       domain.TemplateID
+	BundleArtifact   domain.ArtifactRef
+	BundleDigest     domain.SHA256Digest
+	BundleSizeBytes  uint64
+	AuthorAPIVersion string
+	RendererVersion  string
+	CanonicalVersion string
+	CanonicalDigest  domain.SHA256Digest
+	PublishedBy      domain.UserID
+	IdempotencyKey   string
+	RequestDigest    domain.SHA256Digest
 }
 
 type TargetSnapshot struct {
@@ -112,6 +218,7 @@ type ResourceSeed struct {
 
 type CreateInstanceRequest struct {
 	InstanceID           domain.InstanceID
+	RevisionID           domain.RevisionID
 	ProjectID            domain.ProjectID
 	OwnerKind            application.OwnerKind
 	OwnerID              string
@@ -210,6 +317,14 @@ type FinalizeRequest struct {
 }
 
 type Store interface {
+	application.AuditEventStore
+	CreateLabTemplate(context.Context, CreateLabTemplateRequest) (LabTemplateRecord, error)
+	UpdateLabTemplate(context.Context, UpdateLabTemplateRequest) (LabTemplateRecord, error)
+	GetLabTemplate(context.Context, domain.TemplateID) (LabTemplateRecord, error)
+	ListLabTemplates(context.Context, LabTemplateListRequest) (LabTemplatePage, error)
+	PublishTemplateRevision(context.Context, PublishTemplateRevisionRequest) (TemplateRevisionRecord, error)
+	GetTemplateRevision(context.Context, domain.RevisionID) (TemplateRevisionRecord, error)
+	ListTemplateRevisions(context.Context, TemplateRevisionListRequest) (TemplateRevisionPage, error)
 	CreateInstance(context.Context, CreateInstanceRequest) (EnqueueResult, error)
 	SaveTargetSnapshot(context.Context, TargetSnapshot) error
 	GetTargetSnapshot(context.Context, domain.ProviderTargetID) (TargetSnapshot, error)

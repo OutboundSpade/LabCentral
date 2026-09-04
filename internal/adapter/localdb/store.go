@@ -32,6 +32,8 @@ const (
 	authMigrationID          = "0004_identity_tenancy_rbac"
 	authHardeningMigrationID = "0005_authentication_hardening"
 	authLifecycleMigrationID = "0006_authority_lifecycle"
+	templateMigrationID      = "0007_classroom_governance_foundation"
+	auditMigrationID         = "0008_governance_audit_events"
 	migrationLockID          = int64(0x4c616243656e7472)
 )
 
@@ -175,7 +177,13 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, authHardeningMigrationID, authenticationHardeningMigrationStatements(s.integerType())); err != nil {
 		return err
 	}
-	return s.applyMigration(ctx, authLifecycleMigrationID, authenticationLifecycleMigrationStatements(s.integerType()))
+	if err := s.applyMigration(ctx, authLifecycleMigrationID, authenticationLifecycleMigrationStatements(s.integerType())); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, templateMigrationID, s.templateMigrationStatements()); err != nil {
+		return err
+	}
+	return s.applyMigration(ctx, auditMigrationID, auditMigrationStatements(s.integerType(), s.blobType()))
 }
 
 func (s *Store) lockMigrations(ctx context.Context) (func(), error) {
@@ -541,6 +549,78 @@ func (s *Store) integerType() string {
 	return "INTEGER"
 }
 
+func (s *Store) blobType() string {
+	if s.dialect == jobsdb.DialectPostgreSQL {
+		return "BYTEA"
+	}
+	return "BLOB"
+}
+
+func (s *Store) templateMigrationStatements() []string {
+	integerType := s.integerType()
+	statements := []string{
+		`INSERT INTO labcentral_organizations
+			(organization_id, name, resource_version, created_at_us, updated_at_us)
+			VALUES ('org.local', 'labcentral-internal-local', 1, ` + s.nowMicros() + `, ` + s.nowMicros() + `)
+			ON CONFLICT (organization_id) DO NOTHING`,
+		`INSERT INTO labcentral_projects
+			(project_id, organization_id, name, resource_version, created_at_us, updated_at_us)
+			VALUES ('project.local', 'org.local', 'labcentral-internal-local', 1, ` + s.nowMicros() + `, ` + s.nowMicros() + `)
+			ON CONFLICT (project_id) DO NOTHING`,
+		`CREATE TABLE labcentral_lab_templates (
+			template_id TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL REFERENCES labcentral_projects(project_id),
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0),
+			created_by TEXT NOT NULL,
+			created_at_us ` + integerType + ` NOT NULL,
+			updated_at_us ` + integerType + ` NOT NULL,
+			UNIQUE (project_id, name)
+		)`,
+		`CREATE INDEX labcentral_lab_templates_scope_idx
+			ON labcentral_lab_templates(project_id, created_at_us, template_id)`,
+		`CREATE TABLE labcentral_template_revisions (
+			revision_id TEXT PRIMARY KEY,
+			template_id TEXT NOT NULL REFERENCES labcentral_lab_templates(template_id),
+			revision_number ` + integerType + ` NOT NULL CHECK (revision_number > 0),
+			bundle_artifact_ref TEXT NOT NULL,
+			bundle_digest TEXT NOT NULL,
+			bundle_size_bytes ` + integerType + ` NOT NULL CHECK (bundle_size_bytes > 0),
+			author_api_version TEXT NOT NULL,
+			renderer_version TEXT NOT NULL,
+			canonical_version TEXT NOT NULL,
+			canonical_digest TEXT NOT NULL,
+			published_by TEXT NOT NULL,
+			created_at_us ` + integerType + ` NOT NULL,
+			UNIQUE (template_id, revision_number)
+		)`,
+		`CREATE INDEX labcentral_template_revisions_template_idx
+			ON labcentral_template_revisions(template_id, revision_number, revision_id)`,
+		`ALTER TABLE labcentral_local_instances
+			ADD COLUMN revision_id TEXT REFERENCES labcentral_template_revisions(revision_id)`,
+	}
+	if s.dialect == jobsdb.DialectPostgreSQL {
+		return append(statements,
+			`CREATE FUNCTION labcentral_reject_template_revision_mutation() RETURNS trigger
+				LANGUAGE plpgsql AS $$ BEGIN
+					RAISE EXCEPTION 'template revisions are immutable' USING ERRCODE = '55000';
+				END $$`,
+			`CREATE TRIGGER labcentral_template_revisions_immutable
+				BEFORE UPDATE OR DELETE ON labcentral_template_revisions
+				FOR EACH ROW EXECUTE FUNCTION labcentral_reject_template_revision_mutation()`,
+		)
+	}
+	return append(statements,
+		`CREATE TRIGGER labcentral_template_revisions_immutable_update
+			BEFORE UPDATE ON labcentral_template_revisions
+			BEGIN SELECT RAISE(ABORT, 'template revisions are immutable'); END`,
+		`CREATE TRIGGER labcentral_template_revisions_immutable_delete
+			BEFORE DELETE ON labcentral_template_revisions
+			BEGIN SELECT RAISE(ABORT, 'template revisions are immutable'); END`,
+	)
+}
+
 func authenticationHardeningMigrationStatements(integerType string) []string {
 	return []string{
 		`CREATE INDEX labcentral_sessions_expiry_gc_idx ON labcentral_sessions(expires_at_us)`,
@@ -644,10 +724,10 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 		providerOverride = []byte{}
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_instances
-		(instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
+		(instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
 		 isolation_warning_acknowledged, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`),
-		request.InstanceID, request.ProjectID, request.OwnerKind, request.OwnerID, request.CreatedBy,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`),
+		request.InstanceID, nullableString(string(request.RevisionID)), request.ProjectID, request.OwnerKind, request.OwnerID, request.CreatedBy,
 		request.ProviderTargetID, providerOverride, request.CanonicalDigest.Hex(), request.CanonicalJSON, request.SourceYAML,
 		domain.InstancePending, domain.LifecycleRunning, ack); err != nil {
 		return controlplane.EnqueueResult{}, fmt.Errorf("insert local instance: %w", err)
@@ -666,7 +746,7 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 	if err := s.enqueue(ctx, tx, request.InstanceID, request.OperationID, controlplane.OperationApply, request.Payload, request.SubjectID, request.AuditID, request.EventID); err != nil {
 		return controlplane.EnqueueResult{}, err
 	}
-	if err := s.bindIdempotency(ctx, tx, request.SubjectID, "create_instance", request.IdempotencyKey, request.RequestDigest, request.OperationID); err != nil {
+	if err := s.bindIdempotency(ctx, tx, request.SubjectID, "create_instance", request.IdempotencyKey, request.RequestDigest, string(request.OperationID)); err != nil {
 		return controlplane.EnqueueResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -676,6 +756,22 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 }
 
 func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceRequest) error {
+	if request.RevisionID != "" {
+		if _, err := domain.NewRevisionID(string(request.RevisionID)); err != nil {
+			return err
+		}
+		var revisionExists int
+		err := tx.QueryRowContext(ctx, s.bind(`SELECT 1
+			FROM labcentral_template_revisions revision
+			JOIN labcentral_lab_templates template ON template.template_id = revision.template_id
+			WHERE revision.revision_id = ? AND template.project_id = ?`), request.RevisionID, request.ProjectID).Scan(&revisionExists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("instance template revision is outside the project scope")
+		}
+		if err != nil {
+			return fmt.Errorf("load instance template revision: %w", err)
+		}
+	}
 	if request.ProjectID == "project.local" && request.OwnerKind == application.OwnerUser && request.OwnerID == string(controlplane.LocalAdminID) && request.CreatedBy == controlplane.LocalAdminID {
 		return nil
 	}
@@ -953,7 +1049,7 @@ func (s *Store) queueDestroy(ctx context.Context, request controlplane.QueueDest
 	if err := s.enqueue(ctx, tx, request.InstanceID, request.OperationID, controlplane.OperationDestroy, request.Payload, request.SubjectID, request.AuditID, request.EventID); err != nil {
 		return controlplane.EnqueueResult{}, err
 	}
-	if err := s.bindIdempotency(ctx, tx, request.SubjectID, action, request.IdempotencyKey, request.RequestDigest, request.OperationID); err != nil {
+	if err := s.bindIdempotency(ctx, tx, request.SubjectID, action, request.IdempotencyKey, request.RequestDigest, string(request.OperationID)); err != nil {
 		return controlplane.EnqueueResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -1035,7 +1131,7 @@ func (s *Store) lockIdempotency(ctx context.Context, tx *sql.Tx, subject domain.
 	return nil
 }
 
-func (s *Store) bindIdempotency(ctx context.Context, tx *sql.Tx, subject domain.UserID, action, key string, digest domain.SHA256Digest, resultID domain.OperationID) error {
+func (s *Store) bindIdempotency(ctx context.Context, tx *sql.Tx, subject domain.UserID, action, key string, digest domain.SHA256Digest, resultID string) error {
 	_, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_idempotency_records
 		(subject_id, route_action, idempotency_key, request_digest, result_id, expires_at_us)
 		VALUES (?, ?, ?, ?, ?, `+s.nowMicros()+` + ?)`), subject, action, key, digest.Hex(), resultID, (24 * time.Hour).Microseconds())
@@ -1043,7 +1139,7 @@ func (s *Store) bindIdempotency(ctx context.Context, tx *sql.Tx, subject domain.
 }
 
 func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlplane.InstanceRecord, error) {
-	row := s.db.QueryRowContext(ctx, s.bind(`SELECT instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+	row := s.db.QueryRowContext(ctx, s.bind(`SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances WHERE instance_id = ?`), id)
@@ -1051,7 +1147,7 @@ func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlp
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]controlplane.InstanceRecord, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances ORDER BY created_at_us, instance_id`))
@@ -1086,7 +1182,7 @@ func (s *Store) ListInstancesByID(ctx context.Context, ids []domain.InstanceID) 
 		arguments = append(arguments, id)
 		placeholders = append(placeholders, "?")
 	}
-	query := `SELECT instance_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+	query := `SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
 		error_code, error_message, created_at_us, updated_at_us
 		FROM labcentral_local_instances WHERE instance_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY created_at_us, instance_id`
@@ -1111,8 +1207,9 @@ type scanner interface{ Scan(...any) error }
 func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 	var record controlplane.InstanceRecord
 	var id, projectID, ownerKind, createdBy, targetID, digest, phase, lifecycle string
+	var revisionID sql.NullString
 	var generation, resourceVersion, acknowledged, createdAt, updatedAt int64
-	err := row.Scan(&id, &projectID, &ownerKind, &record.OwnerID, &createdBy, &targetID, &record.ProviderOverrideJSON, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
+	err := row.Scan(&id, &revisionID, &projectID, &ownerKind, &record.OwnerID, &createdBy, &targetID, &record.ProviderOverrideJSON, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
 		&generation, &resourceVersion, &acknowledged, &record.OutputsJSON, &record.ErrorCode, &record.ErrorMessage, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return controlplane.InstanceRecord{}, controlplane.ErrNotFound
@@ -1125,6 +1222,9 @@ func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 		return controlplane.InstanceRecord{}, err
 	}
 	record.ID = domain.InstanceID(id)
+	if revisionID.Valid {
+		record.RevisionID = domain.RevisionID(revisionID.String)
+	}
 	record.ProjectID = domain.ProjectID(projectID)
 	record.OwnerKind = application.OwnerKind(ownerKind)
 	record.CreatedBy = domain.UserID(createdBy)
@@ -1427,6 +1527,13 @@ func (s *Store) requireFence(ctx context.Context, tx *sql.Tx, fence controlplane
 
 func nullableBytes(value []byte) any {
 	if len(value) == 0 {
+		return nil
+	}
+	return value
+}
+
+func nullableString(value string) any {
+	if value == "" {
 		return nil
 	}
 	return value
