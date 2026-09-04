@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -57,6 +58,8 @@ func TestOpenAPIContainsLocalVerticalSlice(t *testing.T) {
 		"/events":                                    {"get"},
 		"/lab-validations":                           {"post"},
 		"/lab-plans":                                 {"post"},
+		"/lab-instance-batches":                      {"post"},
+		"/lab-instance-batches/{id}":                 {"get"},
 		"/lab-instances":                             {"get", "post"},
 		"/lab-instances/{id}":                        {"get"},
 		"/lab-instances/{id}/actions/destroy":        {"post"},
@@ -73,6 +76,29 @@ func TestOpenAPIContainsLocalVerticalSlice(t *testing.T) {
 				t.Errorf("OpenAPI operation %s %s is missing", method, path)
 			}
 		}
+	}
+}
+
+func TestInstanceBatchRequestIsBoundedBeforeApplicationWork(t *testing.T) {
+	server := testServer(t)
+	owners := make([]InstanceBatchOwnerRequest, controlplane.MaximumInstanceBatchSize+1)
+	for index := range owners {
+		owners[index] = InstanceBatchOwnerRequest{OwnerKind: "user", OwnerID: fmt.Sprintf("user.%03d", index)}
+	}
+	body, err := json.Marshal(InstanceBatchRequest{
+		RevisionID: "revision.alpha", ProjectID: "project.alpha", Owners: owners,
+		AcknowledgeDockerIsolationRisk: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/lab-instance-batches", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "batch-size-boundary")
+	response := httptest.NewRecorder()
+	server.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("oversized batch returned %d: %s", response.Code, response.Body.String())
 	}
 }
 

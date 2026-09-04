@@ -1,0 +1,33 @@
+formatVersion: 1
+suite: labcentral.classroom-batches/v1alpha1
+cases:
+  - id: TEST-BATCH-001
+    title: Classroom batch size is bounded at the HTTP contract
+    goTest: TestInstanceBatchRequestIsBoundedBeforeApplicationWork
+    expect: {minimumOwners: 1, maximumOwners: 100, rejectedBeforeApplicationWork: true}
+  - id: TEST-BATCH-002
+    title: Batch admission is atomic across every independent instance
+    goTest: TestSQLiteInstanceBatchConformance
+    postgresqlGoTest: TestPostgreSQLInstanceBatchConformance
+    expect: {transaction: serializable, quotaFailureLeavesNoBatch: true, partialReservations: false}
+  - id: TEST-BATCH-003
+    title: Equivalent concurrent creates converge on one durable batch
+    goTest: TestSQLiteInstanceBatchConformance
+    postgresqlGoTest: TestPostgreSQLInstanceBatchConformance
+    expect: {durableBatches: 1, originalResponses: 1, replayResponses: 1}
+  - id: TEST-BATCH-004
+    title: Every batch item has an independent owner instance operation and reservation
+    goTest: TestSQLiteInstanceBatchConformance
+    postgresqlGoTest: TestPostgreSQLInstanceBatchConformance
+    expect: {items: 100, uniqueOwners: true, uniqueInstances: true, uniqueOperations: true, uniqueReservations: true}
+  - id: TEST-BATCH-005
+    title: Batch authorization is rechecked for all owners
+    goTest: TestInstanceBatchReadReauthorizesEveryOwner
+    persistenceGoTest: TestSQLiteInstanceBatchConformance
+    postgresqlGoTest: TestPostgreSQLInstanceBatchConformance
+    expect: {instructorRequired: true, participantDenied: true, crossScopeOwnerDenied: true, transactionRecheck: true}
+  - id: TEST-BATCH-006
+    title: Batch acceptance emits one immutable aggregate audit and event
+    goTest: TestSQLiteInstanceBatchConformance
+    postgresqlGoTest: TestPostgreSQLInstanceBatchConformance
+    expect: {auditAction: instance.batch.create, auditOutcome: accepted, eventType: lab.instance-batch.accepted, atomicOutbox: true}

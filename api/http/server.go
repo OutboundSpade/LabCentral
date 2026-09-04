@@ -98,6 +98,41 @@ type LabRequest struct {
 	ProviderOverride               json.RawMessage `json:"providerOverride,omitempty"`
 }
 
+type InstanceBatchOwnerRequest struct {
+	OwnerKind string `json:"ownerKind" enum:"user,team"`
+	OwnerID   string `json:"ownerId" minLength:"1" maxLength:"128"`
+}
+
+type InstanceBatchRequest struct {
+	RevisionID                     string                      `json:"revisionId" minLength:"1" maxLength:"128"`
+	ProjectID                      string                      `json:"projectId" minLength:"1" maxLength:"128"`
+	Owners                         []InstanceBatchOwnerRequest `json:"owners" minItems:"1" maxItems:"100"`
+	TTLSeconds                     uint64                      `json:"ttlSeconds,omitempty" maximum:"31622400"`
+	Persistent                     bool                        `json:"persistent,omitempty"`
+	AcknowledgeDockerIsolationRisk bool                        `json:"acknowledgeDockerIsolationRisk"`
+	ProviderTargetID               string                      `json:"providerTargetId,omitempty" maxLength:"128"`
+	ProviderOverride               json.RawMessage             `json:"providerOverride,omitempty"`
+}
+
+type InstanceBatchItemDTO struct {
+	Ordinal    uint32       `json:"ordinal"`
+	OwnerKind  string       `json:"ownerKind"`
+	OwnerID    string       `json:"ownerId"`
+	InstanceID string       `json:"instanceId"`
+	Operation  OperationDTO `json:"operation"`
+}
+
+type InstanceBatchDTO struct {
+	ID               string                 `json:"id"`
+	RevisionID       string                 `json:"revisionId"`
+	ProjectID        string                 `json:"projectId"`
+	CreatedBy        string                 `json:"createdBy"`
+	ProviderTargetID string                 `json:"providerTargetId"`
+	Items            []InstanceBatchItemDTO `json:"items"`
+	CreatedAt        time.Time              `json:"createdAt"`
+	Replay           bool                   `json:"replay,omitempty"`
+}
+
 type ProviderTargetDTO struct {
 	ID                string           `json:"id"`
 	ProviderKind      string           `json:"providerKind"`
@@ -487,6 +522,76 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			output.Body.Operation = operationDTO(operation)
 			return output, nil
 		})
+
+	type CreateBatchInput struct {
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           InstanceBatchRequest
+	}
+	type AcceptedBatchOutput struct {
+		Status   int
+		Location string `header:"Location"`
+		Body     InstanceBatchDTO
+	}
+	huma.Register(api, huma.Operation{OperationID: "create-lab-instance-batch", Method: http.MethodPost, Path: "/lab-instance-batches", DefaultStatus: http.StatusAccepted},
+		func(ctx context.Context, input *CreateBatchInput) (*AcceptedBatchOutput, error) {
+			targetID := requestBatchTargetID(input.Body, options.DefaultProviderTargetID)
+			actor, projectID, owners, err := authorizeLabBatchRequest(ctx, security, input.Body, targetID)
+			if err != nil {
+				return nil, err
+			}
+			if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateRead, ScopeKind: application.ScopeProject, ScopeID: string(projectID)}); err != nil {
+				return nil, err
+			}
+			revisionID, err := domain.NewRevisionID(input.Body.RevisionID)
+			if err != nil {
+				return nil, huma.Error404NotFound("Template revision was not found")
+			}
+			_, source, err := service.OpenTemplateRevisionForProject(ctx, actor.user.ID, projectID, revisionID)
+			if err != nil {
+				return nil, apiError(err)
+			}
+			record, err := service.CreateInstanceBatchRevisionTargetForLifetime(ctx, actor.user.ID, projectID, owners,
+				revisionID, source, application.InstanceLifetimeRequest{TTLSeconds: input.Body.TTLSeconds, Persistent: input.Body.Persistent},
+				input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
+			if err != nil {
+				return nil, apiError(err)
+			}
+			body, err := instanceBatchDTO(ctx, service, record)
+			if err != nil {
+				return nil, apiError(err)
+			}
+			return &AcceptedBatchOutput{
+				Status: http.StatusAccepted, Location: "/api/v1/lab-instance-batches/" + string(record.ID), Body: body,
+			}, nil
+		})
+
+	type InstanceBatchInput struct {
+		ID string `path:"id"`
+	}
+	huma.Get(api, "/lab-instance-batches/{id}", func(ctx context.Context, input *InstanceBatchInput) (*struct{ Body InstanceBatchDTO }, error) {
+		batchID, err := domain.NewInstanceBatchID(input.ID)
+		if err != nil {
+			return nil, huma.Error404NotFound("Resource was not found")
+		}
+		actor, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication is required")
+		}
+		if security.options.Mode != AuthModeNone {
+			if _, err := security.options.Authorizer.AuthorizeInstanceBatch(ctx, actor.user.ID, application.ActionInstanceBatchCreate, batchID); err != nil {
+				return nil, authorizationError(err, true)
+			}
+		}
+		record, err := service.GetInstanceBatch(ctx, batchID)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		body, err := instanceBatchDTO(ctx, service, record)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &struct{ Body InstanceBatchDTO }{Body: body}, nil
+	})
 
 	huma.Get(api, "/lab-instances", func(ctx context.Context, _ *struct{}) (*struct {
 		Body struct {
@@ -2052,6 +2157,47 @@ func authorizeLabRequest(ctx context.Context, security *requestSecurity, request
 	return actor, projectID, ownerKind, ownerID, nil
 }
 
+func authorizeLabBatchRequest(ctx context.Context, security *requestSecurity, request InstanceBatchRequest, targetID domain.ProviderTargetID) (principal, domain.ProjectID, []controlplane.InstanceOwner, error) {
+	actor, ok := requestPrincipal(ctx)
+	if !ok {
+		return principal{}, "", nil, huma.Error401Unauthorized("Authentication is required")
+	}
+	projectID, err := domain.NewProjectID(request.ProjectID)
+	if err != nil {
+		return principal{}, "", nil, huma.Error400BadRequest("Project ID is required and must be valid")
+	}
+	if len(request.Owners) < 1 || len(request.Owners) > controlplane.MaximumInstanceBatchSize {
+		return principal{}, "", nil, huma.Error400BadRequest(fmt.Sprintf("Batch owners must contain 1-%d entries", controlplane.MaximumInstanceBatchSize))
+	}
+	owners := make([]controlplane.InstanceOwner, 0, len(request.Owners))
+	seen := make(map[string]bool, len(request.Owners))
+	for _, requested := range request.Owners {
+		owner := controlplane.InstanceOwner{Kind: application.OwnerKind(requested.OwnerKind), ID: requested.OwnerID}
+		if owner.Kind != application.OwnerUser && owner.Kind != application.OwnerTeam || !validRequestOwner(owner.Kind, owner.ID) {
+			return principal{}, "", nil, huma.Error400BadRequest("Batch owner is invalid")
+		}
+		identity := string(owner.Kind) + "\x00" + owner.ID
+		if seen[identity] {
+			return principal{}, "", nil, huma.Error400BadRequest("Batch owners must be unique")
+		}
+		seen[identity] = true
+		owners = append(owners, owner)
+	}
+	if security.options.Mode == AuthModeNone {
+		return actor, projectID, owners, nil
+	}
+	for _, owner := range owners {
+		if err := security.options.Authorizer.Authorize(ctx, application.AuthorizationRequest{
+			SubjectID: actor.user.ID, Action: application.ActionInstanceBatchCreate,
+			ScopeKind: application.ScopeProject, ScopeID: string(projectID), TargetID: targetID,
+			OwnerKind: owner.Kind, OwnerID: owner.ID,
+		}); err != nil {
+			return principal{}, "", nil, authorizationError(err, false)
+		}
+	}
+	return actor, projectID, owners, nil
+}
+
 func validRequestOwner(kind application.OwnerKind, id string) bool {
 	var err error
 	switch kind {
@@ -2208,6 +2354,35 @@ func requestTargetID(request LabRequest, configuredDefault string) domain.Provid
 		return controlplane.LocalDockerTarget
 	}
 	return domain.ProviderTargetID(request.ProviderTargetID)
+}
+
+func requestBatchTargetID(request InstanceBatchRequest, configuredDefault string) domain.ProviderTargetID {
+	if request.ProviderTargetID == "" {
+		if configuredDefault != "" {
+			return domain.ProviderTargetID(configuredDefault)
+		}
+		return controlplane.LocalDockerTarget
+	}
+	return domain.ProviderTargetID(request.ProviderTargetID)
+}
+
+func instanceBatchDTO(ctx context.Context, service *controlplane.Service, source controlplane.InstanceBatchRecord) (InstanceBatchDTO, error) {
+	result := InstanceBatchDTO{
+		ID: string(source.ID), RevisionID: string(source.RevisionID), ProjectID: string(source.ProjectID),
+		CreatedBy: string(source.CreatedBy), ProviderTargetID: string(source.ProviderTargetID),
+		Items: make([]InstanceBatchItemDTO, 0, len(source.Items)), CreatedAt: source.CreatedAt, Replay: source.Replay,
+	}
+	for _, item := range source.Items {
+		operation, err := service.GetOperation(ctx, item.OperationID)
+		if err != nil {
+			return InstanceBatchDTO{}, err
+		}
+		result.Items = append(result.Items, InstanceBatchItemDTO{
+			Ordinal: item.Ordinal, OwnerKind: string(item.OwnerKind), OwnerID: item.OwnerID,
+			InstanceID: string(item.InstanceID), Operation: operationDTO(operation),
+		})
+	}
+	return result, nil
 }
 
 func apiError(err error) error {

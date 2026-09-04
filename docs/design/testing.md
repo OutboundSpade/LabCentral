@@ -6,6 +6,7 @@
 - Parser/render tests: YAML adversarial corpus, duplicate/alias/depth limits, CEL type/cost, component/loop limits, canonical golden vectors and digest stability.
 - Schema compatibility: JSON Schema valid/invalid fixtures, OpenAPI breaking checks, Buf/Protobuf lint/breaking checks, event/provider-state fixtures.
 - Repository conformance: identical behavior on SQLite and PostgreSQL for transactions, optimistic concurrency, lease/fencing, idempotency, quotas, outbox, migrations.
+- Classroom batch conformance: identical 100-owner atomic admission, quota rollback, concurrent replay, per-owner authorization, and audit/event behavior on SQLite and PostgreSQL.
 - Durable fault tests: crash at every checkpoint, lost response after provider mutation, expired lease, duplicate delivery, cancellation race, dead worker, outbox replay.
 - Provider contract suite: fake provider plus all official providers; no real credentials in normal CI.
 - Security: RBAC matrix and list filtering, cross-tenant IDs, CSRF/session/OIDC validation, bundle path/archive bombs, secret taint/redaction, ownership spoof/delete, fuzzing.

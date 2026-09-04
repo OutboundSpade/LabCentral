@@ -222,6 +222,18 @@ type InstanceAccessRecord struct {
 	TargetID   domain.ProviderTargetID
 }
 
+type InstanceBatchAccessRecord struct {
+	BatchID   domain.InstanceBatchID
+	ProjectID domain.ProjectID
+	TargetID  domain.ProviderTargetID
+	Owners    []InstanceBatchOwnerAccess
+}
+
+type InstanceBatchOwnerAccess struct {
+	OwnerKind OwnerKind
+	OwnerID   string
+}
+
 type InstanceAccessFilter struct {
 	All                          bool
 	OwnerRestrictedAll           bool
@@ -240,6 +252,7 @@ type Authorizer interface {
 	Authorize(context.Context, AuthorizationRequest) error
 	AuthorizeInstance(context.Context, domain.UserID, PermissionAction, domain.InstanceID) (InstanceAccessRecord, error)
 	AuthorizeOperation(context.Context, domain.UserID, PermissionAction, domain.OperationID) (InstanceAccessRecord, error)
+	AuthorizeInstanceBatch(context.Context, domain.UserID, PermissionAction, domain.InstanceBatchID) (InstanceBatchAccessRecord, error)
 	AuthorizedInstanceIDs(context.Context, domain.UserID, PermissionAction) ([]domain.InstanceID, error)
 }
 
@@ -283,6 +296,7 @@ type AuthRepository interface {
 	ConsumeOIDCFlow(context.Context, string, string, string, time.Time) (OIDCFlowRecord, error)
 	InstanceAccess(context.Context, domain.InstanceID) (InstanceAccessRecord, error)
 	OperationInstanceAccess(context.Context, domain.OperationID) (InstanceAccessRecord, error)
+	InstanceBatchAccess(context.Context, domain.InstanceBatchID) (InstanceBatchAccessRecord, error)
 	ListInstanceAccessFiltered(context.Context, InstanceAccessFilter) ([]InstanceAccessRecord, error)
 	OwnerBelongsToScope(context.Context, OwnerKind, string, ScopeHierarchy, time.Time) (bool, error)
 }

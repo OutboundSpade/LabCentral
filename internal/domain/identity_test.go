@@ -7,6 +7,9 @@ func TestOpaqueIDValidation(t *testing.T) {
 	if _, err := NewInstanceID("01KLABCENTRAL_7"); err != nil {
 		t.Fatalf("valid ID rejected: %v", err)
 	}
+	if _, err := NewInstanceBatchID("batch_01KLABCENTRAL"); err != nil {
+		t.Fatalf("valid batch ID rejected: %v", err)
+	}
 	if _, err := NewLogicalResourceID("network.red"); err != nil {
 		t.Fatalf("qualified logical resource ID rejected: %v", err)
 	}

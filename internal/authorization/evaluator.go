@@ -107,6 +107,30 @@ func (e *Evaluator) AuthorizeOperation(ctx context.Context, subjectID domain.Use
 	return access, e.Authorize(ctx, instanceRequest(subjectID, action, access))
 }
 
+func (e *Evaluator) AuthorizeInstanceBatch(ctx context.Context, subjectID domain.UserID, action application.PermissionAction, batchID domain.InstanceBatchID) (application.InstanceBatchAccessRecord, error) {
+	access, err := e.repository.InstanceBatchAccess(ctx, batchID)
+	if err != nil {
+		if errors.Is(err, application.ErrAuthRecordNotFound) {
+			return application.InstanceBatchAccessRecord{}, ErrDenied
+		}
+		return application.InstanceBatchAccessRecord{}, err
+	}
+	if action != application.ActionInstanceBatchCreate || len(access.Owners) == 0 {
+		return application.InstanceBatchAccessRecord{}, ErrDenied
+	}
+	for _, owner := range access.Owners {
+		request := application.AuthorizationRequest{
+			SubjectID: subjectID, Action: action, ScopeKind: application.ScopeProject,
+			ScopeID: string(access.ProjectID), TargetID: access.TargetID,
+			OwnerKind: owner.OwnerKind, OwnerID: owner.OwnerID,
+		}
+		if err := e.Authorize(ctx, request); err != nil {
+			return application.InstanceBatchAccessRecord{}, err
+		}
+	}
+	return access, nil
+}
+
 func (e *Evaluator) AuthorizedInstanceIDs(ctx context.Context, subjectID domain.UserID, action application.PermissionAction) ([]domain.InstanceID, error) {
 	now := e.now().UTC()
 	snapshot, err := e.repository.AuthorizationSnapshot(ctx, subjectID, now)

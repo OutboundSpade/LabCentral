@@ -160,6 +160,40 @@ func TestParticipantOwnershipIsRequiredForEveryInstanceAction(t *testing.T) {
 	}
 }
 
+func TestInstanceBatchReadReauthorizesEveryOwner(t *testing.T) {
+	fixture := newAuthorizationFixture(t)
+	fixture.evaluator.now = func() time.Time { return fixture.now }
+	fixture.addUserRole(roleFixture{
+		role: application.RoleInstructor, subjectID: "user.instructor",
+		scopeKind: application.ScopeProject, scopeID: "project.alpha",
+	})
+	fixture.addUserRole(roleFixture{
+		role: application.RoleParticipant, subjectID: "user.participant",
+		scopeKind: application.ScopeProject, scopeID: "project.alpha",
+	})
+	fixture.repository.batches = map[domain.InstanceBatchID]application.InstanceBatchAccessRecord{
+		"batch.alpha": {
+			BatchID: "batch.alpha", ProjectID: "project.alpha", TargetID: "target.alpha",
+			Owners: []application.InstanceBatchOwnerAccess{
+				{OwnerKind: application.OwnerUser, OwnerID: "user.other"},
+				{OwnerKind: application.OwnerTeam, OwnerID: "team.alpha"},
+			},
+		},
+	}
+	if _, err := fixture.evaluator.AuthorizeInstanceBatch(context.Background(), "user.instructor", application.ActionInstanceBatchCreate, "batch.alpha"); err != nil {
+		t.Fatalf("instructor batch authorization returned %v", err)
+	}
+	if _, err := fixture.evaluator.AuthorizeInstanceBatch(context.Background(), "user.participant", application.ActionInstanceBatchCreate, "batch.alpha"); !errors.Is(err, ErrDenied) {
+		t.Fatalf("participant batch authorization returned %v", err)
+	}
+	batch := fixture.repository.batches["batch.alpha"]
+	batch.Owners[1] = application.InstanceBatchOwnerAccess{OwnerKind: application.OwnerTeam, OwnerID: "team.other"}
+	fixture.repository.batches["batch.alpha"] = batch
+	if _, err := fixture.evaluator.AuthorizeInstanceBatch(context.Background(), "user.instructor", application.ActionInstanceBatchCreate, "batch.alpha"); !errors.Is(err, ErrDenied) {
+		t.Fatalf("cross-organization batch owner authorization returned %v", err)
+	}
+}
+
 func TestNonParticipantRolesDoNotInheritParticipantOwnership(t *testing.T) {
 	fixture := newAuthorizationFixture(t)
 	for _, role := range []roleFixture{
@@ -459,6 +493,15 @@ func assertDecision(t *testing.T, err error, want bool) {
 type matrixRepository struct {
 	application.AuthRepository
 	snapshots map[domain.UserID]application.AuthorizationSnapshot
+	batches   map[domain.InstanceBatchID]application.InstanceBatchAccessRecord
+}
+
+func (r *matrixRepository) InstanceBatchAccess(_ context.Context, batchID domain.InstanceBatchID) (application.InstanceBatchAccessRecord, error) {
+	record, ok := r.batches[batchID]
+	if !ok {
+		return application.InstanceBatchAccessRecord{}, application.ErrAuthRecordNotFound
+	}
+	return record, nil
 }
 
 func (r *matrixRepository) AuthorizationSnapshot(_ context.Context, userID domain.UserID, now time.Time) (application.AuthorizationSnapshot, error) {

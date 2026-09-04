@@ -249,6 +249,44 @@ type CreateInstanceRequest struct {
 	Quota                application.InstanceQuotaRequest
 }
 
+const MaximumInstanceBatchSize = 100
+
+type InstanceOwner struct {
+	Kind application.OwnerKind
+	ID   string
+}
+
+type InstanceBatchItem struct {
+	Ordinal     uint32
+	OwnerKind   application.OwnerKind
+	OwnerID     string
+	InstanceID  domain.InstanceID
+	OperationID domain.OperationID
+}
+
+type InstanceBatchRecord struct {
+	ID               domain.InstanceBatchID
+	RevisionID       domain.RevisionID
+	ProjectID        domain.ProjectID
+	CreatedBy        domain.UserID
+	ProviderTargetID domain.ProviderTargetID
+	Items            []InstanceBatchItem
+	CreatedAt        time.Time
+	Replay           bool
+}
+
+type CreateInstanceBatchRequest struct {
+	GovernanceRecordIDs
+	ID             domain.InstanceBatchID
+	RevisionID     domain.RevisionID
+	ProjectID      domain.ProjectID
+	CreatedBy      domain.UserID
+	TargetID       domain.ProviderTargetID
+	IdempotencyKey string
+	RequestDigest  domain.SHA256Digest
+	Instances      []CreateInstanceRequest
+}
+
 type QueueDestroyRequest struct {
 	InstanceID      domain.InstanceID
 	OperationID     domain.OperationID
@@ -394,6 +432,8 @@ type Store interface {
 	RetainInstanceQuota(context.Context, Fence) error
 	ApplyExecutionAllowed(context.Context, Fence) (bool, error)
 	CreateInstance(context.Context, CreateInstanceRequest) (EnqueueResult, error)
+	CreateInstanceBatch(context.Context, CreateInstanceBatchRequest) (InstanceBatchRecord, error)
+	GetInstanceBatch(context.Context, domain.InstanceBatchID) (InstanceBatchRecord, error)
 	SaveTargetSnapshot(context.Context, TargetSnapshot) error
 	GetTargetSnapshot(context.Context, domain.ProviderTargetID) (TargetSnapshot, error)
 	QueueDestroy(context.Context, QueueDestroyRequest) (EnqueueResult, error)

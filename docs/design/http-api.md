@@ -16,6 +16,7 @@ Errors use `application/problem+json` with `type`, `title`, HTTP status, stable 
 | Templates | `/lab-templates`, `/{id}/revisions`, `/lab-bundles` upload/finalize/metadata |
 | Validation/plans | `POST /lab-validations`, `POST /lab-plans`, `GET /lab-plans/{id}` |
 | Instances | `/lab-instances`, `/{id}/resources`, `/{id}/actions/{start|stop|pause|resume|reset|refresh|apply|destroy}` |
+| Classroom batches | `POST /lab-instance-batches`, `GET /lab-instance-batches/{id}` |
 | Snapshots | `/lab-instances/{id}/snapshots`, `/snapshots/{id}/actions/{restore|clone}` |
 | Access | `/access-sessions`, `/{id}/actions/revoke` |
 | Operations/events | `/operations/{id}`, `/{id}/actions/cancel`, `/operations/{id}/events`, `/events` |
@@ -43,7 +44,9 @@ The in-progress `TASK-PROD-003` surface adds project-scoped `GET|POST /lab-templ
 
 Scoped governance now exposes `GET|PUT /quotas/{scopeKind}/{scopeId}/{dimension}`, `GET /quota-usage/{scopeKind}/{scopeId}`, and `GET|PUT /lifetime-policies/{scopeKind}/{scopeId}`. Scope kinds and hard dimensions are closed typed values; organization identity is mandatory only where needed to disambiguate project/team/user scope. Mutations require `Idempotency-Key` plus exactly one create precondition (`If-None-Match: *`) or versioned update precondition (`If-Match: "N"`) and return ETags. Dynamic quota usage is `Cache-Control: no-store`.
 
-`POST /lab-instances/{id}/actions/extend-ttl` requires `instance.ttl.extend`, `If-Match`, and an idempotency key. The response is a deliberately narrow lifetime snapshot rather than a mixed current/historical Instance: expiry, maximum expiry, warning/grace, renewal policy, policy digest, resource version, and update time. Authorization occurs before object mutation and the store repeats active actor, role, membership, participant-owner, and target-grant checks inside the serializable write transaction. Expiration is internal policy work and is not exposed as a caller-spoofable system identity. SSE, cancellation, batch creation, access sessions, and the remaining resource surface are not yet implemented.
+`POST /lab-instances/{id}/actions/extend-ttl` requires `instance.ttl.extend`, `If-Match`, and an idempotency key. The response is a deliberately narrow lifetime snapshot rather than a mixed current/historical Instance: expiry, maximum expiry, warning/grace, renewal policy, policy digest, resource version, and update time. Authorization occurs before object mutation and the store repeats active actor, role, membership, participant-owner, and target-grant checks inside the serializable write transaction. Expiration is internal policy work and is not exposed as a caller-spoofable system identity.
+
+`POST /lab-instance-batches` requires an immutable `revisionId`, project, common target/lifetime/override, and 1–100 unique `user|team` owners. It is instructor/platform-administrator only, returns `202` with a durable batch resource and each independently observable Operation, and binds replay to the entire ordered request. Admission is all-or-nothing across authorization, quotas, claims, Instances, jobs, Operations, audit/event/outbox, and idempotency. `GET /lab-instance-batches/{id}` reauthorizes every owner at read time. SSE, cancellation, access sessions, and the remaining resource surface are not yet implemented.
 
 ## Versioning and retries
 

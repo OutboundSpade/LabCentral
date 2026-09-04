@@ -11,6 +11,7 @@ import (
 
 	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
@@ -84,6 +85,27 @@ func TestTemplatePublicationUsesVerifiedImmutableArtifactAndAtomicRecords(t *tes
 	if err != nil || instance.RevisionID != revision.ID {
 		t.Fatalf("instance did not persist immutable revision binding: %#v, %v", instance, err)
 	}
+	batch, err := service.CreateInstanceBatchRevisionTargetForLifetime(
+		ctx, controlplane.LocalAdminID, "project.local",
+		[]controlplane.InstanceOwner{{Kind: application.OwnerUser, ID: string(controlplane.LocalAdminID)}},
+		revision.ID, opened, application.InstanceLifetimeRequest{}, true, "template-batch-create",
+		controlplane.LocalDockerTarget, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batch.Items) != 1 || batch.Items[0].OwnerID != string(controlplane.LocalAdminID) {
+		t.Fatalf("created instance batch = %#v", batch)
+	}
+	replayedBatch, err := service.CreateInstanceBatchRevisionTargetForLifetime(
+		ctx, controlplane.LocalAdminID, "project.local",
+		[]controlplane.InstanceOwner{{Kind: application.OwnerUser, ID: string(controlplane.LocalAdminID)}},
+		revision.ID, opened, application.InstanceLifetimeRequest{}, true, "template-batch-create",
+		controlplane.LocalDockerTarget, nil,
+	)
+	if err != nil || !replayedBatch.Replay || replayedBatch.ID != batch.ID || replayedBatch.Items[0].InstanceID != batch.Items[0].InstanceID {
+		t.Fatalf("replayed instance batch = %#v, %v", replayedBatch, err)
+	}
 	updated, err := service.UpdateLabTemplate(ctx, controlplane.LocalAdminID, template.ID, "intro-lab-v2", "Metadata can evolve", template.ResourceVersion, "update-template-1")
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +122,7 @@ func TestTemplatePublicationUsesVerifiedImmutableArtifactAndAtomicRecords(t *tes
 	}
 
 	for table, want := range map[string]int{
-		"labcentral_audit_records": 3, "labcentral_events": 3, "labcentral_event_outbox_deliveries": 3,
+		"labcentral_audit_records": 4, "labcentral_events": 4, "labcentral_event_outbox_deliveries": 4,
 	} {
 		var count int
 		if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count); err != nil || count != want {

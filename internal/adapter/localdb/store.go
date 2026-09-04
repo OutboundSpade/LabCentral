@@ -35,6 +35,7 @@ const (
 	templateMigrationID      = "0007_classroom_governance_foundation"
 	auditMigrationID         = "0008_governance_audit_events"
 	quotaMigrationID         = "0009_classroom_quota_expiration"
+	batchMigrationID         = "0010_classroom_instance_batches"
 	migrationLockID          = int64(0x4c616243656e7472)
 )
 
@@ -188,6 +189,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return err
 	}
 	if err := s.applyMigration(ctx, quotaMigrationID, s.quotaMigrationStatements()); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, batchMigrationID, instanceBatchMigrationStatements(s.integerType())); err != nil {
 		return err
 	}
 	return s.backfillLegacyInstanceQuota(ctx)
@@ -719,12 +723,29 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 		}
 		return controlplane.EnqueueResult{InstanceID: domain.InstanceID(instanceID), OperationID: domain.OperationID(existing), Replay: true}, tx.Commit()
 	}
-	if err := s.validateInstanceScope(ctx, tx, request); err != nil {
+	if err := s.insertInstanceTx(ctx, tx, request); err != nil {
 		return controlplane.EnqueueResult{}, err
+	}
+	if err := s.bindIdempotency(ctx, tx, request.SubjectID, "create_instance", request.IdempotencyKey, request.RequestDigest, string(request.OperationID)); err != nil {
+		return controlplane.EnqueueResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return controlplane.EnqueueResult{}, err
+	}
+	return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: request.OperationID}, nil
+}
+
+// insertInstanceTx persists one independently owned instance and its complete
+// scheduling unit. Callers are responsible for transaction-level
+// idempotency; all other writes, including quota and allocation reservations,
+// are atomic with the enclosing transaction.
+func (s *Store) insertInstanceTx(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceRequest) error {
+	if err := s.validateInstanceScope(ctx, tx, request); err != nil {
+		return err
 	}
 	lifetime, err := s.reserveInstanceQuotaTx(ctx, tx, request)
 	if err != nil {
-		return controlplane.EnqueueResult{}, err
+		return err
 	}
 	ack := 0
 	if request.Acknowledged {
@@ -746,29 +767,23 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 		timeMicrosOrZero(lifetime.MaximumExpiresAt), timeMicrosOrZero(lifetime.ExpirationWarningAt),
 		lifetime.DestructionGraceSeconds, quotaBoolean(lifetime.RenewalAllowed), lifetime.RenewalWindowSeconds,
 		lifetime.PolicyDigest.Hex()); err != nil {
-		return controlplane.EnqueueResult{}, fmt.Errorf("insert local instance: %w", err)
+		return fmt.Errorf("insert local instance: %w", err)
 	}
 	for _, resource := range request.Resources {
 		if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_resources
 			(instance_id, resource_id, kind, ordinal, canonical_resource_json, provider_plan, phase, ownership_token, updated_at_us)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), request.InstanceID, resource.ID, resource.Kind, resource.Ordinal,
 			resource.CanonicalJSON, resource.ProviderPlan, domain.ResourcePending, resource.OwnershipToken); err != nil {
-			return controlplane.EnqueueResult{}, fmt.Errorf("insert local resource %s: %w", resource.ID, err)
+			return fmt.Errorf("insert local resource %s: %w", resource.ID, err)
 		}
 	}
 	if err := s.commitAllocationClaims(ctx, tx, request); err != nil {
-		return controlplane.EnqueueResult{}, err
+		return err
 	}
 	if err := s.enqueue(ctx, tx, request.InstanceID, request.OperationID, controlplane.OperationApply, request.Payload, request.SubjectID, request.AuditID, request.EventID); err != nil {
-		return controlplane.EnqueueResult{}, err
+		return err
 	}
-	if err := s.bindIdempotency(ctx, tx, request.SubjectID, "create_instance", request.IdempotencyKey, request.RequestDigest, string(request.OperationID)); err != nil {
-		return controlplane.EnqueueResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return controlplane.EnqueueResult{}, err
-	}
-	return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: request.OperationID}, nil
+	return nil
 }
 
 func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceRequest) error {

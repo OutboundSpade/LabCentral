@@ -17,6 +17,7 @@ type (
 	ProviderTargetID   string
 	TemplateID         string
 	RevisionID         string
+	InstanceBatchID    string
 	InstanceID         string
 	LogicalResourceID  string
 	OperationID        string
@@ -81,6 +82,10 @@ func NewTemplateID(value string) (TemplateID, error) {
 
 func NewRevisionID(value string) (RevisionID, error) {
 	return RevisionID(value), validateOpaqueID("revision ID", value)
+}
+
+func NewInstanceBatchID(value string) (InstanceBatchID, error) {
+	return InstanceBatchID(value), validateOpaqueID("instance batch ID", value)
 }
 
 func NewInstanceID(value string) (InstanceID, error) {
