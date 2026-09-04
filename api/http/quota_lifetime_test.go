@@ -18,6 +18,7 @@ import (
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/authentication"
 	"github.com/OutboundSpade/LabCentral/internal/authorization"
@@ -336,7 +337,7 @@ func newQuotaHTTPService(t *testing.T, store controlplane.Store) *controlplane.S
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := controlplane.NewService(renderer, store, pluginv1.NewProviderServiceClient(nil), controlplane.CryptoIDs{})
+	service, err := controlplane.NewService(renderer, store, providergrpc.New(pluginv1.NewProviderServiceClient(nil)), controlplane.CryptoIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -486,3 +486,50 @@ func (*helperAuthorization) RecheckAccessLease(context.Context, application.Acce
 func (*helperAuthorization) EndAccessLease(context.Context, application.AccessCallbackIdentity, string, string, string) (bool, error) {
 	return true, nil
 }
+
+func TestSupervisorRestartsOnePluginAndKeepsStableClient(t *testing.T) {
+	parent, err := os.MkdirTemp("", "lc-supervisor-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(parent)
+	executable := protectedTestExecutable(t)
+	config := pluginhost.Config{Executable: executable, ExecutableSHA256: fileDigest(t, executable), RuntimeParent: parent, ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin.supervised"}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	initial, err := pluginhost.Launch(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := make(chan struct{}, 1)
+	stable := pluginhost.Supervise(ctx, initial, func(ctx context.Context) (*pluginhost.Client, error) {
+		c, e := pluginhost.Launch(ctx, config)
+		if e == nil {
+			restarted <- struct{}{}
+		}
+		return c, e
+	})
+	defer stable.Close()
+	if err := initial.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-restarted:
+	case <-ctx.Done():
+		t.Fatal("plugin did not restart")
+	}
+	for {
+		response, err := stable.Provider.DiscoverTarget(ctx, &pluginv1.DiscoverTargetRequest{})
+		if err == nil && len(response.GetCapabilities()) > 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("stable client did not recover")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if !stable.Available() {
+		t.Fatal("restarted provider unavailable")
+	}
+}

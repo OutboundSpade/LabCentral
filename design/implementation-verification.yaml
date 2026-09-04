@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T08:48:17Z"
+verifiedAt: "2026-09-04T21:33:24Z"
 result: pass
-scope: task_prod_004_publisher_and_current_candidate_live_t3_refresh
+scope: historical_production_evidence_and_task_arch_002_local_verification
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -392,3 +392,22 @@ notes:
   - Compose exposed labd only at 127.0.0.1:18082 through host networking. docker top showed docker-init, labd, and a distinct lab-provider-docker child.
   - The first request immediately after ready received one connection reset; the bounded retry returned {"service":"LabCentral Example A","visits":1}. Destroy then left zero labeled objects.
   - Restarting the Compose service retained the destroyed instance record in the named volume. The isolated test container and volume were removed after verification.
+
+architectureSimplification:
+  task: TASK-ARCH-002
+  decisions: [ADR-0015, ADR-0016, ADR-0017]
+  contract: design/contracts/architecture-conformance.yaml
+  localResult: pass
+  checks:
+    - Full race-enabled Go suite with disposable PostgreSQL 18, local fake HTTP/gRPC services, and live credentialed Proxmox runners explicitly excluded.
+    - Targeted normal Go tests for typed revisions, stream outcomes, manifest loading, external SDK installation, queue filtering, cleanup authority and source identity.
+    - Go vet; complete design/protocol/schema/link/ADR-state verifier; generated OpenAPI and frontend DTOs; Svelte type check and static build.
+    - Go vulnerability scan found no reachable vulnerabilities; frontend lockfile scan found no issues.
+  compatibility:
+    - Existing migration checksums and protobuf state bytes preserved; additive migration 0012_template_representations.
+    - ADR-0011, ADR-0012 and ADR-0014 retained as superseded historical decisions.
+    - Provider source identity is now content-based over the build dependency closure; prior exact-build qualification does not transfer.
+  excluded:
+    - No live provider qualification or infrastructure mutation was performed for this refactor.
+    - TASK-PROD-004 live load/soak, cross-node journal failover/DR and protected publisher ceremony remain open.
+  evidenceInterpretation: Earlier production/testbed entries in this file describe their recorded binaries and checkpoints; they do not qualify the architecture-refactor binary.

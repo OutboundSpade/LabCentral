@@ -9,18 +9,17 @@ import (
 	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestAccessContract001UnauthorizedRequestStopsBeforePlugins(t *testing.T) {
 	provider := &accessContractProvider{}
 	accessClient := &accessContractClient{}
 	targets, err := NewTargetRegistry([]TargetBinding{{
-		ID: "target.test", ProviderKind: "proxmox", Provider: provider, ProtocolMajor: 1, ProtocolMinor: 1,
+		ID: "target.test", ProviderKind: "proxmox", Provider: providergrpc.New(provider), ProtocolMajor: 1, ProtocolMinor: 1,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -47,27 +46,27 @@ func TestAccessContract002ExactEndpointBinding(t *testing.T) {
 	digest := sha256.Sum256(opaque)
 	stateDigest := domain.SHA256Digest(fmt.Sprintf("%x", sha256.Sum256([]byte("provider-state"))))
 	session := AccessSessionRecord{TargetID: "target.test", InstanceID: "instance.test", ResourceID: "vm.test", Method: "vnc"}
-	valid := &pluginv1.DiscoverAccessEndpointResponse{
-		OpaqueConnectionData: opaque, EndpointSchema: &pluginv1.SchemaVersion{Name: "proxmox.vnc-endpoint", Major: 1},
-		EndpointDigest: fmt.Sprintf("%x", digest), TargetId: string(session.TargetID), LabInstanceId: string(session.InstanceID),
-		LogicalResourceId: string(session.ResourceID), Method: session.Method, ProviderStateDigest: stateDigest.String(),
-		ValidUntil: timestamppb.New(time.Now().UTC().Add(time.Minute)),
+	valid := application.ProviderEndpoint{
+		Opaque: opaque, Schema: application.ProviderSchema{Name: "proxmox.vnc-endpoint", Major: 1},
+		Digest: fmt.Sprintf("%x", digest), TargetID: string(session.TargetID), InstanceID: string(session.InstanceID),
+		ResourceID: string(session.ResourceID), Method: session.Method, StateDigest: stateDigest.String(),
+		ValidUntil: time.Now().UTC().Add(time.Minute),
 	}
 	if _, err := validateDiscoveredAccessEndpoint(valid, session, stateDigest, opaque); err != nil {
 		t.Fatalf("valid endpoint rejected: %v", err)
 	}
-	for name, mutate := range map[string]func(*pluginv1.DiscoverAccessEndpointResponse){
-		"target":   func(value *pluginv1.DiscoverAccessEndpointResponse) { value.TargetId = "target.other" },
-		"instance": func(value *pluginv1.DiscoverAccessEndpointResponse) { value.LabInstanceId = "instance.other" },
-		"resource": func(value *pluginv1.DiscoverAccessEndpointResponse) { value.LogicalResourceId = "vm.other" },
-		"method":   func(value *pluginv1.DiscoverAccessEndpointResponse) { value.Method = "ssh" },
-		"state": func(value *pluginv1.DiscoverAccessEndpointResponse) {
-			value.ProviderStateDigest = domain.SHA256Digest(fmt.Sprintf("%x", sha256.Sum256([]byte("other")))).String()
+	for name, mutate := range map[string]func(*application.ProviderEndpoint){
+		"target":   func(value *application.ProviderEndpoint) { value.TargetID = "target.other" },
+		"instance": func(value *application.ProviderEndpoint) { value.InstanceID = "instance.other" },
+		"resource": func(value *application.ProviderEndpoint) { value.ResourceID = "vm.other" },
+		"method":   func(value *application.ProviderEndpoint) { value.Method = "ssh" },
+		"state": func(value *application.ProviderEndpoint) {
+			value.StateDigest = domain.SHA256Digest(fmt.Sprintf("%x", sha256.Sum256([]byte("other")))).String()
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			changed := proto.Clone(valid).(*pluginv1.DiscoverAccessEndpointResponse)
-			mutate(changed)
+			changed := valid
+			mutate(&changed)
 			if _, err := validateDiscoveredAccessEndpoint(changed, session, stateDigest, opaque); err == nil {
 				t.Fatal("substituted endpoint binding was accepted")
 			}
@@ -108,8 +107,8 @@ func TestAccessContract013ProtocolAndSchemaCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if registry.Accepts(binding, &pluginv1.SchemaVersion{Name: "proxmox.vnc-endpoint", Major: 2}) ||
-		registry.Accepts(binding, &pluginv1.SchemaVersion{Name: "other.endpoint", Major: 1}) {
+	if registry.Accepts(binding, application.ProviderSchema{Name: "proxmox.vnc-endpoint", Major: 2}) ||
+		registry.Accepts(binding, application.ProviderSchema{Name: "other.endpoint", Major: 1}) {
 		t.Fatal("incompatible endpoint schema was accepted")
 	}
 }
@@ -165,9 +164,9 @@ func validAccessContractRegistry(t *testing.T, client pluginv1.AccessServiceClie
 func validAccessContractBinding(client pluginv1.AccessServiceClient) AccessBinding {
 	return AccessBinding{
 		PluginID: "access.novnc", PluginVersion: "1.0.0", PluginInstance: "access.instance", AccessKind: "browser-vnc",
-		Audience: "https://console.example.test", Access: client, ProtocolMajor: 1, ProtocolMinor: 2,
+		Audience: "https://console.example.test", Access: providergrpc.NewAccess(client), ProtocolMajor: 1, ProtocolMinor: 2,
 		Features: []string{AccessAuthorizationFeature}, Methods: []string{"vnc"},
-		EndpointSchemas: []*pluginv1.SchemaVersion{{Name: "proxmox.vnc-endpoint", Major: 1}},
+		EndpointSchemas: []application.ProviderSchema{{Name: "proxmox.vnc-endpoint", Major: 1}},
 	}
 }
 

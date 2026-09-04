@@ -21,3 +21,5 @@ Options considered were (A) a control-plane WebSocket proxy, (B) a separate acce
 ## OQ-QUOTA-001 — enforceable cloud-spend limits
 
 Providers expose delayed/inexact cost data. Options: (A) hard currency limits; (B) estimated budget guardrails; (C) resource quotas only. **Recommendation: B eventually; temporary default: C.** Cost hints inform scheduling but are not advertised as hard enforcement.
+
+The provider-extension scope, substantial simplification, typed template semantics and cleanup-authority review are resolved by owner approval and ADR-0015 through ADR-0017. They are not additional open questions. The four existing open questions and production qualification gates remain unchanged.

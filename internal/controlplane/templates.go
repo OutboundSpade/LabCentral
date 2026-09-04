@@ -114,9 +114,9 @@ func (s *Service) PublishTemplateRevision(ctx context.Context, actor domain.User
 	if err := validateTemplateIdempotencyKey(idempotencyKey); err != nil {
 		return TemplateRevisionRecord{}, err
 	}
-	canonical, _, err := s.renderer.Render(ctx, domain.RevisionContent{VerifiedBundle: source}, nil, domain.RenderPolicy{})
+	representation, err := s.renderer.PrepareTemplate(ctx, source)
 	if err != nil {
-		return TemplateRevisionRecord{}, &ValidationError{Issues: []Issue{{Code: "render_failed", Message: err.Error()}}}
+		return TemplateRevisionRecord{}, &ValidationError{Issues: []Issue{{Code: "template_invalid", Message: err.Error()}}}
 	}
 	bundleHash := sha256.Sum256(source)
 	bundleDigest, err := domain.ParseSHA256Digest(hex.EncodeToString(bundleHash[:]))
@@ -149,9 +149,9 @@ func (s *Service) PublishTemplateRevision(ctx context.Context, actor domain.User
 	}
 	return s.store.PublishTemplateRevision(ctx, PublishTemplateRevisionRequest{
 		GovernanceRecordIDs: recordIDs, ID: domain.RevisionID(revisionID), TemplateID: templateID, BundleArtifact: artifact,
-		BundleDigest: bundleDigest, BundleSizeBytes: uint64(len(source)), AuthorAPIVersion: canonical.APIVersion,
-		RendererVersion: render.RendererVersion, CanonicalVersion: render.CanonicalFormatVersion,
-		CanonicalDigest: canonical.Digest, PublishedBy: actor, IdempotencyKey: idempotencyKey,
+		BundleDigest: bundleDigest, BundleSizeBytes: uint64(len(source)), AuthorAPIVersion: representation.AuthorVersion,
+		RendererVersion: render.RendererVersion, CanonicalVersion: render.TemplateFormatVersion,
+		CanonicalDigest: representation.Digest, RepresentationJSON: string(representation.JSON), PublishedBy: actor, IdempotencyKey: idempotencyKey,
 		RequestDigest: digestBytes("labcentral.http.publish-template-revision/v1", []byte(templateID), source),
 	})
 }
@@ -212,10 +212,19 @@ func (s *Service) OpenTemplateRevision(ctx context.Context, actor domain.UserID,
 	if hex.EncodeToString(measured[:]) != revision.BundleDigest.Hex() {
 		return TemplateRevisionRecord{}, nil, fmt.Errorf("template bundle digest verification failed")
 	}
-	canonical, _, err := s.renderer.Render(ctx, domain.RevisionContent{VerifiedBundle: contents}, nil, domain.RenderPolicy{})
-	if err != nil || canonical.Digest != revision.CanonicalDigest || canonical.APIVersion != revision.AuthorAPIVersion ||
-		canonical.RendererVersion != revision.RendererVersion || revision.CanonicalVersion != render.CanonicalFormatVersion {
-		return TemplateRevisionRecord{}, nil, fmt.Errorf("template revision provenance verification failed")
+	if revision.CanonicalVersion == render.TemplateFormatVersion {
+		if revision.RepresentationJSON == "" {
+			return TemplateRevisionRecord{}, nil, fmt.Errorf("template representation is missing")
+		}
+		representation, err := s.renderer.PrepareTemplate(ctx, contents)
+		if err != nil || representation.Digest != revision.CanonicalDigest || string(representation.JSON) != revision.RepresentationJSON || representation.AuthorVersion != revision.AuthorAPIVersion {
+			return TemplateRevisionRecord{}, nil, fmt.Errorf("template representation provenance verification failed")
+		}
+	} else {
+		canonical, _, err := s.renderer.RenderVersion(ctx, revision.RendererVersion, domain.RevisionContent{VerifiedBundle: contents}, nil, domain.RenderPolicy{})
+		if err != nil || canonical.Digest != revision.CanonicalDigest || canonical.APIVersion != revision.AuthorAPIVersion || revision.CanonicalVersion != render.CanonicalFormatVersion {
+			return TemplateRevisionRecord{}, nil, fmt.Errorf("legacy template revision provenance verification failed")
+		}
 	}
 	return revision, contents, nil
 }

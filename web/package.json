@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build && bun run normalize-build",
     "normalize-build": "bun ../tools/normalize_web_build.mjs",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "generate:api": "cd .. && go run ./tools/openapi && cd web && openapi-typescript ../api/http/openapi.json -o src/lib/api.generated.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "3.0.10",
@@ -14,6 +15,7 @@
     "@sveltejs/vite-plugin-svelte": "7.0.0",
     "@tailwindcss/vite": "4.3.3",
     "daisyui": "5.7.27",
+    "openapi-typescript": "7.13.0",
     "svelte": "5.57.0",
     "svelte-check": "4.3.4",
     "tailwindcss": "4.3.3",

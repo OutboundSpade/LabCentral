@@ -1,5 +1,7 @@
 # Deployment
 
+Current architecture follows ADR-0015, ADR-0016 and ADR-0017. See [architecture](architecture.md), [installation and cleanup authority](../operations/plugin-installation.md), and [compatibility](../compatibility.md). Historical task checkpoints below remain evidence, not additional implementation requirements.
+
 ## Forms
 
 - **Release archive/native:** `labd`, official provider/access executables, static UI, schemas, migrations, checksums. Local mode supervises configured children; the production Proxmox units attach three separately sandboxed systemd services.

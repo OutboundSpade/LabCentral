@@ -1,0 +1,260 @@
+# Historical implementation record through 2026-09-04
+
+This is an archived evidence log, not current status or deployment guidance. See [current project state](../../PROJECT_STATE.md) and [current architecture](../design/architecture.md). Statements about unfinished work describe their original checkpoint.
+
+# LabCentral project state
+
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, native multi-service deployment, automated encrypted offline recovery and artifact maintenance, 100-Instance PostgreSQL control-plane resilience, and protected-publisher implementation checkpoints are complete, while live target load/soak, shared-RWX failover/disaster-recovery evidence, repository publisher-control approval, and the first signed release ceremony remain open.
+**Updated:** 2026-09-04
+
+LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
+
+Security defaults are isolation-first: lab networks have denied egress unless explicitly requested and supported; provider/control management paths must be unreachable from guests; no-auth mode must be selected explicitly and is loopback-only; ordinary containers are never represented as hostile-workload isolation.
+
+The design-only Phase 0 exit criteria are accepted: executable schema/canonical fixtures pass, the plugin v1 descriptor passes Buf format/lint/`FILE` breaking checks, provider failure-window contracts are machine-readable, and every identified threat maps to owners, controls, and tests.
+
+## Latest completed work
+
+- `TASK-ARCH-001` completed a design/architecture audit against the owner's multi-provider and third-party-plugin priority. The [audit report](../../docs/design/architecture-audit-2026-09-04.md) proposes provider-neutral installation/admission, per-plugin failure containment, one application boundary, explicit template input/version semantics, and review of qualification/cleanup and execution topology. Recommendations are not accepted ADR changes; `TASK-ARCH-002` is the next proposed design action, and `TASK-PROD-004` remains in progress.
+- Interpreted requirements and traceable architecture baseline.
+- Accepted ADR-0001 through ADR-0013.
+- Domain, declarative format, capability model, jobs, API, RBAC, access, persistence, deployment, testing, threat model, and provider roadmap documented.
+- Three example bundles, an executable authoring JSON Schema, strict parser/invalid fixtures, and canonical JCS golden vectors added.
+- Plugin registration direction and per-major negotiation finalized; v1 Protobuf descriptor baseline and behavior fixtures accepted.
+- Domain/application ports, relational schema/migration invariants, and renderer/job/provider/security conformance catalogs completed.
+- `tools/verify_phase0.py` passes all design gates without contacting a provider.
+- Current official provider behavior recorded with primary sources retrieved 2026-09-02.
+- `TASK-DOMAIN-001` implemented the minimal Go module, sealed typed logical resources, validated value contracts, lifecycle transitions, application ports, secret redaction, and recursive import-boundary tests.
+- `TASK-RENDER-001` implemented bounded strict YAML parsing, Draft 2020-12 validation, typed inputs/components/resources, bounded CEL, two-stage typed reference resolution, stable dependency ordering, native RFC 8785 canonicalization, framed digests, and executable example/contract fixtures.
+- `TASK-JOBS-001` implemented a checksummed transactional job/outbox prototype, database-time leases, monotonic fencing, unknown-invocation recovery, idempotency binding, quota/leftover safeguards, and one shared eight-case conformance suite proven on SQLite and PostgreSQL.
+- `TASK-PROVIDER-001` implemented a public provider harness, reusable 18-case contract runner, and programmable fake with virtual time, durable invocation restart, compensation/leftover behavior, ownership fencing, state migration, deterministic planning, cancellation, and secret-canary checks.
+- `TASK-DOCKER-001` implemented `labd`, the Huma/OpenAPI laptop API, embedded SvelteKit/DaisyUI assets, durable SQLite operations, a content-addressed filesystem artifact adapter, a checksummed out-of-process Docker plugin, and the typed Docker Engine realization of Example A.
+- The Docker slice enforces loopback-only no-auth and port publication, digest-pinned images, provider executable verification, resource limits, reduced container privileges, stable invocation replay, fenced persistence, and ownership-verified reverse destroy. It explicitly warns that ordinary containers and the degraded denied-egress path are trusted-laptop-only.
+- Example A was built and exercised against Docker Engine 29.7.2 / API 1.55 on Linux amd64: the operation reached `ready`, its loopback URL returned the SQLite visit-counter JSON, destroy succeeded, and no instance-labeled container, network, or volume remained.
+- `TASK-RELEASE-001` added byte-reproducible native tarballs with executable/archive checksums, a Docker plugin inventory manifest, CycloneDX SBOM, and source/build provenance; a digest-pinned multi-stage `scratch` image; and persistent, hardened, host-networked Compose packaging.
+- The Compose distribution passed the real Example A apply/access/destroy gate with separate live `labd` and provider processes, zero ownership-labeled leftovers, and SQLite state retained across a control-plane restart. The image contained no Go, Bun, shell, or package-manager runtime.
+- `TASK-PROXMOX-001` added a separately runnable, GET-only Proxmox provider with strict versioned HTTPS/API-token envelopes, verified TLS, refused redirects/proxies, bounded deterministic inventory, expiring evidence, and typed partial failures.
+- At the `TASK-PROXMOX-001` boundary, the T0 TLS fake-API suite proved exact discovery authorization and queries, offline/partial behavior, provider-returned path validation, deterministic inventory/capacity, credential and error-body redaction, and then-unimplemented non-discovery RPCs. No real Proxmox credentials or mutations were used.
+- `TASK-PROXMOX-002` accepted ADR-0013 for core-owned opaque target allocation claims and fixed the first write design to PVE 9.x fixed-node Linux QEMU full clones with approved storage/VLAN-aware bridges, typed native IPv4 Cloud-Init networking, strong ownership, durable UPID recovery, and least-privilege scopes.
+- At the `TASK-PROXMOX-002` boundary, the machine-readable Proxmox mutation catalog mapped all 18 generic provider cases to 22 target-specific T0/T3 cases and kept every mutation capability unsupported until allocation/protocol implementation, fake-API conformance, and exact-target credentialed gates passed.
+- `TASK-PROXMOX-003` added protocol v1.1 allocation/dependency fields while retaining the original v1.0 Buf breaking baseline and Docker negotiation, then made the Proxmox process advertise both required feature bits without enabling mutation.
+- A new core allocation port and checksummed SQL migration enforce target-scoped opaque claims, plan binding, atomic batches, monotonic fences, orphan retention, and absence-gated release. Fourteen shared cases pass on SQLite and PostgreSQL, including concurrency, restart, and deterministic eight-attempt replan limits.
+- The create path now generates its stable Instance ID before provider planning, sends ownership/dependency plan metadata, validates plan digests, and fails closed if the current Docker-only control plane receives an allocation proposal it cannot persist.
+- `TASK-PROXMOX-004` implemented strict closed target-config v1.1, validation-plan v1.0, QEMU plan/state v1.0, and checksummed invocation-journal v1.0 types for the fixed-node Linux/amd64 full-clone subset.
+- Validate/plan deterministically bind target, capability, inventory, policy, input, instance, generation, ownership, VMID, VLAN, template, storage, bridge, hardware, disk, and dependency facts; apply rebinds those fields to the canonical resource and current closed configuration. Unsupported volumes, artifacts, snapshots, IPv6, arbitrary MACs, raw provider fields, dangerous devices, substituted provider-state addresses, and unknown or duplicate JSON fail before mutation.
+- The T0-only executor uses exact least-privilege scopes, fresh inventory/template evidence, committed core claims, full ownership markers, optimistic PVE config digests, bounded UPID polling, durable restart recovery, read-before-action lifecycle, compensation, and absence-confirmed deletion through the explicit API allowlist.
+- Every `TEST-PROXMOX-001` through `TEST-PROXMOX-022` case now has a deterministic in-memory or HTTPS fake-API binding. Normal and race-enabled provider tests cover lost responses, every journal checkpoint, corrupt versions, foreign objects, config races, task failures, leftovers, path/UPID injection, and secret/guest/upstream canaries.
+- At the `TASK-PROXMOX-004` boundary, the separately runnable binary advertised the new schemas but constructed only the hard-closed mutation service. ADR-0014 now replaces that interim state with a distinct signed-evidence production constructor; the discovery-only constructor remains closed.
+- `TASK-PROXMOX-005` now has an additive local provider-target registry and API routing: instances persist their target and effective override, workers reacquire that exact target after restart, plugin registration verifies the configured provider kind, and optional Proxmox startup requires a digest-pinned separate process plus strict config and mode-protected file-secret inputs.
+- Proxmox discovery credentials are resolved only for bounded invocation scopes, copied into an ephemeral target context, zeroed after the call, and never persisted. Checksummed local migration `0003_local_provider_target_binding` persists only target/config/protocol/feature/capability evidence and instance target bindings.
+- Provider allocation proposals now pass shared bounded validation, commit atomically with instance plans/jobs, and cause deterministic conflict replanning with exclusions up to eight attempts. Worker apply/destroy receives persisted committed claims and dependency plans/states; unknown and failed cleanup retains or orphans claims, while successful provider-confirmed absence releases them.
+- `TEST-PROXMOX-023`, a full in-process gRPC/SQLite target integration test, proves discovery persistence and freshness reporting, protocol v1.1 feature binding, scoped credential delivery, allocation conflict replanning, dependency delivery, restart-safe target routing, and absence-gated release. It also proves persisted `unsupported` mutation capability evidence blocks create. No real Proxmox endpoint is contacted by normal CI.
+- `TEST-PROXMOX-024` adds a strict qualification library inside the isolated review tool. Evidence is closed, bounded, RFC 8785 canonical, Ed25519 signed, and bound to the exact target, installation, configuration, inventory/capability/policy, PVE build, provider build, protocol, node, storage, bridge/VLAN, template, permissions, case matrix, guest probes, and cleanup claims. Keeping it outside `providers/*` preserves the plugin boundary against core-internal imports.
+- Signature verification alone never qualifies a run. Expiry, target/build mismatch, missing or failed T3 cases, failed intended/management/cross-instance semantics, ambiguous provider absence, leftovers, and retained/orphaned claims all produce a non-qualifying result. The offline review tool has no provider-execution path and is included in native archives for deployment verification.
+- `TEST-PROXMOX-025` adds a package-test-only real-HTTPS smoke runner plus a closed profile schema. It requires the exact destructive sentinel and target confirmation, rejects partial activation, verifies the one expected disposable VMID/VLAN before apply, exercises create and every supported lifecycle transition, performs owned reverse cleanup with an independent timeout, and confirms absence. Normal CI skips before any provider call. Protected runs `qualification.smoke-20260902-r8` on `local-lvm`/raw and `qualification.smoke-20260902-secondary-r1` on `local`/qcow2 passed against PVE 9.2.2 with VMID `910001` and VLAN `3901`, each followed by an independent empty VM/storage inventory check. These smokes are not complete qualification.
+- `TEST-PROXMOX-026` adds closed Draft 2020-12 request/response schemas, a qualification-only guest agent, a pinned-mTLS runner client, and direct mapping into signed probe evidence. The TLS 1.3 agent accepts exactly three ordered, distinct IPv4 TCP destinations with bounded attempts/time, permits one run at a time, has no shell or provider API, and returns only nonce-bound aggregate observations and endpoint/transcript digests. Local synthetic tests prove both sides of mTLS and fail-closed response binding; evidence-grade protected isolation run `qualification.isolation-20260903-r7` also exercised the agent from a real PVE guest.
+- `TEST-PROXMOX-027` adds a separate closed isolation profile and package-test-only executor. Normal CI proves exact planning for source/peer guests on one VLAN and a distinct-instance guest on another, with three preconfirmed VMIDs, two preconfirmed VLANs, six distinct protected inputs, direct probe-evidence mapping, reverse owned cleanup, and fresh absence reads. Protected run `qualification.isolation-20260903-r7` passed against PVE 9.2.2 with VMIDs `910001`–`910003`, VLANs `3901`–`3902`, 3/3 intended-segment reachability, 0/3 management and cross-instance reachability, and canonical probe transcript digest `sha256:2a0333652ab13e525000a25288583aafa31404dc548c01bb57d0a7deb0ab481d`; independent reads then confirmed all three VMIDs free, both storages clean, and every recent task terminal.
+- A guarded failure/recovery executor binds every remaining target-applicable T3 case to the real disposable PVE endpoint while identifying injected boundary faults separately from calls accepted by PVE. Exact-revision run `qualification.failure-20260903-r4` passed template/foreign-object refusal, bounded task failure and redaction, missing privilege, target claim exclusions, real stale-digest rejection, successful compensation, deliberate compensation failure with retained leftover and later exact cleanup, lost clone/config/start/delete response recovery, lifecycle idempotency, marker-mismatch destroy refusal, every durable apply/destroy checkpoint, and corrupt-journal rejection in 292.02 seconds. Independent PVE reads found only template VMID `900000`, both storage profiles clean for the reserved range, all three disposable VMIDs available, and every recent task terminal.
+- The closed evidence package `qualification.proxmox-t3-20260903-r1` binds provider candidate `6caa5e7`, the exact PVE build, target/configuration/capability/inventory/policy, both storage profiles, template, ACLs, ordered T3 cases, typed probe observations, and cleanup claims. The review-only tool accepted the target's exact `/vms` ACL root, signed with disposable key ID `testbed-reviewer-20260903`, and independently verified `qualifies=true` with no reasons; the canonical evidence digest is `sha256:6943002263b2b2f35f04aeec21ec45bb91b1eab30aaba50d01e1903dbc62244d`. This is testbed evidence ready for independent review, not an accepted production trust decision.
+- `TEST-PROXMOX-028` adds an explicitly guarded read-only T4 rehearsal with no provider client or mutation path. Protected run `qualification.upgrade-20260903-r1` made the current consumer open three checksummed journals written by the earlier `99fb78f` candidate, decode Network and VM `proxmox.qemu-state/v1.0`, and accept the destroyed tombstone under `proxmox.invocation-journal/v1.0`.
+- The bare-metal qualification host now has an idempotent libvirt/KVM harness under `tools/provider-testenv`, with verified pinned Debian 13 and Proxmox VE 9.2 media, a private management network, an IP-less isolated trunk, disposable cloud profiles, and an ownership-gated deletion path. The installed `lc-pve` target, protected runner, VLAN-aware `vmbr1`, least-privilege token, and digest-bound Debian template are operational. Guarded attempts exposed and corrected live compatibility edges, the final lifecycle smoke passed, and the first real-guest isolation topology passed with automatic owned cleanup and independent absence verification.
+- Live target preparation exposed and corrected a pre-mutation stale-plan defect: qualification now pins a versioned mutation-relevant inventory projection while the discovery capacity document retains its separate full snapshot. Normal CPU load, uptime, used memory, and used/free storage movement can no longer invalidate every real operation; target/build, node, storage, bridge, template, and issue changes still close the gate.
+- Live least-privilege probing also corrected PVE ACL interpretation: mutation preflight now queries every configured permission path explicitly, preserves PVE's propagation bit, accepts `0` only where an exact-path grant suffices, requires propagation from destination `/vms` to claimed VMIDs and from each bridge to configured VLAN children, rejects mismatched response paths, and continues to reject missing or forbidden privileges.
+- Guarded lifecycle work exposed PVE 9.2's ambiguous missing-QEMU-config
+  responses: a broad reader receives HTTP 500, while a pool-scoped production
+  token receives HTTP 403 because a not-yet-created VM cannot belong to the
+  pool. Optional reads accept either response as absence only when the separate
+  typed `nextid` query confirms the exact VMID is free. Error bodies remain
+  unread; occupied IDs, failed checks, and every unrelated status fail closed.
+- The next guarded attempt exposed PVE's clone-UPID identity rule: its object field names the source template VMID, not the requested destination `newid`. Validation and restart fixtures now bind clone tasks to that source identity while every subsequent task remains bound to the destination.
+- The same attempt exposed double encoding of token-qualified task users: pre-escaping the parsed UPID caused `!` to reach PVE as `%2521`, so task status reads failed with HTTP 400. The validated raw UPID is now passed once through Go's URL builder, with a transport regression test requiring `%21` and rejecting `%2521`.
+- A subsequent guarded attempt cloned and polled correctly, then proved that PVE authorizes VLAN use at `/sdn/zones/localnetwork/{bridge}/{vlan}`. A non-propagating bridge grant is therefore insufficient even though it is effective on the bridge itself; the mutation gate now distinguishes exact from propagating grants before any write.
+- Once that ACL was corrected, the configuration request succeeded and exposed PVE 9.2's asynchronous `qmconfig` response. The provider now validates, journals, polls, and restart-recovers that destination-bound task before bounded configuration readback; it no longer discards the returned UPID or races pending configuration.
+- The guarded lifecycle reached stop/start and then exposed PVE's pause representation: the task type is `qmpause`, and a paused VM remains `status=running` with `qmpstatus=paused`. The typed task allowlist and status mapper now use those real values; the failed run's owned VM was verified, stopped, and removed after its concurrent cleanup attempt could not acquire the task lock.
+- An immediate pause after start also exposed transient PVE config-lock contention after its start task had reported completion. Lifecycle operations now retry at most twice only after a task has definitively failed and an exact status read proves the VM is still in the permitted source state; unknown outcomes are never replayed. This makes the bounded retry restart-safe without parsing or exposing task logs.
+- Exact-candidate smoke testing of `17c8882` then exposed a definitive PVE graceful-shutdown timeout during explicit destroy. The provider correctly retained and reported the owned leftover instead of claiming absence, and that run was discarded. Explicit destroy now journals resume/stop submissions, safely handles paused guests, retries a definitively failed shutdown at most twice only while fresh status and ownership remain unchanged, rechecks ownership immediately before delete, and never resubmits an unknown outcome. Deterministic restart and failure-window tests cover both new checkpoints; the final exact-target rerun passed on `af33267`.
+- Full clones have taken 84 and 124 seconds under nested-storage load, outliving the earlier polling windows. Task polling now remains bounded but covers about five minutes of backoff; timeout/unreadable tasks are classified as unknown and retain their owned address for later reconciliation instead of racing a still-running task with compensation.
+- Isolation attempts exposed transient task-status reads lasting longer than the original sub-second tolerance while peer clones completed successfully. The bounded poller now tolerates at most eight consecutive read-only status failures within the unchanged five-minute poll budget without ever resubmitting the mutation; persistent unreadability still returns an unknown outcome, and the runner proved exact reverse cleanup from those paths.
+- The qualification image initially enabled its probe under `multi-user.target` while ordering it after `cloud-final.service`, which Debian orders after `multi-user.target`; systemd therefore dropped the cyclic boot job. The disposable template now pulls the service into `cloud-init.target`, a reboot proved the exact listener active, and the subsequent three-guest isolation run passed.
+- A separate PVE 9.2.11 production target is prepared with one dedicated
+  pool-scoped API token, the isolated VLAN-aware `vmbr3` bridge and VLANs
+  `3900`-`3999`, reserved VMIDs `910000`-`910099`, and two digest-bound Debian
+  13 templates on `local` storage. The production token has only the reviewed
+  template, pool, storage, SDN, and node audit grants. Its exact readiness
+  inventory is clean, and preliminary lifecycle, failure/recovery, and
+  three-guest isolation runs passed with 3/3 intended connections, 0/3
+  management connections, 0/3 cross-Instance connections, and complete owned
+  cleanup. The exact frozen-build evidence and independent reviewer signature
+  remain deployment artifacts rather than repository inputs.
+- ADR-0014 accepts the production authorization boundary. `NewService` remains discovery-only; `NewProductionService` is the only exported write-capable constructor and rejects a nil authorizer. The provider executable selects it only when both a bounded signed document and a closed reviewer trust policy load successfully.
+- Production authorization re-verifies an active non-revoked Ed25519 reviewer, deployment evidence-age limit, complete passing case/probe/cleanup document, target/configuration/capability/inventory/policy and exact PVE build, running executable/source-tree digests, protocol/plugin compatibility, and the normalized destination/VMID/storage/network/template/permission profile. Fresh discovery plus authorization runs during capability discovery and again before apply, destroy, or lifecycle writes.
+- `labd` now supports Proxmox-only startup without Docker socket authority, refreshes every target within the five-minute evidence TTL, and exposes redacted target freshness plus safe per-target authoring examples through Huma/OpenAPI and the static UI. The UI selects the correct Lab source and provider override instead of sending the Docker example to Proxmox.
+- The plugin host rejects indirect or group/world-writable executables, copies the same opened bytes it hashes into a private mode-`0500` runtime snapshot, and exposes terminal child exit so `labd` can stop and let systemd restart the complete single-node deployment. Proxmox target configuration is likewise rejected when indirect or group/world writable, preventing an unprivileged endpoint/CA swap before credentialed discovery.
+- The native release builder requires a clean Git tree and packages all official runtime binaries, the qualification utility, provider/source checksums, three plugin manifests, expanded SBOM/provenance, strict configuration examples, the hardened multi-service systemd assets, and both end-to-end Proxmox deployment runbooks.
+- Packaged-runtime rehearsal caught the systemd unit passing the adjacent checksum filename to a flag that accepts a literal digest. Startup failed closed before provider launch. The unit now relies on `labd`'s protected adjacent `<plugin>.sha256` default, with a regression test binding the packaged unit to that CLI contract; this correction is included in and qualified by the final candidate.
+- With that invocation corrected, the packaged `labd` and signed provider advertised native mutation and completed HTTP validation/planning, but the first public-API create exposed an unrealistically short seven-second guest-agent readiness window. The operation failed safely and the worker removed the owned VM. Readiness now permits approximately two minutes of bounded backoff without replaying start; deterministic tests prove delayed success and a bounded retryable timeout.
+- That failed create also exposed an aggregate reporting gap: the provider reported VMID `910001` as an owned leftover, but the worker described compensation of earlier ready resources as complete. Independent PVE inspection decoded and matched the exact LabCentral ownership marker before operator cleanup. Readiness/final-drift failures now enter provider compensation directly, and the worker treats incomplete attempted compensation or a non-empty provider leftover set on the failed resource as `partial_cleanup` instead of reporting full compensation.
+- Preflight for the next packaged run found the core still bounded a provider invocation to two minutes despite the accepted Proxmox poller allowing roughly five minutes for a single nested-storage task. Provider calls now receive a ten-minute deadline while the worker continues renewing its 30-second fenced lease; the credential scope carries one additional minute of expiry margin. This covers clone, configuration, start, and bounded readiness without permitting an unfenced worker.
+- The offline qualification utility now creates non-overwriting Ed25519 reviewer keypairs only inside an existing private directory, writes the private half as mode `0600`, and prints paths rather than key material. The deployment runbook uses that format directly for evidence signing and trust-policy enrollment.
+- Clean revision `af33267b6534ea878541301c073867c160e98926` produced two byte-identical `0.2.0-rc5` Linux/amd64 archives with SHA-256 `ca955fc1bed3603ad87a7452ebc5912f9bb701599e3277e0d171357179e10cb2`. Extraction verified every archive-wide checksum, both provider manifests, SBOM/provenance, the hardened systemd unit, provider executable SHA-256 `b13dfd384c6a8f6e161bb4fda7fb50329b8f61b938426f32641651b68a7e5aea`, and embedded source-tree SHA-256 `48ab5886257c83bf907c9cfeb61065fd4f19bb8ee0eae524a8a65f93be1b76be`.
+- The final exact-build disposable-target qualification passed lifecycle smoke in 166.52 seconds, the complete failure/recovery matrix in 280.99 seconds, and the three-guest isolation run in 153.88 seconds. Guest-origin observations were intended segment 3/3, management 0/3, and cross-instance 0/3 with transcript SHA-256 `fb42e390da8368f1458df150d29436bbc95c3b2f84d743f8ef98aadb4062b033`; independent reads found only template VMID `900000`, all reserved VMIDs free, both storages clean, and no active tasks.
+- Disposable reviewer key `reviewer.testbed-af33267` signed the exact artifact, and the offline verifier returned `qualifies=true` with no reasons. Its canonical evidence SHA-256 is `3922dfbb1c439f294015b1c1ec71d91a40efbc3a59f8c3fa2c9c4faf1dccf0ff`; the signed-file SHA-256 is `2f098838c4a5ccfe78130117410cc19e833b4e8f5c7d08cd36e90e4fafeed2cf`. This proves the release gate on the disposable target; each installation still requires its own reviewer trust and exact-target artifact.
+- The packaged `labd` then loaded that trust/evidence pair, reported the target `fresh` and `workload.vm=native`, passed HTTP validation and planning, created instance `inst_fab9d5e1783d1f03e59e183b780bcb6e`, reached `ready`, survived a full control-plane restart with identical persisted state, destroyed the instance, and reported every resource `destroyed`. A second independent PVE read again found all reserved VMIDs and storage objects absent and zero active tasks; the checksum manifest for the retained public-API transcript is SHA-256 `eaab0ecba7cd4bdd6b5f03acb660490dc388e016fda2b89a140cde6c32b14511`.
+- `TASK-PROD-001` generalized the complete control-plane Store and all three checksummed migration layers from SQLite to PostgreSQL while retaining database-time leases, ordered `SKIP LOCKED` claims, target snapshots, allocation uniqueness, quotas, atomic audit/event/outbox writes, and stable invocation records. PostgreSQL migrations serialize under a session advisory lock; simultaneous equivalent creates use a transaction advisory lock plus bounded serialization/deadlock retry to converge on one durable idempotent result.
+- Independent PostgreSQL pools now prove one concurrent claim winner, monotonic takeover fencing, stale partitioned-worker rejection, stable prepared-invocation recovery, and exactly one terminal finalizer. The full Example A apply/destroy path and the provider-target snapshot/allocation/dependency/absence path run unchanged on SQLite and PostgreSQL. A real PostgreSQL 18 custom-format dump/drop/restore rehearsal preserved every durable table count and the destroyed Instance.
+- `labd` now has fail-closed topology selection. Single-node mode permits only SQLite/local artifacts. Multi-replica mode requires a protected PostgreSQL URL file with verified TLS, a unique replica ID, and an absolute explicitly shared artifact root. The shared POSIX adapter serializes mutable uploads with cross-process advisory locks and self-tests lock exclusion at startup. Multi-replica Proxmox additionally requires the signed target's journal to be the exact `proxmox-journal` sibling of the artifact directory on that shared mount, preserving separate mode-`0700` core/provider ownership. A mode-`0600` kernel lease covers every complete mutating RPC across provider processes, is released by process death, and lets the next process recover from the last durable checkpoint; subprocess and startup-admission coverage is `TEST-PROXMOX-029`. Shared-RWX chaos evidence is still open, and the qualified single-node deployment is unchanged.
+- `TASK-PROD-002` makes authentication mode explicit at both process and reusable HTTP-server construction boundaries. Authenticated deployments require an exact HTTPS public origin and either direct TLS 1.3 or an explicitly trusted proxy chain; no-auth remains a loopback-only development mode and cannot be selected after local/OIDC mode. Database and authentication preflight completes before OIDC discovery or provider launch and refuses unsafe legacy owner/actor adoption.
+- Local authentication now has bounded Argon2id work, durable database-time global/account/IP throttles, one-use recovery, rotating browser sessions, typed non-rotating bearer credentials, revocation, and a versioned keyring with retained-key continuity. OIDC uses authorization code plus S256 PKCE, browser-bound one-use state, nonce/issuer/audience/`azp`/signature checks, bounded redirect-free discovery/exchange, explicit identity pre-linking, and JWKS signing-key refresh.
+- Organizations, projects, teams, active memberships, fixed role assignments, instance ownership, and provider-target grants are durable on SQLite and PostgreSQL. The policy evaluator uses a closed one-role matrix, SQL-prefilters instance visibility, filters target detail before reads, and reauthorizes credential-sensitive queued work. Version-pinned renewal/revocation/disable operations take effect immediately, revoke live sessions where required, and cannot remove or defer the last active platform administrator.
+- The static UI now supports local/OIDC sign-in, session/logout, explicit project/owner selection, first-project onboarding, and authenticated lab creation. The Proxmox and PostgreSQL runbooks cover HTTPS proxying, session-key/bootstrap custody, local/OIDC startup, bearer clients, authority/key revocation, backup/restore, and the requirement to requalify every operator's exact Proxmox target.
+- Normal, PostgreSQL, race-enabled, static-analysis, Svelte, Compose, design-contract, and systemd-hardening gates pass. Adversarial coverage includes CSRF/origin/proxy spoofing, browser/bearer replay separation, rate and password-worker exhaustion, session/recovery/OIDC replay and key rotation, cross-scope object hiding, target-refresh grants, concurrent authority writers, membership expiry, and last-administrator protection.
+- The first `TASK-PROD-003` slice adds project-scoped mutable Lab Templates, immutable content-addressed revisions with exact author/renderer/canonical provenance, revision-bound Instance creation, optimistic metadata updates, opaque cursor pagination, replay-safe create/update/publication mutations, scoped Huma/OpenAPI routes, and shared SQLite/PostgreSQL concurrency and rollback tests. Opening a revision re-verifies artifact size, digest, project binding, and rendered provenance.
+- Generalized typed audit/event records now use database time, independent monotonic streams, per-aggregate event sequences, immutable-row triggers, bounded redacted payload validation, atomic local outbox insertion, scope-aware paginated read APIs, bounded NDJSON export, and bounded retention. Event retention cannot remove a record while any local outbox delivery is pending. Authentication lifecycle, authorization decisions, target discovery, Template mutations, Operation queue/finalization, controlled access, and administrator mutations now produce the generalized pair. Stateful producers commit aggregate, audit, event, and outbox together; authorization emits one decision pair per boundary call and suppresses only successful audit-stream reads so cursor pagination can terminate. `TEST-AUDIT-001` through `TEST-AUDIT-010` bind SQLite/PostgreSQL parity, rollback, redaction, export, and retention behavior.
+- Scoped platform/organization/project/team/user/target quotas now cover instances, workload counts, CPU, memory, storage, public IPs, published ports, and snapshots. Admission reserves every applicable scope atomically using database time; ready instances commit usage, unknown/partial outcomes retain it, and provider-confirmed absence releases quota and opaque allocation claims.
+- Versioned lifetime policies resolve default/maximum TTL, renewal window, warning, grace, and persistence rules. Renewal requires optimistic concurrency and idempotency, repeats authorization plus quota/policy checks in its write transaction, and stores an exact response snapshot. The durable sweeper emits one-shot warnings, expires invocation-free queued or expired-lease work, and converges exact-expiry destruction with manual requests.
+- Migration `0009_classroom_quota_expiration` and its restart-safe legacy backfill pass shared SQLite/PostgreSQL conformance. Lost provider responses now drive exact `GetInvocation` recovery without mutation redispatch; concurrent sweeper/worker claims have one winner, and migration fixtures preserve uncertain legacy ownership as retained rather than recycling it.
+- Migration `0010_classroom_instance_batches` and the additive Huma batch resource implement immutable-revision classroom fan-out for 1–100 unique user/team owners. One serializable transaction rechecks every owner and admits all child Instances, Operations, jobs, quota reservations, allocation claims, audit/event/outbox records, and the parent idempotency result or none. The shared 100-owner SQLite/PostgreSQL test proves rollback at a quota of 99, admission at 100, and one-original/one-replay convergence under simultaneous requests.
+- `OQ-ACCESS-001` is implemented by a separately supervised, checksum-verified
+  access-only process with independently negotiated protocol v1.2, private
+  launch-scoped core callbacks, one-time exchange, 15-second rotating leases,
+  fail-closed closure within 30 seconds of core loss, and core-first revocation.
+  Proxmox endpoint discovery requires signed live qualification, exact
+  `VM.Console`, owned state/generation/config, and an explicit v1.2 target
+  setting. The access process consumes the upstream TLS VNC password and the
+  browser sees only a same-origin, token-free noVNC route. All eighteen normal
+  or protected `TEST-ACCESS-*` bindings exist and SQLite/PostgreSQL access-state
+  conformance passes.
+- The first `TASK-PROD-004` checkpoint adds a separate private operations
+  listener with process liveness, database/artifact/plugin-backed readiness,
+  Prometheus runtime/API/plugin/background metrics, fixed-cardinality labels,
+  and opt-in W3C/OTLP HTTP server traces. Remote trace export requires TLS 1.3
+  and supports private-CA mTLS; metrics and trace tests reject path, query,
+  tenant, token, and error-text canaries. Native/Compose healthchecks now use
+  `/ready`, the deterministic release includes baseline Prometheus alerts and
+  an observability/identity-rotation runbook, and the public Huma API remains
+  separate from the operations listener. A clean-volume Compose rehearsal also
+  corrected the scratch image's state mountpoint to mode `0700`; fresh named
+  volumes now start without weakening `labd`'s private-directory refusal and
+  retain the existing on-volume layout across restart.
+- The second production-observability checkpoint refreshes an aggregate-only
+  database snapshot every 15 seconds. SQLite and PostgreSQL expose identical
+  fixed-cardinality queue/expired-lease age, legacy and generalized outbox lag,
+  Operation/resource/access lifecycle, target-evidence age/staleness, and
+  cleanup-leftover gauges. Worker terminal callbacks add bounded
+  `apply|destroy` result counters and execution-duration histograms. Unknown
+  persisted state is rejected before it can become a Prometheus label, and the
+  expanded alert rules cover stalled work, expired leases, outbox lag,
+  operation failure ratio, stale target evidence, and ownership-sensitive
+  cleanup review.
+- The Kubernetes `TASK-PROD-004` checkpoint adds a fail-closed two-replica
+  StatefulSet, required cross-node anti-affinity, a disruption budget,
+  Restricted Pod Security settings, default-deny ingress/egress policy,
+  direct TLS/OIDC/PostgreSQL inputs, and shared-RWX artifact/journal topology.
+  `labd`, the official Proxmox provider, and noVNC run as three distinct
+  non-root UIDs with container-specific secret mounts. Group-restricted Unix
+  sockets and rollout token files support orchestrator-managed sidecars in
+  either startup order; persistent health loss tears down `labd` so the Pod's
+  registration boundary is rebuilt instead of remaining wedged. The base
+  excludes example ConfigMaps/Secrets and retains all-zero image and RFC 5737
+  egress sentinels until an operator supplies a digest-qualified deployment.
+  `TEST-PROD-TOPOLOGY-001` through `006` bind the static and process tests, and
+  the deployment-specific procedure is
+  [`docs/operations/kubernetes-proxmox.md`](../../docs/operations/kubernetes-proxmox.md).
+- The native `TASK-PROD-004` checkpoint replaces the shared-UID production
+  process tree with three systemd services. Core, Proxmox, and noVNC use
+  distinct users; two non-overlapping IPC groups share only the corresponding
+  mode-`0770` socket directory with core. systemd credential mounts expose each
+  registration token only to its pair and expose the root-owned Proxmox
+  credential only to core. Provider and core state are separate mode-`0700`
+  roots, plugin sandboxes cannot traverse core state, and all non-loopback
+  traffic is denied until the operator adds the exact qualified Proxmox address
+  plus a UID/port-scoped host firewall rule. `TEST-PROD-TOPOLOGY-007` and `008`
+  bind these assets and their release packaging.
+- The recovery checkpoint adds a packaged, non-overwriting
+  `labcentral-recovery` utility for PostgreSQL/shared-state and native
+  SQLite/provider-state layouts. Recovery sets use hybrid age encryption plus
+  domain-separated Ed25519 manifest signatures, exact release/tool-major and
+  database watermark binding, bounded link-free state archives, protected key
+  inputs, off-workload decryption identity, and empty-destination restores.
+  Native creation proves the live database lock is free and both native
+  components are staged before commit. `TEST-PROD-RECOVERY-001` through `005`
+  pass locally, including a real custom dump/decrypt/verify/restore against the
+  disposable PostgreSQL 18 test bed and a reopened restored SQLite database.
+  Clean commit `4af2094` also produced byte-identical recovery-check archives
+  at SHA-256 `4cf2052cae0128e53258745364bc9780601014f813bdef3b172516c01398c2e9`;
+  every extracted checksum and the recovery SBOM/provenance/runbook inventory
+  passed.
+- `TEST-PROD-RECOVERY-006` closes the filesystem artifact-GC checkpoint. Every
+  runtime Store now holds a root-wide shared maintenance lease and removes its
+  successful upload lock; the packaged recovery utility takes the incompatible
+  exclusive lease only after the exact offline sentinel. Native and PostgreSQL
+  dry-run/apply paths verify the exact current migration set, zero active work,
+  all committed Template Revision references, the lease-file identity, every object digest/mode/link,
+  and the complete staging inventory before deletion. Apply requires a second
+  exact confirmation, preserves every referenced object, removes only verified
+  unreferenced objects and abandoned staging, and fsyncs affected directories.
+  Tests prove live-runtime and unknown-schema refusal plus no partial deletion
+  for missing references or hard-linked objects. Exact implementation commit
+  `8384272` passed hosted CI run `33863691593`.
+- The first scale checkpoint drives one atomic 100-team classroom through four
+  independent PostgreSQL worker pools, deliberately abandons one claimed job,
+  and requires fencing takeover, 100 ready Instances, and complete 100-Instance
+  reverse destruction within the documented two-minute objectives. The
+  disposable run reached ready in 2.39 seconds and destroyed in 0.89 seconds,
+  with 400 unique provider ownership tokens, 200 successful Operations, 600
+  destroyed resources, and no active work, quota, allocation claim, cleanup
+  record, or provider object. The rehearsal exposed and fixed lazy usage-row
+  initialization for migration-created platform quotas and cross-Instance
+  provider invocation-key collisions; digest v2 remains stable across takeover
+  and has an exact v1 compatibility fallback for previously prepared work.
+- The release-supply-chain checkpoint adds contents-read-only pull-request/main CI and a
+  protected, exact-repository, SemVer-tag publisher. Every external action is
+  full-commit pinned. The publisher runs normal/race/PostgreSQL/design/web and
+  vulnerability gates, builds and byte-compares two native archives, verifies
+  external and internal checksums, keylessly signs and same-run verifies both
+  the archive and digest-qualified GHCR image against the exact workflow/tag
+  Fulcio identity, attaches GitHub SLSA provenance, and creates the release only
+  after those gates pass. The API now reports the build-linked server version,
+  and the archive ships exact signature/attestation verification instructions
+  plus the `v0.2.x` API, protocol, state, migration, recovery, target, upgrade,
+  and rollback compatibility matrix. Repository environment/branch/tag review
+  controls and the first live publisher ceremony require owner action.
+  Clean revision `dd6fc1b` produced two byte-identical
+  `v0.2.0-publisher-check` Linux/amd64 archives at SHA-256
+  `d5686a105ace30c8977ec4d324f2b3e7e66064e071cb1469b3d3d2c5c7b28b33`;
+  the external/archive-wide checksums, packaged executable smoke, release
+  inventory, compatibility matrix, and verification guide all passed.
+- Hosted `CI / verify` run `33859734004` passed on clean commit `4ab1c9d`.
+  It exercised the frozen static web build, pinned OSV scan of the exact Bun
+  lockfile, design contracts, normal and race-enabled PostgreSQL suites, real
+  recovery tooling, `go vet`, reachable Go vulnerability analysis, and the
+  clean-tree gate. Predecessor run `33858967833` exposed an exhausted
+  five-attempt serialization retry while a destroy transaction appended its
+  audit record under the 100-Instance/four-worker load. Create and destroy now
+  use the same bounded eight-attempt conflict policy as the other serializable
+  stores; ten focused race-enabled 100-Instance repetitions and the complete
+  local race suite passed before the hosted rerun. The OSV gate had first identified low-severity
+  `GHSA-pxg6-pf52-xh8x`; transitive `cookie` is now pinned to patched `0.7.2`.
+- Clean revision `961e826` was compiled into protected-runner test binary
+  SHA-256 `b30e33abaf5b20fd2de2ad2149a956c1a74b3ffa9ba9fe4e7372790f9c5db2c2`.
+  On the disposable PVE 9.2.2 target, a fresh lifecycle smoke passed in 72.39
+  seconds and the real failure/recovery matrix passed in 177.63 seconds. The
+  isolated `lc-runner` then passed the three-guest probe in 140.25 seconds:
+  intended traffic 3/3, management 0/3, cross-Instance 0/3, transcript
+  `sha256:2bc75441926c5a9e11ca0625be4e168bc3834f39d25e8a957698ed155f100500`,
+  followed by owned reverse cleanup. The temporary runner credential and
+  staged secrets/binary were removed. This target remains intentionally capped
+  at three VMs and two VLANs, so it supplies current-build functional evidence,
+  not the still-open 100-VM live load/soak claim or a new reviewer signature.
+
+## Open questions and risks
+
+Four questions remain under documented temporary defaults: Windows timing, trusted image sources, user-supplied guest secrets, and spend enforcement. Primary risks are provider capability variance, hostile-workload network escape/misconfiguration, plugin/state upgrade compatibility, and destructive cleanup under partial provider failure. See `docs/design/open-questions.md`.
+
+## Next proposed phase
+
+0. Review the architecture audit through `TASK-ARCH-002`, produce concrete ADR/implementation proposals, and explicitly decide their order relative to remaining production-validation work.
+1. Follow `docs/operations/proxmox-deployment.md` to qualify and install this exact release candidate on each operator's own dedicated Proxmox target; no testbed artifact or reviewer key is transferable.
+2. Execute the supported classroom production topology work in `TASK-PROD-004`.
+
+Authoritative index: [`design/state.yaml`](../../design/state.yaml), [`design/checklist.yaml`](../../design/checklist.yaml), [`docs/design/architecture.md`](../../docs/design/architecture.md), [`docs/adr/`](../../docs/adr/), and [`docs/references.md`](../../docs/references.md).

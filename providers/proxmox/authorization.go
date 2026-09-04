@@ -58,3 +58,32 @@ func (service *Service) authorizeMutation(ctx context.Context, target *pluginv1.
 	}
 	return authorization.Evidence, nil
 }
+
+// CleanupAuthorizer grants only an explicitly named, already-owned deletion.
+type CleanupAuthorizationInput struct {
+	MutationAuthorizationInput
+	InstanceID, ResourceID, OwnershipDigest string
+}
+type CleanupAuthorizer interface {
+	AuthorizeCleanup(context.Context, CleanupAuthorizationInput) (MutationAuthorization, error)
+}
+
+func (service *Service) authorizeExecution(ctx context.Context, input *pluginv1.ResourceMutationInput, config TargetConfig, inventory Inventory, digest, action string) (string, error) {
+	evidence, err := service.authorizeMutation(ctx, input.GetTarget(), config, inventory, digest)
+	if err == nil {
+		return evidence, nil
+	}
+	authorizer, ok := service.mutationAuthorizer.(CleanupAuthorizer)
+	if !ok || action != "destroy" || len(input.GetOwnershipTokens()) != 1 || input.GetOwnershipTokens()[0] == "" || input.GetPriorState() == nil {
+		return "", err
+	}
+	state, stateErr := decodeQEMUState(input.GetPriorState())
+	if stateErr != nil || state.Ownership == nil || state.Ownership.InstanceID != input.GetContext().GetLabInstanceId() || state.LogicalResourceID != input.GetContext().GetLogicalResourceId() || state.TargetID != input.GetTarget().GetTargetId() || state.Ownership.Token != input.GetOwnershipTokens()[0] {
+		return "", err
+	}
+	grant, e := authorizer.AuthorizeCleanup(ctx, CleanupAuthorizationInput{MutationAuthorizationInput: MutationAuthorizationInput{Target: input.GetTarget(), Config: config, Inventory: inventory, MutationInventoryDigest: digest}, InstanceID: state.Ownership.InstanceID, ResourceID: state.LogicalResourceID, OwnershipDigest: digestDocument([]byte(state.Ownership.Token))})
+	if e != nil || grant.Evidence == "" || len(grant.Evidence) > 2048 {
+		return "", err
+	}
+	return grant.Evidence, nil
+}

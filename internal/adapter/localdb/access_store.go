@@ -15,7 +15,6 @@ import (
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"google.golang.org/protobuf/proto"
 )
@@ -82,9 +81,9 @@ func accessSessionMigrationStatements(integerType, blobType string) []string {
 	}
 }
 
-func (s *Store) BeginAccessSession(ctx context.Context, request controlplane.BeginAccessSessionRequest) (controlplane.AccessSessionRecord, error) {
+func (s *Store) BeginAccessSession(ctx context.Context, request application.BeginAccessSessionRequest) (application.AccessSessionRecord, error) {
 	if err := validateBeginAccessSession(request); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.beginAccessSession(ctx, request)
@@ -92,50 +91,50 @@ func (s *Store) BeginAccessSession(ctx context.Context, request controlplane.Beg
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.AccessSessionRecord{}, err
+			return application.AccessSessionRecord{}, err
 		}
 	}
 }
 
-func (s *Store) beginAccessSession(ctx context.Context, request controlplane.BeginAccessSessionRequest) (controlplane.AccessSessionRecord, error) {
+func (s *Store) beginAccessSession(ctx context.Context, request application.BeginAccessSessionRequest) (application.AccessSessionRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("begin access session: %w", err)
+		return application.AccessSessionRecord{}, fmt.Errorf("begin access session: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.lockIdempotency(ctx, tx, request.SubjectID, createAccessSessionRouteAction, request.IdempotencyKey); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.SubjectID, createAccessSessionRouteAction, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	} else if found {
 		record, err := s.getAccessSessionTx(ctx, tx, domain.AccessSessionID(existing), true)
 		if err != nil {
-			return controlplane.AccessSessionRecord{}, err
+			return application.AccessSessionRecord{}, err
 		}
 		record.Replay = true
 		return record, tx.Commit()
 	}
 	now, err := s.databaseNowTx(ctx, tx)
 	if err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	instance, stateDigest, err := s.loadAccessResourceTx(ctx, tx, request.InstanceID, request.ResourceID, true)
 	if err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if instance.Generation != request.ResourceGeneration || stateDigest != request.ProviderStateDigest || !accessResourceUsable(instance) {
-		return controlplane.AccessSessionRecord{}, controlplane.ErrAuthorityChanged
+		return application.AccessSessionRecord{}, application.ErrAuthorityChanged
 	}
 	if err := s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, request.SubjectID, now); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	duration := request.RequestedDuration
 	if duration == 0 {
-		duration = controlplane.DefaultAccessSessionDuration
+		duration = application.DefaultAccessSessionDuration
 	}
 	expiresAt := now.Add(duration)
-	maximum := now.Add(controlplane.MaximumAccessSessionDuration)
+	maximum := now.Add(application.MaximumAccessSessionDuration)
 	if !instance.ExpiresAt.IsZero() && instance.ExpiresAt.Before(maximum) {
 		maximum = instance.ExpiresAt
 	}
@@ -143,11 +142,11 @@ func (s *Store) beginAccessSession(ctx context.Context, request controlplane.Beg
 		expiresAt = maximum
 	}
 	if !expiresAt.After(now) {
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("access session expiry has elapsed")
+		return application.AccessSessionRecord{}, fmt.Errorf("access session expiry has elapsed")
 	}
 	var organizationID domain.OrganizationID
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), instance.ProjectID).Scan(&organizationID); err != nil {
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("load access session scope: %w", err)
+		return application.AccessSessionRecord{}, fmt.Errorf("load access session scope: %w", err)
 	}
 	var createdAt, updatedAt int64
 	err = tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_access_sessions
@@ -161,11 +160,11 @@ func (s *Store) beginAccessSession(ctx context.Context, request controlplane.Beg
 		request.ProviderStateDigest.Hex(), request.ResourceGeneration, expiresAt.UnixMicro()).Scan(&createdAt, &updatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return controlplane.AccessSessionRecord{}, controlplane.ErrAlreadyExists
+			return application.AccessSessionRecord{}, application.ErrAlreadyExists
 		}
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("persist pending access session: %w", err)
+		return application.AccessSessionRecord{}, fmt.Errorf("persist pending access session: %w", err)
 	}
-	record := controlplane.AccessSessionRecord{
+	record := application.AccessSessionRecord{
 		ID: request.ID, SubjectID: request.SubjectID, OrganizationID: organizationID, ProjectID: instance.ProjectID,
 		InstanceID: request.InstanceID, ResourceID: request.ResourceID, Method: request.Method, TargetID: instance.ProviderTargetID,
 		AccessPluginID: request.AccessPluginID, AccessPluginVersion: request.AccessPluginVersion,
@@ -175,28 +174,28 @@ func (s *Store) beginAccessSession(ctx context.Context, request controlplane.Beg
 		CreatedAt: time.UnixMicro(createdAt).UTC(), UpdatedAt: time.UnixMicro(updatedAt).UTC(),
 	}
 	if err := s.appendAccessGovernanceTx(ctx, tx, record, request.GovernanceRecordIDs, "access.session.create", "access-session.pending", application.AuditAccepted, ""); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if err := s.bindIdempotency(ctx, tx, request.SubjectID, createAccessSessionRouteAction, request.IdempotencyKey, request.RequestDigest, string(request.ID)); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("commit pending access session: %w", err)
+		return application.AccessSessionRecord{}, fmt.Errorf("commit pending access session: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) FinalizeAccessSession(ctx context.Context, request controlplane.FinalizeAccessSessionRequest) (controlplane.AccessSessionRecord, error) {
+func (s *Store) FinalizeAccessSession(ctx context.Context, request application.FinalizeAccessSessionRequest) (application.AccessSessionRecord, error) {
 	if err := validateFinalizeAccessSession(request); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
-	return s.mutateAccessSession(ctx, func(tx *sql.Tx) (controlplane.AccessSessionRecord, error) {
+	return s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		record, err := s.getAccessSessionTx(ctx, tx, request.ID, true)
 		if err != nil {
 			return record, err
 		}
 		if record.SubjectID != request.SubjectID || (record.State != domain.AccessSessionPending && record.State != domain.AccessSessionReady) || record.ProviderStateDigest != request.ProviderStateDigest {
-			return record, controlplane.ErrAuthorityChanged
+			return record, application.ErrAuthorityChanged
 		}
 		now, err := s.databaseNowTx(ctx, tx)
 		if err != nil {
@@ -204,12 +203,12 @@ func (s *Store) FinalizeAccessSession(ctx context.Context, request controlplane.
 		}
 		instance, stateDigest, err := s.loadAccessResourceTx(ctx, tx, record.InstanceID, record.ResourceID, true)
 		if err != nil || stateDigest != record.ProviderStateDigest || instance.Generation != record.ResourceGeneration || !accessResourceUsable(instance) {
-			return record, controlplane.ErrAuthorityChanged
+			return record, application.ErrAuthorityChanged
 		}
 		if err := s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, record.SubjectID, now); err != nil {
 			return record, err
 		}
-		if !request.ExpiresAt.After(now) || request.ExpiresAt.After(record.ExpiresAt) || !request.LaunchExpiresAt.After(now) || request.LaunchExpiresAt.After(request.ExpiresAt) || request.LaunchExpiresAt.After(now.Add(controlplane.DefaultAccessLaunchTTL)) {
+		if !request.ExpiresAt.After(now) || request.ExpiresAt.After(record.ExpiresAt) || !request.LaunchExpiresAt.After(now) || request.LaunchExpiresAt.After(request.ExpiresAt) || request.LaunchExpiresAt.After(now.Add(application.DefaultAccessLaunchTTL)) {
 			return record, fmt.Errorf("access session validity is invalid")
 		}
 		result, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_access_sessions SET
@@ -227,7 +226,7 @@ func (s *Store) FinalizeAccessSession(ctx context.Context, request controlplane.
 			return record, fmt.Errorf("finalize access session: %w", err)
 		}
 		if affected, _ := result.RowsAffected(); affected != 1 {
-			return record, controlplane.ErrVersionConflict
+			return record, application.ErrVersionConflict
 		}
 		record, err = s.getAccessSessionTx(ctx, tx, request.ID, false)
 		if err != nil {
@@ -240,21 +239,21 @@ func (s *Store) FinalizeAccessSession(ctx context.Context, request controlplane.
 	})
 }
 
-func (s *Store) FailAccessSession(ctx context.Context, request controlplane.FailAccessSessionRequest) (controlplane.AccessSessionRecord, error) {
+func (s *Store) FailAccessSession(ctx context.Context, request application.FailAccessSessionRequest) (application.AccessSessionRecord, error) {
 	if _, err := domain.NewAccessSessionID(string(request.ID)); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if _, err := domain.NewUserID(string(request.ActorID)); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if request.ClosureRequired && (!accessValuePattern.MatchString(request.AccessStateSchema) || request.AccessStateMajor == 0 || request.AccessStateDigest == "" || len(request.AccessState) == 0 || len(request.AccessState) > maximumAccessStateBytes) {
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("failed access cleanup state is invalid")
+		return application.AccessSessionRecord{}, fmt.Errorf("failed access cleanup state is invalid")
 	}
 	reason := safeAccessReason(request.Reason)
-	return s.mutateAccessSession(ctx, func(tx *sql.Tx) (controlplane.AccessSessionRecord, error) {
+	return s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		record, err := s.getAccessSessionTx(ctx, tx, request.ID, true)
 		if err != nil {
 			return record, err
@@ -283,19 +282,19 @@ func (s *Store) FailAccessSession(ctx context.Context, request controlplane.Fail
 	})
 }
 
-func (s *Store) GetAccessSession(ctx context.Context, id domain.AccessSessionID) (controlplane.AccessSessionRecord, error) {
+func (s *Store) GetAccessSession(ctx context.Context, id domain.AccessSessionID) (application.AccessSessionRecord, error) {
 	if _, err := domain.NewAccessSessionID(string(id)); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	return s.getAccessSession(ctx, s.db, id, false)
 }
 
-func (s *Store) ExchangeAccessToken(ctx context.Context, request controlplane.AccessExchangeRequest) (controlplane.AccessSessionRecord, bool, error) {
+func (s *Store) ExchangeAccessToken(ctx context.Context, request application.AccessExchangeRequest) (application.AccessSessionRecord, bool, error) {
 	if err := validateAccessExchange(request); err != nil {
-		return controlplane.AccessSessionRecord{}, false, err
+		return application.AccessSessionRecord{}, false, err
 	}
 	authorized := false
-	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (controlplane.AccessSessionRecord, error) {
+	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		current, err := s.getAccessSessionTx(ctx, tx, request.ID, true)
 		if err != nil {
 			return current, err
@@ -349,12 +348,12 @@ func (s *Store) ExchangeAccessToken(ctx context.Context, request controlplane.Ac
 	return record, authorized, err
 }
 
-func (s *Store) RecheckAccessLease(ctx context.Context, request controlplane.AccessLeaseRecheckRequest) (controlplane.AccessSessionRecord, bool, error) {
+func (s *Store) RecheckAccessLease(ctx context.Context, request application.AccessLeaseRecheckRequest) (application.AccessSessionRecord, bool, error) {
 	if err := validateAccessRecheck(request); err != nil {
-		return controlplane.AccessSessionRecord{}, false, err
+		return application.AccessSessionRecord{}, false, err
 	}
 	authorized := false
-	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (controlplane.AccessSessionRecord, error) {
+	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		current, err := s.getAccessSessionTx(ctx, tx, request.ID, true)
 		if err != nil {
 			return current, err
@@ -401,12 +400,12 @@ func (s *Store) RecheckAccessLease(ctx context.Context, request controlplane.Acc
 	return record, authorized, err
 }
 
-func (s *Store) EndAccessLease(ctx context.Context, request controlplane.EndAccessLeaseRequest) (controlplane.AccessSessionRecord, bool, error) {
+func (s *Store) EndAccessLease(ctx context.Context, request application.EndAccessLeaseRequest) (application.AccessSessionRecord, bool, error) {
 	if err := validateEndAccessLease(request); err != nil {
-		return controlplane.AccessSessionRecord{}, false, err
+		return application.AccessSessionRecord{}, false, err
 	}
 	ended := false
-	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (controlplane.AccessSessionRecord, error) {
+	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		current, err := s.getAccessSessionTx(ctx, tx, request.ID, true)
 		if err != nil {
 			return current, err
@@ -451,9 +450,9 @@ func (s *Store) EndAccessLease(ctx context.Context, request controlplane.EndAcce
 	return record, ended, err
 }
 
-func (s *Store) RevokeAccessSession(ctx context.Context, request controlplane.RevokeAccessSessionRequest) (controlplane.AccessSessionRecord, error) {
+func (s *Store) RevokeAccessSession(ctx context.Context, request application.RevokeAccessSessionRequest) (application.AccessSessionRecord, error) {
 	if err := validateRevokeAccessSession(request); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.revokeAccessSession(ctx, request)
@@ -461,22 +460,22 @@ func (s *Store) RevokeAccessSession(ctx context.Context, request controlplane.Re
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.AccessSessionRecord{}, err
+			return application.AccessSessionRecord{}, err
 		}
 	}
 }
 
-func (s *Store) revokeAccessSession(ctx context.Context, request controlplane.RevokeAccessSessionRequest) (controlplane.AccessSessionRecord, error) {
+func (s *Store) revokeAccessSession(ctx context.Context, request application.RevokeAccessSessionRequest) (application.AccessSessionRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.lockIdempotency(ctx, tx, request.ActorID, revokeAccessSessionRouteAction, request.IdempotencyKey); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.ActorID, revokeAccessSessionRouteAction, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.AccessSessionRecord{}, err
+		return application.AccessSessionRecord{}, err
 	} else if found {
 		record, err := s.getAccessSessionTx(ctx, tx, domain.AccessSessionID(existing), true)
 		record.Replay = err == nil
@@ -490,7 +489,7 @@ func (s *Store) revokeAccessSession(ctx context.Context, request controlplane.Re
 		return record, err
 	}
 	if record.ResourceVersion != request.ExpectedResourceVersion {
-		return record, controlplane.ErrVersionConflict
+		return record, application.ErrVersionConflict
 	}
 	now, err := s.databaseNowTx(ctx, tx)
 	if err != nil {
@@ -544,7 +543,7 @@ func (s *Store) MarkAccessClosureComplete(ctx context.Context, id domain.AccessS
 	return err
 }
 
-func (s *Store) ListAccessSessionsForReconciliation(ctx context.Context, limit uint32) ([]controlplane.AccessSessionRecord, error) {
+func (s *Store) ListAccessSessionsForReconciliation(ctx context.Context, limit uint32) ([]application.AccessSessionRecord, error) {
 	if limit == 0 || limit > 1000 {
 		return nil, fmt.Errorf("access reconciliation limit must be 1-1000")
 	}
@@ -568,10 +567,10 @@ func (s *Store) ListAccessSessionsForReconciliation(ctx context.Context, limit u
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	records := make([]controlplane.AccessSessionRecord, 0, len(ids))
+	records := make([]application.AccessSessionRecord, 0, len(ids))
 	for _, id := range ids {
 		record, err := s.GetAccessSession(ctx, id)
-		if errors.Is(err, controlplane.ErrNotFound) {
+		if errors.Is(err, application.ErrNotFound) {
 			continue
 		}
 		if err != nil {
@@ -582,15 +581,15 @@ func (s *Store) ListAccessSessionsForReconciliation(ctx context.Context, limit u
 	return records, nil
 }
 
-func (s *Store) ExpireAccessSession(ctx context.Context, id domain.AccessSessionID, ids controlplane.GovernanceRecordIDs) (controlplane.AccessSessionRecord, bool, error) {
+func (s *Store) ExpireAccessSession(ctx context.Context, id domain.AccessSessionID, ids application.GovernanceRecordIDs) (application.AccessSessionRecord, bool, error) {
 	if _, err := domain.NewAccessSessionID(string(id)); err != nil {
-		return controlplane.AccessSessionRecord{}, false, err
+		return application.AccessSessionRecord{}, false, err
 	}
 	if err := validateGovernanceRecordIDs(ids); err != nil {
-		return controlplane.AccessSessionRecord{}, false, err
+		return application.AccessSessionRecord{}, false, err
 	}
 	changed := false
-	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (controlplane.AccessSessionRecord, error) {
+	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		current, err := s.getAccessSessionTx(ctx, tx, id, true)
 		if err != nil {
 			return current, err
@@ -630,14 +629,14 @@ func (s *Store) ExpireAccessSession(ctx context.Context, id domain.AccessSession
 	return record, changed, err
 }
 
-func validateAccessExchange(request controlplane.AccessExchangeRequest) error {
+func validateAccessExchange(request application.AccessExchangeRequest) error {
 	if err := validateAccessCallbackRequest(request.ID, request.Identity, request.TokenHashes, request.NewLease, request.LeaseDuration); err != nil {
 		return err
 	}
 	return validateGovernanceRecordIDs(request.GovernanceRecordIDs)
 }
 
-func validateAccessRecheck(request controlplane.AccessLeaseRecheckRequest) error {
+func validateAccessRecheck(request application.AccessLeaseRecheckRequest) error {
 	if err := validateAccessCallbackRequest(request.ID, request.Identity, request.LeaseHashes, request.NewLease, request.LeaseDuration); err != nil {
 		return err
 	}
@@ -649,9 +648,9 @@ func validateAccessCallbackRequest(id domain.AccessSessionID, identity applicati
 		return err
 	}
 	if !accessValuePattern.MatchString(identity.PluginID) || !accessValuePattern.MatchString(identity.PluginInstanceID) ||
-		!accessValuePattern.MatchString(identity.Audience) || identity.ProtocolMajor != 1 || identity.ProtocolMinor < controlplane.AccessProtocolMinor ||
+		!accessValuePattern.MatchString(identity.Audience) || identity.ProtocolMajor != 1 || identity.ProtocolMinor < application.AccessProtocolMinor ||
 		len(hashes) == 0 || len(hashes) > 3 || !accessValuePattern.MatchString(next.KeyID) || len(next.Digest) != sha256.Size*2 ||
-		duration <= 0 || duration > controlplane.DefaultAccessLeaseDuration {
+		duration <= 0 || duration > application.DefaultAccessLeaseDuration {
 		return fmt.Errorf("access callback request is invalid")
 	}
 	for _, hash := range hashes {
@@ -662,12 +661,12 @@ func validateAccessCallbackRequest(id domain.AccessSessionID, identity applicati
 	return nil
 }
 
-func validateEndAccessLease(request controlplane.EndAccessLeaseRequest) error {
+func validateEndAccessLease(request application.EndAccessLeaseRequest) error {
 	if _, err := domain.NewAccessSessionID(string(request.ID)); err != nil {
 		return err
 	}
 	if !accessValuePattern.MatchString(request.Identity.PluginID) || !accessValuePattern.MatchString(request.Identity.PluginInstanceID) ||
-		!accessValuePattern.MatchString(request.Identity.Audience) || request.Identity.ProtocolMajor != 1 || request.Identity.ProtocolMinor < controlplane.AccessProtocolMinor ||
+		!accessValuePattern.MatchString(request.Identity.Audience) || request.Identity.ProtocolMajor != 1 || request.Identity.ProtocolMinor < application.AccessProtocolMinor ||
 		len(request.LeaseHashes) == 0 || len(request.LeaseHashes) > 3 {
 		return fmt.Errorf("access lease end request is invalid")
 	}
@@ -679,7 +678,7 @@ func validateEndAccessLease(request controlplane.EndAccessLeaseRequest) error {
 	return validateGovernanceRecordIDs(request.GovernanceRecordIDs)
 }
 
-func validateRevokeAccessSession(request controlplane.RevokeAccessSessionRequest) error {
+func validateRevokeAccessSession(request application.RevokeAccessSessionRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -695,14 +694,14 @@ func validateRevokeAccessSession(request controlplane.RevokeAccessSessionRequest
 	return validateTemplateIdempotency(request.IdempotencyKey, request.RequestDigest)
 }
 
-func accessCallbackMatches(record controlplane.AccessSessionRecord, identity application.AccessCallbackIdentity) bool {
+func accessCallbackMatches(record application.AccessSessionRecord, identity application.AccessCallbackIdentity) bool {
 	return record.AccessPluginID == identity.PluginID && record.AccessPluginInstance == identity.PluginInstanceID &&
-		record.Audience == identity.Audience && identity.ProtocolMajor == 1 && identity.ProtocolMinor >= controlplane.AccessProtocolMinor
+		record.Audience == identity.Audience && identity.ProtocolMajor == 1 && identity.ProtocolMinor >= application.AccessProtocolMinor
 }
 
-func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, record controlplane.AccessSessionRecord, now time.Time) (bool, error) {
+func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, record application.AccessSessionRecord, now time.Time) (bool, error) {
 	instance, digest, err := s.loadAccessResourceTx(ctx, tx, record.InstanceID, record.ResourceID, true)
-	if errors.Is(err, controlplane.ErrAuthorityChanged) || errors.Is(err, controlplane.ErrNotFound) {
+	if errors.Is(err, application.ErrAuthorityChanged) || errors.Is(err, application.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -712,7 +711,7 @@ func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, rec
 		return false, nil
 	}
 	if err := s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, record.SubjectID, now); err != nil {
-		if errors.Is(err, controlplane.ErrAuthorityChanged) {
+		if errors.Is(err, application.ErrAuthorityChanged) {
 			return false, nil
 		}
 		return false, err
@@ -720,7 +719,7 @@ func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, rec
 	return true, nil
 }
 
-func (s *Store) denyAccessTx(ctx context.Context, tx *sql.Tx, record *controlplane.AccessSessionRecord, state domain.AccessSessionState, closure bool) error {
+func (s *Store) denyAccessTx(ctx context.Context, tx *sql.Tx, record *application.AccessSessionRecord, state domain.AccessSessionState, closure bool) error {
 	if _, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_access_sessions SET state = ?,
 		launch_token_key_id = '', launch_token_hash = '', launch_expires_at_us = 0,
 		lease_key_id = '', lease_hash = '', lease_expires_at_us = 0, closure_required = ?,
@@ -735,11 +734,11 @@ func (s *Store) denyAccessTx(ctx context.Context, tx *sql.Tx, record *controlpla
 	return err
 }
 
-func (s *Store) mutateAccessSession(ctx context.Context, mutate func(*sql.Tx) (controlplane.AccessSessionRecord, error)) (controlplane.AccessSessionRecord, error) {
+func (s *Store) mutateAccessSession(ctx context.Context, mutate func(*sql.Tx) (application.AccessSessionRecord, error)) (application.AccessSessionRecord, error) {
 	for attempt := 0; ; attempt++ {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 		if err != nil {
-			return controlplane.AccessSessionRecord{}, err
+			return application.AccessSessionRecord{}, err
 		}
 		record, mutateErr := mutate(tx)
 		if mutateErr == nil {
@@ -751,12 +750,12 @@ func (s *Store) mutateAccessSession(ctx context.Context, mutate func(*sql.Tx) (c
 			return record, mutateErr
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.AccessSessionRecord{}, err
+			return application.AccessSessionRecord{}, err
 		}
 	}
 }
 
-func validateBeginAccessSession(request controlplane.BeginAccessSessionRequest) error {
+func validateBeginAccessSession(request application.BeginAccessSessionRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -783,13 +782,13 @@ func validateBeginAccessSession(request controlplane.BeginAccessSessionRequest) 
 	if request.ProviderStateDigest == "" || request.ResourceGeneration == 0 {
 		return fmt.Errorf("access resource binding is invalid")
 	}
-	if request.RequestedDuration < 0 || request.RequestedDuration > controlplane.MaximumAccessSessionDuration {
+	if request.RequestedDuration < 0 || request.RequestedDuration > application.MaximumAccessSessionDuration {
 		return fmt.Errorf("access session duration is invalid")
 	}
 	return validateTemplateIdempotency(request.IdempotencyKey, request.RequestDigest)
 }
 
-func validateFinalizeAccessSession(request controlplane.FinalizeAccessSessionRequest) error {
+func validateFinalizeAccessSession(request application.FinalizeAccessSessionRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -807,7 +806,7 @@ func validateFinalizeAccessSession(request controlplane.FinalizeAccessSessionReq
 	return nil
 }
 
-func accessResourceUsable(instance controlplane.InstanceRecord) bool {
+func accessResourceUsable(instance application.InstanceRecord) bool {
 	return (instance.DesiredLifecycle == domain.LifecycleRunning || instance.DesiredLifecycle == domain.LifecyclePaused) &&
 		(instance.Phase == domain.InstanceReady || instance.Phase == domain.InstancePaused)
 }
@@ -824,14 +823,14 @@ func safeAccessReason(reason string) string {
 	}
 }
 
-func (s *Store) loadAccessResourceTx(ctx context.Context, tx *sql.Tx, instanceID domain.InstanceID, resourceID domain.LogicalResourceID, lock bool) (controlplane.InstanceRecord, domain.SHA256Digest, error) {
+func (s *Store) loadAccessResourceTx(ctx context.Context, tx *sql.Tx, instanceID domain.InstanceID, resourceID domain.LogicalResourceID, lock bool) (application.InstanceRecord, domain.SHA256Digest, error) {
 	instanceQuery := instanceRecordSelect + ` WHERE instance_id = ?`
 	if lock && s.dialect == jobsdb.DialectPostgreSQL {
 		instanceQuery += ` FOR UPDATE`
 	}
 	instance, err := scanInstance(tx.QueryRowContext(ctx, s.bind(instanceQuery), instanceID))
 	if err != nil {
-		return controlplane.InstanceRecord{}, "", err
+		return application.InstanceRecord{}, "", err
 	}
 	resourceQuery := `SELECT kind, phase, provider_state FROM labcentral_local_resources WHERE instance_id = ? AND resource_id = ?`
 	if lock && s.dialect == jobsdb.DialectPostgreSQL {
@@ -841,16 +840,16 @@ func (s *Store) loadAccessResourceTx(ctx context.Context, tx *sql.Tx, instanceID
 	var providerState []byte
 	if err := tx.QueryRowContext(ctx, s.bind(resourceQuery), instanceID, resourceID).Scan(&kind, &phase, &providerState); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return controlplane.InstanceRecord{}, "", controlplane.ErrNotFound
+			return application.InstanceRecord{}, "", application.ErrNotFound
 		}
-		return controlplane.InstanceRecord{}, "", err
+		return application.InstanceRecord{}, "", err
 	}
 	if kind != string(domain.ResourceVM) || (phase != string(domain.ResourceReady) && phase != string(domain.ResourcePaused)) || len(providerState) == 0 {
-		return controlplane.InstanceRecord{}, "", controlplane.ErrAuthorityChanged
+		return application.InstanceRecord{}, "", application.ErrAuthorityChanged
 	}
 	state := &pluginv1.ProviderState{}
 	if err := proto.Unmarshal(providerState, state); err != nil || len(state.GetDigest()) != sha256.Size {
-		return controlplane.InstanceRecord{}, "", controlplane.ErrAuthorityChanged
+		return application.InstanceRecord{}, "", application.ErrAuthorityChanged
 	}
 	parsed, _ := domain.ParseSHA256Digest(hex.EncodeToString(state.GetDigest()))
 	return instance, parsed, nil
@@ -869,16 +868,16 @@ const accessSessionSelect = `SELECT access_session_id, subject_id, organization_
 	access_state_digest, access_state, closure_required, resource_version, created_at_us, updated_at_us
 	FROM labcentral_access_sessions`
 
-func (s *Store) getAccessSessionTx(ctx context.Context, tx *sql.Tx, id domain.AccessSessionID, lock bool) (controlplane.AccessSessionRecord, error) {
+func (s *Store) getAccessSessionTx(ctx context.Context, tx *sql.Tx, id domain.AccessSessionID, lock bool) (application.AccessSessionRecord, error) {
 	return s.getAccessSession(ctx, tx, id, lock)
 }
 
-func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQueryer, id domain.AccessSessionID, lock bool) (controlplane.AccessSessionRecord, error) {
+func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQueryer, id domain.AccessSessionID, lock bool) (application.AccessSessionRecord, error) {
 	query := accessSessionSelect + ` WHERE access_session_id = ?`
 	if lock && s.dialect == jobsdb.DialectPostgreSQL {
 		query += ` FOR UPDATE`
 	}
-	var record controlplane.AccessSessionRecord
+	var record application.AccessSessionRecord
 	var endpointDigest, providerDigest, accessStateDigest, state string
 	var endpointMajor, endpointMinor, generation, launchExpires, leaseExpires, lastAuthorized, expires, revokedAt int64
 	var accessStateMajor, accessStateMinor, closure, version, createdAt, updatedAt int64
@@ -892,7 +891,7 @@ func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQuery
 		&record.AccessState, &closure, &version, &createdAt, &updatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return record, controlplane.ErrNotFound
+		return record, application.ErrNotFound
 	}
 	if err != nil {
 		return record, err
@@ -921,7 +920,7 @@ func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQuery
 		record.AccessStateDigest, parseErr = domain.ParseSHA256Digest(accessStateDigest)
 	}
 	if parseErr != nil || record.ExpiresAt.IsZero() || record.ResourceVersion == 0 {
-		return controlplane.AccessSessionRecord{}, fmt.Errorf("stored access session is invalid")
+		return application.AccessSessionRecord{}, fmt.Errorf("stored access session is invalid")
 	}
 	return record, nil
 }
@@ -942,7 +941,7 @@ type accessGovernancePayload struct {
 	Reason    string                    `json:"reason,omitempty"`
 }
 
-func (s *Store) appendAccessGovernanceTx(ctx context.Context, tx *sql.Tx, record controlplane.AccessSessionRecord, ids controlplane.GovernanceRecordIDs, action, eventType string, outcome application.AuditOutcome, reason string) error {
+func (s *Store) appendAccessGovernanceTx(ctx context.Context, tx *sql.Tx, record application.AccessSessionRecord, ids application.GovernanceRecordIDs, action, eventType string, outcome application.AuditOutcome, reason string) error {
 	if err := validateGovernanceRecordIDs(ids); err != nil {
 		return err
 	}

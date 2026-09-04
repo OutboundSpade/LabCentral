@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
@@ -19,10 +18,18 @@ const maximumTargetEnvelopeBytes = 8 << 20
 
 var providerKindPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{0,63}$`)
 
+type TargetPolicy struct {
+	TrustedLaptop      bool     `json:"trustedLaptop,omitempty"`
+	MinimumMinor       uint32   `json:"minimumMinor,omitempty"`
+	RequiredFeatures   []string `json:"requiredFeatures,omitempty"`
+	NativeCapabilities []string `json:"nativeCapabilities,omitempty"`
+}
+
 type TargetBinding struct {
+	Policy             TargetPolicy
 	ID                 domain.ProviderTargetID
 	ProviderKind       string
-	Provider           pluginv1.ProviderServiceClient
+	Provider           application.Provider
 	ConfigEnvelope     []byte
 	CredentialRef      *domain.SecretRef
 	CredentialResolver application.SecretResolver
@@ -46,9 +53,10 @@ type RegisteredTarget struct {
 }
 
 type targetBinding struct {
+	policy             TargetPolicy
 	id                 domain.ProviderTargetID
 	providerKind       string
-	provider           pluginv1.ProviderServiceClient
+	provider           application.Provider
 	configEnvelope     []byte
 	configFingerprint  string
 	credentialRef      *domain.SecretRef
@@ -59,10 +67,11 @@ type targetBinding struct {
 }
 
 type TargetSession struct {
+	Policy        TargetPolicy
 	ID            domain.ProviderTargetID
 	ProviderKind  string
-	Provider      pluginv1.ProviderServiceClient
-	Context       *pluginv1.TargetContext
+	Provider      application.Provider
+	Context       application.ProviderTargetContext
 	ProtocolMajor uint32
 	ProtocolMinor uint32
 
@@ -100,6 +109,12 @@ func NewTargetRegistry(bindings []TargetBinding) (*TargetRegistry, error) {
 		if _, duplicate := registry.bindings[binding.ID]; duplicate {
 			return nil, fmt.Errorf("target %s is registered more than once", binding.ID)
 		}
+		if err := validateTargetPolicy(binding.Policy); err != nil {
+			return nil, err
+		}
+		if len(binding.Features) > 128 {
+			return nil, fmt.Errorf("too many target features")
+		}
 		features := make(map[string]bool, len(binding.Features))
 		for _, feature := range binding.Features {
 			if !providerKindPattern.MatchString(feature) || features[feature] {
@@ -109,7 +124,8 @@ func NewTargetRegistry(bindings []TargetBinding) (*TargetRegistry, error) {
 		}
 		digest := sha256.Sum256(binding.ConfigEnvelope)
 		stored := targetBinding{
-			id: binding.ID, providerKind: binding.ProviderKind, provider: binding.Provider,
+			policy: cloneTargetPolicy(binding.Policy),
+			id:     binding.ID, providerKind: binding.ProviderKind, provider: binding.Provider,
 			configEnvelope: append([]byte(nil), binding.ConfigEnvelope...), configFingerprint: "sha256:" + hex.EncodeToString(digest[:]),
 			credentialResolver: binding.CredentialResolver, protocolMajor: binding.ProtocolMajor, protocolMinor: binding.ProtocolMinor,
 			features: features,
@@ -123,9 +139,9 @@ func NewTargetRegistry(bindings []TargetBinding) (*TargetRegistry, error) {
 	return registry, nil
 }
 
-func NewDockerTargetRegistry(provider pluginv1.ProviderServiceClient) (*TargetRegistry, error) {
+func NewDockerTargetRegistry(provider application.Provider) (*TargetRegistry, error) {
 	return NewTargetRegistry([]TargetBinding{{
-		ID: LocalDockerTarget, ProviderKind: "docker", Provider: provider, ProtocolMajor: 1,
+		ID: LocalDockerTarget, Policy: TargetPolicy{TrustedLaptop: true}, ProviderKind: "docker", Provider: provider, ProtocolMajor: 1,
 	}})
 }
 
@@ -143,10 +159,14 @@ func (registry *TargetRegistry) AcquireForSubject(ctx context.Context, targetID 
 	if !exists {
 		return nil, fmt.Errorf("provider target %s is not registered", targetID)
 	}
+	if live, ok := binding.provider.(interface{ Available() bool }); ok && !live.Available() {
+		return nil, fmt.Errorf("provider target unavailable")
+	}
 	session := &TargetSession{
-		ID: binding.id, ProviderKind: binding.providerKind, Provider: binding.provider,
-		Context: &pluginv1.TargetContext{
-			TargetId: string(binding.id), ConfigEnvelope: append([]byte(nil), binding.configEnvelope...), ConfigFingerprint: binding.configFingerprint,
+		Policy: cloneTargetPolicy(binding.policy),
+		ID:     binding.id, ProviderKind: binding.providerKind, Provider: binding.provider,
+		Context: application.ProviderTargetContext{
+			ID: string(binding.id), Config: append([]byte(nil), binding.configEnvelope...), ConfigFingerprint: binding.configFingerprint,
 		},
 		ProtocolMajor: binding.protocolMajor, ProtocolMinor: binding.protocolMinor, features: binding.features,
 	}
@@ -173,7 +193,7 @@ func (registry *TargetRegistry) AcquireForSubject(ctx context.Context, targetID 
 		return nil, fmt.Errorf("provider target %s credential envelope is invalid", targetID)
 	}
 	session.secret = secret
-	session.Context.CredentialEnvelope = credential
+	session.Context.Credential = credential
 	return session, nil
 }
 
@@ -248,8 +268,8 @@ func (session *TargetSession) Close() {
 		return
 	}
 	session.once.Do(func() {
-		zeroBytes(session.Context.GetCredentialEnvelope())
-		session.Context.CredentialEnvelope = nil
+		zeroBytes(session.Context.Credential)
+		session.Context.Credential = nil
 		if session.secret != nil {
 			session.secret.Destroy()
 		}
@@ -260,4 +280,43 @@ func zeroBytes(value []byte) {
 	for index := range value {
 		value[index] = 0
 	}
+}
+
+func (registry *TargetRegistry) AvailableIDs() []domain.ProviderTargetID {
+	ids := registry.IDs()
+	result := make([]domain.ProviderTargetID, 0, len(ids))
+	for _, id := range ids {
+		registry.mu.RLock()
+		p := registry.bindings[id].provider
+		registry.mu.RUnlock()
+		if live, ok := p.(interface{ Available() bool }); ok && !live.Available() {
+			continue
+		}
+		result = append(result, id)
+	}
+	return result
+}
+
+func cloneTargetPolicy(p TargetPolicy) TargetPolicy {
+	p.RequiredFeatures = append([]string(nil), p.RequiredFeatures...)
+	p.NativeCapabilities = append([]string(nil), p.NativeCapabilities...)
+	return p
+}
+func validateTargetPolicy(p TargetPolicy) error {
+	if p.MinimumMinor > 1 {
+		return fmt.Errorf("unsupported target policy protocol")
+	}
+	for _, values := range [][]string{p.RequiredFeatures, p.NativeCapabilities} {
+		if len(values) > 128 {
+			return fmt.Errorf("target policy exceeds limit")
+		}
+		seen := map[string]bool{}
+		for _, v := range values {
+			if !providerKindPattern.MatchString(v) || seen[v] {
+				return fmt.Errorf("invalid target policy set")
+			}
+			seen[v] = true
+		}
+	}
+	return nil
 }

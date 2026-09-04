@@ -12,7 +12,6 @@ import (
 
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -31,18 +30,18 @@ var (
 	errTemplateRevisionNumberConflict = errors.New("Template Revision number conflict")
 )
 
-func (s *Store) CreateLabTemplate(ctx context.Context, request controlplane.CreateLabTemplateRequest) (controlplane.LabTemplateRecord, error) {
+func (s *Store) CreateLabTemplate(ctx context.Context, request application.CreateLabTemplateRequest) (application.LabTemplateRecord, error) {
 	if err := validateCreateLabTemplate(request); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.createLabTemplate(ctx, request)
 		if errors.Is(err, errTemplateCreateUniqueConflict) {
 			if attempt > 0 {
-				return controlplane.LabTemplateRecord{}, controlplane.ErrAlreadyExists
+				return application.LabTemplateRecord{}, application.ErrAlreadyExists
 			}
 			if err := waitTransactionRetry(ctx, attempt); err != nil {
-				return controlplane.LabTemplateRecord{}, err
+				return application.LabTemplateRecord{}, err
 			}
 			continue
 		}
@@ -50,33 +49,33 @@ func (s *Store) CreateLabTemplate(ctx context.Context, request controlplane.Crea
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.LabTemplateRecord{}, err
+			return application.LabTemplateRecord{}, err
 		}
 	}
 }
 
-func (s *Store) createLabTemplate(ctx context.Context, request controlplane.CreateLabTemplateRequest) (controlplane.LabTemplateRecord, error) {
+func (s *Store) createLabTemplate(ctx context.Context, request application.CreateLabTemplateRequest) (application.LabTemplateRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("begin Lab Template creation: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("begin Lab Template creation: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.lockIdempotency(ctx, tx, request.CreatedBy, createTemplateRouteAction, request.IdempotencyKey); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.CreatedBy, createTemplateRouteAction, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	} else if found {
 		record, err := scanLabTemplate(tx.QueryRowContext(ctx, s.bind(`SELECT template_id, project_id, name, description,
 			resource_version, created_by, created_at_us, updated_at_us
 			FROM labcentral_lab_templates WHERE template_id = ?`), existing))
 		if err != nil {
-			return controlplane.LabTemplateRecord{}, fmt.Errorf("load replayed Lab Template: %w", err)
+			return application.LabTemplateRecord{}, fmt.Errorf("load replayed Lab Template: %w", err)
 		}
 		return record, tx.Commit()
 	}
 	if err := s.requireTemplateActor(ctx, tx, request.ProjectID, request.CreatedBy); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	row := tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_lab_templates
 		(template_id, project_id, name, description, resource_version, created_by, created_at_us, updated_at_us)
@@ -86,29 +85,29 @@ func (s *Store) createLabTemplate(ctx context.Context, request controlplane.Crea
 	record, err := scanLabTemplate(row)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return controlplane.LabTemplateRecord{}, errTemplateCreateUniqueConflict
+			return application.LabTemplateRecord{}, errTemplateCreateUniqueConflict
 		}
 		if isForeignKeyViolation(err) {
-			return controlplane.LabTemplateRecord{}, controlplane.ErrNotFound
+			return application.LabTemplateRecord{}, application.ErrNotFound
 		}
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("create Lab Template: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("create Lab Template: %w", err)
 	}
 	if err := s.appendTemplateGovernance(ctx, tx, request.ProjectID, request.CreatedBy, request.ID, "", record.ResourceVersion,
 		request.GovernanceRecordIDs, "template.create", "lab-template.created"); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	if err := s.bindIdempotency(ctx, tx, request.CreatedBy, createTemplateRouteAction, request.IdempotencyKey, request.RequestDigest, string(record.ID)); err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("bind Lab Template idempotency: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("bind Lab Template idempotency: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("commit Lab Template creation: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("commit Lab Template creation: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) UpdateLabTemplate(ctx context.Context, request controlplane.UpdateLabTemplateRequest) (controlplane.LabTemplateRecord, error) {
+func (s *Store) UpdateLabTemplate(ctx context.Context, request application.UpdateLabTemplateRequest) (application.LabTemplateRecord, error) {
 	if err := validateUpdateLabTemplate(request); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.updateLabTemplate(ctx, request)
@@ -116,28 +115,28 @@ func (s *Store) UpdateLabTemplate(ctx context.Context, request controlplane.Upda
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.LabTemplateRecord{}, err
+			return application.LabTemplateRecord{}, err
 		}
 	}
 }
 
-func (s *Store) updateLabTemplate(ctx context.Context, request controlplane.UpdateLabTemplateRequest) (controlplane.LabTemplateRecord, error) {
+func (s *Store) updateLabTemplate(ctx context.Context, request application.UpdateLabTemplateRequest) (application.LabTemplateRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("begin Lab Template update: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("begin Lab Template update: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.lockIdempotency(ctx, tx, request.UpdatedBy, updateTemplateRouteAction, request.IdempotencyKey); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.UpdatedBy, updateTemplateRouteAction, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	} else if found {
 		record, err := scanLabTemplate(tx.QueryRowContext(ctx, s.bind(`SELECT template_id, project_id, name, description,
 			resource_version, created_by, created_at_us, updated_at_us
 			FROM labcentral_lab_templates WHERE template_id = ?`), existing))
 		if err != nil {
-			return controlplane.LabTemplateRecord{}, fmt.Errorf("load replayed Lab Template update: %w", err)
+			return application.LabTemplateRecord{}, fmt.Errorf("load replayed Lab Template update: %w", err)
 		}
 		return record, tx.Commit()
 	}
@@ -147,12 +146,12 @@ func (s *Store) updateLabTemplate(ctx context.Context, request controlplane.Upda
 	}
 	var projectID domain.ProjectID
 	if err := tx.QueryRowContext(ctx, s.bind(parentQuery), request.ID).Scan(&projectID); errors.Is(err, sql.ErrNoRows) {
-		return controlplane.LabTemplateRecord{}, controlplane.ErrNotFound
+		return application.LabTemplateRecord{}, application.ErrNotFound
 	} else if err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("lock Lab Template for update: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("lock Lab Template for update: %w", err)
 	}
 	if err := s.requireTemplateActor(ctx, tx, projectID, request.UpdatedBy); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	row := tx.QueryRowContext(ctx, s.bind(`UPDATE labcentral_lab_templates
 		SET name = ?, description = ?, resource_version = resource_version + 1, updated_at_us = `+s.nowMicros()+`
@@ -162,45 +161,45 @@ func (s *Store) updateLabTemplate(ctx context.Context, request controlplane.Upda
 	record, err := scanLabTemplate(row)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return controlplane.LabTemplateRecord{}, controlplane.ErrAlreadyExists
+			return application.LabTemplateRecord{}, application.ErrAlreadyExists
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return controlplane.LabTemplateRecord{}, controlplane.ErrVersionConflict
+			return application.LabTemplateRecord{}, application.ErrVersionConflict
 		}
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("update Lab Template: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("update Lab Template: %w", err)
 	}
 	if err := s.appendTemplateGovernance(ctx, tx, projectID, request.UpdatedBy, request.ID, "", record.ResourceVersion,
 		request.GovernanceRecordIDs, "template.update", "lab-template.updated"); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	if err := s.bindIdempotency(ctx, tx, request.UpdatedBy, updateTemplateRouteAction, request.IdempotencyKey, request.RequestDigest, string(record.ID)); err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("bind Lab Template update idempotency: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("bind Lab Template update idempotency: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("commit Lab Template update: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("commit Lab Template update: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) GetLabTemplate(ctx context.Context, id domain.TemplateID) (controlplane.LabTemplateRecord, error) {
+func (s *Store) GetLabTemplate(ctx context.Context, id domain.TemplateID) (application.LabTemplateRecord, error) {
 	if _, err := domain.NewTemplateID(string(id)); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	record, err := scanLabTemplate(s.db.QueryRowContext(ctx, s.bind(`SELECT template_id, project_id, name, description,
 		resource_version, created_by, created_at_us, updated_at_us
 		FROM labcentral_lab_templates WHERE template_id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return controlplane.LabTemplateRecord{}, controlplane.ErrNotFound
+		return application.LabTemplateRecord{}, application.ErrNotFound
 	}
 	if err != nil {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("get Lab Template: %w", err)
+		return application.LabTemplateRecord{}, fmt.Errorf("get Lab Template: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) ListLabTemplates(ctx context.Context, request controlplane.LabTemplateListRequest) (controlplane.LabTemplatePage, error) {
+func (s *Store) ListLabTemplates(ctx context.Context, request application.LabTemplateListRequest) (application.LabTemplatePage, error) {
 	if err := validateLabTemplateListRequest(request); err != nil {
-		return controlplane.LabTemplatePage{}, err
+		return application.LabTemplatePage{}, err
 	}
 	query := `SELECT template_id, project_id, name, description,
 		resource_version, created_by, created_at_us, updated_at_us
@@ -215,32 +214,32 @@ func (s *Store) ListLabTemplates(ctx context.Context, request controlplane.LabTe
 	arguments = append(arguments, uint64(request.Limit)+1)
 	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
-		return controlplane.LabTemplatePage{}, fmt.Errorf("list Lab Templates: %w", err)
+		return application.LabTemplatePage{}, fmt.Errorf("list Lab Templates: %w", err)
 	}
 	defer rows.Close()
-	records := make([]controlplane.LabTemplateRecord, 0, request.Limit+1)
+	records := make([]application.LabTemplateRecord, 0, request.Limit+1)
 	for rows.Next() {
 		record, scanErr := scanLabTemplate(rows)
 		if scanErr != nil {
-			return controlplane.LabTemplatePage{}, fmt.Errorf("scan Lab Template: %w", scanErr)
+			return application.LabTemplatePage{}, fmt.Errorf("scan Lab Template: %w", scanErr)
 		}
 		records = append(records, record)
 	}
 	if err := rows.Err(); err != nil {
-		return controlplane.LabTemplatePage{}, fmt.Errorf("list Lab Templates: %w", err)
+		return application.LabTemplatePage{}, fmt.Errorf("list Lab Templates: %w", err)
 	}
-	page := controlplane.LabTemplatePage{Records: records}
+	page := application.LabTemplatePage{Records: records}
 	if len(records) > int(request.Limit) {
 		page.Records = records[:request.Limit]
 		last := page.Records[len(page.Records)-1]
-		page.NextCursor = &controlplane.LabTemplateCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		page.NextCursor = &application.LabTemplateCursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
 	return page, nil
 }
 
-func (s *Store) PublishTemplateRevision(ctx context.Context, request controlplane.PublishTemplateRevisionRequest) (controlplane.TemplateRevisionRecord, error) {
+func (s *Store) PublishTemplateRevision(ctx context.Context, request application.PublishTemplateRevisionRequest) (application.TemplateRevisionRecord, error) {
 	if err := validatePublishTemplateRevision(request); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		return application.TemplateRevisionRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.publishTemplateRevision(ctx, request)
@@ -248,29 +247,29 @@ func (s *Store) PublishTemplateRevision(ctx context.Context, request controlplan
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.TemplateRevisionRecord{}, err
+			return application.TemplateRevisionRecord{}, err
 		}
 	}
 }
 
-func (s *Store) publishTemplateRevision(ctx context.Context, request controlplane.PublishTemplateRevisionRequest) (controlplane.TemplateRevisionRecord, error) {
+func (s *Store) publishTemplateRevision(ctx context.Context, request application.PublishTemplateRevisionRequest) (application.TemplateRevisionRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("begin Template Revision publication: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("begin Template Revision publication: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.lockIdempotency(ctx, tx, request.PublishedBy, publishRevisionRouteAction, request.IdempotencyKey); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		return application.TemplateRevisionRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.PublishedBy, publishRevisionRouteAction, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		return application.TemplateRevisionRecord{}, err
 	} else if found {
 		record, err := scanTemplateRevision(tx.QueryRowContext(ctx, s.bind(`SELECT revision_id, template_id, revision_number,
 			bundle_artifact_ref, bundle_digest, bundle_size_bytes, author_api_version, renderer_version, canonical_version,
-			canonical_digest, published_by, created_at_us
+			canonical_digest, representation_json, published_by, created_at_us
 			FROM labcentral_template_revisions WHERE revision_id = ?`), existing))
 		if err != nil {
-			return controlplane.TemplateRevisionRecord{}, fmt.Errorf("load replayed Template Revision: %w", err)
+			return application.TemplateRevisionRecord{}, fmt.Errorf("load replayed Template Revision: %w", err)
 		}
 		return record, tx.Commit()
 	}
@@ -280,76 +279,76 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request controlplan
 	}
 	var projectID string
 	if err := tx.QueryRowContext(ctx, s.bind(parentQuery), request.TemplateID).Scan(&projectID); errors.Is(err, sql.ErrNoRows) {
-		return controlplane.TemplateRevisionRecord{}, controlplane.ErrNotFound
+		return application.TemplateRevisionRecord{}, application.ErrNotFound
 	} else if err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("lock Lab Template for publication: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("lock Lab Template for publication: %w", err)
 	}
 	if err := s.requireTemplateActor(ctx, tx, domain.ProjectID(projectID), request.PublishedBy); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		return application.TemplateRevisionRecord{}, err
 	}
 	var revisionNumber int64
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT COALESCE(MAX(revision_number), 0) + 1
 		FROM labcentral_template_revisions WHERE template_id = ?`), request.TemplateID).Scan(&revisionNumber); err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("allocate Template Revision number: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("allocate Template Revision number: %w", err)
 	}
 	row := tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_template_revisions
 		(revision_id, template_id, revision_number, bundle_artifact_ref, bundle_digest, bundle_size_bytes,
-		 author_api_version, renderer_version, canonical_version, canonical_digest, published_by, created_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
+		 author_api_version, renderer_version, canonical_version, canonical_digest, representation_json, published_by, created_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
 		RETURNING revision_id, template_id, revision_number, bundle_artifact_ref, bundle_digest, bundle_size_bytes,
-		 author_api_version, renderer_version, canonical_version, canonical_digest, published_by, created_at_us`),
+		 author_api_version, renderer_version, canonical_version, canonical_digest, representation_json, published_by, created_at_us`),
 		request.ID, request.TemplateID, revisionNumber, request.BundleArtifact, request.BundleDigest.Hex(), request.BundleSizeBytes,
-		request.AuthorAPIVersion, request.RendererVersion, request.CanonicalVersion, request.CanonicalDigest.Hex(), request.PublishedBy)
+		request.AuthorAPIVersion, request.RendererVersion, request.CanonicalVersion, request.CanonicalDigest.Hex(), request.RepresentationJSON, request.PublishedBy)
 	record, err := scanTemplateRevision(row)
 	if err != nil {
 		if isUniqueViolation(err) {
 			if isTemplateRevisionNumberConflict(err) {
-				return controlplane.TemplateRevisionRecord{}, errTemplateRevisionNumberConflict
+				return application.TemplateRevisionRecord{}, errTemplateRevisionNumberConflict
 			}
-			return controlplane.TemplateRevisionRecord{}, controlplane.ErrAlreadyExists
+			return application.TemplateRevisionRecord{}, application.ErrAlreadyExists
 		}
 		if isForeignKeyViolation(err) {
-			return controlplane.TemplateRevisionRecord{}, controlplane.ErrNotFound
+			return application.TemplateRevisionRecord{}, application.ErrNotFound
 		}
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("publish Template Revision: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("publish Template Revision: %w", err)
 	}
 	if err := s.appendTemplateGovernance(ctx, tx, domain.ProjectID(projectID), request.PublishedBy, request.TemplateID, request.ID,
 		domain.ResourceVersion(record.RevisionNumber), request.GovernanceRecordIDs, "template.revision.publish", "template-revision.published"); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		return application.TemplateRevisionRecord{}, err
 	}
 	if err := s.bindIdempotency(ctx, tx, request.PublishedBy, publishRevisionRouteAction, request.IdempotencyKey, request.RequestDigest, string(record.ID)); err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("bind Template Revision idempotency: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("bind Template Revision idempotency: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("commit Template Revision publication: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("commit Template Revision publication: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) GetTemplateRevision(ctx context.Context, id domain.RevisionID) (controlplane.TemplateRevisionRecord, error) {
+func (s *Store) GetTemplateRevision(ctx context.Context, id domain.RevisionID) (application.TemplateRevisionRecord, error) {
 	if _, err := domain.NewRevisionID(string(id)); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		return application.TemplateRevisionRecord{}, err
 	}
 	record, err := scanTemplateRevision(s.db.QueryRowContext(ctx, s.bind(`SELECT revision_id, template_id, revision_number,
 		bundle_artifact_ref, bundle_digest, bundle_size_bytes, author_api_version, renderer_version, canonical_version,
-		canonical_digest, published_by, created_at_us
+		canonical_digest, representation_json, published_by, created_at_us
 		FROM labcentral_template_revisions WHERE revision_id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return controlplane.TemplateRevisionRecord{}, controlplane.ErrNotFound
+		return application.TemplateRevisionRecord{}, application.ErrNotFound
 	}
 	if err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("get Template Revision: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("get Template Revision: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) ListTemplateRevisions(ctx context.Context, request controlplane.TemplateRevisionListRequest) (controlplane.TemplateRevisionPage, error) {
+func (s *Store) ListTemplateRevisions(ctx context.Context, request application.TemplateRevisionListRequest) (application.TemplateRevisionPage, error) {
 	if err := validateTemplateRevisionListRequest(request); err != nil {
-		return controlplane.TemplateRevisionPage{}, err
+		return application.TemplateRevisionPage{}, err
 	}
 	query := `SELECT revision_id, template_id, revision_number,
 		bundle_artifact_ref, bundle_digest, bundle_size_bytes, author_api_version, renderer_version, canonical_version,
-		canonical_digest, published_by, created_at_us
+		canonical_digest, representation_json, published_by, created_at_us
 		FROM labcentral_template_revisions WHERE template_id = ?`
 	arguments := []any{request.TemplateID}
 	if request.After != nil {
@@ -360,30 +359,30 @@ func (s *Store) ListTemplateRevisions(ctx context.Context, request controlplane.
 	arguments = append(arguments, uint64(request.Limit)+1)
 	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
-		return controlplane.TemplateRevisionPage{}, fmt.Errorf("list Template Revisions: %w", err)
+		return application.TemplateRevisionPage{}, fmt.Errorf("list Template Revisions: %w", err)
 	}
 	defer rows.Close()
-	records := make([]controlplane.TemplateRevisionRecord, 0, request.Limit+1)
+	records := make([]application.TemplateRevisionRecord, 0, request.Limit+1)
 	for rows.Next() {
 		record, scanErr := scanTemplateRevision(rows)
 		if scanErr != nil {
-			return controlplane.TemplateRevisionPage{}, fmt.Errorf("scan Template Revision: %w", scanErr)
+			return application.TemplateRevisionPage{}, fmt.Errorf("scan Template Revision: %w", scanErr)
 		}
 		records = append(records, record)
 	}
 	if err := rows.Err(); err != nil {
-		return controlplane.TemplateRevisionPage{}, fmt.Errorf("list Template Revisions: %w", err)
+		return application.TemplateRevisionPage{}, fmt.Errorf("list Template Revisions: %w", err)
 	}
-	page := controlplane.TemplateRevisionPage{Records: records}
+	page := application.TemplateRevisionPage{Records: records}
 	if len(records) > int(request.Limit) {
 		page.Records = records[:request.Limit]
 		last := page.Records[len(page.Records)-1]
-		page.NextCursor = &controlplane.TemplateRevisionCursor{RevisionNumber: last.RevisionNumber, ID: last.ID}
+		page.NextCursor = &application.TemplateRevisionCursor{RevisionNumber: last.RevisionNumber, ID: last.ID}
 	}
 	return page, nil
 }
 
-func validateCreateLabTemplate(request controlplane.CreateLabTemplateRequest) error {
+func validateCreateLabTemplate(request application.CreateLabTemplateRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -402,12 +401,12 @@ func validateCreateLabTemplate(request controlplane.CreateLabTemplateRequest) er
 	return validateLabTemplateMetadata(request.Name, request.Description)
 }
 
-func validateLabTemplateListRequest(request controlplane.LabTemplateListRequest) error {
+func validateLabTemplateListRequest(request application.LabTemplateListRequest) error {
 	if _, err := domain.NewProjectID(string(request.ProjectID)); err != nil {
 		return err
 	}
-	if request.Limit == 0 || request.Limit > controlplane.MaximumTemplatePageSize {
-		return fmt.Errorf("Lab Template page limit must be 1-%d", controlplane.MaximumTemplatePageSize)
+	if request.Limit == 0 || request.Limit > application.MaximumTemplatePageSize {
+		return fmt.Errorf("Lab Template page limit must be 1-%d", application.MaximumTemplatePageSize)
 	}
 	if request.After != nil {
 		if request.After.CreatedAt.IsZero() || request.After.CreatedAt.UTC().UnixMicro() <= 0 {
@@ -420,7 +419,7 @@ func validateLabTemplateListRequest(request controlplane.LabTemplateListRequest)
 	return nil
 }
 
-func validateUpdateLabTemplate(request controlplane.UpdateLabTemplateRequest) error {
+func validateUpdateLabTemplate(request application.UpdateLabTemplateRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -449,7 +448,10 @@ func validateLabTemplateMetadata(name, description string) error {
 	return nil
 }
 
-func validatePublishTemplateRevision(request controlplane.PublishTemplateRevisionRequest) error {
+func validatePublishTemplateRevision(request application.PublishTemplateRevisionRequest) error {
+	if len(request.RepresentationJSON) > 8<<20 || request.RepresentationJSON != "" && !json.Valid([]byte(request.RepresentationJSON)) {
+		return fmt.Errorf("template representation is invalid")
+	}
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -494,12 +496,12 @@ func validatePublishTemplateRevision(request controlplane.PublishTemplateRevisio
 	return nil
 }
 
-func validateTemplateRevisionListRequest(request controlplane.TemplateRevisionListRequest) error {
+func validateTemplateRevisionListRequest(request application.TemplateRevisionListRequest) error {
 	if _, err := domain.NewTemplateID(string(request.TemplateID)); err != nil {
 		return err
 	}
-	if request.Limit == 0 || request.Limit > controlplane.MaximumTemplatePageSize {
-		return fmt.Errorf("Template Revision page limit must be 1-%d", controlplane.MaximumTemplatePageSize)
+	if request.Limit == 0 || request.Limit > application.MaximumTemplatePageSize {
+		return fmt.Errorf("Template Revision page limit must be 1-%d", application.MaximumTemplatePageSize)
 	}
 	if request.After != nil {
 		if request.After.RevisionNumber == 0 {
@@ -522,7 +524,7 @@ func validateTemplateIdempotency(key string, digest domain.SHA256Digest) error {
 	return nil
 }
 
-func validateGovernanceRecordIDs(ids controlplane.GovernanceRecordIDs) error {
+func validateGovernanceRecordIDs(ids application.GovernanceRecordIDs) error {
 	if ids.AuditID == "" || ids.EventID == "" {
 		return fmt.Errorf("governance audit and event IDs are required")
 	}
@@ -543,13 +545,13 @@ func (s *Store) appendTemplateGovernance(
 	templateID domain.TemplateID,
 	revisionID domain.RevisionID,
 	resourceVersion domain.ResourceVersion,
-	ids controlplane.GovernanceRecordIDs,
+	ids application.GovernanceRecordIDs,
 	action string,
 	eventType string,
 ) error {
 	var organizationID domain.OrganizationID
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), projectID).Scan(&organizationID); errors.Is(err, sql.ErrNoRows) {
-		return controlplane.ErrNotFound
+		return application.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("load Template governance scope: %w", err)
 	}
@@ -600,27 +602,27 @@ type templateActorQuerier interface {
 }
 
 func (s *Store) requireTemplateActor(ctx context.Context, querier templateActorQuerier, projectID domain.ProjectID, actorID domain.UserID) error {
-	if projectID == "project.local" && actorID == controlplane.LocalAdminID {
+	if projectID == "project.local" && actorID == application.LocalAdminID {
 		return nil
 	}
 	var exists int
 	if err := querier.QueryRowContext(ctx, s.bind(`SELECT 1 FROM labcentral_users WHERE user_id = ? AND disabled = 0`), actorID).Scan(&exists); errors.Is(err, sql.ErrNoRows) {
-		return controlplane.ErrNotFound
+		return application.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("validate Lab Template actor: %w", err)
 	}
 	return nil
 }
 
-func scanLabTemplate(row scanner) (controlplane.LabTemplateRecord, error) {
-	var record controlplane.LabTemplateRecord
+func scanLabTemplate(row scanner) (application.LabTemplateRecord, error) {
+	var record application.LabTemplateRecord
 	var templateID, projectID, createdBy string
 	var resourceVersion, createdAt, updatedAt int64
 	if err := row.Scan(&templateID, &projectID, &record.Name, &record.Description, &resourceVersion, &createdBy, &createdAt, &updatedAt); err != nil {
-		return controlplane.LabTemplateRecord{}, err
+		return application.LabTemplateRecord{}, err
 	}
 	if resourceVersion <= 0 || createdAt <= 0 || updatedAt <= 0 {
-		return controlplane.LabTemplateRecord{}, fmt.Errorf("Lab Template row contains invalid monotonic values")
+		return application.LabTemplateRecord{}, fmt.Errorf("Lab Template row contains invalid monotonic values")
 	}
 	record.ID = domain.TemplateID(templateID)
 	record.ProjectID = domain.ProjectID(projectID)
@@ -631,24 +633,24 @@ func scanLabTemplate(row scanner) (controlplane.LabTemplateRecord, error) {
 	return record, nil
 }
 
-func scanTemplateRevision(row scanner) (controlplane.TemplateRevisionRecord, error) {
-	var record controlplane.TemplateRevisionRecord
+func scanTemplateRevision(row scanner) (application.TemplateRevisionRecord, error) {
+	var record application.TemplateRevisionRecord
 	var revisionID, templateID, bundleArtifact, bundleDigest, canonicalDigest, publishedBy string
 	var revisionNumber, bundleSizeBytes, createdAt int64
 	if err := row.Scan(&revisionID, &templateID, &revisionNumber, &bundleArtifact, &bundleDigest, &bundleSizeBytes,
-		&record.AuthorAPIVersion, &record.RendererVersion, &record.CanonicalVersion, &canonicalDigest, &publishedBy, &createdAt); err != nil {
-		return controlplane.TemplateRevisionRecord{}, err
+		&record.AuthorAPIVersion, &record.RendererVersion, &record.CanonicalVersion, &canonicalDigest, &record.RepresentationJSON, &publishedBy, &createdAt); err != nil {
+		return application.TemplateRevisionRecord{}, err
 	}
 	if revisionNumber <= 0 || bundleSizeBytes <= 0 || createdAt <= 0 {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("Template Revision row contains invalid monotonic values")
+		return application.TemplateRevisionRecord{}, fmt.Errorf("Template Revision row contains invalid monotonic values")
 	}
 	parsedBundleDigest, err := domain.ParseSHA256Digest(bundleDigest)
 	if err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("decode Template Revision bundle digest: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("decode Template Revision bundle digest: %w", err)
 	}
 	parsedCanonicalDigest, err := domain.ParseSHA256Digest(canonicalDigest)
 	if err != nil {
-		return controlplane.TemplateRevisionRecord{}, fmt.Errorf("decode Template Revision canonical digest: %w", err)
+		return application.TemplateRevisionRecord{}, fmt.Errorf("decode Template Revision canonical digest: %w", err)
 	}
 	record.ID = domain.RevisionID(revisionID)
 	record.TemplateID = domain.TemplateID(templateID)

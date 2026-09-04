@@ -1,6 +1,28 @@
 formatVersion: 1
 lastUpdated: "2026-09-04"
 tasks:
+  - id: TASK-ARCH-001
+    title: Audit architecture against the multi-provider and third-party-plugin priority
+    status: complete
+    dependencies: [TASK-PROD-003]
+    relatedAdrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0005, ADR-0008, ADR-0009, ADR-0011, ADR-0012, ADR-0014]
+    relatedDocuments: [docs/design/architecture-audit-2026-09-04.md]
+    acceptanceCriteria:
+      - Review accepted decisions and actual runtime boundaries, separating observed constraints from proposed changes.
+      - Record prioritized simplifications, preserved invariants, validation limits, and the next concrete design action without reversing accepted ADRs.
+  - id: TASK-ARCH-002
+    title: Implement architecture simplification and external provider extensibility
+    status: complete
+    dependencies: [TASK-ARCH-001]
+    relatedAdrs: [ADR-0015, ADR-0016, ADR-0017]
+    relatedDocuments: [docs/design/architecture.md, docs/design/plugin-system.md, docs/design/domain-ports.md, docs/design/template-rendering.md, docs/operations/plugin-installation.md, docs/compatibility.md, design/contracts/architecture-conformance.yaml]
+    acceptanceCriteria:
+      - Install an independently built public-SDK provider with two targets without adding core provider registration code.
+      - Verify per-plugin recovery and application dependency boundaries while preserving durable invocation recovery and database transaction guarantees.
+      - Publish parameterized revisions, accept typed inputs, and reject unsupported renderer semantics without changing legacy revision identities.
+      - Verify scoped source provenance and separately signed cleanup authority; retain ordinary qualification and ownership checks.
+      - Generate frontend API contracts, consolidate current documentation, and pass regression checks before merging into main.
+      - Run this owner-approved simplification before resuming the remaining live qualification gates in TASK-PROD-004; do not mark those gates complete.
   - id: TASK-DESIGN-001
     title: Interpret and trace product requirements
     status: complete

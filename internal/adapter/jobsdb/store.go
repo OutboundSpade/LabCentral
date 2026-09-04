@@ -185,18 +185,43 @@ func (s *Store) Claim(ctx context.Context, leaseOwner string, leaseDuration time
 }
 
 func (s *Store) ClaimJob(ctx context.Context, leaseOwner string, leaseDuration time.Duration) (ClaimedJob, error) {
+	return s.claimJob(ctx, leaseOwner, leaseDuration, nil)
+}
+
+// ClaimJobForInstances restricts claiming without taking leases on unavailable targets.
+func (s *Store) ClaimJobForInstances(ctx context.Context, owner string, duration time.Duration, instances []string) (ClaimedJob, error) {
+	if len(instances) == 0 {
+		return ClaimedJob{}, ErrNoClaimableJob
+	}
+	if len(instances) > 1024 {
+		return ClaimedJob{}, fmt.Errorf("instance claim filter exceeds limit")
+	}
+	return s.claimJob(ctx, owner, duration, instances)
+}
+func (s *Store) claimJob(ctx context.Context, leaseOwner string, leaseDuration time.Duration, instances []string) (ClaimedJob, error) {
 	if leaseOwner == "" || leaseDuration <= 0 {
 		return ClaimedJob{}, fmt.Errorf("lease owner and positive duration are required")
 	}
 	leaseMicros := leaseDuration.Microseconds()
+	filter := ""
+	filterArgs := make([]any, 0, len(instances))
+	if instances != nil {
+		filter = " AND instance_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(instances)), ",") + ") "
+		for _, id := range instances {
+			filterArgs = append(filterArgs, id)
+		}
+	}
 	var row *sql.Row
 	if s.dialect == DialectPostgreSQL {
+		args := []any{CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning}
+		args = append(args, filterArgs...)
+		args = append(args, domain.OperationRunning, leaseOwner, leaseMicros)
 		row = s.db.QueryRowContext(ctx, s.bind(`WITH candidate AS (
 			SELECT id FROM labcentral_jobs
 			WHERE payload_version = ?
 			  AND available_at_us <= `+s.nowMicros()+`
 			  AND (state = ? OR (state = ? AND lease_until_us <= `+s.nowMicros()+`))
-			ORDER BY available_at_us, id
+			`+filter+` ORDER BY available_at_us, id
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
@@ -207,8 +232,10 @@ func (s *Store) ClaimJob(ctx context.Context, leaseOwner string, leaseDuration t
 		WHERE job.id = candidate.id
 		RETURNING job.operation_id, job.instance_id, job.state, job.desired_generation,
 			job.fencing_token, job.lease_until_us, job.attempt, job.recovery_required, job.payload`),
-			CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning, domain.OperationRunning, leaseOwner, leaseMicros)
+			args...)
 	} else {
+		args := []any{domain.OperationRunning, leaseOwner, leaseMicros, CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning}
+		args = append(args, filterArgs...)
 		row = s.db.QueryRowContext(ctx, s.bind(`UPDATE labcentral_jobs
 		SET state = ?, lease_owner = ?, lease_until_us = `+s.nowMicros()+` + ?,
 			fencing_token = fencing_token + 1, attempt = attempt + 1
@@ -217,12 +244,12 @@ func (s *Store) ClaimJob(ctx context.Context, leaseOwner string, leaseDuration t
 			WHERE payload_version = ?
 			  AND available_at_us <= `+s.nowMicros()+`
 			  AND (state = ? OR (state = ? AND lease_until_us <= `+s.nowMicros()+`))
-			ORDER BY available_at_us, id
+			`+filter+` ORDER BY available_at_us, id
 			LIMIT 1
 		)
 		RETURNING operation_id, instance_id, state, desired_generation,
 			fencing_token, lease_until_us, attempt, recovery_required, payload`),
-			domain.OperationRunning, leaseOwner, leaseMicros, CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning)
+			args...)
 	}
 	operation, recoveryRequired, payload, err := scanOperation(row)
 	if errors.Is(err, sql.ErrNoRows) {

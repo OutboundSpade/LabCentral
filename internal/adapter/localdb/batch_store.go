@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -44,9 +43,9 @@ func instanceBatchMigrationStatements(integerType string) []string {
 	}
 }
 
-func (s *Store) CreateInstanceBatch(ctx context.Context, request controlplane.CreateInstanceBatchRequest) (controlplane.InstanceBatchRecord, error) {
+func (s *Store) CreateInstanceBatch(ctx context.Context, request application.CreateInstanceBatchRequest) (application.InstanceBatchRecord, error) {
 	if err := validateCreateInstanceBatch(request); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.createInstanceBatch(ctx, request)
@@ -54,26 +53,26 @@ func (s *Store) CreateInstanceBatch(ctx context.Context, request controlplane.Cr
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.InstanceBatchRecord{}, err
+			return application.InstanceBatchRecord{}, err
 		}
 	}
 }
 
-func (s *Store) createInstanceBatch(ctx context.Context, request controlplane.CreateInstanceBatchRequest) (controlplane.InstanceBatchRecord, error) {
+func (s *Store) createInstanceBatch(ctx context.Context, request application.CreateInstanceBatchRequest) (application.InstanceBatchRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.InstanceBatchRecord{}, fmt.Errorf("begin instance batch creation: %w", err)
+		return application.InstanceBatchRecord{}, fmt.Errorf("begin instance batch creation: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if err := s.lockIdempotency(ctx, tx, request.CreatedBy, createInstanceBatchRouteAction, request.IdempotencyKey); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.CreatedBy, createInstanceBatchRouteAction, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	} else if found {
 		record, err := s.getInstanceBatchTx(ctx, tx, domain.InstanceBatchID(existing))
 		if err != nil {
-			return controlplane.InstanceBatchRecord{}, fmt.Errorf("load replayed instance batch: %w", err)
+			return application.InstanceBatchRecord{}, fmt.Errorf("load replayed instance batch: %w", err)
 		}
 		record.Replay = true
 		return record, tx.Commit()
@@ -81,19 +80,19 @@ func (s *Store) createInstanceBatch(ctx context.Context, request controlplane.Cr
 
 	now, err := s.databaseNowTx(ctx, tx)
 	if err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_instance_batches
 		(batch_id, revision_id, project_id, created_by, provider_target_id, item_count, created_at_us)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`), request.ID, request.RevisionID, request.ProjectID,
 		request.CreatedBy, request.TargetID, len(request.Instances), now.UnixMicro()); err != nil {
 		if isUniqueViolation(err) {
-			return controlplane.InstanceBatchRecord{}, controlplane.ErrAlreadyExists
+			return application.InstanceBatchRecord{}, application.ErrAlreadyExists
 		}
 		if isForeignKeyViolation(err) {
-			return controlplane.InstanceBatchRecord{}, controlplane.ErrNotFound
+			return application.InstanceBatchRecord{}, application.ErrNotFound
 		}
-		return controlplane.InstanceBatchRecord{}, fmt.Errorf("insert instance batch: %w", err)
+		return application.InstanceBatchRecord{}, fmt.Errorf("insert instance batch: %w", err)
 	}
 
 	// A deterministic owner order prevents two overlapping classroom batches
@@ -111,56 +110,56 @@ func (s *Store) createInstanceBatch(ctx context.Context, request controlplane.Cr
 	for _, index := range order {
 		instance := request.Instances[index]
 		if err := s.requireBatchCreateAuthorizationTx(ctx, tx, instance, now); err != nil {
-			return controlplane.InstanceBatchRecord{}, err
+			return application.InstanceBatchRecord{}, err
 		}
 		if err := s.insertInstanceTx(ctx, tx, instance); err != nil {
-			return controlplane.InstanceBatchRecord{}, err
+			return application.InstanceBatchRecord{}, err
 		}
 	}
 
-	items := make([]controlplane.InstanceBatchItem, 0, len(request.Instances))
+	items := make([]application.InstanceBatchItem, 0, len(request.Instances))
 	for index, instance := range request.Instances {
 		if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_instance_batch_items
 			(batch_id, ordinal, owner_kind, owner_id, instance_id, operation_id)
 			VALUES (?, ?, ?, ?, ?, ?)`), request.ID, index, instance.OwnerKind, instance.OwnerID,
 			instance.InstanceID, instance.OperationID); err != nil {
-			return controlplane.InstanceBatchRecord{}, fmt.Errorf("insert instance batch item: %w", err)
+			return application.InstanceBatchRecord{}, fmt.Errorf("insert instance batch item: %w", err)
 		}
-		items = append(items, controlplane.InstanceBatchItem{
+		items = append(items, application.InstanceBatchItem{
 			Ordinal: uint32(index), OwnerKind: instance.OwnerKind, OwnerID: instance.OwnerID,
 			InstanceID: instance.InstanceID, OperationID: instance.OperationID,
 		})
 	}
 	if err := s.appendInstanceBatchGovernanceTx(ctx, tx, request); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	if err := s.bindIdempotency(ctx, tx, request.CreatedBy, createInstanceBatchRouteAction, request.IdempotencyKey, request.RequestDigest, string(request.ID)); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return controlplane.InstanceBatchRecord{}, fmt.Errorf("commit instance batch creation: %w", err)
+		return application.InstanceBatchRecord{}, fmt.Errorf("commit instance batch creation: %w", err)
 	}
-	return controlplane.InstanceBatchRecord{
+	return application.InstanceBatchRecord{
 		ID: request.ID, RevisionID: request.RevisionID, ProjectID: request.ProjectID,
 		CreatedBy: request.CreatedBy, ProviderTargetID: request.TargetID, Items: items, CreatedAt: now,
 	}, nil
 }
 
-func (s *Store) GetInstanceBatch(ctx context.Context, id domain.InstanceBatchID) (controlplane.InstanceBatchRecord, error) {
+func (s *Store) GetInstanceBatch(ctx context.Context, id domain.InstanceBatchID) (application.InstanceBatchRecord, error) {
 	if _, err := domain.NewInstanceBatchID(string(id)); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	record, err := s.getInstanceBatch(ctx, s.db, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return controlplane.InstanceBatchRecord{}, controlplane.ErrNotFound
+		return application.InstanceBatchRecord{}, application.ErrNotFound
 	}
 	if err != nil {
-		return controlplane.InstanceBatchRecord{}, fmt.Errorf("get instance batch: %w", err)
+		return application.InstanceBatchRecord{}, fmt.Errorf("get instance batch: %w", err)
 	}
 	return record, nil
 }
 
-func (s *Store) getInstanceBatchTx(ctx context.Context, tx *sql.Tx, id domain.InstanceBatchID) (controlplane.InstanceBatchRecord, error) {
+func (s *Store) getInstanceBatchTx(ctx context.Context, tx *sql.Tx, id domain.InstanceBatchID) (application.InstanceBatchRecord, error) {
 	return s.getInstanceBatch(ctx, tx, id)
 }
 
@@ -169,8 +168,8 @@ type instanceBatchQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func (s *Store) getInstanceBatch(ctx context.Context, queryer instanceBatchQueryer, id domain.InstanceBatchID) (controlplane.InstanceBatchRecord, error) {
-	var record controlplane.InstanceBatchRecord
+func (s *Store) getInstanceBatch(ctx context.Context, queryer instanceBatchQueryer, id domain.InstanceBatchID) (application.InstanceBatchRecord, error) {
+	var record application.InstanceBatchRecord
 	var createdAt int64
 	var itemCount int
 	err := queryer.QueryRowContext(ctx, s.bind(`SELECT batch_id, revision_id, project_id, created_by,
@@ -179,30 +178,30 @@ func (s *Store) getInstanceBatch(ctx context.Context, queryer instanceBatchQuery
 		&record.ProviderTargetID, &itemCount, &createdAt,
 	)
 	if err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
-	if itemCount < 1 || itemCount > controlplane.MaximumInstanceBatchSize || createdAt <= 0 {
-		return controlplane.InstanceBatchRecord{}, fmt.Errorf("stored instance batch is invalid")
+	if itemCount < 1 || itemCount > application.MaximumInstanceBatchSize || createdAt <= 0 {
+		return application.InstanceBatchRecord{}, fmt.Errorf("stored instance batch is invalid")
 	}
 	rows, err := queryer.QueryContext(ctx, s.bind(`SELECT ordinal, owner_kind, owner_id, instance_id, operation_id
 		FROM labcentral_instance_batch_items WHERE batch_id = ? ORDER BY ordinal`), id)
 	if err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	defer rows.Close()
-	record.Items = make([]controlplane.InstanceBatchItem, 0, itemCount)
+	record.Items = make([]application.InstanceBatchItem, 0, itemCount)
 	for rows.Next() {
-		var item controlplane.InstanceBatchItem
+		var item application.InstanceBatchItem
 		if err := rows.Scan(&item.Ordinal, &item.OwnerKind, &item.OwnerID, &item.InstanceID, &item.OperationID); err != nil {
-			return controlplane.InstanceBatchRecord{}, err
+			return application.InstanceBatchRecord{}, err
 		}
 		record.Items = append(record.Items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return controlplane.InstanceBatchRecord{}, err
+		return application.InstanceBatchRecord{}, err
 	}
 	if len(record.Items) != itemCount {
-		return controlplane.InstanceBatchRecord{}, fmt.Errorf("stored instance batch item count is inconsistent")
+		return application.InstanceBatchRecord{}, fmt.Errorf("stored instance batch item count is inconsistent")
 	}
 	record.CreatedAt = time.UnixMicro(createdAt).UTC()
 	return record, nil
@@ -243,7 +242,7 @@ func (s *Store) InstanceBatchAccess(ctx context.Context, id domain.InstanceBatch
 	return access, nil
 }
 
-func validateCreateInstanceBatch(request controlplane.CreateInstanceBatchRequest) error {
+func validateCreateInstanceBatch(request application.CreateInstanceBatchRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -265,8 +264,8 @@ func validateCreateInstanceBatch(request controlplane.CreateInstanceBatchRequest
 	if err := validateTemplateIdempotency(request.IdempotencyKey, request.RequestDigest); err != nil {
 		return err
 	}
-	if len(request.Instances) < 1 || len(request.Instances) > controlplane.MaximumInstanceBatchSize {
-		return fmt.Errorf("instance batch must contain 1-%d items", controlplane.MaximumInstanceBatchSize)
+	if len(request.Instances) < 1 || len(request.Instances) > application.MaximumInstanceBatchSize {
+		return fmt.Errorf("instance batch must contain 1-%d items", application.MaximumInstanceBatchSize)
 	}
 	owners, instanceIDs, operationIDs := map[string]bool{}, map[domain.InstanceID]bool{}, map[domain.OperationID]bool{}
 	for _, instance := range request.Instances {
@@ -293,8 +292,8 @@ func validateCreateInstanceBatch(request controlplane.CreateInstanceBatchRequest
 	return nil
 }
 
-func (s *Store) requireBatchCreateAuthorizationTx(ctx context.Context, tx *sql.Tx, instance controlplane.CreateInstanceRequest, now time.Time) error {
-	if instance.ProjectID == "project.local" && instance.CreatedBy == controlplane.LocalAdminID {
+func (s *Store) requireBatchCreateAuthorizationTx(ctx context.Context, tx *sql.Tx, instance application.CreateInstanceRequest, now time.Time) error {
+	if instance.ProjectID == "project.local" && instance.CreatedBy == application.LocalAdminID {
 		return nil
 	}
 	nowMicros := now.UTC().UnixMicro()
@@ -348,7 +347,7 @@ func (s *Store) requireBatchCreateAuthorizationTx(ctx context.Context, tx *sql.T
 		return fmt.Errorf("recheck instance batch authority: %w", err)
 	}
 	if allowed != 1 {
-		return controlplane.ErrAuthorityChanged
+		return application.ErrAuthorityChanged
 	}
 	return nil
 }
@@ -360,7 +359,7 @@ type instanceBatchGovernancePayload struct {
 	InstanceCount  int                     `json:"instanceCount"`
 }
 
-func (s *Store) appendInstanceBatchGovernanceTx(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceBatchRequest) error {
+func (s *Store) appendInstanceBatchGovernanceTx(ctx context.Context, tx *sql.Tx, request application.CreateInstanceBatchRequest) error {
 	var organizationID domain.OrganizationID
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), request.ProjectID).Scan(&organizationID); err != nil {
 		return fmt.Errorf("load instance batch governance scope: %w", err)

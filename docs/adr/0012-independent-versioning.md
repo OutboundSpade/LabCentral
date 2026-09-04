@@ -1,9 +1,11 @@
 # ADR-0012: Independent compatibility domains
 
-- **Status:** Accepted
+- **Status:** Superseded
 - **Date:** 2026-09-02
 - **Supersedes:** None
-- **Superseded by:** None
+- **Superseded by:** ADR-0016
+
+This historical decision is superseded by ADR-0016. Consult the successor for current behavior; the original reasoning is retained below.
 
 ## Context and constraints
 

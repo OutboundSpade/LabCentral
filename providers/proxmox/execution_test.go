@@ -1226,3 +1226,44 @@ func countCalls(calls []string, prefix string) int {
 func cloneMutationInput(input *pluginv1.ResourceMutationInput) *pluginv1.ResourceMutationInput {
 	return proto.Clone(input).(*pluginv1.ResourceMutationInput)
 }
+
+type explicitCleanupAuthorizer struct{ calls int }
+
+func (*explicitCleanupAuthorizer) AuthorizeMutation(context.Context, MutationAuthorizationInput) (MutationAuthorization, error) {
+	return MutationAuthorization{}, errors.New("normal qualification expired")
+}
+func (a *explicitCleanupAuthorizer) AuthorizeCleanup(_ context.Context, in CleanupAuthorizationInput) (MutationAuthorization, error) {
+	a.calls++
+	if in.InstanceID == "" || in.ResourceID != "vm.lab" || in.OwnershipDigest == "" {
+		return MutationAuthorization{}, errors.New("wrong cleanup binding")
+	}
+	return MutationAuthorization{Evidence: "explicit reviewed cleanup fixture"}, nil
+}
+func TestCleanupFallbackOnlyDeletesPreviouslyOwnedResource(t *testing.T) {
+	fixture := newExecutionFixture(t)
+	applied := applyVMFixture(t, fixture)
+	if applied.GetError() != nil {
+		t.Fatal(applied.GetError())
+	}
+	a := &explicitCleanupAuthorizer{}
+	fixture.service.mutationAuthorizer = a
+	input := cloneMutationInput(fixture.vmInput)
+	input.Context = completeCall("cleanup-apply", "vm.lab", fixture.target.GetTargetId())
+	input.PriorState = applied.GetProviderState()
+	prepared, failure := fixture.service.prepareExecution(context.Background(), input, "apply")
+	if prepared != nil {
+		prepared.close()
+	}
+	if failure == nil || a.calls != 0 {
+		t.Fatal("cleanup authority used for apply")
+	}
+	input.Context = completeCall("cleanup-destroy", "vm.lab", fixture.target.GetTargetId())
+	stream := &destroyCapture{}
+	if err := fixture.service.DestroyResource(&pluginv1.DestroyResourceRequest{Input: input}, stream); err != nil {
+		t.Fatal(err)
+	}
+	result := stream.events[len(stream.events)-1].GetEvent().GetResult()
+	if result.GetError() != nil || fixture.fake.deleteCalls != 1 || a.calls != 1 {
+		t.Fatalf("cleanup result=%v deletes=%d authorizations=%d", result.GetError(), fixture.fake.deleteCalls, a.calls)
+	}
+}

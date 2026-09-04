@@ -18,7 +18,7 @@ cases:
     title: Sidecar IPC uses bounded group-only sockets and rollout tokens
     binding: internal/pluginhost/host_test.go#TestAttachUsesGroupRestrictedIPCAndProtectedTokenFile
     startupOrderBinding: internal/pluginhost/host_test.go#TestAttachAcceptsPluginStartedBeforeRegistrationSocket
-    healthBinding: cmd/labd/main_test.go#TestAttachedPluginMonitorRequiresConsecutiveFailures
+    healthBinding: internal/pluginhost/host_test.go#TestSupervisorRestartsOnePluginAndKeepsStableClient
     expect: {runtimeDirectoryMode: "0770", socketMode: "0660", tokenBytes: 32, directTokenEnvironment: false, crossPluginTokenMount: false}
   - id: TEST-PROD-TOPOLOGY-005
     title: Shared storage and Proxmox mutation journal have separate identities and process-safe coordination

@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/OutboundSpade/LabCentral/tools/internal/sourceidentity"
 )
 
 const (
@@ -103,7 +105,7 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	proxmoxSourceDigest, err := gitArchiveDigest(ctx)
+	proxmoxSourceDigest, err := providerSourceDigest(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -265,33 +267,39 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	for sourcePath, destination := range map[string]string{
-		"deploy/observability/prometheus-alerts.yaml":        "deploy/prometheus-alerts.yaml",
-		"deploy/kubernetes/config.example.yaml":              "deploy/kubernetes/config.example.yaml",
-		"deploy/kubernetes/disruption-budget.yaml":           "deploy/kubernetes/disruption-budget.yaml",
-		"deploy/kubernetes/kustomization.yaml":               "deploy/kubernetes/kustomization.yaml",
-		"deploy/kubernetes/namespace.yaml":                   "deploy/kubernetes/namespace.yaml",
-		"deploy/kubernetes/network-policies.yaml":            "deploy/kubernetes/network-policies.yaml",
-		"deploy/kubernetes/secrets.example.yaml":             "deploy/kubernetes/secrets.example.yaml",
-		"deploy/kubernetes/service-account.yaml":             "deploy/kubernetes/service-account.yaml",
-		"deploy/kubernetes/services.yaml":                    "deploy/kubernetes/services.yaml",
-		"deploy/kubernetes/shared-storage.yaml":              "deploy/kubernetes/shared-storage.yaml",
-		"deploy/kubernetes/statefulset.yaml":                 "deploy/kubernetes/statefulset.yaml",
-		"deploy/proxmox/labcentral.service":                  "deploy/labcentral.service",
-		"deploy/proxmox/labcentral-proxmox-provider.service": "deploy/labcentral-proxmox-provider.service",
-		"deploy/proxmox/labcentral-novnc.service":            "deploy/labcentral-novnc.service",
-		"deploy/proxmox/labcentral.sysusers":                 "deploy/labcentral.sysusers",
-		"deploy/proxmox/provider-network.example.conf":       "deploy/provider-network.example.conf",
-		"deploy/proxmox/environment.example":                 "deploy/environment.example",
-		"deploy/proxmox/proxmox-target.json.example":         "deploy/proxmox-target.json.example",
-		"deploy/proxmox/proxmox-credential.json.example":     "deploy/proxmox-credential.json.example",
-		"deploy/proxmox/proxmox-trust.json.example":          "deploy/proxmox-trust.json.example",
-		"docs/operations/proxmox-deployment.md":              "docs/proxmox-deployment.md",
-		"docs/operations/kubernetes-proxmox.md":              "docs/kubernetes-proxmox.md",
-		"docs/operations/observability.md":                   "docs/observability.md",
-		"docs/operations/postgresql-control-plane.md":        "docs/postgresql-control-plane.md",
-		"docs/operations/recovery.md":                        "docs/recovery.md",
-		"docs/operations/release-verification.md":            "docs/operations/release-verification.md",
-		"docs/compatibility.md":                              "docs/compatibility.md",
+		"deploy/observability/prometheus-alerts.yaml":           "deploy/prometheus-alerts.yaml",
+		"deploy/kubernetes/config.example.yaml":                 "deploy/kubernetes/config.example.yaml",
+		"deploy/kubernetes/disruption-budget.yaml":              "deploy/kubernetes/disruption-budget.yaml",
+		"deploy/kubernetes/kustomization.yaml":                  "deploy/kubernetes/kustomization.yaml",
+		"deploy/kubernetes/namespace.yaml":                      "deploy/kubernetes/namespace.yaml",
+		"deploy/kubernetes/network-policies.yaml":               "deploy/kubernetes/network-policies.yaml",
+		"deploy/kubernetes/secrets.example.yaml":                "deploy/kubernetes/secrets.example.yaml",
+		"deploy/kubernetes/service-account.yaml":                "deploy/kubernetes/service-account.yaml",
+		"deploy/kubernetes/services.yaml":                       "deploy/kubernetes/services.yaml",
+		"deploy/kubernetes/shared-storage.yaml":                 "deploy/kubernetes/shared-storage.yaml",
+		"deploy/kubernetes/statefulset.yaml":                    "deploy/kubernetes/statefulset.yaml",
+		"deploy/proxmox/labcentral.service":                     "deploy/labcentral.service",
+		"deploy/proxmox/labcentral-proxmox-provider.service":    "deploy/labcentral-proxmox-provider.service",
+		"deploy/proxmox/labcentral-novnc.service":               "deploy/labcentral-novnc.service",
+		"deploy/proxmox/labcentral.sysusers":                    "deploy/labcentral.sysusers",
+		"deploy/proxmox/provider-network.example.conf":          "deploy/provider-network.example.conf",
+		"deploy/proxmox/environment.example":                    "deploy/environment.example",
+		"deploy/proxmox/proxmox-target.json.example":            "deploy/proxmox-target.json.example",
+		"deploy/proxmox/proxmox-credential.json.example":        "deploy/proxmox-credential.json.example",
+		"deploy/proxmox/proxmox-trust.json.example":             "deploy/proxmox-trust.json.example",
+		"docs/operations/proxmox-deployment.md":                 "docs/operations/proxmox-deployment.md",
+		"docs/operations/kubernetes-proxmox.md":                 "docs/operations/kubernetes-proxmox.md",
+		"docs/operations/observability.md":                      "docs/operations/observability.md",
+		"docs/operations/postgresql-control-plane.md":           "docs/operations/postgresql-control-plane.md",
+		"docs/operations/recovery.md":                           "docs/operations/recovery.md",
+		"docs/operations/release-verification.md":               "docs/operations/release-verification.md",
+		"docs/compatibility.md":                                 "docs/compatibility.md",
+		"docs/operations/plugin-installation.md":                "docs/operations/plugin-installation.md",
+		"design/contracts/plugin-installation.schema.json":      "design/contracts/plugin-installation.schema.json",
+		"design/contracts/plugin-manifest.schema.json":          "design/contracts/plugin-manifest.schema.json",
+		"design/contracts/proxmox-cleanup-grant.schema.json":    "design/contracts/proxmox-cleanup-grant.schema.json",
+		"design/contracts/proxmox-cleanup-envelope.schema.json": "design/contracts/proxmox-cleanup-envelope.schema.json",
+		"examples/external-provider/README.md":                  "examples/external-provider/README.md",
 	} {
 		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
 			return err
@@ -521,7 +529,7 @@ instead isolate the official processes under three OS identities; archive
 checksums and signed exact-build qualification bind the installed files. The
 recovery utility creates and verifies signed age-encrypted PostgreSQL/shared
 state or native SQLite/provider-state recovery sets and performs offline,
-reference-aware filesystem artifact maintenance; follow docs/recovery.md.
+reference-aware filesystem artifact maintenance; follow docs/operations/recovery.md.
 
 For the local Docker example, run:
 
@@ -531,8 +539,8 @@ The Docker provider uses DOCKER_HOST, or the platform's default Docker Engine
 endpoint when it is unset. Access to a Docker socket is effectively host-level
 control. This command explicitly selects no authentication; LabCentral refuses non-loopback
 listeners by default, and is not a sandbox for hostile workloads. For Proxmox,
-follow docs/proxmox-deployment.md. For the two-replica Kubernetes topology,
-follow docs/kubernetes-proxmox.md and replace every fail-closed deployment
+follow docs/operations/proxmox-deployment.md. For the two-replica Kubernetes topology,
+follow docs/operations/kubernetes-proxmox.md and replace every fail-closed deployment
 placeholder. Production VM mutation remains closed unless
 signed exact-target evidence matches the installed provider build and fresh
 live target inventory.
@@ -557,13 +565,8 @@ func copyReleaseFile(source, destination string) error {
 	return writeFile(destination, contents, 0o644)
 }
 
-func gitArchiveDigest(ctx context.Context) (string, error) {
-	output, err := exec.CommandContext(ctx, "git", "archive", "--format=tar", "HEAD").Output()
-	if err != nil {
-		return "", fmt.Errorf("compute Proxmox source-tree digest: %w", err)
-	}
-	digest := sha256.Sum256(output)
-	return "sha256:" + hex.EncodeToString(digest[:]), nil
+func providerSourceDigest(ctx context.Context, cfg config) (string, error) {
+	return sourceidentity.DigestForBuild(ctx, ".", "./cmd/lab-provider-proxmox", cfg.goBinary, cfg.goos, cfg.goarch)
 }
 
 func inventory(root string) ([]subject, error) {

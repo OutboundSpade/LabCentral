@@ -9,10 +9,8 @@ import (
 	"strings"
 	"time"
 
-	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
-	"google.golang.org/protobuf/proto"
 )
 
 const providerInvocationTimeout = 10 * time.Minute
@@ -20,7 +18,7 @@ const providerInvocationTimeout = 10 * time.Minute
 var errProviderOutcomeUnknown = errors.New("provider outcome is unknown")
 
 type Worker struct {
-	store         Store
+	store         application.WorkerStore
 	targets       *TargetRegistry
 	ids           IDSource
 	owner         string
@@ -40,7 +38,7 @@ type WorkerOptions struct {
 	Authorizer    application.Authorizer
 }
 
-func NewWorker(store Store, provider pluginv1.ProviderServiceClient, ids IDSource, options WorkerOptions) (*Worker, error) {
+func NewWorker(store application.WorkerStore, provider application.Provider, ids IDSource, options WorkerOptions) (*Worker, error) {
 	registry, err := NewDockerTargetRegistry(provider)
 	if err != nil {
 		return nil, err
@@ -48,7 +46,7 @@ func NewWorker(store Store, provider pluginv1.ProviderServiceClient, ids IDSourc
 	return NewWorkerWithTargets(store, registry, ids, options)
 }
 
-func NewWorkerWithTargets(store Store, targets *TargetRegistry, ids IDSource, options WorkerOptions) (*Worker, error) {
+func NewWorkerWithTargets(store application.WorkerStore, targets *TargetRegistry, ids IDSource, options WorkerOptions) (*Worker, error) {
 	if store == nil || targets == nil || ids == nil {
 		return nil, fmt.Errorf("worker store, target registry, and ID source are required")
 	}
@@ -91,7 +89,7 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) RunOnce(ctx context.Context) error {
-	claim, err := w.store.Claim(ctx, w.owner, w.leaseDuration)
+	claim, err := w.store.ClaimTargets(ctx, w.owner, w.leaseDuration, w.targets.AvailableIDs())
 	if err != nil {
 		return err
 	}
@@ -253,18 +251,18 @@ func (w *Worker) apply(ctx context.Context, fence Fence, actorID domain.UserID, 
 	}
 	defer session.Close()
 	validationContext, cancel := context.WithTimeout(ctx, 15*time.Second)
-	validation, err := session.Provider.ValidateLab(validationContext, &pluginv1.ValidateLabRequest{
-		Context: &pluginv1.CallContext{RequestId: "worker-validate", OperationId: string(fence.OperationID), LabInstanceId: string(instance.ID), ProviderTargetId: string(instance.ProviderTargetID)},
-		Target:  session.Context, CanonicalLabJson: instance.CanonicalLabJSON,
-		ProviderOverrideJson: instance.ProviderOverrideJSON,
+	validation, err := session.Provider.Validate(validationContext, application.ProviderValidationRequest{
+		Call:   application.ProviderCall{RequestID: "worker-validate", OperationID: string(fence.OperationID), InstanceID: string(instance.ID), TargetID: string(instance.ProviderTargetID)},
+		Target: session.Context, Canonical: instance.CanonicalLabJSON,
+		Override: instance.ProviderOverrideJSON,
 	})
 	cancel()
 	if err != nil {
 		return fmt.Errorf("provider revalidation unavailable: %w", err)
 	}
-	if len(validation.GetErrors()) > 0 {
-		first := validation.GetErrors()[0]
-		return w.compensateAndFinalize(ctx, fence, actorID, instance, "", nil, fmt.Errorf("provider validation failed: %s", first.GetSafeMessage()))
+	if len(validation.Errors) > 0 {
+		first := validation.Errors[0]
+		return w.compensateAndFinalize(ctx, fence, actorID, instance, "", nil, fmt.Errorf("provider validation failed: %s", first.Message))
 	}
 	resources, err := w.store.ListResources(ctx, instance.ID)
 	if err != nil {
@@ -299,8 +297,8 @@ func (w *Worker) apply(ctx context.Context, fence Fence, actorID domain.UserID, 
 		if callErr != nil {
 			return callErr
 		}
-		if result.GetError() != nil {
-			return w.compensateAndFinalize(ctx, fence, actorID, instance, resource.ID, result, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
+		if result.Error != nil {
+			return w.compensateAndFinalize(ctx, fence, actorID, instance, resource.ID, result, fmt.Errorf("%s", result.Error.Message))
 		}
 		resources, err = w.store.ListResources(ctx, instance.ID)
 		if err != nil {
@@ -364,7 +362,7 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, actorID domain.UserID
 			leftovers = append(leftovers, string(resource.ID))
 			continue
 		}
-		if result.GetError() != nil {
+		if result.Error != nil {
 			leftovers = append(leftovers, string(resource.ID))
 		}
 	}
@@ -404,7 +402,7 @@ func prepareProviderInvocation(ctx context.Context, store invocationPreparer, re
 	return prepared, err
 }
 
-func (w *Worker) invoke(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, resource ResourceRecord, action string) (*pluginv1.ResourceResult, error) {
+func (w *Worker) invoke(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, resource ResourceRecord, action string) (*application.ProviderResult, error) {
 	if err := w.authorizeActor(ctx, actorID, action, instance); err != nil {
 		return nil, err
 	}
@@ -428,23 +426,16 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, actorID domain.UserID,
 		return nil, fmt.Errorf("acquire provider target for invocation: %w", err)
 	}
 	defer session.Close()
-	var priorState *pluginv1.ProviderState
-	if len(resource.ProviderState) > 0 {
-		priorState = &pluginv1.ProviderState{}
-		if err := proto.Unmarshal(resource.ProviderState, priorState); err != nil {
-			return nil, fmt.Errorf("decode persisted provider state for %s: %w", resource.ID, err)
-		}
-	}
-	input := &pluginv1.ResourceMutationInput{
-		Context: &pluginv1.CallContext{
-			RequestId: string(prepared.ID), OperationId: string(fence.OperationID), InvocationId: string(prepared.ID),
-			LabInstanceId: string(instance.ID), LogicalResourceId: string(resource.ID), ProviderTargetId: string(instance.ProviderTargetID),
-			IdempotencyKey: prepared.IdempotencyKey, DesiredGeneration: uint64(fence.Generation), FencingToken: uint64(fence.Token),
+	input := application.ProviderMutation{
+		Call: application.ProviderCall{
+			RequestID: string(prepared.ID), OperationID: string(fence.OperationID), InvocationID: string(prepared.ID),
+			InstanceID: string(instance.ID), ResourceID: string(resource.ID), TargetID: string(instance.ProviderTargetID),
+			IdempotencyKey: prepared.IdempotencyKey, Generation: uint64(fence.Generation), Fence: uint64(fence.Token),
 		},
-		Target: session.Context, CanonicalResourceJson: resource.CanonicalJSON,
-		ProviderPlan: resource.ProviderPlan, PriorState: priorState, OwnershipTokens: []string{resource.OwnershipToken},
+		Target: session.Context, Canonical: resource.CanonicalJSON,
+		Plan: resource.ProviderPlan, PriorState: resource.ProviderState, Ownership: []string{resource.OwnershipToken},
 	}
-	input.CommittedAllocations, err = w.resourceClaims(ctx, instance.ID, resource)
+	input.Allocations, err = w.resourceClaims(ctx, instance.ID, resource)
 	if err != nil {
 		return nil, err
 	}
@@ -454,44 +445,9 @@ func (w *Worker) invoke(ctx context.Context, fence Fence, actorID domain.UserID,
 	}
 	callContext, cancel := context.WithTimeout(ctx, providerInvocationTimeout)
 	defer cancel()
-	var result *pluginv1.ResourceResult
-	if action == "apply" {
-		stream, err := session.Provider.ApplyResource(callContext, &pluginv1.ApplyResourceRequest{Input: input})
-		if err != nil {
-			return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, err)
-		}
-		for {
-			message, receiveErr := stream.Recv()
-			if errors.Is(receiveErr, io.EOF) {
-				break
-			}
-			if receiveErr != nil {
-				return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, receiveErr)
-			}
-			if message.GetEvent().GetResult() != nil {
-				result = message.GetEvent().GetResult()
-			}
-		}
-	} else {
-		stream, err := session.Provider.DestroyResource(callContext, &pluginv1.DestroyResourceRequest{Input: input})
-		if err != nil {
-			return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, err)
-		}
-		for {
-			message, receiveErr := stream.Recv()
-			if errors.Is(receiveErr, io.EOF) {
-				break
-			}
-			if receiveErr != nil {
-				return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, receiveErr)
-			}
-			if message.GetEvent().GetResult() != nil {
-				result = message.GetEvent().GetResult()
-			}
-		}
-	}
-	if result == nil {
-		return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, fmt.Errorf("provider stream ended without a result"))
+	result, err := session.Provider.Invoke(callContext, action, input)
+	if err != nil {
+		return nil, w.saveUnknown(ctx, fence, prepared.ID, resource, action, err)
 	}
 	if err := w.persistProviderResult(ctx, fence, prepared.ID, resource, action, result); err != nil {
 		return nil, err
@@ -534,19 +490,15 @@ func (w *Worker) recoverInvocation(ctx context.Context, fence Fence, operation O
 	}
 	defer session.Close()
 	lookupContext, cancel := context.WithTimeout(ctx, providerInvocationTimeout)
-	response, err := session.Provider.GetInvocation(lookupContext, &pluginv1.GetInvocationRequest{
-		Context: &pluginv1.CallContext{
-			RequestId: string(invocation.ID) + ".recovery", OperationId: string(operation.ID), InvocationId: string(invocation.ID),
-			LabInstanceId: string(instance.ID), LogicalResourceId: string(resource.ID), ProviderTargetId: string(instance.ProviderTargetID),
-			IdempotencyKey: invocation.IdempotencyKey, DesiredGeneration: uint64(fence.Generation), FencingToken: uint64(fence.Token),
-		},
-		Target: session.Context, InvocationId: string(invocation.ID),
-	})
+	result, err := session.Provider.Lookup(lookupContext, application.ProviderCall{
+		RequestID: string(invocation.ID) + ".recovery", OperationID: string(operation.ID), InvocationID: string(invocation.ID),
+		InstanceID: string(instance.ID), ResourceID: string(resource.ID), TargetID: string(instance.ProviderTargetID),
+		IdempotencyKey: invocation.IdempotencyKey, Generation: uint64(fence.Generation), Fence: uint64(fence.Token),
+	}, session.Context, string(invocation.ID))
 	cancel()
 	if err != nil {
 		return fmt.Errorf("%w: GetInvocation for %s failed: %v", errProviderOutcomeUnknown, invocation.ID, err)
 	}
-	result := response.GetResult()
 	if invocationLookupUnresolved(result) {
 		return fmt.Errorf("%w: GetInvocation for %s did not return a durable terminal result", errProviderOutcomeUnknown, invocation.ID)
 	}
@@ -555,8 +507,8 @@ func (w *Worker) recoverInvocation(ctx context.Context, fence Fence, operation O
 	}
 	switch invocation.Action {
 	case "apply":
-		if result.GetError() != nil {
-			return w.compensateAndFinalize(ctx, fence, operation.ActorID, instance, resource.ID, result, fmt.Errorf("%s", result.GetError().GetSafeMessage()))
+		if result.Error != nil {
+			return w.compensateAndFinalize(ctx, fence, operation.ActorID, instance, resource.ID, result, fmt.Errorf("%s", result.Error.Message))
 		}
 		return w.apply(ctx, fence, operation.ActorID, instance)
 	case "destroy":
@@ -568,15 +520,15 @@ func (w *Worker) recoverInvocation(ctx context.Context, fence Fence, operation O
 	}
 }
 
-func invocationLookupUnresolved(result *pluginv1.ResourceResult) bool {
+func invocationLookupUnresolved(result *application.ProviderResult) bool {
 	if result == nil {
 		return true
 	}
-	providerError := result.GetError()
+	providerError := result.Error
 	if providerError == nil {
 		return false
 	}
-	switch providerError.GetCode() {
+	switch providerError.Code {
 	case "invocation_incomplete", "invocation_not_found", "journal_unavailable", "journal_corrupt",
 		"invalid_invocation_request", "invalid_target_config":
 		return true
@@ -585,7 +537,7 @@ func invocationLookupUnresolved(result *pluginv1.ResourceResult) bool {
 	}
 }
 
-func (w *Worker) persistProviderResult(ctx context.Context, fence Fence, invocationID domain.InvocationID, resource ResourceRecord, action string, result *pluginv1.ResourceResult) error {
+func (w *Worker) persistProviderResult(ctx context.Context, fence Fence, invocationID domain.InvocationID, resource ResourceRecord, action string, result *application.ProviderResult) error {
 	if result == nil {
 		return fmt.Errorf("provider result is required")
 	}
@@ -594,11 +546,8 @@ func (w *Worker) persistProviderResult(ctx context.Context, fence Fence, invocat
 		return err
 	}
 	providerState := resource.ProviderState
-	if result.GetProviderState() != nil {
-		providerState, err = proto.Marshal(result.GetProviderState())
-		if err != nil {
-			return err
-		}
+	if result.State != nil {
+		providerState = result.State
 	}
 	phase := domain.ResourceReady
 	invocationState := "succeeded"
@@ -606,18 +555,18 @@ func (w *Worker) persistProviderResult(ctx context.Context, fence Fence, invocat
 	if action != "apply" {
 		phase = domain.ResourceDestroyed
 	}
-	if result.GetError() != nil {
+	if result.Error != nil {
 		phase = domain.ResourceFailed
 		if action != "apply" {
 			phase = domain.ResourceCleanupFailed
 		}
 		invocationState = "failed"
-		errorCode = result.GetError().GetCode()
-		errorMessage = result.GetError().GetSafeMessage()
+		errorCode = result.Error.Code
+		errorMessage = result.Error.Message
 	}
 	if err := w.store.SaveResourceResult(ctx, ResourceResultUpdate{
 		Fence: fence, InvocationID: invocationID, ResourceID: resource.ID, InvocationState: invocationState,
-		Phase: phase, ProviderState: providerState, ObservedStateJSON: result.GetObservedStateJson(), ErrorCode: errorCode, ErrorMessage: errorMessage,
+		Phase: phase, ProviderState: providerState, ObservedStateJSON: result.Observation, ErrorCode: errorCode, ErrorMessage: errorMessage,
 	}); err != nil {
 		return err
 	}
@@ -627,13 +576,13 @@ func (w *Worker) persistProviderResult(ctx context.Context, fence Fence, invocat
 	return nil
 }
 
-func (w *Worker) resourceClaims(ctx context.Context, instanceID domain.InstanceID, resource ResourceRecord) ([]*pluginv1.AllocationClaim, error) {
+func (w *Worker) resourceClaims(ctx context.Context, instanceID domain.InstanceID, resource ResourceRecord) ([]application.AllocationKey, error) {
 	claims, err := w.store.ListClaims(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 	planDigest := rawDigest(resource.ProviderPlan)
-	result := make([]*pluginv1.AllocationClaim, 0)
+	result := make([]application.AllocationKey, 0)
 	for _, claim := range claims {
 		if claim.Binding.ResourceID != resource.ID || claim.State == application.AllocationReleased {
 			continue
@@ -641,12 +590,12 @@ func (w *Worker) resourceClaims(ctx context.Context, instanceID domain.InstanceI
 		if claim.Binding.InstanceID != instanceID || claim.Binding.PlanDigest != planDigest {
 			return nil, fmt.Errorf("allocation binding for %s does not match its persisted provider plan", resource.ID)
 		}
-		result = append(result, &pluginv1.AllocationClaim{Namespace: claim.Key.Namespace, Value: claim.Key.Value})
+		result = append(result, application.AllocationKey{Namespace: claim.Key.Namespace, Value: claim.Key.Value})
 	}
 	return result, nil
 }
 
-func (w *Worker) resourceDependencies(ctx context.Context, instanceID domain.InstanceID, resource ResourceRecord) ([]*pluginv1.ResourceDependency, error) {
+func (w *Worker) resourceDependencies(ctx context.Context, instanceID domain.InstanceID, resource ResourceRecord) ([]application.ProviderDependency, error) {
 	var canonical struct {
 		DependsOn []string `json:"dependsOn"`
 	}
@@ -664,40 +613,33 @@ func (w *Worker) resourceDependencies(ctx context.Context, instanceID domain.Ins
 	for _, candidate := range resources {
 		byID[candidate.ID] = candidate
 	}
-	result := make([]*pluginv1.ResourceDependency, 0, len(canonical.DependsOn))
+	result := make([]application.ProviderDependency, 0, len(canonical.DependsOn))
 	for _, value := range canonical.DependsOn {
 		dependencyID := domain.LogicalResourceID(value)
 		dependency, exists := byID[dependencyID]
 		if !exists {
 			return nil, fmt.Errorf("persisted dependency %s for %s is unavailable", dependencyID, resource.ID)
 		}
-		var state *pluginv1.ProviderState
-		if len(dependency.ProviderState) > 0 {
-			state = &pluginv1.ProviderState{}
-			if err := proto.Unmarshal(dependency.ProviderState, state); err != nil {
-				return nil, fmt.Errorf("decode dependency provider state for %s: %w", dependencyID, err)
-			}
-		}
 		claims, err := w.resourceClaims(ctx, instanceID, dependency)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, &pluginv1.ResourceDependency{
-			LogicalResourceId: string(dependencyID), ProviderPlan: append([]byte(nil), dependency.ProviderPlan...),
-			ProviderPlanDigest: rawDigest(dependency.ProviderPlan).Hex(), ProviderState: state,
-			ObservedStateJson: append([]byte(nil), dependency.ObservedStateJSON...), CommittedAllocations: claims,
+		result = append(result, application.ProviderDependency{
+			ResourceID: string(dependencyID), Plan: append([]byte(nil), dependency.ProviderPlan...),
+			PlanDigest: rawDigest(dependency.ProviderPlan).Hex(), State: dependency.ProviderState,
+			Observation: append([]byte(nil), dependency.ObservedStateJSON...), Allocations: claims,
 		})
 	}
 	return result, nil
 }
 
-func (w *Worker) transitionClaims(ctx context.Context, fence Fence, resource ResourceRecord, protocolClaims []*pluginv1.AllocationClaim, action string, result *pluginv1.ResourceResult) error {
+func (w *Worker) transitionClaims(ctx context.Context, fence Fence, resource ResourceRecord, protocolClaims []application.AllocationKey, action string, result *application.ProviderResult) error {
 	if len(protocolClaims) == 0 {
 		return nil
 	}
 	claims := make([]application.AllocationKey, 0, len(protocolClaims))
 	for _, claim := range protocolClaims {
-		claims = append(claims, application.AllocationKey{TargetID: "", Namespace: claim.GetNamespace(), Value: claim.GetValue()})
+		claims = append(claims, application.AllocationKey{TargetID: "", Namespace: claim.Namespace, Value: claim.Value})
 	}
 	stored, err := w.store.ListClaims(ctx, resource.InstanceID)
 	if err != nil {
@@ -720,16 +662,16 @@ func (w *Worker) transitionClaims(ctx context.Context, fence Fence, resource Res
 		Binding: application.AllocationBinding{InstanceID: resource.InstanceID, ResourceID: resource.ID, PlanDigest: rawDigest(resource.ProviderPlan)},
 		Claims:  claims, FencingToken: fence.Token,
 	}
-	if result.GetError() == nil {
+	if result.Error == nil {
 		if action == "apply" {
 			return nil
 		}
 		return w.store.ReleaseClaims(ctx, application.ReleaseAllocationClaimsRequest{MutateAllocationClaimsRequest: mutation, ProviderAbsenceConfirmed: true})
 	}
-	if action == "apply" && result.GetCompensationComplete() {
+	if action == "apply" && result.CompensationComplete {
 		return w.store.ReleaseClaims(ctx, application.ReleaseAllocationClaimsRequest{MutateAllocationClaimsRequest: mutation, ProviderAbsenceConfirmed: true})
 	}
-	if result.GetCompensationAttempted() {
+	if result.CompensationAttempted {
 		return w.store.OrphanClaims(ctx, mutation)
 	}
 	return w.store.RetainClaims(ctx, mutation)
@@ -799,7 +741,7 @@ func (w *Worker) saveUnknown(ctx context.Context, fence Fence, invocationID doma
 	return fmt.Errorf("%w for %s: %v", errProviderOutcomeUnknown, resource.ID, cause)
 }
 
-func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, failedResource domain.LogicalResourceID, failedResult *pluginv1.ResourceResult, cause error) error {
+func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, failedResource domain.LogicalResourceID, failedResult *application.ProviderResult, cause error) error {
 	resources, err := w.store.ListResources(ctx, instance.ID)
 	if err != nil {
 		return err
@@ -850,7 +792,7 @@ func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, actorID
 			leftovers = append(leftovers, string(resource.ID))
 			continue
 		}
-		if result.GetError() != nil {
+		if result.Error != nil {
 			leftovers = append(leftovers, string(resource.ID))
 		}
 	}
@@ -870,8 +812,8 @@ func (w *Worker) compensateAndFinalize(ctx context.Context, fence Fence, actorID
 	return w.finalize(ctx, fence, actorID, OperationApply, state, phase, message, errorCode, cause.Error(), nil)
 }
 
-func resultHasOwnedLeftovers(result *pluginv1.ResourceResult) bool {
-	if result == nil || result.GetError() == nil || result.GetCompensationComplete() {
+func resultHasOwnedLeftovers(result *application.ProviderResult) bool {
+	if result == nil || result.Error == nil || result.CompensationComplete {
 		return false
 	}
 	// Without an explicit complete-compensation assertion, absence is not

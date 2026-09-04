@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -77,14 +76,14 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_users`).Scan(&initialUsers); err != nil || initialUsers != 0 {
 		t.Fatalf("migration-created users = %d, %v", initialUsers, err)
 	}
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
-		GovernanceRecordIDs: governanceIDs("local-create"), ID: "template.local", ProjectID: "project.local", Name: "local-lab", CreatedBy: controlplane.LocalAdminID,
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
+		GovernanceRecordIDs: governanceIDs("local-create"), ID: "template.local", ProjectID: "project.local", Name: "local-lab", CreatedBy: application.LocalAdminID,
 		IdempotencyKey: "idem.local-create", RequestDigest: testRequestDigest("local-create"),
 	}); err != nil {
 		t.Fatalf("create no-auth local Lab Template: %v", err)
 	}
 	localRevision := testRevisionRequest("revision.local-one", "template.local", "local-bundle", "local-canonical")
-	localRevision.PublishedBy = controlplane.LocalAdminID
+	localRevision.PublishedBy = application.LocalAdminID
 	if _, err := store.PublishTemplateRevision(ctx, localRevision); err != nil {
 		t.Fatalf("publish no-auth local Template Revision: %v", err)
 	}
@@ -108,7 +107,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 		t.Fatal(err)
 	}
 
-	created, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	created, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("alpha-create"), ID: "template.alpha", ProjectID: "project.alpha", Name: "first-lab", Description: "First lab", CreatedBy: "user.author",
 		IdempotencyKey: "idem.alpha-create", RequestDigest: testRequestDigest("alpha-create"),
 	})
@@ -118,7 +117,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if created.ResourceVersion != 1 || created.CreatedAt.IsZero() || created.UpdatedAt.IsZero() || created.ProjectID != "project.alpha" {
 		t.Fatalf("created Lab Template = %#v", created)
 	}
-	replayedCreate, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	replayedCreate, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("alpha-create-replay"), ID: "template.alpha-replay", ProjectID: "project.alpha",
 		Name: "first-lab", Description: "First lab", CreatedBy: "user.author",
 		IdempotencyKey: "idem.alpha-create", RequestDigest: testRequestDigest("alpha-create"),
@@ -126,37 +125,37 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if err != nil || replayedCreate != created {
 		t.Fatalf("replayed Lab Template create = %#v, %v", replayedCreate, err)
 	}
-	if _, err := store.GetLabTemplate(ctx, "template.alpha-replay"); !errors.Is(err, controlplane.ErrNotFound) {
+	if _, err := store.GetLabTemplate(ctx, "template.alpha-replay"); !errors.Is(err, application.ErrNotFound) {
 		t.Fatalf("create replay persisted a second aggregate: %v", err)
 	}
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("alpha-create-conflict"), ID: "template.alpha-conflict", ProjectID: "project.alpha",
 		Name: "changed-lab", CreatedBy: "user.author", IdempotencyKey: "idem.alpha-create", RequestDigest: testRequestDigest("changed-create"),
 	}); err == nil {
 		t.Fatal("Lab Template create accepted an idempotency key with another request digest")
 	}
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("alpha-create"), ID: "template.audit-fault", ProjectID: "project.alpha",
 		Name: "audit-fault", CreatedBy: "user.author", IdempotencyKey: "idem.audit-fault", RequestDigest: testRequestDigest("audit-fault"),
 	}); err == nil {
 		t.Fatal("Template creation with duplicate audit/event IDs succeeded")
 	}
-	if _, err := store.GetLabTemplate(ctx, "template.audit-fault"); !errors.Is(err, controlplane.ErrNotFound) {
+	if _, err := store.GetLabTemplate(ctx, "template.audit-fault"); !errors.Is(err, application.ErrNotFound) {
 		t.Fatalf("failed Template governance transaction persisted aggregate: %v", err)
 	}
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("duplicate-create"), ID: "template.duplicate", ProjectID: "project.alpha", Name: "first-lab", CreatedBy: "user.author",
 		IdempotencyKey: "idem.duplicate-create", RequestDigest: testRequestDigest("duplicate-create"),
-	}); !errors.Is(err, controlplane.ErrAlreadyExists) {
+	}); !errors.Is(err, application.ErrAlreadyExists) {
 		t.Fatalf("same-project duplicate name returned %v", err)
 	}
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("beta-create"), ID: "template.beta", ProjectID: "project.beta", Name: "first-lab", CreatedBy: "user.author",
 		IdempotencyKey: "idem.beta-create", RequestDigest: testRequestDigest("beta-create"),
 	}); err != nil {
 		t.Fatalf("same name in another project: %v", err)
 	}
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("alpha-second"), ID: "template.alpha-second", ProjectID: "project.alpha", Name: "second-lab", CreatedBy: "user.author",
 		IdempotencyKey: "idem.alpha-second", RequestDigest: testRequestDigest("alpha-second"),
 	}); err != nil {
@@ -170,7 +169,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 		name := name
 		go func() {
 			<-start
-			_, updateErr := store.UpdateLabTemplate(ctx, controlplane.UpdateLabTemplateRequest{
+			_, updateErr := store.UpdateLabTemplate(ctx, application.UpdateLabTemplateRequest{
 				GovernanceRecordIDs: governanceIDs(fmt.Sprintf("alpha-update-%d", index)), ID: "template.alpha", UpdatedBy: "user.author",
 				Name: name, Description: "updated", ExpectedResourceVersion: 1,
 				IdempotencyKey: fmt.Sprintf("idem.alpha-update-%d", index), RequestDigest: testRequestDigest(fmt.Sprintf("alpha-update-%d", index)),
@@ -184,7 +183,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 		switch err := <-updates; {
 		case err == nil:
 			updateSuccesses++
-		case errors.Is(err, controlplane.ErrVersionConflict):
+		case errors.Is(err, application.ErrVersionConflict):
 			versionConflicts++
 		default:
 			t.Fatalf("concurrent Lab Template update: %v", err)
@@ -197,7 +196,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if err != nil || loaded.ResourceVersion != 2 || loaded.Description != "updated" {
 		t.Fatalf("loaded Lab Template = %#v, %v", loaded, err)
 	}
-	idempotentUpdate := controlplane.UpdateLabTemplateRequest{
+	idempotentUpdate := application.UpdateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("alpha-update-replayable"), ID: "template.alpha", UpdatedBy: "user.author",
 		Name: loaded.Name, Description: "replayable update", ExpectedResourceVersion: loaded.ResourceVersion,
 		IdempotencyKey: "idem.alpha-update-replayable", RequestDigest: testRequestDigest("alpha-update-replayable"),
@@ -219,22 +218,22 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if _, err := store.UpdateLabTemplate(ctx, conflictingUpdate); err == nil {
 		t.Fatal("Lab Template update accepted an idempotency key with another request digest")
 	}
-	firstTemplatePage, err := store.ListLabTemplates(ctx, controlplane.LabTemplateListRequest{ProjectID: "project.alpha", Limit: 1})
+	firstTemplatePage, err := store.ListLabTemplates(ctx, application.LabTemplateListRequest{ProjectID: "project.alpha", Limit: 1})
 	if err != nil || len(firstTemplatePage.Records) != 1 || firstTemplatePage.NextCursor == nil {
 		t.Fatalf("first project-scoped Lab Template page = %#v, %v", firstTemplatePage, err)
 	}
-	secondTemplatePage, err := store.ListLabTemplates(ctx, controlplane.LabTemplateListRequest{ProjectID: "project.alpha", After: firstTemplatePage.NextCursor, Limit: 1})
+	secondTemplatePage, err := store.ListLabTemplates(ctx, application.LabTemplateListRequest{ProjectID: "project.alpha", After: firstTemplatePage.NextCursor, Limit: 1})
 	if err != nil || len(secondTemplatePage.Records) != 1 || secondTemplatePage.NextCursor != nil || secondTemplatePage.Records[0].ID == firstTemplatePage.Records[0].ID {
 		t.Fatalf("second project-scoped Lab Template page = %#v, %v", secondTemplatePage, err)
 	}
 
-	concurrentCreates := []controlplane.CreateLabTemplateRequest{
+	concurrentCreates := []application.CreateLabTemplateRequest{
 		{GovernanceRecordIDs: governanceIDs("concurrent-create-a"), ID: "template.concurrent-a", ProjectID: "project.alpha", Name: "concurrent-lab", CreatedBy: "user.author", IdempotencyKey: "idem.concurrent-create", RequestDigest: testRequestDigest("concurrent-create")},
 		{GovernanceRecordIDs: governanceIDs("concurrent-create-b"), ID: "template.concurrent-b", ProjectID: "project.alpha", Name: "concurrent-lab", CreatedBy: "user.author", IdempotencyKey: "idem.concurrent-create", RequestDigest: testRequestDigest("concurrent-create")},
 	}
 	concurrentCreateStart := make(chan struct{})
 	concurrentCreateResults := make(chan struct {
-		record controlplane.LabTemplateRecord
+		record application.LabTemplateRecord
 		err    error
 	}, len(concurrentCreates))
 	for _, request := range concurrentCreates {
@@ -243,7 +242,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 			<-concurrentCreateStart
 			record, createErr := store.CreateLabTemplate(ctx, request)
 			concurrentCreateResults <- struct {
-				record controlplane.LabTemplateRecord
+				record application.LabTemplateRecord
 				err    error
 			}{record: record, err: createErr}
 		}()
@@ -262,13 +261,13 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 		}
 	}
 
-	revisionRequests := []controlplane.PublishTemplateRevisionRequest{
+	revisionRequests := []application.PublishTemplateRevisionRequest{
 		testRevisionRequest("revision.alpha-one", "template.alpha", "bundle-one", "canonical-one"),
 		testRevisionRequest("revision.alpha-two", "template.alpha", "bundle-two", "canonical-two"),
 	}
 	revisionStart := make(chan struct{})
 	revisions := make(chan struct {
-		record controlplane.TemplateRevisionRecord
+		record application.TemplateRevisionRecord
 		err    error
 	}, 2)
 	for _, request := range revisionRequests {
@@ -277,7 +276,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 			<-revisionStart
 			record, publishErr := store.PublishTemplateRevision(ctx, request)
 			revisions <- struct {
-				record controlplane.TemplateRevisionRecord
+				record application.TemplateRevisionRecord
 				err    error
 			}{record: record, err: publishErr}
 		}()
@@ -305,7 +304,7 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if err != nil || replayedRevision.ID != revisionRequests[0].ID {
 		t.Fatalf("replayed Template Revision publication = %#v, %v", replayedRevision, err)
 	}
-	if _, err := store.GetTemplateRevision(ctx, replayedRevisionRequest.ID); !errors.Is(err, controlplane.ErrNotFound) {
+	if _, err := store.GetTemplateRevision(ctx, replayedRevisionRequest.ID); !errors.Is(err, application.ErrNotFound) {
 		t.Fatalf("revision replay persisted a second immutable revision: %v", err)
 	}
 	conflictingRevisionRequest := replayedRevisionRequest
@@ -314,12 +313,12 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	if _, err := store.PublishTemplateRevision(ctx, conflictingRevisionRequest); err == nil {
 		t.Fatal("Template Revision publication accepted an idempotency key with another request digest")
 	}
-	firstRevisionPage, err := store.ListTemplateRevisions(ctx, controlplane.TemplateRevisionListRequest{TemplateID: "template.alpha", Limit: 1})
+	firstRevisionPage, err := store.ListTemplateRevisions(ctx, application.TemplateRevisionListRequest{TemplateID: "template.alpha", Limit: 1})
 	if err != nil || len(firstRevisionPage.Records) != 1 || firstRevisionPage.NextCursor == nil {
 		t.Fatalf("first Template Revision page = %#v, %v", firstRevisionPage, err)
 	}
-	secondRevisionPage, err := store.ListTemplateRevisions(ctx, controlplane.TemplateRevisionListRequest{TemplateID: "template.alpha", After: firstRevisionPage.NextCursor, Limit: 1})
-	listedRevisions := append(append([]controlplane.TemplateRevisionRecord(nil), firstRevisionPage.Records...), secondRevisionPage.Records...)
+	secondRevisionPage, err := store.ListTemplateRevisions(ctx, application.TemplateRevisionListRequest{TemplateID: "template.alpha", After: firstRevisionPage.NextCursor, Limit: 1})
+	listedRevisions := append(append([]application.TemplateRevisionRecord(nil), firstRevisionPage.Records...), secondRevisionPage.Records...)
 	if err != nil || secondRevisionPage.NextCursor != nil || len(listedRevisions) != 2 || listedRevisions[0].RevisionNumber != 1 || listedRevisions[1].RevisionNumber != 2 {
 		t.Fatalf("Template Revision list = %#v, %v", listedRevisions, err)
 	}
@@ -339,16 +338,16 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	concurrentRevisionB.GovernanceRecordIDs = governanceIDs("revision-concurrent-b")
 	concurrentRevisionStart := make(chan struct{})
 	concurrentRevisionResults := make(chan struct {
-		record controlplane.TemplateRevisionRecord
+		record application.TemplateRevisionRecord
 		err    error
 	}, 2)
-	for _, request := range []controlplane.PublishTemplateRevisionRequest{concurrentRevisionA, concurrentRevisionB} {
+	for _, request := range []application.PublishTemplateRevisionRequest{concurrentRevisionA, concurrentRevisionB} {
 		request := request
 		go func() {
 			<-concurrentRevisionStart
 			record, publishErr := store.PublishTemplateRevision(ctx, request)
 			concurrentRevisionResults <- struct {
-				record controlplane.TemplateRevisionRecord
+				record application.TemplateRevisionRecord
 				err    error
 			}{record: record, err: publishErr}
 		}()
@@ -393,11 +392,11 @@ func runTemplateGovernancePersistence(t *testing.T, store *Store) {
 	}
 }
 
-func testRevisionRequest(id domain.RevisionID, templateID domain.TemplateID, bundle, canonical string) controlplane.PublishTemplateRevisionRequest {
+func testRevisionRequest(id domain.RevisionID, templateID domain.TemplateID, bundle, canonical string) application.PublishTemplateRevisionRequest {
 	bundleSum := sha256.Sum256([]byte(bundle))
 	canonicalSum := sha256.Sum256([]byte(canonical))
 	bundleDigest := domain.SHA256Digest(fmt.Sprintf("%x", bundleSum))
-	return controlplane.PublishTemplateRevisionRequest{
+	return application.PublishTemplateRevisionRequest{
 		GovernanceRecordIDs: governanceIDs(string(id)), ID: id, TemplateID: templateID, BundleArtifact: domain.ArtifactRef(bundleDigest.String()), BundleDigest: bundleDigest,
 		BundleSizeBytes: uint64(len(bundle)), AuthorAPIVersion: "labcentral.io/v1alpha1", RendererVersion: "renderer/v1",
 		CanonicalVersion: "rfc8785/v1", CanonicalDigest: domain.SHA256Digest(fmt.Sprintf("%x", canonicalSum)), PublishedBy: "user.author",
@@ -410,20 +409,20 @@ func testRequestDigest(value string) domain.SHA256Digest {
 	return domain.SHA256Digest(fmt.Sprintf("%x", digest))
 }
 
-func governanceIDs(suffix string) controlplane.GovernanceRecordIDs {
-	return controlplane.GovernanceRecordIDs{AuditID: "audit." + suffix, EventID: "event." + suffix}
+func governanceIDs(suffix string) application.GovernanceRecordIDs {
+	return application.GovernanceRecordIDs{AuditID: "audit." + suffix, EventID: "event." + suffix}
 }
 
 func createRevisionBoundTestInstance(store *Store, instanceID string, projectID domain.ProjectID, revisionID domain.RevisionID) error {
 	plan := []byte(`{"planned":true}`)
 	canonical := []byte(`{"apiVersion":"labcentral.io/v1alpha1"}`)
 	planSum, canonicalSum, requestSum := sha256.Sum256(plan), sha256.Sum256(canonical), sha256.Sum256([]byte(instanceID))
-	_, err := store.CreateInstance(context.Background(), controlplane.CreateInstanceRequest{
+	_, err := store.CreateInstance(context.Background(), application.CreateInstanceRequest{
 		InstanceID: domain.InstanceID(instanceID), RevisionID: revisionID, ProjectID: projectID,
 		OwnerKind: application.OwnerUser, OwnerID: "user.author", CreatedBy: "user.author", ProviderTargetID: "target.alpha",
 		OperationID: domain.OperationID("operation." + instanceID), CanonicalDigest: domain.SHA256Digest(fmt.Sprintf("%x", canonicalSum)),
 		CanonicalJSON: canonical, SourceYAML: []byte("apiVersion: labcentral.io/v1alpha1\n"),
-		Resources: []controlplane.ResourceSeed{{
+		Resources: []application.ResourceSeed{{
 			ID: "container.test", Kind: domain.ResourceContainer, CanonicalJSON: []byte(`{"kind":"Container"}`),
 			ProviderPlan: plan, ProviderPlanDigest: domain.SHA256Digest(fmt.Sprintf("%x", planSum)), OwnershipToken: "ownership." + instanceID,
 		}},

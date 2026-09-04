@@ -17,14 +17,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	httpapi "github.com/OutboundSpade/LabCentral/api/http"
-	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
-	"github.com/OutboundSpade/LabCentral/internal/pluginhost"
 	proxmoxprovider "github.com/OutboundSpade/LabCentral/providers/proxmox"
-	"google.golang.org/grpc"
 )
 
 func TestDeploymentModeStorageContract(t *testing.T) {
@@ -134,34 +130,6 @@ func TestExternalPluginModeIsExplicitAndExclusive(t *testing.T) {
 	if err := validateConfig(accessWithoutProvider); err == nil || !strings.Contains(err.Error(), "browser console access") {
 		t.Fatalf("external access plugin without Proxmox/authentication error = %v", err)
 	}
-}
-
-func TestAttachedPluginMonitorRequiresConsecutiveFailures(t *testing.T) {
-	runtimeClient := &sequencedRuntimeClient{healthy: []bool{false, true, false, false}}
-	client := &pluginhost.Client{Runtime: runtimeClient}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	if err := waitForAttachedPluginFailure(ctx, client, time.Millisecond, 2); err == nil || !strings.Contains(err.Error(), "2 consecutive") {
-		t.Fatalf("attached plugin monitor error = %v", err)
-	}
-	if calls := runtimeClient.calls.Load(); calls != 4 {
-		t.Fatalf("health calls = %d, want 4", calls)
-	}
-}
-
-type sequencedRuntimeClient struct {
-	healthy []bool
-	calls   atomic.Int32
-}
-
-func (client *sequencedRuntimeClient) Health(context.Context, *pluginv1.HealthRequest, ...grpc.CallOption) (*pluginv1.HealthResponse, error) {
-	call := int(client.calls.Add(1)) - 1
-	healthy := call < len(client.healthy) && client.healthy[call]
-	status := pluginv1.HealthResponse_STATUS_UNHEALTHY
-	if healthy {
-		status = pluginv1.HealthResponse_STATUS_HEALTHY
-	}
-	return &pluginv1.HealthResponse{Status: status}, nil
 }
 
 func TestPluginRegistrationTokenFileAllowsOnlyOwnerOrReadOnlyGroup(t *testing.T) {

@@ -55,7 +55,7 @@ func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	if !strings.Contains(readme, "three OS identities") {
 		t.Fatal("release instructions omit the native identity boundary")
 	}
-	if !strings.Contains(readme, "labcentral-recovery") || !strings.Contains(readme, "reference-aware filesystem artifact maintenance") || !strings.Contains(readme, "docs/recovery.md") {
+	if !strings.Contains(readme, "labcentral-recovery") || !strings.Contains(readme, "reference-aware filesystem artifact maintenance") || !strings.Contains(readme, "docs/operations/recovery.md") {
 		t.Fatal("release instructions omit the encrypted recovery utility")
 	}
 	if !strings.Contains(readme, "docs/operations/release-verification.md") || !strings.Contains(readme, "external Sigstore bundle") {

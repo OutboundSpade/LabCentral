@@ -11,7 +11,6 @@ import (
 
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -43,7 +42,7 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 	t.Helper()
 	ctx := context.Background()
 	setupQuotaTestTenancy(t, store)
-	if _, err := store.CreateLabTemplate(ctx, controlplane.CreateLabTemplateRequest{
+	if _, err := store.CreateLabTemplate(ctx, application.CreateLabTemplateRequest{
 		GovernanceRecordIDs: governanceIDs("batch-template"), ID: "template.batch", ProjectID: "project.alpha",
 		Name: "batch-lab", CreatedBy: "user.quota", IdempotencyKey: "idem.batch-template",
 		RequestDigest: testRequestDigest("batch-template"),
@@ -57,7 +56,7 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 	if _, err := store.PublishTemplateRevision(ctx, revisionRequest); err != nil {
 		t.Fatal(err)
 	}
-	for index := 0; index < controlplane.MaximumInstanceBatchSize; index++ {
+	for index := 0; index < application.MaximumInstanceBatchSize; index++ {
 		if err := store.PutTeam(ctx, application.TeamRecord{
 			ID: domain.TeamID(fmt.Sprintf("team.batch-%03d", index)), OrganizationID: "org.quota",
 			Name: fmt.Sprintf("batch-team-%03d", index),
@@ -67,8 +66,8 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 	}
 
 	scope := quotaTestProjectScope("project.alpha")
-	limit := putQuotaTestLimit(t, store, scope, controlplane.MaximumInstanceBatchSize-1, 0, "batch-limit-99")
-	request := batchTestRequest("batch.atomic", controlplane.MaximumInstanceBatchSize)
+	limit := putQuotaTestLimit(t, store, scope, application.MaximumInstanceBatchSize-1, 0, "batch-limit-99")
+	request := batchTestRequest("batch.atomic", application.MaximumInstanceBatchSize)
 	if _, err := store.CreateInstanceBatch(ctx, request); !isQuotaExceeded(err) {
 		t.Fatalf("oversized atomic batch returned %v", err)
 	}
@@ -77,9 +76,9 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 	assertTableCount(t, store, "labcentral_quota_reservations", 0)
 	assertQuotaUsage(t, store, scope, 0, 0, 0)
 
-	putQuotaTestLimit(t, store, scope, controlplane.MaximumInstanceBatchSize, limit.ResourceVersion, "batch-limit-100")
+	putQuotaTestLimit(t, store, scope, application.MaximumInstanceBatchSize, limit.ResourceVersion, "batch-limit-100")
 	start := make(chan struct{})
-	results := make(chan controlplane.InstanceBatchRecord, 2)
+	results := make(chan application.InstanceBatchRecord, 2)
 	errorsOut := make(chan error, 2)
 	var workers sync.WaitGroup
 	for range 2 {
@@ -101,7 +100,7 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 			t.Fatal(err)
 		}
 	}
-	var created controlplane.InstanceBatchRecord
+	var created application.InstanceBatchRecord
 	originals, replays := 0, 0
 	for result := range results {
 		if result.Replay {
@@ -114,7 +113,7 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 	if originals != 1 || replays != 1 {
 		t.Fatalf("concurrent batch results originals=%d replays=%d", originals, replays)
 	}
-	if created.ID != request.ID || created.Replay || len(created.Items) != controlplane.MaximumInstanceBatchSize {
+	if created.ID != request.ID || created.Replay || len(created.Items) != application.MaximumInstanceBatchSize {
 		t.Fatalf("created batch = %#v", created)
 	}
 	for index, item := range created.Items {
@@ -124,9 +123,9 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 		}
 	}
 	assertTableCount(t, store, "labcentral_instance_batches", 1)
-	assertTableCount(t, store, "labcentral_local_instances", controlplane.MaximumInstanceBatchSize)
-	assertTableCount(t, store, "labcentral_quota_reservations", controlplane.MaximumInstanceBatchSize)
-	assertQuotaUsage(t, store, scope, controlplane.MaximumInstanceBatchSize, 0, 0)
+	assertTableCount(t, store, "labcentral_local_instances", application.MaximumInstanceBatchSize)
+	assertTableCount(t, store, "labcentral_quota_reservations", application.MaximumInstanceBatchSize)
+	assertQuotaUsage(t, store, scope, application.MaximumInstanceBatchSize, 0, 0)
 
 	loaded, err := store.GetInstanceBatch(ctx, request.ID)
 	if err != nil || loaded.ID != created.ID || len(loaded.Items) != len(created.Items) {
@@ -171,14 +170,14 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 		t.Fatal(err)
 	}
 	denied := batchTestRequest("batch.revoked", 1)
-	if _, err := store.CreateInstanceBatch(ctx, denied); !errors.Is(err, controlplane.ErrAuthorityChanged) {
+	if _, err := store.CreateInstanceBatch(ctx, denied); !errors.Is(err, application.ErrAuthorityChanged) {
 		t.Fatalf("revoked batch authority returned %v", err)
 	}
 	assertTableCount(t, store, "labcentral_instance_batches", 1)
 }
 
-func batchTestRequest(batchID string, count int) controlplane.CreateInstanceBatchRequest {
-	instances := make([]controlplane.CreateInstanceRequest, 0, count)
+func batchTestRequest(batchID string, count int) application.CreateInstanceBatchRequest {
+	instances := make([]application.CreateInstanceRequest, 0, count)
 	for index := 0; index < count; index++ {
 		instance := quotaTestCreateRequest(fmt.Sprintf("inst.%s-%03d", batchID, index), "project.alpha", 3600)
 		instance.RevisionID = "revision.batch-one"
@@ -186,7 +185,7 @@ func batchTestRequest(batchID string, count int) controlplane.CreateInstanceBatc
 		instance.OwnerID = fmt.Sprintf("team.batch-%03d", index)
 		instances = append(instances, instance)
 	}
-	return controlplane.CreateInstanceBatchRequest{
+	return application.CreateInstanceBatchRequest{
 		GovernanceRecordIDs: governanceIDs(batchID), ID: domain.InstanceBatchID(batchID), RevisionID: "revision.batch-one",
 		ProjectID: "project.alpha", CreatedBy: "user.quota", TargetID: "target.quota",
 		IdempotencyKey: "idem." + batchID, RequestDigest: testRequestDigest(batchID), Instances: instances,

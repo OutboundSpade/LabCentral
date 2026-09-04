@@ -1,6 +1,14 @@
 # Template rendering
 
-## Deterministic pipeline
+## Reusable revision publication
+
+ADR-0016 separates canonical authoring representations from resolved instances. `PrepareTemplate` validates bounded YAML, the authoring schema, parameter declarations/defaults and provider override envelopes. It canonicalizes the original declaration under `template.labcentral.io/v1` without requiring participant values. The immutable revision stores those bytes, source digest, representation digest/version, author schema and renderer semantics. Migration `0012_template_representations` adds storage without changing old migration checksums.
+
+`OpenTemplateRevision` checks immutable source and representation identity. Instantiation explicitly selects supported renderer semantics; an unknown semantics version is rejected. Product release versions do not implicitly change semantics. Legacy revisions without the new representation retain their original verification and identity. Existing instances use their stored resolved bytes and plans.
+
+HTTP validation, planning, single creation and batch creation accept bounded `inputs` entries with a declared name, kind and exactly one matching typed value field. Values are validated by the renderer and included in instance/idempotency identity. Participant plaintext secrets are not accepted. Different values cannot replay another create request.
+
+## Deterministic instance pipeline
 
 1. Verify bundle manifest/digest and parse limited YAML.
 2. Validate `v1alpha1` author schema; apply literal defaults; validate typed inputs.
@@ -11,7 +19,7 @@
 7. Build typed portable domain objects and infer dependency edges.
 8. Detect cycles and validate topology, policy, quotas, and required capabilities.
 9. Normalize durations/CIDRs/IPs/enums/units, emit JCS-compatible canonical JSON, and calculate digest.
-10. Persist canonical bytes, renderer/environment versions, graph, warnings, and provenance before provider validation.
+10. Return canonical bytes/digest and graph for provider validation/planning; accepted instance creation persists the resolved bytes and plans atomically with the durable operation.
 
 Limits are server policy and included in validation output: bundle bytes/files, YAML depth/nodes/aliases, CEL AST/cost, component depth, expansion count, resource count, string length, and canonical bytes. Hitting a limit is `invalid_declaration`, never a partial render.
 
@@ -20,7 +28,7 @@ Limits are server policy and included in validation output: bundle bytes/files, 
 ```mermaid
 flowchart LR
   G[Go domain semantics] --> A[Authoring Go DTOs]
-  A --> J[Lab JSON Schema]
+  A -. conformance .-> J[Lab JSON Schema]
   G --> C[Canonical Go types]
   H[Huma HTTP DTOs] --> O[OpenAPI 3.1]
   P[plugin.proto] --> PC[Capability schema]

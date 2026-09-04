@@ -9,46 +9,6 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
-type UnitOfWork interface {
-	Do(context.Context, func(context.Context, Repositories) error) error
-}
-
-type Repositories interface {
-	Identity() IdentityRepository
-	Tenancy() TenancyRepository
-	Providers() ProviderRepository
-	Templates() TemplateRepository
-	Instances() InstanceRepository
-	Operations() OperationRepository
-	Governance() GovernanceRepository
-	Allocations() AllocationRepository
-	Events() EventRepository
-}
-
-type IdentityRepository interface {
-	SubjectExists(context.Context, domain.UserID) (bool, error)
-}
-
-type TenancyRepository interface {
-	ProjectExists(context.Context, domain.ProjectID) (bool, error)
-}
-
-type ProviderRepository interface {
-	GetTarget(context.Context, domain.ProviderTargetID) (domain.ProviderTarget, error)
-	SaveTarget(context.Context, domain.ProviderTarget, domain.ResourceVersion) error
-}
-
-type TemplateRepository interface {
-	GetRevision(context.Context, domain.RevisionID) (domain.TemplateRevision, error)
-}
-
-type InstanceRepository interface {
-	Get(context.Context, domain.InstanceID) (domain.LabInstance, error)
-	Save(context.Context, domain.LabInstance, domain.ResourceVersion) error
-	ListResources(context.Context, domain.InstanceID) ([]domain.LogicalResourceRecord, error)
-	SaveResource(context.Context, domain.LogicalResourceRecord, domain.ResourceVersion) error
-}
-
 type OperationClaim struct {
 	Operation domain.Operation
 	Token     domain.FencingToken
@@ -85,12 +45,6 @@ type QuotaReservation struct {
 	ProjectID   domain.ProjectID
 	OperationID domain.OperationID
 	ExpiresAt   time.Time
-}
-
-type GovernanceRepository interface {
-	Reserve(context.Context, QuotaReservation) error
-	CommitReservation(context.Context, string, domain.FencingToken) error
-	ReleaseReservation(context.Context, string, domain.FencingToken) error
 }
 
 type AllocationClaimState string
@@ -154,24 +108,6 @@ type AllocationRepository interface {
 	ListClaims(context.Context, domain.InstanceID) ([]AllocationClaim, error)
 }
 
-type AuditIntent struct {
-	ActorID       domain.UserID
-	Action        string
-	AggregateID   string
-	CorrelationID string
-}
-
-type OutboxMessage struct {
-	ID          string
-	Topic       string
-	AggregateID string
-	Payload     []byte
-}
-
-type EventRepository interface {
-	Append(context.Context, domain.DomainEvent, AuditIntent, []OutboxMessage) error
-}
-
 type VerifiedManifest struct {
 	Digest    domain.SHA256Digest
 	FileCount uint32
@@ -193,115 +129,6 @@ type ArtifactStore interface {
 	Write(context.Context, domain.UploadID, io.Reader) (MeasuredArtifact, error)
 	Commit(context.Context, domain.UploadID, VerifiedManifest) (domain.ArtifactRef, error)
 	Open(context.Context, AuthorizedArtifactRef) (io.ReadCloser, error)
-}
-
-type TargetInvocation struct {
-	InvocationID domain.InvocationID
-	TargetID     domain.ProviderTargetID
-	Deadline     time.Time
-}
-
-type ValidateInvocation struct {
-	TargetInvocation
-	Lab domain.CanonicalLab
-}
-
-type ProviderValidation struct {
-	Accepted bool
-	Warnings []domain.ReportIssue
-}
-
-type PlanInvocation struct {
-	TargetInvocation
-	InstanceID          domain.InstanceID
-	Resource            domain.LogicalResource
-	ExcludedAllocations []AllocationKey
-	Dependencies        []ProviderDependency
-}
-
-type ProviderPlan struct {
-	ResourceID          domain.LogicalResourceID
-	Summary             string
-	Warnings            []domain.ReportIssue
-	ProposedAllocations []AllocationKey
-}
-
-type ProviderDependency struct {
-	ResourceID           domain.LogicalResourceID
-	Plan                 ProviderPlan
-	ProviderState        *domain.ProviderStateEnvelope
-	Observation          domain.ResourceObservation
-	CommittedAllocations []AllocationKey
-}
-
-type MutationKind string
-
-const (
-	MutationApply    MutationKind = "apply"
-	MutationDestroy  MutationKind = "destroy"
-	MutationStart    MutationKind = "start"
-	MutationStop     MutationKind = "stop"
-	MutationPause    MutationKind = "pause"
-	MutationResume   MutationKind = "resume"
-	MutationSnapshot MutationKind = "snapshot"
-	MutationRestore  MutationKind = "restore"
-)
-
-type MutationInvocation struct {
-	TargetInvocation
-	Kind          MutationKind
-	InstanceID    domain.InstanceID
-	Resource      domain.LogicalResource
-	ProviderState *domain.ProviderStateEnvelope
-	Generation    domain.Generation
-	Dependencies  []ProviderDependency
-	Allocations   []AllocationKey
-}
-
-type InvocationProgress struct {
-	InvocationID domain.InvocationID
-	Sequence     uint64
-	Message      string
-	Done         bool
-}
-
-type ProgressStream interface {
-	Receive() (InvocationProgress, error)
-	Close() error
-}
-
-type InvocationQuery struct {
-	TargetInvocation
-	QueriedInvocationID domain.InvocationID
-}
-
-type InvocationObservation struct {
-	Known         bool
-	Complete      bool
-	Resource      domain.ResourceObservation
-	ProviderState *domain.ProviderStateEnvelope
-}
-
-type InvocationCancel struct {
-	TargetInvocation
-	CanceledInvocationID domain.InvocationID
-}
-
-type CancelOutcome string
-
-const (
-	CancelRequested CancelOutcome = "requested"
-	CancelTooLate   CancelOutcome = "too_late"
-	CancelUnknown   CancelOutcome = "unknown"
-)
-
-type PluginInvoker interface {
-	DiscoverTarget(context.Context, TargetInvocation) (domain.CapabilitySnapshot, error)
-	ValidateLab(context.Context, ValidateInvocation) (ProviderValidation, error)
-	PlanResource(context.Context, PlanInvocation) (ProviderPlan, error)
-	Invoke(context.Context, MutationInvocation) (ProgressStream, error)
-	GetInvocation(context.Context, InvocationQuery) (InvocationObservation, error)
-	CancelInvocation(context.Context, InvocationCancel) (CancelOutcome, error)
 }
 
 type AuthorizedSecretRef struct {

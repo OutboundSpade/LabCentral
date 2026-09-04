@@ -14,7 +14,6 @@ import (
 
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -365,7 +364,7 @@ func legacyQuotaState(phase domain.InstancePhase) (string, bool) {
 // single-row prototype operations, whose compatibility table is migrated in
 // place above.
 
-func (s *Store) PutQuotaLimit(ctx context.Context, request controlplane.PutQuotaLimitRequest) (application.QuotaLimitRecord, error) {
+func (s *Store) PutQuotaLimit(ctx context.Context, request application.PutQuotaLimitRequest) (application.QuotaLimitRecord, error) {
 	if err := validatePutQuotaLimit(request); err != nil {
 		return application.QuotaLimitRecord{}, err
 	}
@@ -380,7 +379,7 @@ func (s *Store) PutQuotaLimit(ctx context.Context, request controlplane.PutQuota
 	}
 }
 
-func (s *Store) putQuotaLimit(ctx context.Context, request controlplane.PutQuotaLimitRequest) (application.QuotaLimitRecord, error) {
+func (s *Store) putQuotaLimit(ctx context.Context, request application.PutQuotaLimitRequest) (application.QuotaLimitRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return application.QuotaLimitRecord{}, fmt.Errorf("begin quota limit mutation: %w", err)
@@ -411,11 +410,11 @@ func (s *Store) putQuotaLimit(ctx context.Context, request controlplane.PutQuota
 	existing, err := getQuotaLimitTx(ctx, tx, s, request.Scope, request.Dimension, true)
 	switch {
 	case errors.Is(err, sql.ErrNoRows) && request.ExpectedResourceVersion != 0:
-		return application.QuotaLimitRecord{}, controlplane.ErrNotFound
+		return application.QuotaLimitRecord{}, application.ErrNotFound
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return application.QuotaLimitRecord{}, err
 	case err == nil && existing.ResourceVersion != request.ExpectedResourceVersion:
-		return application.QuotaLimitRecord{}, controlplane.ErrVersionConflict
+		return application.QuotaLimitRecord{}, application.ErrVersionConflict
 	}
 	var createdAt, updatedAt, version int64
 	if existing.ResourceVersion == 0 {
@@ -466,7 +465,7 @@ func (s *Store) putQuotaLimit(ctx context.Context, request controlplane.PutQuota
 		).Scan(&version, &createdAt, &updatedAt)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return application.QuotaLimitRecord{}, controlplane.ErrVersionConflict
+		return application.QuotaLimitRecord{}, application.ErrVersionConflict
 	}
 	if err != nil {
 		return application.QuotaLimitRecord{}, fmt.Errorf("persist quota limit: %w", err)
@@ -513,7 +512,7 @@ func (s *Store) GetQuotaLimit(ctx context.Context, scope application.QuotaScope,
 	}
 	record, err := getQuotaLimitTx(ctx, s.db, s, scope, dimension, false)
 	if errors.Is(err, sql.ErrNoRows) {
-		return application.QuotaLimitRecord{}, controlplane.ErrNotFound
+		return application.QuotaLimitRecord{}, application.ErrNotFound
 	}
 	return record, err
 }
@@ -547,7 +546,7 @@ func (s *Store) ListQuotaUsage(ctx context.Context, scope application.QuotaScope
 	return records, rows.Err()
 }
 
-func validatePutQuotaLimit(request controlplane.PutQuotaLimitRequest) error {
+func validatePutQuotaLimit(request application.PutQuotaLimitRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -704,7 +703,7 @@ func (s *Store) backfillQuotaScopeDimensionTx(ctx context.Context, tx *sql.Tx, s
 	return nil
 }
 
-func (s *Store) PutLifetimePolicy(ctx context.Context, request controlplane.PutLifetimePolicyRequest) (application.LifetimePolicyRecord, error) {
+func (s *Store) PutLifetimePolicy(ctx context.Context, request application.PutLifetimePolicyRequest) (application.LifetimePolicyRecord, error) {
 	if err := validatePutLifetimePolicy(request); err != nil {
 		return application.LifetimePolicyRecord{}, err
 	}
@@ -719,7 +718,7 @@ func (s *Store) PutLifetimePolicy(ctx context.Context, request controlplane.PutL
 	}
 }
 
-func (s *Store) putLifetimePolicy(ctx context.Context, request controlplane.PutLifetimePolicyRequest) (application.LifetimePolicyRecord, error) {
+func (s *Store) putLifetimePolicy(ctx context.Context, request application.PutLifetimePolicyRequest) (application.LifetimePolicyRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return application.LifetimePolicyRecord{}, fmt.Errorf("begin lifetime policy mutation: %w", err)
@@ -750,11 +749,11 @@ func (s *Store) putLifetimePolicy(ctx context.Context, request controlplane.PutL
 	existing, err := getLifetimePolicyTx(ctx, tx, s, request.Policy.Scope, true)
 	switch {
 	case errors.Is(err, sql.ErrNoRows) && request.ExpectedResourceVersion != 0:
-		return application.LifetimePolicyRecord{}, controlplane.ErrNotFound
+		return application.LifetimePolicyRecord{}, application.ErrNotFound
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return application.LifetimePolicyRecord{}, err
 	case err == nil && existing.ResourceVersion != request.ExpectedResourceVersion:
-		return application.LifetimePolicyRecord{}, controlplane.ErrVersionConflict
+		return application.LifetimePolicyRecord{}, application.ErrVersionConflict
 	}
 	renewalAllowed, persistentAllowed := 0, 0
 	if request.Policy.RenewalAllowed {
@@ -789,7 +788,7 @@ func (s *Store) putLifetimePolicy(ctx context.Context, request controlplane.PutL
 		).Scan(&version, &createdAt, &updatedAt)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return application.LifetimePolicyRecord{}, controlplane.ErrVersionConflict
+		return application.LifetimePolicyRecord{}, application.ErrVersionConflict
 	}
 	if err != nil {
 		return application.LifetimePolicyRecord{}, fmt.Errorf("persist lifetime policy: %w", err)
@@ -829,12 +828,12 @@ func (s *Store) GetLifetimePolicy(ctx context.Context, scope application.QuotaSc
 	}
 	record, err := getLifetimePolicyTx(ctx, s.db, s, scope, false)
 	if errors.Is(err, sql.ErrNoRows) {
-		return application.LifetimePolicyRecord{}, controlplane.ErrNotFound
+		return application.LifetimePolicyRecord{}, application.ErrNotFound
 	}
 	return record, err
 }
 
-func validatePutLifetimePolicy(request controlplane.PutLifetimePolicyRequest) error {
+func validatePutLifetimePolicy(request application.PutLifetimePolicyRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -875,7 +874,7 @@ func getLifetimePolicyTx(ctx context.Context, queryer quotaQueryer, store *Store
 	}, nil
 }
 
-func (s *Store) reserveInstanceQuotaTx(ctx context.Context, tx *sql.Tx, request controlplane.CreateInstanceRequest) (application.ResolvedInstanceLifetime, error) {
+func (s *Store) reserveInstanceQuotaTx(ctx context.Context, tx *sql.Tx, request application.CreateInstanceRequest) (application.ResolvedInstanceLifetime, error) {
 	if _, err := domain.NewQuotaReservationID(string(request.Quota.ReservationID)); err != nil {
 		return application.ResolvedInstanceLifetime{}, err
 	}
@@ -1049,9 +1048,9 @@ func (s *Store) resolveInstanceLifetimeTx(ctx context.Context, tx *sql.Tx, scope
 	}, nil
 }
 
-func (s *Store) RenewInstanceLifetime(ctx context.Context, request controlplane.RenewInstanceLifetimeRequest) (controlplane.InstanceRecord, error) {
+func (s *Store) RenewInstanceLifetime(ctx context.Context, request application.RenewInstanceLifetimeRequest) (application.InstanceRecord, error) {
 	if err := validateRenewInstanceLifetime(request); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.renewInstanceLifetime(ctx, request)
@@ -1059,7 +1058,7 @@ func (s *Store) RenewInstanceLifetime(ctx context.Context, request controlplane.
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
-			return controlplane.InstanceRecord{}, err
+			return application.InstanceRecord{}, err
 		}
 	}
 }
@@ -1077,7 +1076,7 @@ type instanceLifetimeMutationResult struct {
 	UpdatedAt                    time.Time              `json:"updatedAt"`
 }
 
-func lifetimeMutationResult(instance controlplane.InstanceRecord) instanceLifetimeMutationResult {
+func lifetimeMutationResult(instance application.InstanceRecord) instanceLifetimeMutationResult {
 	return instanceLifetimeMutationResult{
 		InstanceID: instance.ID, ExpiresAt: instance.ExpiresAt, MaximumExpiresAt: instance.MaximumExpiresAt,
 		ExpirationWarningAt: instance.ExpirationWarningAt, ExpirationGraceSeconds: instance.ExpirationGraceSeconds,
@@ -1087,7 +1086,7 @@ func lifetimeMutationResult(instance controlplane.InstanceRecord) instanceLifeti
 	}
 }
 
-func applyLifetimeMutationResult(instance *controlplane.InstanceRecord, result instanceLifetimeMutationResult) error {
+func applyLifetimeMutationResult(instance *application.InstanceRecord, result instanceLifetimeMutationResult) error {
 	if instance == nil || result.InstanceID == "" || instance.ID != result.InstanceID || result.ExpiresAt.IsZero() ||
 		result.MaximumExpiresAt.IsZero() || result.ResourceVersion == 0 || result.UpdatedAt.IsZero() {
 		return fmt.Errorf("stored lifetime mutation result is invalid")
@@ -1101,32 +1100,32 @@ func applyLifetimeMutationResult(instance *controlplane.InstanceRecord, result i
 	return nil
 }
 
-func (s *Store) renewInstanceLifetime(ctx context.Context, request controlplane.RenewInstanceLifetimeRequest) (controlplane.InstanceRecord, error) {
+func (s *Store) renewInstanceLifetime(ctx context.Context, request application.RenewInstanceLifetimeRequest) (application.InstanceRecord, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
-		return controlplane.InstanceRecord{}, fmt.Errorf("begin instance lifetime renewal: %w", err)
+		return application.InstanceRecord{}, fmt.Errorf("begin instance lifetime renewal: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	action := renewInstanceTTLRouteAction + ":" + string(request.InstanceID)
 	if err := s.lockIdempotency(ctx, tx, request.ActorID, action, request.IdempotencyKey); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if existing, found, err := s.findIdempotency(ctx, tx, request.ActorID, action, request.IdempotencyKey, request.RequestDigest); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	} else if found {
 		if existing != string(request.InstanceID) {
-			return controlplane.InstanceRecord{}, jobsdb.ErrIdempotencyConflict
+			return application.InstanceRecord{}, jobsdb.ErrIdempotencyConflict
 		}
 		record, err := scanInstance(tx.QueryRowContext(ctx, s.bind(instanceRecordSelect+` WHERE instance_id = ?`), request.InstanceID))
 		if err != nil {
-			return controlplane.InstanceRecord{}, fmt.Errorf("load replayed instance lifetime: %w", err)
+			return application.InstanceRecord{}, fmt.Errorf("load replayed instance lifetime: %w", err)
 		}
 		var snapshot instanceLifetimeMutationResult
 		if err := s.loadGovernanceIdempotencyResult(ctx, tx, request.ActorID, action, request.IdempotencyKey, &snapshot); err != nil {
-			return controlplane.InstanceRecord{}, err
+			return application.InstanceRecord{}, err
 		}
 		if err := applyLifetimeMutationResult(&record, snapshot); err != nil {
-			return controlplane.InstanceRecord{}, err
+			return application.InstanceRecord{}, err
 		}
 		return record, tx.Commit()
 	}
@@ -1136,51 +1135,51 @@ func (s *Store) renewInstanceLifetime(ctx context.Context, request controlplane.
 	}
 	instance, err := scanInstance(tx.QueryRowContext(ctx, s.bind(instanceQuery), request.InstanceID))
 	if err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if instance.ResourceVersion != request.ExpectedResourceVersion {
-		return controlplane.InstanceRecord{}, controlplane.ErrVersionConflict
+		return application.InstanceRecord{}, application.ErrVersionConflict
 	}
 	if instance.ExpiresAt.IsZero() || instance.MaximumExpiresAt.IsZero() || !instance.LifetimeRenewalAllowed {
-		return controlplane.InstanceRecord{}, &domain.DomainError{
+		return application.InstanceRecord{}, &domain.DomainError{
 			Code: "instance_lifetime_renewal_denied", Class: domain.ErrorQuota,
 			Message: "The instance lifetime policy does not permit renewal",
 		}
 	}
 	if instance.DesiredLifecycle == domain.LifecycleDestroyed || instance.Phase == domain.InstanceDestroying || instance.Phase == domain.InstanceDestroyed {
-		return controlplane.InstanceRecord{}, controlplane.ErrVersionConflict
+		return application.InstanceRecord{}, application.ErrVersionConflict
 	}
 	now, err := s.databaseNowTx(ctx, tx)
 	if err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if err := s.requireInstanceTTLRenewalAuthorizationTx(ctx, tx, instance, request.ActorID, now); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if !now.Before(instance.ExpiresAt) {
-		return controlplane.InstanceRecord{}, &domain.DomainError{
+		return application.InstanceRecord{}, &domain.DomainError{
 			Code: "instance_already_expired", Class: domain.ErrorQuota, Message: "The instance has already expired",
 		}
 	}
 	if instance.LifetimeRenewalWindowSeconds > 0 && now.Before(instance.ExpiresAt.Add(-time.Duration(instance.LifetimeRenewalWindowSeconds)*time.Second)) {
-		return controlplane.InstanceRecord{}, &domain.DomainError{
+		return application.InstanceRecord{}, &domain.DomainError{
 			Code: "instance_renewal_window_not_open", Class: domain.ErrorQuota,
 			Message: "The instance renewal window is not open",
 		}
 	}
 	scopes, err := s.instanceQuotaScopesTx(ctx, tx, instance.ProjectID, instance.OwnerKind, instance.OwnerID, instance.ProviderTargetID)
 	if err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if err := s.lockApplicableLifetimePolicies(ctx, tx, scopes); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	resolved, err := s.resolveInstanceLifetimeTx(ctx, tx, scopes, application.InstanceLifetimeRequest{TTLSeconds: request.TTLSeconds}, now)
 	if err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if !resolved.RenewalAllowed {
-		return controlplane.InstanceRecord{}, &domain.DomainError{
+		return application.InstanceRecord{}, &domain.DomainError{
 			Code: "instance_lifetime_renewal_denied", Class: domain.ErrorQuota,
 			Message: "An applicable lifetime policy no longer permits renewal",
 		}
@@ -1191,13 +1190,13 @@ func (s *Store) renewInstanceLifetime(ctx context.Context, request controlplane.
 		maximumAllowed = currentPolicyMaximum
 	}
 	if !resolved.ExpiresAt.After(instance.ExpiresAt) || resolved.ExpiresAt.After(maximumAllowed) {
-		return controlplane.InstanceRecord{}, &domain.DomainError{
+		return application.InstanceRecord{}, &domain.DomainError{
 			Code: "instance_lifetime_exceeded", Class: domain.ErrorQuota,
 			Message: "The requested renewal exceeds the instance maximum lifetime",
 		}
 	}
 	if err := s.recheckAndExtendReservationScopesTx(ctx, tx, instance, scopes); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	warningAt := resolved.ExpirationWarningAt
 	grace := min(instance.ExpirationGraceSeconds, resolved.DestructionGraceSeconds)
@@ -1214,27 +1213,27 @@ func (s *Store) renewInstanceLifetime(ctx context.Context, request controlplane.
 		quotaBoolean(instance.LifetimeRenewalAllowed && resolved.RenewalAllowed), renewalWindow,
 		resolved.PolicyDigest.Hex(), request.InstanceID, request.ExpectedResourceVersion)
 	if err != nil {
-		return controlplane.InstanceRecord{}, fmt.Errorf("renew instance lifetime: %w", err)
+		return application.InstanceRecord{}, fmt.Errorf("renew instance lifetime: %w", err)
 	}
 	if affected, _ := result.RowsAffected(); affected != 1 {
-		return controlplane.InstanceRecord{}, controlplane.ErrVersionConflict
+		return application.InstanceRecord{}, application.ErrVersionConflict
 	}
 	updated, err := scanInstance(tx.QueryRowContext(ctx, s.bind(instanceRecordSelect+` WHERE instance_id = ?`), request.InstanceID))
 	if err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if err := s.appendInstanceLifetimeGovernanceTx(ctx, tx, updated, request.ActorID, request.GovernanceRecordIDs,
 		"instance.ttl.extend", "lab-instance.ttl-extended", application.RecordActorUser); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if err := s.bindIdempotency(ctx, tx, request.ActorID, action, request.IdempotencyKey, request.RequestDigest, string(request.InstanceID)); err != nil {
-		return controlplane.InstanceRecord{}, fmt.Errorf("bind instance lifetime renewal idempotency: %w", err)
+		return application.InstanceRecord{}, fmt.Errorf("bind instance lifetime renewal idempotency: %w", err)
 	}
 	if err := s.saveGovernanceIdempotencyResult(ctx, tx, request.ActorID, action, request.IdempotencyKey, lifetimeMutationResult(updated)); err != nil {
-		return controlplane.InstanceRecord{}, err
+		return application.InstanceRecord{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return controlplane.InstanceRecord{}, fmt.Errorf("commit instance lifetime renewal: %w", err)
+		return application.InstanceRecord{}, fmt.Errorf("commit instance lifetime renewal: %w", err)
 	}
 	return updated, nil
 }
@@ -1243,15 +1242,15 @@ func (s *Store) renewInstanceLifetime(ctx context.Context, request controlplane.
 // owner relationship, membership, and target-grant checks inside the same
 // serializable transaction that changes expiry. This closes the handler-check /
 // mutation race when an administrator revokes authority concurrently.
-func (s *Store) requireInstanceTTLRenewalAuthorizationTx(ctx context.Context, tx *sql.Tx, instance controlplane.InstanceRecord, actorID domain.UserID, now time.Time) error {
+func (s *Store) requireInstanceTTLRenewalAuthorizationTx(ctx context.Context, tx *sql.Tx, instance application.InstanceRecord, actorID domain.UserID, now time.Time) error {
 	return s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, actorID, now)
 }
 
 // requireInstanceOwnerAuthorizationTx is shared by TTL and access commands,
 // whose accepted RBAC matrix is identical: administrators/instructors may act
 // within scope, while participants remain restricted to their user/team owner.
-func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql.Tx, instance controlplane.InstanceRecord, actorID domain.UserID, now time.Time) error {
-	if instance.ProjectID == "project.local" && actorID == controlplane.LocalAdminID {
+func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql.Tx, instance application.InstanceRecord, actorID domain.UserID, now time.Time) error {
+	if instance.ProjectID == "project.local" && actorID == application.LocalAdminID {
 		return nil
 	}
 	nowMicros := now.UTC().UnixMicro()
@@ -1315,12 +1314,12 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 		return fmt.Errorf("recheck instance authority: %w", err)
 	}
 	if allowed != 1 {
-		return controlplane.ErrAuthorityChanged
+		return application.ErrAuthorityChanged
 	}
 	return nil
 }
 
-func validateRenewInstanceLifetime(request controlplane.RenewInstanceLifetimeRequest) error {
+func validateRenewInstanceLifetime(request application.RenewInstanceLifetimeRequest) error {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return err
 	}
@@ -1336,7 +1335,7 @@ func validateRenewInstanceLifetime(request controlplane.RenewInstanceLifetimeReq
 	return validateTemplateIdempotency(request.IdempotencyKey, request.RequestDigest)
 }
 
-func (s *Store) recheckAndExtendReservationScopesTx(ctx context.Context, tx *sql.Tx, instance controlplane.InstanceRecord, scopes []application.QuotaScope) error {
+func (s *Store) recheckAndExtendReservationScopesTx(ctx context.Context, tx *sql.Tx, instance application.InstanceRecord, scopes []application.QuotaScope) error {
 	reservationQuery := `SELECT reservation_id, state FROM labcentral_quota_reservations WHERE instance_id = ?`
 	if s.dialect == jobsdb.DialectPostgreSQL {
 		reservationQuery += ` FOR UPDATE`
@@ -1582,7 +1581,7 @@ func (s *Store) appendQuotaReservationExpiredTx(ctx context.Context, tx *sql.Tx,
 	digest := sha256.Sum256([]byte(candidate.id))
 	suffix := hex.EncodeToString(digest[:16])
 	scope := application.RecordScope{OrganizationID: organizationID, ProjectID: projectID}
-	actor := application.RecordActor{Kind: application.RecordActorSystem, ID: string(controlplane.SystemExpirationActorID)}
+	actor := application.RecordActor{Kind: application.RecordActorSystem, ID: string(application.SystemExpirationActorID)}
 	if _, err := s.appendAuditRecordTx(ctx, tx, application.AppendAuditRecord{
 		ID: "audit.quota-expired." + suffix, SchemaVersion: "audit.labcentral.io/v1", Category: application.AuditOperation,
 		Action: "instance.quota-reservation.expire", Outcome: application.AuditSucceeded, Scope: scope, Actor: actor,
@@ -1600,15 +1599,15 @@ func (s *Store) appendQuotaReservationExpiredTx(ctx context.Context, tx *sql.Tx,
 	return nil
 }
 
-func (s *Store) ListExpirationWarnings(ctx context.Context, limit uint32) ([]controlplane.ExpirationCandidate, error) {
+func (s *Store) ListExpirationWarnings(ctx context.Context, limit uint32) ([]application.ExpirationCandidate, error) {
 	return s.listExpirationCandidates(ctx, limit, false)
 }
 
-func (s *Store) ListExpiredInstances(ctx context.Context, limit uint32) ([]controlplane.ExpirationCandidate, error) {
+func (s *Store) ListExpiredInstances(ctx context.Context, limit uint32) ([]application.ExpirationCandidate, error) {
 	return s.listExpirationCandidates(ctx, limit, true)
 }
 
-func (s *Store) listExpirationCandidates(ctx context.Context, limit uint32, expired bool) ([]controlplane.ExpirationCandidate, error) {
+func (s *Store) listExpirationCandidates(ctx context.Context, limit uint32, expired bool) ([]application.ExpirationCandidate, error) {
 	if limit == 0 || limit > maximumExpirationSweepBatch {
 		return nil, fmt.Errorf("expiration candidate limit must be 1-%d", maximumExpirationSweepBatch)
 	}
@@ -1627,9 +1626,9 @@ func (s *Store) listExpirationCandidates(ctx context.Context, limit uint32, expi
 		return nil, fmt.Errorf("list expiration candidates: %w", err)
 	}
 	defer rows.Close()
-	candidates := make([]controlplane.ExpirationCandidate, 0)
+	candidates := make([]application.ExpirationCandidate, 0)
 	for rows.Next() {
-		var candidate controlplane.ExpirationCandidate
+		var candidate application.ExpirationCandidate
 		var expiresAt, warningAt, grace, version int64
 		if err := rows.Scan(&candidate.InstanceID, &expiresAt, &warningAt, &grace, &version); err != nil {
 			return nil, err
@@ -1646,7 +1645,7 @@ func (s *Store) listExpirationCandidates(ctx context.Context, limit uint32, expi
 	return candidates, rows.Err()
 }
 
-func (s *Store) MarkExpirationWarning(ctx context.Context, request controlplane.MarkExpirationWarningRequest) (bool, error) {
+func (s *Store) MarkExpirationWarning(ctx context.Context, request application.MarkExpirationWarningRequest) (bool, error) {
 	if err := validateGovernanceRecordIDs(request.GovernanceRecordIDs); err != nil {
 		return false, err
 	}
@@ -1674,7 +1673,7 @@ func (s *Store) MarkExpirationWarning(ctx context.Context, request controlplane.
 	if err != nil {
 		return false, err
 	}
-	if err := s.appendInstanceLifetimeGovernanceTx(ctx, tx, instance, controlplane.SystemExpirationActorID,
+	if err := s.appendInstanceLifetimeGovernanceTx(ctx, tx, instance, application.SystemExpirationActorID,
 		request.GovernanceRecordIDs, "instance.expiration.warning", "lab.instance.expiring", application.RecordActorSystem); err != nil {
 		return false, err
 	}
@@ -1684,7 +1683,7 @@ func (s *Store) MarkExpirationWarning(ctx context.Context, request controlplane.
 	return true, nil
 }
 
-func (s *Store) appendInstanceLifetimeGovernanceTx(ctx context.Context, tx *sql.Tx, instance controlplane.InstanceRecord, actor domain.UserID, ids controlplane.GovernanceRecordIDs, action, eventType string, actorKind application.RecordActorKind) error {
+func (s *Store) appendInstanceLifetimeGovernanceTx(ctx context.Context, tx *sql.Tx, instance application.InstanceRecord, actor domain.UserID, ids application.GovernanceRecordIDs, action, eventType string, actorKind application.RecordActorKind) error {
 	var organizationID domain.OrganizationID
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), instance.ProjectID).Scan(&organizationID); err != nil {
 		return err
@@ -1724,7 +1723,7 @@ func (s *Store) appendInstanceLifetimeGovernanceTx(ctx context.Context, tx *sql.
 	return nil
 }
 
-func (s *Store) RetainInstanceQuota(ctx context.Context, fence controlplane.Fence) error {
+func (s *Store) RetainInstanceQuota(ctx context.Context, fence application.Fence) error {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return err
@@ -1743,7 +1742,7 @@ func (s *Store) RetainInstanceQuota(ctx context.Context, fence controlplane.Fenc
 	return tx.Commit()
 }
 
-func (s *Store) ApplyExecutionAllowed(ctx context.Context, fence controlplane.Fence) (bool, error) {
+func (s *Store) ApplyExecutionAllowed(ctx context.Context, fence application.Fence) (bool, error) {
 	// requireFence deliberately locks the running job on PostgreSQL so an
 	// expiration transition cannot race this policy decision.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
@@ -1767,15 +1766,15 @@ func (s *Store) ApplyExecutionAllowed(ctx context.Context, fence controlplane.Fe
 	return allowed != 0, nil
 }
 
-func (s *Store) finalizeInstanceQuotaTx(ctx context.Context, tx *sql.Tx, instanceID domain.InstanceID, kind controlplane.OperationKind, state domain.OperationState, phase domain.InstancePhase) error {
+func (s *Store) finalizeInstanceQuotaTx(ctx context.Context, tx *sql.Tx, instanceID domain.InstanceID, kind application.OperationKind, state domain.OperationState, phase domain.InstancePhase) error {
 	targetState := "retained"
 	reconciliationRequired := true
 	switch {
-	case kind == controlplane.OperationApply && state == domain.OperationSucceeded && phase == domain.InstanceReady:
+	case kind == application.OperationApply && state == domain.OperationSucceeded && phase == domain.InstanceReady:
 		targetState, reconciliationRequired = "committed", false
-	case kind == controlplane.OperationApply && state == domain.OperationFailed && phase == domain.InstanceFailed:
+	case kind == application.OperationApply && state == domain.OperationFailed && phase == domain.InstanceFailed:
 		targetState, reconciliationRequired = "released", false
-	case kind == controlplane.OperationDestroy && state == domain.OperationSucceeded && phase == domain.InstanceDestroyed:
+	case kind == application.OperationDestroy && state == domain.OperationSucceeded && phase == domain.InstanceDestroyed:
 		targetState, reconciliationRequired = "released", false
 	}
 	return s.transitionInstanceQuotaTx(ctx, tx, instanceID, targetState, reconciliationRequired)
@@ -2004,7 +2003,7 @@ func (s *Store) validateQuotaScopeReferenceTx(ctx context.Context, tx *sql.Tx, s
 		err = tx.QueryRowContext(ctx, s.bind(`SELECT 1 FROM labcentral_local_provider_targets WHERE target_id = ?`), scope.ID).Scan(&exists)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return controlplane.ErrNotFound
+		return application.ErrNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("validate quota scope reference: %w", err)
@@ -2012,7 +2011,7 @@ func (s *Store) validateQuotaScopeReferenceTx(ctx context.Context, tx *sql.Tx, s
 	return nil
 }
 
-func (s *Store) appendQuotaGovernanceTx(ctx context.Context, tx *sql.Tx, scope application.QuotaScope, actor domain.UserID, aggregateID string, ids controlplane.GovernanceRecordIDs, action, eventType string, payloadValue any) error {
+func (s *Store) appendQuotaGovernanceTx(ctx context.Context, tx *sql.Tx, scope application.QuotaScope, actor domain.UserID, aggregateID string, ids application.GovernanceRecordIDs, action, eventType string, payloadValue any) error {
 	payload, err := json.Marshal(payloadValue)
 	if err != nil {
 		return fmt.Errorf("encode quota governance payload: %w", err)

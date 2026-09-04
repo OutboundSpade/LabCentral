@@ -631,7 +631,7 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
-	if _, err := service.authorizeMutation(ctx, input.GetTarget(), config, inventory, mutationDigest); err != nil {
+	if _, err := service.authorizeExecution(ctx, input, config, inventory, mutationDigest, action); err != nil {
 		client.CloseIdleConnections()
 		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)

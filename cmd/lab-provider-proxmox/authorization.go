@@ -21,6 +21,7 @@ const maximumTrustPolicyBytes = 64 << 10
 
 type productionAuthorizer struct {
 	document         []byte
+	cleanupDocument  []byte
 	evidence         qualification.Evidence
 	trust            qualification.TrustPolicy
 	binaryDigest     string
@@ -212,3 +213,11 @@ func qualifiedDigest(value string) bool {
 }
 
 var _ proxmox.MutationAuthorizer = (*productionAuthorizer)(nil)
+
+func (a *productionAuthorizer) AuthorizeCleanup(ctx context.Context, in proxmox.CleanupAuthorizationInput) (proxmox.MutationAuthorization, error) {
+	if err := ctx.Err(); err != nil {
+		return proxmox.MutationAuthorization{}, err
+	}
+	evidence, err := qualification.VerifyCleanup(a.cleanupDocument, a.trust, a.now().UTC(), qualification.CleanupGrant{TargetID: in.Target.GetTargetId(), InstallationID: in.Config.InstallationID, ConfigurationDigest: in.Target.GetConfigFingerprint(), InventoryDigest: in.MutationInventoryDigest, ProviderBinaryDigest: a.binaryDigest, InstanceID: in.InstanceID, ResourceID: in.ResourceID, OwnershipDigest: in.OwnershipDigest})
+	return proxmox.MutationAuthorization{Evidence: evidence}, err
+}

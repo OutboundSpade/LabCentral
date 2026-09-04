@@ -1,5 +1,7 @@
 # Database schema and migration sketch
 
+Current architecture follows ADR-0015, ADR-0016 and ADR-0017. See [architecture](architecture.md), [installation and cleanup authority](../operations/plugin-installation.md), and [compatibility](../compatibility.md). Historical task checkpoints below remain evidence, not additional implementation requirements.
+
 This design refines ADR-0006/ADR-0011 without committing to ORM or migration tooling. SQL names are stable conceptual names; the first migrations may adjust physical spelling while preserving these invariants.
 
 ## Core tables and keys
@@ -110,3 +112,5 @@ per boundary call rather than per SQL-prefiltered Instance; successful
 because doing so would create an inexhaustible cursor tail. Denied and failed
 audit reads remain recorded. The executable producer catalog is
 [`design/contracts/governance-audit-producers.yaml`](../../design/contracts/governance-audit-producers.yaml).
+
+Migration `0012_template_representations` adds non-null `representation_json` with an empty default for legacy revisions. New revisions store canonical authoring JSON; old rows keep their digest/version/renderer fields and verification path. Migration checksums for prior versions are unchanged. See ADR-0016.

@@ -69,6 +69,7 @@ func TestPostgreSQLJobConformance(t *testing.T) {
 		{"TEST-JOB-006", contract006DestroyLeftovers},
 		{"TEST-JOB-007", contract007ConcurrentClaims},
 		{"TEST-JOB-008", contract008AtLeastOnceOutbox},
+		{"TEST-ARCH-011", contractClaimFilter},
 	}
 	for index, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -482,4 +483,26 @@ func expireJobLease(t *testing.T, store *Store, operationID domain.OperationID) 
 
 func digest(character string) domain.SHA256Digest {
 	return domain.SHA256Digest(strings.Repeat(character, 64))
+}
+
+func TestClaimFilterLeavesUnavailableInstanceQueued(t *testing.T) {
+	runSQLiteCase(t, contractClaimFilter)
+}
+func contractClaimFilter(t *testing.T, store *Store) {
+	ctx := context.Background()
+	down := testOperation("down")
+	up := testOperation("up")
+	for _, op := range []domain.Operation{down, up} {
+		if err := store.Enqueue(ctx, op, "{}"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claim, err := store.ClaimJobForInstances(ctx, "worker.up", time.Minute, []string{string(up.InstanceID)})
+	if err != nil || claim.Operation.ID != up.ID {
+		t.Fatal("available instance was not claimed", err)
+	}
+	claim, err = store.ClaimJobForInstances(ctx, "worker.recovered", time.Minute, []string{string(down.InstanceID)})
+	if err != nil || claim.Operation.ID != down.ID || claim.Operation.Attempt != 1 {
+		t.Fatal("unavailable instance was lost or consumed", err)
+	}
 }

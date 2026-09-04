@@ -30,6 +30,7 @@ var artifactReferenceSchemaMigrations = []string{
 	"0009_classroom_quota_expiration",
 	"0010_classroom_instance_batches",
 	"0011_controlled_access_sessions",
+	"0012_template_representations",
 }
 
 type artifactGCConfig struct {

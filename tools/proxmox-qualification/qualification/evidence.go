@@ -1,7 +1,6 @@
 // Package qualification defines the signed, exact-target evidence boundary for
-// credentialed Proxmox T3 runs. It deliberately does not open the provider's
-// production mutation gate; a later reviewed enablement decision must consume a
-// successfully verified document.
+// credentialed Proxmox T3 runs. The production authorizer consumes verified
+// evidence; separately signed cleanup authority follows ADR-0017.
 package qualification
 
 import (

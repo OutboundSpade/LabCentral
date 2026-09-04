@@ -1,138 +1,25 @@
 # Domain and application ports
 
-This is the implementation boundary for `TASK-DOMAIN-001`. The accepted interfaces and state contracts are implemented under `internal/domain` and `internal/application`; `internal/architecture/imports_test.go` enforces their dependency direction recursively. Implementations may group methods to avoid tiny packages, but may not leak Huma, SQL, generated plugin, or provider SDK types into domain code.
+ADR-0015 replaces the unused repository/unit-of-work abstraction with the actual application boundary. Types are declared in `internal/application/controlplane.go`, `ports.go` and `provider.go`; do not duplicate signatures in prose or add speculative repositories. `internal/controlplane/model.go` contains compatibility aliases to those declarations.
 
-## Value types
+## Domain
 
-Use distinct opaque string types for `UserID`, `OrganizationID`, `ProjectID`, `TeamID`, `ProviderTargetID`, `TemplateID`, `RevisionID`, `InstanceID`, `LogicalResourceID`, `OperationID`, `InvocationID`, `SnapshotID`, and `AccessSessionID`. `Generation`, `ResourceVersion`, `FencingToken`, and aggregate event sequence are unsigned monotonic values. Constructors validate names, CIDRs, IPs, durations, byte quantities, digests, capability IDs, and typed references once.
+Opaque IDs, digests, typed inputs, capabilities, references and the closed resource variants live in `internal/domain`. `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint` and `Output` remain typed resources. Provider override bytes belong only to separately versioned envelopes. Domain and application packages have no transport, database or provider dependencies.
 
-The canonical domain is a closed sum:
+## Persistence
 
-```go
-type LogicalResource interface {
-    ID() LogicalResourceID
-    Kind() ResourceKind
-    Dependencies() []LogicalResourceID
-    RequiredCapabilities() CapabilityExpression
-    logicalResourceSeal()
-}
+`TemplateStore`, `InstanceStore`, `AccessStore`, `TargetStore` and `ExecutionStore` group the actual methods; `Store` composes service requirements. `WorkerStore` exposes only execution requirements. Audit, identity, authorization and quota contracts remain explicit. An operation such as batch acceptance or instance enqueue owns its complete transaction, including authorization, reservations, state, audit/event/outbox and idempotency. There is no public callback giving callers arbitrary repository access inside a transaction.
 
-type ResourceSpec struct {
-    Network        *NetworkSpec
-    Volume         *VolumeSpec
-    VM             *VMSpec
-    Container      *ContainerSpec
-    AccessEndpoint *AccessEndpointSpec
-    Output          *OutputSpec
-}
-```
+`internal/adapter/localdb` supports SQLite and PostgreSQL despite its historical name. `jobsdb` owns database-time leasing and fencing. Existing protobuf provider-state envelopes remain readable in storage; this persistence codec does not expose wire types to orchestration. Artifacts remain content-addressed with verified staging/commit and coordinated backup. Migration checksums and atomicity remain unchanged.
 
-Exactly one variant is present. This is not a generic map; provider override bytes exist only in a separately versioned envelope.
+Allocation claims remain bounded opaque `(target, namespace, value)` keys bound to instance/resource/plan. Unknown execution retains claims; release requires provider absence evidence and a current fence. Target sessions copy configuration, resolve authorized credentials only for an invocation, and clear credential bytes on close.
 
-## Pure domain services
+## Provider and access invocation
 
-```go
-type LabRenderer interface {
-    Render(ctx context.Context, revision RevisionContent, inputs TypedInputs, policy RenderPolicy) (CanonicalLab, RenderReport, error)
-}
+`application.Provider` provides validation, planning, invocation, lookup and discovery using application-owned structures. The gRPC adapter maps requests, drains mutation streams and requires one terminal result. A transport error is not proof that a write failed. Persisted result/state bytes retain their prior format. Optional `ProviderAccess` and `AccessPlugin` ports preserve endpoint and access-session contracts without gRPC imports in control-plane code.
 
-type GraphBuilder interface {
-    Build(CanonicalLab) (ResourceGraph, error)
-}
+`SecretResolver` and `ArtifactStore` remain separate ports. Plugins cannot access either the core database or unrestricted secret resolution. Access authorization callbacks repeat subject/session/resource checks under core authority.
 
-type CapabilityMatcher interface {
-    Match(ResourceGraph, Policy, CapabilitySnapshot) MatchReport
-}
+## Verification
 
-type Scheduler interface {
-    Select(SchedulingRequest, []EligibleTarget) (SchedulingDecision, error)
-}
-
-type Authorizer interface {
-    Check(AuthorizationRequest) AuthorizationDecision
-}
-
-type StateReducer interface {
-    Reduce(AggregateState, DomainCommand, Observations) (AggregateState, []DomainEvent, error)
-}
-```
-
-Pure services receive all time/policy/capability inputs explicitly and perform no I/O. Canonical bytes/digest are created by one renderer/canonicalizer version, not recomputed in HTTP handlers or plugins.
-
-## Persistence ports
-
-```go
-type UnitOfWork interface {
-    Do(ctx context.Context, fn func(context.Context, Repositories) error) error
-}
-
-type Repositories interface {
-    Identity() IdentityRepository
-    Tenancy() TenancyRepository
-    Providers() ProviderRepository
-    Templates() TemplateRepository
-    Instances() InstanceRepository
-    Operations() OperationRepository
-    Governance() GovernanceRepository
-    Events() EventRepository
-}
-```
-
-Repositories expose aggregate operations with expected `ResourceVersion`, not table CRUD. `OperationRepository` claims jobs using database time, renews leases, and checkpoints only with matching lease owner, fencing token, desired generation, and attempt. A recovered claim explicitly directs the worker to dispatch or query an unknown invocation. `GovernanceRepository` reserves/reconciles quota within the caller’s unit of work. `EventRepository` appends aggregate-sequenced event, audit intent, and outbox atomically with state. Adapters translate duplicate/version/serialization conflicts into domain errors.
-
-`AllocationRepository` owns bounded opaque provider claims keyed by `(targetID, namespace, value)`. It reserves a whole proposed set atomically, binds it to Instance/resource/plan digest, commits accepted claims, retains unknown claims, marks leftovers orphaned, and releases only with explicit provider-absence evidence. Mutations advance a monotonic fencing token, so an older worker cannot release a claim retained by a newer owner. Callers receive the conflicting keys for bounded deterministic replan; provider plugins never receive the repository or database connection. `TASK-PROXMOX-003` implements the shared SQLite/PostgreSQL prototype and fourteen-case conformance suite.
-
-The `TASK-PROXMOX-005` local integration composes that port with instance creation and worker execution. It commits accepted claims in the same SQLite unit of work as persisted plans and the durable job, supplies committed claims and dependency state through protocol v1.1, and performs conservative fenced transitions for unknown, orphaned, compensated, and absence-confirmed outcomes. `TargetRegistry` is an application composition boundary: immutable registered target facts and copied non-secret configuration are separated from just-in-time `SecretResolver` delivery.
-
-## External side-effect ports
-
-```go
-type ArtifactStore interface {
-    Stage(context.Context, StageRequest) (UploadID, error)
-    Write(context.Context, UploadID, io.Reader) (MeasuredArtifact, error)
-    Commit(context.Context, UploadID, VerifiedManifest) (ArtifactRef, error)
-    Open(context.Context, AuthorizedArtifactRef) (io.ReadCloser, error)
-}
-
-type PluginInvoker interface {
-    DiscoverTarget(context.Context, TargetInvocation) (CapabilitySnapshot, error)
-    ValidateLab(context.Context, ValidateInvocation) (ProviderValidation, error)
-    PlanResource(context.Context, PlanInvocation) (ProviderPlan, error)
-    Invoke(context.Context, MutationInvocation) (ProgressStream, error)
-    GetInvocation(context.Context, InvocationQuery) (InvocationObservation, error)
-    CancelInvocation(context.Context, InvocationCancel) (CancelOutcome, error)
-}
-
-type SecretResolver interface {
-    Resolve(context.Context, AuthorizedSecretRef, InvocationScope) (EphemeralSecret, error)
-}
-
-type Clock interface { Now() time.Time }
-type IDGenerator interface { New() string }
-```
-
-`PluginInvoker` is an application port; generated gRPC messages stay inside `internal/pluginhost` adapters. `EphemeralSecret` is non-serializable by convention/API design, redacts formatting, and cannot enter Domain Events. Fake clock/ID/plugin/artifact/secret adapters make normal tests deterministic.
-
-Protocol v1.1 adds typed proposed/excluded/committed allocation claims and typed dependency plan/state input to the corresponding invocation values. v1.0 plugins still negotiate v1.0 and see no new requirement; capabilities that need these inputs require both v1.1 and its two named feature bits.
-
-## Application command boundary
-
-Commands include `PublishRevision`, `ValidateLab`, `PlanLab`, `CreateInstance`, `ApplyInstance`, lifecycle commands, `RefreshInstance`, snapshot/restore/clone, `DestroyInstance`, `RetryOperation`, `CancelOperation`, and access-session commands. Each command handler follows:
-
-1. Authenticate subject and authorize action/object/scope.
-2. Validate request version/idempotency and typed input.
-3. In one transaction, load aggregates, evaluate invariant, reserve quota if needed, persist desired state/Operation/job/audit/outbox, and return IDs.
-4. Workers perform provider side effects outside the transaction through durable invocation records.
-5. In a new fenced transaction, validate generation/lease, persist observation/result, reconcile quota, append events, and unlock/checkpoint.
-
-HTTP handlers map DTO → command and result/error → DTO only. Provider plugins import neither these interfaces nor domain internals; the public SDK wraps the wire protocol.
-
-## Compile-time dependency checks
-
-The first Go module must add import-boundary tests or a static dependency rule proving:
-
-- `internal/domain` imports standard library plus explicitly approved pure libraries only.
-- `api/http` may import application-facing DTOs but domain imports no `api/http` or Huma package.
-- persistence adapters implement ports without exporting SQL models.
-- `providers/*` import generated plugin API/SDK and provider libraries, never `internal/*`.
-- `pkg/plugin-sdk-go` imports generated public protocol only.
+`internal/architecture/imports_test.go` enforces the inward domain/application dependency rules, public SDK isolation, and orchestration transport boundary. Storage conformance tests cover both supported databases; worker tests cover original-invocation recovery, stale fences, compensation and claims. See [architecture conformance](../../design/contracts/architecture-conformance.yaml).

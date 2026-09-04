@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
-	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
@@ -229,7 +228,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updatedContainers, err := store.PutQuotaLimit(ctx, controlplane.PutQuotaLimitRequest{
+	updatedContainers, err := store.PutQuotaLimit(ctx, application.PutQuotaLimitRequest{
 		GovernanceRecordIDs: governanceIDs("platform-containers-update"), Scope: platformScope,
 		Dimension: application.QuotaContainers, Limit: defaultContainers.Limit + 1,
 		ExpectedResourceVersion: defaultContainers.ResourceVersion, UpdatedBy: "user.quota",
@@ -274,7 +273,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if _, err := store.CreateInstance(ctx, quotaTestCreateRequest("inst.alpha-two", "project.alpha", 0)); !isQuotaExceeded(err) {
 		t.Fatalf("second project instance returned %v", err)
 	}
-	if _, err := store.GetInstance(ctx, "inst.alpha-two"); !errors.Is(err, controlplane.ErrNotFound) {
+	if _, err := store.GetInstance(ctx, "inst.alpha-two"); !errors.Is(err, application.ErrNotFound) {
 		t.Fatalf("over-quota create left an instance: %v", err)
 	}
 	assertQuotaUsage(t, store, alphaScope, 1, 0, 0)
@@ -288,7 +287,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if _, err := store.PutQuotaLimit(ctx, quotaTestLimitRequest(betaScope, 0, 0, "beta-too-low")); !isQuotaExceeded(err) {
 		t.Fatalf("new under-sized quota returned %v", err)
 	}
-	if _, err := store.GetQuotaLimit(ctx, betaScope, application.QuotaInstances); !errors.Is(err, controlplane.ErrNotFound) {
+	if _, err := store.GetQuotaLimit(ctx, betaScope, application.QuotaInstances); !errors.Is(err, application.ErrNotFound) {
 		t.Fatalf("failed quota creation persisted a limit: %v", err)
 	}
 	putQuotaTestLimit(t, store, betaScope, 1, 0, "beta-limit")
@@ -336,7 +335,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	renewal := controlplane.RenewInstanceLifetimeRequest{
+	renewal := application.RenewInstanceLifetimeRequest{
 		GovernanceRecordIDs: governanceIDs("delta-renew"), InstanceID: delta.ID, TTLSeconds: 45,
 		ExpectedResourceVersion: delta.ResourceVersion, ActorID: "user.quota", IdempotencyKey: "idem.delta-renew",
 		RequestDigest: testRequestDigest("delta-renew"),
@@ -366,7 +365,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	revokedRenewal.IdempotencyKey = "idem.delta-renew-revoked"
 	revokedRenewal.RequestDigest = testRequestDigest("delta-renew-revoked")
 	revokedRenewal.GovernanceRecordIDs = governanceIDs("delta-renew-revoked")
-	if _, err := store.RenewInstanceLifetime(ctx, revokedRenewal); !errors.Is(err, controlplane.ErrAuthorityChanged) {
+	if _, err := store.RenewInstanceLifetime(ctx, revokedRenewal); !errors.Is(err, application.ErrAuthorityChanged) {
 		t.Fatalf("renewal after target-grant revocation returned %v", err)
 	}
 	updatedPolicy := policy
@@ -396,7 +395,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var warning controlplane.ExpirationCandidate
+	var warning application.ExpirationCandidate
 	for _, candidate := range warnings {
 		if candidate.InstanceID == delta.ID {
 			warning = candidate
@@ -405,11 +404,11 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if warning.InstanceID == "" {
 		t.Fatal("warning candidate was not listed")
 	}
-	marked, err := store.MarkExpirationWarning(ctx, controlplane.MarkExpirationWarningRequest{GovernanceRecordIDs: governanceIDs("delta-warning"), Candidate: warning})
+	marked, err := store.MarkExpirationWarning(ctx, application.MarkExpirationWarningRequest{GovernanceRecordIDs: governanceIDs("delta-warning"), Candidate: warning})
 	if err != nil || !marked {
 		t.Fatalf("mark warning = %t, %v", marked, err)
 	}
-	marked, err = store.MarkExpirationWarning(ctx, controlplane.MarkExpirationWarningRequest{GovernanceRecordIDs: governanceIDs("delta-warning-replay"), Candidate: warning})
+	marked, err = store.MarkExpirationWarning(ctx, application.MarkExpirationWarningRequest{GovernanceRecordIDs: governanceIDs("delta-warning-replay"), Candidate: warning})
 	if err != nil || marked {
 		t.Fatalf("repeat warning = %t, %v", marked, err)
 	}
@@ -490,7 +489,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	close(startRace)
 	sweep := <-sweepResults
 	claimErr := <-claimResults
-	if sweep.err != nil || (claimErr != nil && !errors.Is(claimErr, controlplane.ErrNoWork)) {
+	if sweep.err != nil || (claimErr != nil && !errors.Is(claimErr, application.ErrNoWork)) {
 		t.Fatalf("sweeper/reclaim race: count=%d sweep=%v claim=%v", sweep.count, sweep.err, claimErr)
 	}
 	if sweep.count == 1 && claimErr == nil {
@@ -525,7 +524,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.QueueDestroy(ctx, quotaTestDestroyRequest(delta.ID, "operation.delta-blocked-expire", controlplane.SystemExpirationActorID, "idem.delta-blocked", delta.ExpiresAt)); !errors.Is(err, controlplane.ErrVersionConflict) {
+	if _, err := store.QueueDestroy(ctx, quotaTestDestroyRequest(delta.ID, "operation.delta-blocked-expire", application.SystemExpirationActorID, "idem.delta-blocked", delta.ExpiresAt)); !errors.Is(err, application.ErrVersionConflict) {
 		t.Fatalf("destroy raced active apply: %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, store.bind(`UPDATE labcentral_jobs SET state = ? WHERE operation_id = ?`), domain.OperationSucceeded, created.OperationID); err != nil {
@@ -534,7 +533,7 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	if _, err := store.db.ExecContext(ctx, store.bind(`UPDATE labcentral_local_instances SET phase = ? WHERE instance_id = ?`), domain.InstanceReady, delta.ID); err != nil {
 		t.Fatal(err)
 	}
-	firstDestroy, err := store.QueueDestroy(ctx, quotaTestDestroyRequest(delta.ID, "operation.delta-expire", controlplane.SystemExpirationActorID, "idem.delta-expire", delta.ExpiresAt))
+	firstDestroy, err := store.QueueDestroy(ctx, quotaTestDestroyRequest(delta.ID, "operation.delta-expire", application.SystemExpirationActorID, "idem.delta-expire", delta.ExpiresAt))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,16 +588,16 @@ func quotaTestProjectScope(projectID domain.ProjectID) application.QuotaScope {
 	return application.QuotaScope{Kind: application.QuotaScopeProject, ID: string(projectID), OrganizationID: "org.quota"}
 }
 
-func quotaTestCreateRequest(instanceID string, projectID domain.ProjectID, ttl uint64) controlplane.CreateInstanceRequest {
+func quotaTestCreateRequest(instanceID string, projectID domain.ProjectID, ttl uint64) application.CreateInstanceRequest {
 	canonical := []byte(`{"apiVersion":"canonical.labcentral.io/v1alpha1","resources":[]}`)
 	plan := []byte(`{"planned":true}`)
 	canonicalDigest, planDigest, requestDigest := sha256.Sum256(canonical), sha256.Sum256(plan), sha256.Sum256([]byte(instanceID))
-	return controlplane.CreateInstanceRequest{
+	return application.CreateInstanceRequest{
 		InstanceID: domain.InstanceID(instanceID), ProjectID: projectID, OwnerKind: application.OwnerUser,
 		OwnerID: "user.quota", CreatedBy: "user.quota", ProviderTargetID: "target.quota",
 		OperationID: domain.OperationID("operation." + instanceID), CanonicalDigest: domain.SHA256Digest(fmt.Sprintf("%x", canonicalDigest)),
 		CanonicalJSON: canonical, SourceYAML: []byte("apiVersion: labcentral.io/v1alpha1\n"),
-		Resources: []controlplane.ResourceSeed{{
+		Resources: []application.ResourceSeed{{
 			ID: "container.test", Kind: domain.ResourceContainer,
 			CanonicalJSON: []byte(`{"id":"container.test","kind":"Container","spec":{"compute":{"cpuMillis":250,"memoryBytes":134217728}}}`),
 			ProviderPlan:  plan, ProviderPlanDigest: domain.SHA256Digest(fmt.Sprintf("%x", planDigest)), OwnershipToken: "ownership." + instanceID,
@@ -614,8 +613,8 @@ func quotaTestCreateRequest(instanceID string, projectID domain.ProjectID, ttl u
 	}
 }
 
-func quotaTestLimitRequest(scope application.QuotaScope, limit uint64, expected domain.ResourceVersion, suffix string) controlplane.PutQuotaLimitRequest {
-	return controlplane.PutQuotaLimitRequest{
+func quotaTestLimitRequest(scope application.QuotaScope, limit uint64, expected domain.ResourceVersion, suffix string) application.PutQuotaLimitRequest {
+	return application.PutQuotaLimitRequest{
 		GovernanceRecordIDs: governanceIDs(suffix), Scope: scope, Dimension: application.QuotaInstances,
 		Limit: limit, ExpectedResourceVersion: expected, UpdatedBy: "user.quota",
 		IdempotencyKey: "idem." + suffix, RequestDigest: testRequestDigest(suffix),
@@ -631,8 +630,8 @@ func putQuotaTestLimit(t *testing.T, store *Store, scope application.QuotaScope,
 	return record
 }
 
-func quotaTestPolicyRequest(policy application.LifetimePolicyRecord, expected domain.ResourceVersion, suffix string) controlplane.PutLifetimePolicyRequest {
-	return controlplane.PutLifetimePolicyRequest{
+func quotaTestPolicyRequest(policy application.LifetimePolicyRecord, expected domain.ResourceVersion, suffix string) application.PutLifetimePolicyRequest {
+	return application.PutLifetimePolicyRequest{
 		GovernanceRecordIDs: governanceIDs(suffix), Policy: policy, ExpectedResourceVersion: expected,
 		UpdatedBy: "user.quota", IdempotencyKey: "idem." + suffix, RequestDigest: testRequestDigest(suffix),
 	}
@@ -674,8 +673,8 @@ func isQuotaExceeded(err error) bool {
 	return errors.As(err, &exceeded)
 }
 
-func quotaTestDestroyRequest(instanceID domain.InstanceID, operationID domain.OperationID, actor domain.UserID, key string, due time.Time) controlplane.QueueDestroyRequest {
-	return controlplane.QueueDestroyRequest{
+func quotaTestDestroyRequest(instanceID domain.InstanceID, operationID domain.OperationID, actor domain.UserID, key string, due time.Time) application.QueueDestroyRequest {
+	return application.QueueDestroyRequest{
 		InstanceID: instanceID, OperationID: operationID, SubjectID: actor, IdempotencyKey: key,
 		RequestDigest: testRequestDigest(key), Payload: []byte(`{"schemaVersion":1}`),
 		AuditID: "audit." + string(operationID), EventID: "event." + string(operationID), ExpirationDueAt: due,
