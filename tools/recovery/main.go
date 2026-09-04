@@ -22,7 +22,7 @@ func main() {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("expected keygen, create, create-native, verify, restore, or restore-native")
+		return fmt.Errorf("expected keygen, create, create-native, verify, restore, restore-native, gc-artifacts, or gc-artifacts-native")
 	}
 	switch args[0] {
 	case "keygen":
@@ -37,8 +37,12 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		return runRestore(ctx, args[1:], output)
 	case "restore-native":
 		return runRestoreNative(ctx, args[1:], output)
+	case "gc-artifacts":
+		return runArtifactGC(ctx, args[1:], output)
+	case "gc-artifacts-native":
+		return runNativeArtifactGC(ctx, args[1:], output)
 	default:
-		return fmt.Errorf("unknown command %q; expected keygen, create, create-native, verify, restore, or restore-native", args[0])
+		return fmt.Errorf("unknown command %q; expected keygen, create, create-native, verify, restore, restore-native, gc-artifacts, or gc-artifacts-native", args[0])
 	}
 }
 

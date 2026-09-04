@@ -53,6 +53,10 @@ func TestStoreStagesVerifiesCommitsAndOpensArtifact(t *testing.T) {
 	if mode.Mode().Perm() != 0o400 {
 		t.Fatalf("committed mode = %o", mode.Mode().Perm())
 	}
+	staging, err := os.ReadDir(filepath.Join(store.root.Name(), stagingDirectory))
+	if err != nil || len(staging) != 0 {
+		t.Fatalf("staging entries after commit = %d, err=%v", len(staging), err)
+	}
 }
 
 func TestStoreRejectsOversizeAndMismatchedContent(t *testing.T) {
@@ -169,6 +173,232 @@ func TestSharedStoreSerializesCommitAndSharesCommittedObjects(t *testing.T) {
 	if err != nil || closeErr != nil || string(opened) != string(content) {
 		t.Fatalf("shared committed artifact = %q, read=%v close=%v", opened, err, closeErr)
 	}
+}
+
+func TestMaintenanceLeaseExcludesRunningStores(t *testing.T) {
+	root := artifactTempDir(t)
+	first, err := NewShared(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewShared(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenMaintenance(root); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("maintenance opened over live replicas: %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenMaintenance(root); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("maintenance opened over remaining live replica: %v", err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	maintenance, err := OpenMaintenance(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer maintenance.Close()
+	if _, err := NewShared(root); err == nil || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("runtime store opened during maintenance: %v", err)
+	}
+}
+
+func TestStoreRejectsLinkedMaintenanceLock(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		link func(string, string) error
+	}{
+		{name: "symlink", link: os.Symlink},
+		{name: "hardlink", link: os.Link},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := artifactTempDir(t)
+			target := filepath.Join(t.TempDir(), "lock-target")
+			if err := os.WriteFile(target, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := test.link(target, filepath.Join(root, maintenanceLockName)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := New(root); err == nil || !strings.Contains(err.Error(), "maintenance lock") {
+				t.Fatalf("linked maintenance lock was accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestStoresConcurrentlyCreateMaintenanceLease(t *testing.T) {
+	root := artifactTempDir(t)
+	start := make(chan struct{})
+	errors := make(chan error, 16)
+	var group sync.WaitGroup
+	for index := 0; index < cap(errors); index++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			store, err := NewShared(root)
+			if err == nil {
+				err = store.Close()
+			}
+			errors <- err
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestMaintenanceCollectsOnlyUnreferencedArtifactsAndAbandonedStaging(t *testing.T) {
+	root := artifactTempDir(t)
+	store, err := NewShared(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	referenced := commitTestArtifact(t, store, []byte("referenced"))
+	unreferenced := commitTestArtifact(t, store, []byte("unreferenced"))
+	abandonedManifest := manifestFor(t, []byte("abandoned"))
+	if _, err := store.Stage(context.Background(), abandonedManifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	maintenance, err := OpenMaintenance(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dryRun, err := maintenance.Collect(context.Background(), []domain.ArtifactRef{referenced}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dryRun.Applied || dryRun.Objects != 2 || dryRun.ReferencedObjects != 1 || dryRun.UnreferencedObjects != 1 || dryRun.StagingFiles != 3 || dryRun.BytesReclaimable != uint64(len("unreferenced")) || dryRun.ObjectsDeleted != 0 {
+		t.Fatalf("dry-run result = %#v", dryRun)
+	}
+	applied, err := maintenance.Collect(context.Background(), []domain.ArtifactRef{referenced}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !applied.Applied || applied.ObjectsDeleted != 1 || applied.StagingFilesDeleted != 3 {
+		t.Fatalf("applied result = %#v", applied)
+	}
+	if err := maintenance.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err = NewShared(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	reader, err := store.Open(context.Background(), application.AuthorizedArtifactRef{Reference: referenced})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contents, err := io.ReadAll(reader); err != nil || string(contents) != "referenced" {
+		t.Fatalf("retained artifact = %q, err=%v", contents, err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Open(context.Background(), application.AuthorizedArtifactRef{Reference: unreferenced}); err == nil {
+		t.Fatal("unreferenced artifact survived collection")
+	}
+	staging, err := os.ReadDir(filepath.Join(root, stagingDirectory))
+	if err != nil || len(staging) != 0 {
+		t.Fatalf("staging entries after collection = %d, err=%v", len(staging), err)
+	}
+}
+
+func TestMaintenanceRefusesMissingLiveArtifactBeforeDeletion(t *testing.T) {
+	root := artifactTempDir(t)
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unreferenced := commitTestArtifact(t, store, []byte("do-not-delete"))
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	maintenance, err := OpenMaintenance(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := domain.ArtifactRef("sha256:" + strings.Repeat("a", 64))
+	if _, err := maintenance.Collect(context.Background(), []domain.ArtifactRef{missing}, true); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("missing live artifact result = %v", err)
+	}
+	if err := maintenance.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	reader, err := store.Open(context.Background(), application.AuthorizedArtifactRef{Reference: unreferenced})
+	if err != nil {
+		t.Fatalf("collection mutated before validating live references: %v", err)
+	}
+	_ = reader.Close()
+}
+
+func TestMaintenanceRejectsLinkedObjectWithoutDeletion(t *testing.T) {
+	root := artifactTempDir(t)
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := commitTestArtifact(t, store, []byte("linked-object"))
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.TrimPrefix(string(reference), "sha256:")
+	objectPath := filepath.Join(root, objectsDirectory, digest[:2], digest)
+	linkPath := filepath.Join(t.TempDir(), "unexpected-hardlink")
+	if err := os.Link(objectPath, linkPath); err != nil {
+		t.Fatal(err)
+	}
+	maintenance, err := OpenMaintenance(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maintenance.Collect(context.Background(), nil, true); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("linked artifact collection result = %v", err)
+	}
+	if err := maintenance.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(objectPath); err != nil {
+		t.Fatalf("unsafe inventory was partially deleted: %v", err)
+	}
+}
+
+func commitTestArtifact(t *testing.T, store *Store, content []byte) domain.ArtifactRef {
+	t.Helper()
+	manifest := manifestFor(t, content)
+	uploadID, err := store.Stage(context.Background(), manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Write(context.Background(), uploadID, strings.NewReader(string(content))); err != nil {
+		t.Fatal(err)
+	}
+	reference, err := store.Commit(context.Background(), uploadID, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reference
 }
 
 func manifestFor(t *testing.T, content []byte) application.VerifiedManifest {

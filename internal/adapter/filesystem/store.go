@@ -24,14 +24,16 @@ import (
 )
 
 const (
-	stagingDirectory = "staging"
-	objectsDirectory = "objects"
+	stagingDirectory    = "staging"
+	objectsDirectory    = "objects"
+	maintenanceLockName = ".maintenance.lock"
 )
 
 // Store keeps staging and committed objects beneath one filesystem root so a
 // successful commit is an atomic rename rather than a copy.
 type Store struct {
-	root *os.Root
+	root            *os.Root
+	maintenanceLock *os.File
 }
 
 func New(path string) (*Store, error) {
@@ -65,15 +67,22 @@ func newStore(path string, verifySharedLock bool) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open artifact root: %w", err)
 	}
-	store := &Store{root: root}
+	maintenanceLock, err := acquireMaintenanceLock(root, unix.LOCK_SH, "runtime")
+	if err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	store := &Store{root: root, maintenanceLock: maintenanceLock}
 	for _, directory := range []string{stagingDirectory, objectsDirectory} {
 		if err := store.ensureDirectory(directory); err != nil {
+			_ = releaseMaintenanceLock(maintenanceLock)
 			_ = root.Close()
 			return nil, err
 		}
 	}
 	if verifySharedLock {
 		if err := store.verifyAdvisoryLocks(); err != nil {
+			_ = releaseMaintenanceLock(maintenanceLock)
 			_ = root.Close()
 			return nil, err
 		}
@@ -81,7 +90,19 @@ func newStore(path string, verifySharedLock bool) (*Store, error) {
 	return store, nil
 }
 
-func (s *Store) Close() error { return s.root.Close() }
+func (s *Store) Close() error {
+	if s == nil {
+		return nil
+	}
+	lockErr := releaseMaintenanceLock(s.maintenanceLock)
+	s.maintenanceLock = nil
+	var rootErr error
+	if s.root != nil {
+		rootErr = s.root.Close()
+		s.root = nil
+	}
+	return errors.Join(lockErr, rootErr)
+}
 
 // Check verifies that the opened artifact root and its two required
 // directories remain available. It performs no mutation and exposes no path.
@@ -91,6 +112,9 @@ func (s *Store) Check(ctx context.Context) error {
 	}
 	if s == nil || s.root == nil {
 		return fmt.Errorf("artifact store is unavailable")
+	}
+	if s.maintenanceLock == nil {
+		return fmt.Errorf("artifact store maintenance exclusion is unavailable")
 	}
 	for _, name := range []string{".", stagingDirectory, objectsDirectory} {
 		info, err := s.root.Stat(name)
@@ -224,6 +248,7 @@ func (s *Store) Commit(ctx context.Context, uploadID domain.UploadID, supplied a
 		return "", fmt.Errorf("commit manifest differs from staged manifest")
 	}
 	dataName, manifestName := stagingNames(uploadID)
+	lockName := stagingLockName(uploadID)
 	measured, err := s.measure(dataName)
 	if err != nil {
 		return "", err
@@ -260,6 +285,9 @@ func (s *Store) Commit(ctx context.Context, uploadID domain.UploadID, supplied a
 	}
 	if err := s.root.Remove(manifestName); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("remove staged manifest: %w", err)
+	}
+	if err := s.root.Remove(lockName); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("remove staged artifact lock: %w", err)
 	}
 	if err := s.syncDirectory(stagingDirectory); err != nil {
 		return "", err

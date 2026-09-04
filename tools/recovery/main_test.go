@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -17,7 +19,10 @@ import (
 	"testing"
 	"time"
 
+	artifactfs "github.com/OutboundSpade/LabCentral/internal/adapter/filesystem"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localdb"
+	"github.com/OutboundSpade/LabCentral/internal/application"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -63,6 +68,185 @@ func TestRecoveryKeygenIsProtectedAndNonOverwriting(t *testing.T) {
 		t.Fatal("recovery signature was valid without its domain separation prefix")
 	}
 	clear(privateKey)
+}
+
+func TestNativeArtifactGarbageCollectionIsOfflineReferenceAwareAndExplicit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native artifact maintenance uses the POSIX deployment lock")
+	}
+	ctx := context.Background()
+	coreRoot := privateTestDirectory(t)
+	databasePath := filepath.Join(coreRoot, "labcentral.db")
+	databaseStore, err := localdb.Open(ctx, databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactRoot := filepath.Join(coreRoot, "artifacts")
+	artifacts, err := artifactfs.New(artifactRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	referenced := commitRecoveryTestArtifact(t, artifacts, []byte("referenced artifact"))
+	unreferenced := commitRecoveryTestArtifact(t, artifacts, []byte("unreferenced artifact"))
+	abandoned := recoveryArtifactManifest(t, []byte("abandoned staging"))
+	if _, err := artifacts.Stage(ctx, abandoned); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runNativeArtifactGC(ctx, []string{
+		"--core-state-root", coreRoot,
+		"--offline-confirmation", offlineConfirmation,
+	}, io.Discard); err == nil || !strings.Contains(err.Error(), "still owns") {
+		t.Fatalf("artifact maintenance entered a live deployment: %v", err)
+	}
+	if err := artifacts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := databaseStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: databasePath, RawQuery: "mode=rw"}).String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO labcentral_lab_templates
+		(template_id, project_id, name, description, resource_version, created_by, created_at_us, updated_at_us)
+		VALUES ('template.gc', 'project.local', 'gc-test', '', 1, 'user.local-admin', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO labcentral_template_revisions
+		(revision_id, template_id, revision_number, bundle_artifact_ref, bundle_digest, bundle_size_bytes,
+		 author_api_version, renderer_version, canonical_version, canonical_digest, published_by, created_at_us)
+		VALUES (?, 'template.gc', 1, ?, ?, ?, 'labs.labcentral.io/v1alpha1', 'test', 'test', ?, 'user.local-admin', 1)`,
+		"revision.gc", referenced, strings.TrimPrefix(string(referenced), "sha256:"), len("referenced artifact"), strings.Repeat("b", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var dryRun bytes.Buffer
+	arguments := []string{
+		"--core-state-root", coreRoot,
+		"--offline-confirmation", offlineConfirmation,
+	}
+	if err := runNativeArtifactGC(ctx, arguments, &dryRun); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"applied=false", "objects=2", "referenced=1", "unreferenced=1", "stagingFiles=3", "objectsDeleted=0"} {
+		if !strings.Contains(dryRun.String(), expected+"\n") {
+			t.Fatalf("dry-run output missing %q:\n%s", expected, dryRun.String())
+		}
+	}
+	if err := runNativeArtifactGC(ctx, append(append([]string(nil), arguments...), "--apply"), io.Discard); err == nil || !strings.Contains(err.Error(), "delete-confirmation") {
+		t.Fatalf("artifact deletion without exact confirmation = %v", err)
+	}
+	var applied bytes.Buffer
+	applyArguments := append(append([]string(nil), arguments...),
+		"--apply", "--delete-confirmation", artifactDeleteConfirmation)
+	if err := runNativeArtifactGC(ctx, applyArguments, &applied); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"applied=true", "objectsDeleted=1", "stagingFilesDeleted=3"} {
+		if !strings.Contains(applied.String(), expected+"\n") {
+			t.Fatalf("apply output missing %q:\n%s", expected, applied.String())
+		}
+	}
+	artifacts, err = artifactfs.New(artifactRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer artifacts.Close()
+	reader, err := artifacts.Open(ctx, application.AuthorizedArtifactRef{Reference: referenced})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = reader.Close()
+	if _, err := artifacts.Open(ctx, application.AuthorizedArtifactRef{Reference: unreferenced}); err == nil {
+		t.Fatal("unreferenced artifact survived confirmed collection")
+	}
+}
+
+func TestArtifactGarbageCollectionRejectsUnknownSchemaBeforeDeletion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native artifact maintenance uses the POSIX deployment lock")
+	}
+	ctx := context.Background()
+	coreRoot := privateTestDirectory(t)
+	databasePath := filepath.Join(coreRoot, "labcentral.db")
+	databaseStore, err := localdb.Open(ctx, databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := databaseStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	artifacts, err := artifactfs.New(filepath.Join(coreRoot, "artifacts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := commitRecoveryTestArtifact(t, artifacts, []byte("future-schema-retained"))
+	if err := artifacts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: databasePath, RawQuery: "mode=rw"}).String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO labcentral_schema_migrations (id, checksum, applied_at_us)
+		VALUES ('9999_future_artifacts', 'future', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err = runNativeArtifactGC(ctx, []string{
+		"--core-state-root", coreRoot,
+		"--offline-confirmation", offlineConfirmation,
+		"--apply",
+		"--delete-confirmation", artifactDeleteConfirmation,
+	}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "exact artifact-reference schema") {
+		t.Fatalf("unknown artifact-reference schema result = %v", err)
+	}
+	artifacts, err = artifactfs.New(filepath.Join(coreRoot, "artifacts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer artifacts.Close()
+	reader, err := artifacts.Open(ctx, application.AuthorizedArtifactRef{Reference: reference})
+	if err != nil {
+		t.Fatalf("unknown schema caused deletion: %v", err)
+	}
+	_ = reader.Close()
+}
+
+func commitRecoveryTestArtifact(t *testing.T, artifacts *artifactfs.Store, contents []byte) domain.ArtifactRef {
+	t.Helper()
+	manifest := recoveryArtifactManifest(t, contents)
+	uploadID, err := artifacts.Stage(context.Background(), manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := artifacts.Write(context.Background(), uploadID, bytes.NewReader(contents)); err != nil {
+		t.Fatal(err)
+	}
+	reference, err := artifacts.Commit(context.Background(), uploadID, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reference
+}
+
+func recoveryArtifactManifest(t *testing.T, contents []byte) application.VerifiedManifest {
+	t.Helper()
+	digestBytes := sha256.Sum256(contents)
+	digest, err := domain.ParseSHA256Digest(fmt.Sprintf("%x", digestBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return application.VerifiedManifest{Digest: digest, FileCount: 1, ByteCount: uint64(len(contents))}
 }
 
 func TestRecoveryBundleIsEncryptedSignedAndRestoresSafeState(t *testing.T) {
@@ -457,6 +641,100 @@ func TestPostgreSQLRecoveryCreateVerifyRestore(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(restoredState, "proxmox-journal")); err != nil {
 		t.Fatalf("restored provider journal: %v", err)
+	}
+}
+
+func TestPostgreSQLArtifactGarbageCollection(t *testing.T) {
+	baseDSN := os.Getenv("LABCENTRAL_TEST_POSTGRES_DSN")
+	if baseDSN == "" {
+		t.Skip("PostgreSQL artifact-GC test environment is not configured")
+	}
+	parsed, err := url.Parse(baseDSN)
+	if err != nil || parsed.User == nil {
+		t.Fatalf("parse PostgreSQL test URL: %v", err)
+	}
+	admin, err := sql.Open("pgx", baseDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	databaseName := fmt.Sprintf("labcentral_artifact_gc_%d_%d", os.Getpid(), time.Now().UnixNano())
+	if _, err := admin.ExecContext(context.Background(), `CREATE DATABASE "`+databaseName+`"`); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_, _ = admin.ExecContext(context.Background(), `DROP DATABASE IF EXISTS "`+databaseName+`" WITH (FORCE)`)
+	}()
+	testDSN := recoveryTestDatabaseURL(parsed, databaseName)
+	store, err := localdb.OpenPostgreSQL(context.Background(), testDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	directory := privateTestDirectory(t)
+	artifactRoot := filepath.Join(directory, "artifacts")
+	artifacts, err := artifactfs.NewShared(artifactRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	referenced := commitRecoveryTestArtifact(t, artifacts, []byte("postgres referenced"))
+	unreferenced := commitRecoveryTestArtifact(t, artifacts, []byte("postgres unreferenced"))
+	if err := artifacts.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := sql.Open("pgx", testDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(context.Background(), `INSERT INTO labcentral_lab_templates
+		(template_id, project_id, name, description, resource_version, created_by, created_at_us, updated_at_us)
+		VALUES ('template.gc', 'project.local', 'gc-test', '', 1, 'user.local-admin', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(context.Background(), `INSERT INTO labcentral_template_revisions
+		(revision_id, template_id, revision_number, bundle_artifact_ref, bundle_digest, bundle_size_bytes,
+		 author_api_version, renderer_version, canonical_version, canonical_digest, published_by, created_at_us)
+		VALUES ($1, 'template.gc', 1, $2, $3, $4, 'labs.labcentral.io/v1alpha1', 'test', 'test', $5, 'user.local-admin', 1)`,
+		"revision.gc", referenced, strings.TrimPrefix(string(referenced), "sha256:"), len("postgres referenced"), strings.Repeat("c", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	urlFile := filepath.Join(directory, "postgres.url")
+	if err := os.WriteFile(urlFile, []byte(testDSN+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	if err := runArtifactGC(context.Background(), []string{
+		"--artifact-root", artifactRoot,
+		"--postgres-url-file", urlFile,
+		"--offline-confirmation", offlineConfirmation,
+		"--allow-insecure-loopback-database",
+		"--apply",
+		"--delete-confirmation", artifactDeleteConfirmation,
+	}, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "referenced=1\n") || !strings.Contains(output.String(), "objectsDeleted=1\n") {
+		t.Fatalf("PostgreSQL artifact-GC output:\n%s", output.String())
+	}
+	artifacts, err = artifactfs.NewShared(artifactRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer artifacts.Close()
+	reader, err := artifacts.Open(context.Background(), application.AuthorizedArtifactRef{Reference: referenced})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = reader.Close()
+	if _, err := artifacts.Open(context.Background(), application.AuthorizedArtifactRef{Reference: unreferenced}); err == nil {
+		t.Fatal("PostgreSQL collection retained an unreferenced artifact")
 	}
 }
 

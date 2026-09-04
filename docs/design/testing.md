@@ -150,8 +150,14 @@ With `LABCENTRAL_TEST_POSTGRES_DSN` and
 source database, invokes real containerized `pg_dump` and `pg_restore`,
 decrypts/verifies the set, requires an empty target, compares signed
 audit/event/job watermarks, and opens the restored database and shared state.
-The test-only insecure flag accepts only a loopback database and is absent from
-the production procedure.
+The artifact-maintenance case adds shared runtime/exclusive offline filesystem
+leases with linked-file refusal, exact migration-set and database-reference enumeration, pre-deletion
+digest/mode/link validation, abandoned-staging cleanup, dry-run output, and a
+second exact deletion confirmation. Native and PostgreSQL integration tests
+prove referenced objects survive, unreferenced objects are removed, live
+runtimes and unknown future schemas refuse collection, and unsafe inventories
+cause no deletion. The test-only insecure flag accepts only a loopback database
+and is absent from the production procedure.
 
 [`production-resilience.yaml`](../../design/contracts/production-resilience.yaml)
 indexes the 100-Instance control-plane checkpoint. With an isolated

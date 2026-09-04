@@ -680,6 +680,16 @@ def verify_contract_catalogs() -> None:
             assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
                 f"production resilience case references missing Go test: {case['id']}: {go_test}"
             )
+    recovery = load_yaml(ROOT / "design/contracts/production-recovery.yaml")
+    assert recovery["suite"] == "labcentral.production-recovery/v1alpha1"
+    assert len(recovery["cases"]) == 6, "production recovery suite must retain all six checkpoint cases"
+    for case in recovery["cases"]:
+        bindings = case.get("goTest", "").split(" and ")
+        assert all(bindings), f"production recovery case has no Go test bindings: {case['id']}"
+        for go_test in bindings:
+            assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+                f"production recovery case references missing Go test: {case['id']}: {go_test}"
+            )
     release = load_yaml(ROOT / "design/contracts/production-release.yaml")
     assert release["suite"] == "labcentral.production-release/v1alpha1"
     assert release["publisher"] == {

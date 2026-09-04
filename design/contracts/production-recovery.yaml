@@ -1,6 +1,6 @@
 formatVersion: 1
 suite: labcentral.production-recovery/v1alpha1
-status: offline_encrypted_recovery_implemented_and_rehearsed
+status: offline_encrypted_recovery_and_artifact_maintenance_implemented_and_rehearsed
 cases:
   - id: TEST-PROD-RECOVERY-001
     title: Recovery key generation is protected, separated, and non-overwriting
@@ -23,3 +23,7 @@ cases:
     title: Native SQLite and provider state restore only after lock and integrity checks
     goTest: TestNativeSQLiteRecoveryCreateVerifyRestoreAndLockExclusion and TestNativeRestorePrestagesBothComponents
     expect: {labdLockMustBeFree: true, sqliteIntegrityChecked: true, bothComponentsPrestaged: true, watermarkMatched: true, numericOwnershipPreservedByDefault: true}
+  - id: TEST-PROD-RECOVERY-006
+    title: Offline artifact collection preserves every database reference and refuses concurrent runtimes
+    goTest: TestMaintenanceLeaseExcludesRunningStores and TestStoreRejectsLinkedMaintenanceLock and TestStoresConcurrentlyCreateMaintenanceLease and TestMaintenanceCollectsOnlyUnreferencedArtifactsAndAbandonedStaging and TestMaintenanceRefusesMissingLiveArtifactBeforeDeletion and TestMaintenanceRejectsLinkedObjectWithoutDeletion and TestNativeArtifactGarbageCollectionIsOfflineReferenceAwareAndExplicit and TestArtifactGarbageCollectionRejectsUnknownSchemaBeforeDeletion and TestPostgreSQLArtifactGarbageCollection
+    expect: {runtimeMaintenanceLease: exclusive, linkedMaintenanceLease: refused, exactMigrationSet: true, liveReferencesVerified: true, corruptOrLinkedInventory: refused, dryRunDefault: true, explicitDeletionConfirmation: true, abandonedStagingCollected: true}

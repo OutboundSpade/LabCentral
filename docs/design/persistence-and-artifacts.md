@@ -20,15 +20,25 @@ DeleteUnreferenced(ref, gcToken) -> result
 
 Objects are immutable and content-addressed by SHA-256; mutable metadata lives in relational rows. Filesystem storage uses same-filesystem staging, restrictive permissions, fsync/atomic rename, and no following links. Object storage uses multipart staging, checksum verification, server-side encryption policy, and private buckets; user-facing access is through authorized API/proxy or short-lived scoped URLs.
 
-Reference counts alone do not authorize deletion. GC selects old unreferenced committed objects, records a candidate epoch, rechecks references after grace, then deletes idempotently. Failed upload staging has shorter TTL. VM images normally remain provider inventory refs; LabCentral artifact store holds only approved import sources/build outputs under explicit policy.
+Reference counts alone do not authorize deletion. The supported filesystem
+implementation performs GC only while holding an exclusive offline maintenance
+lease that excludes every correctly configured runtime Store. It verifies the
+exact database migration set, takes one read-only reference snapshot, verifies
+every referenced object and the complete object/staging inventory, and only
+then deletes unreferenced objects and abandoned staging. Dry-run is the default;
+mutation additionally requires an exact deletion confirmation. A future online
+or object-store implementation must instead record a candidate epoch and
+recheck references after grace. VM images normally remain provider inventory
+refs; LabCentral artifact storage holds only approved import sources/build
+outputs under explicit policy.
 
 `TASK-DOCKER-001` implements the local artifact port under `internal/adapter/filesystem`. The adapter creates a private root, keeps staging and objects on the same filesystem, persists the expected manifest beside a random upload, bounds writes by the declared byte count, measures SHA-256 while streaming, remeasures before commit, changes committed objects to mode 0400, fsyncs files/directories, and atomically renames into a `sha256/<prefix>/<digest>` key. Open re-verifies content and refuses symlink or non-regular paths. Authorization remains an application concern expressed by `AuthorizedArtifactRef`; the raw artifact tree is not served by HTTP.
 
-`TASK-PROD-001` adds an explicitly selected shared-POSIX mode for multiple replicas. Mutable staging operations use per-upload kernel advisory locks across independently opened stores, startup verifies that two file descriptions cannot hold the same exclusive lock, and immutable digest commits remain same-filesystem atomic renames. The operator must provide one durable ReadWriteMany filesystem with coherent `flock`, rename, and `fsync` semantics and the same service UID on every replica; ordinary local disks and filesystems that do not provide those semantics are rejected as production topology choices. Object storage and artifact GC remain `TASK-PROD-004` work.
+`TASK-PROD-001` adds an explicitly selected shared-POSIX mode for multiple replicas. Mutable staging operations use per-upload kernel advisory locks across independently opened stores, startup verifies that two file descriptions cannot hold the same exclusive lock, and immutable digest commits remain same-filesystem atomic renames. The operator must provide one durable ReadWriteMany filesystem with coherent `flock`, rename, and `fsync` semantics and the same service UID on every replica; ordinary local disks and filesystems that do not provide those semantics are rejected as production topology choices. `TASK-PROD-004` adds a root-wide shared runtime/exclusive maintenance lease and the packaged reference-aware offline collector for both SQLite and PostgreSQL layouts. Successful commits remove their staging lock; interrupted and failed uploads remain safely unreachable until the offline collector verifies and removes them. Object storage remains an optional later adapter for sites that do not use the supported shared-POSIX topology.
 
 The control-plane relational adapter adds checksummed migrations for instances, ordered logical resources, Operations, invocation records, immutable instance target/override bindings, expiring provider-target capability snapshots, identity/tenancy/RBAC records, versioned renewable/revocable authority records, keyed authentication rate windows, expiring session/OIDC/recovery state, Lab Templates/revisions, durable 1–100-item classroom batches, and generalized audit/event streams on top of the job/outbox and allocation schemas. SQLite startup enables foreign keys, WAL, a busy timeout, one database connection, and a non-blocking process file lock. PostgreSQL uses native binary/integer types, database time for leases and authentication windows, `SKIP LOCKED`, transaction-scoped idempotency locks, bounded serialization/deadlock retry, and a session advisory lock around migrations. Target rows persist no secret or target configuration bytes; authentication stores only slow password hashes, keyed token hashes, and encrypted transient PKCE material.
 
-Published Template Revision source uses the existing content-addressed artifact adapter. Core renders and measures the bounded source before staging, commits it under its SHA-256 reference, then stores exact author API, renderer, canonical-format, bundle digest/size, and canonical digest metadata. Opening a revision is project-authorized and re-verifies object size, object digest, and rendered provenance before returning source to instance creation. A failed relational publication can leave only an unreferenced immutable digest object; later reference-aware artifact GC may remove it, while it can never make an incomplete revision visible.
+Published Template Revision source uses the existing content-addressed artifact adapter. Core renders and measures the bounded source before staging, commits it under its SHA-256 reference, then stores exact author API, renderer, canonical-format, bundle digest/size, and canonical digest metadata. Opening a revision is project-authorized and re-verifies object size, object digest, and rendered provenance before returning source to instance creation. A failed relational publication can leave only an unreferenced immutable digest object; the offline reference-aware collector may remove it after every runtime is excluded, while it can never make an incomplete revision visible.
 
 ## Backup, restore, and migration
 
@@ -42,7 +52,9 @@ durable table count, and reads the restored terminal Instance. The
 `labcentral-recovery` utility: signed age-encrypted sets, stable database
 watermarks, complete shared/native state archives, strict path/type/bounds,
 empty-destination restore, exact release/tool-major binding, and real
-PostgreSQL plus SQLite rehearsals. The supported consistency boundary still
+PostgreSQL plus SQLite rehearsals. The same executable supplies dry-run-first
+offline artifact collection bound to the exact current migration set and every
+committed Template Revision reference. The supported consistency boundary still
 requires every replica/plugin to stop; online backup is not claimed. The
 operator procedure is [`../operations/recovery.md`](../operations/recovery.md).
 

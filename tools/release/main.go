@@ -520,7 +520,8 @@ and snapshots provider executables before launch. The native production units
 instead isolate the official processes under three OS identities; archive
 checksums and signed exact-build qualification bind the installed files. The
 recovery utility creates and verifies signed age-encrypted PostgreSQL/shared
-state or native SQLite/provider-state recovery sets; follow docs/recovery.md.
+state or native SQLite/provider-state recovery sets and performs offline,
+reference-aware filesystem artifact maintenance; follow docs/recovery.md.
 
 For the local Docker example, run:
 
