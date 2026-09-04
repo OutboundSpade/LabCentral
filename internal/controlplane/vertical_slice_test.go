@@ -3,6 +3,7 @@ package controlplane_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -183,6 +184,146 @@ func TestPostgreSQLMultiReplicaFencingAndCrashRecovery(t *testing.T) {
 		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil || count != want {
 			t.Fatalf("%s count=%d want=%d err=%v", table, count, want, err)
 		}
+	}
+}
+
+func TestWorkerRecoversUnknownInvocationWithoutRedispatch(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:worker-invocation-recovery?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := localdb.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	engine := newTestEngine()
+	dockerService, err := dockerprovider.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dropper := &dropFirstApplyProvider{ProviderServiceServer: dockerService}
+	provider, closeProvider := testProviderClient(t, dropper)
+	defer closeProvider()
+	ids := &sequenceIDs{}
+	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{LeaseDuration: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateInstance(ctx, source, true, "recover-unknown-apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.RunOnce(ctx); err == nil || !strings.Contains(err.Error(), "provider outcome is unknown") {
+		t.Fatalf("dropped provider response returned %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE labcentral_jobs SET lease_until_us = 0 WHERE operation_id = ?`, created.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatalf("recover unknown invocation: %v", err)
+	}
+	instance, _, err := service.GetInstance(ctx, created.InstanceID)
+	if err != nil || instance.Phase != domain.InstanceReady {
+		t.Fatalf("recovered instance = %#v, %v", instance, err)
+	}
+	applyCalls, getInvocationCalls := dropper.counts()
+	if applyCalls != 4 || getInvocationCalls != 1 {
+		t.Fatalf("provider calls after recovery: apply=%d getInvocation=%d", applyCalls, getInvocationCalls)
+	}
+	var unknown, succeeded int
+	if err := db.QueryRowContext(ctx, `SELECT
+		SUM(CASE WHEN state = 'unknown' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN state = 'succeeded' THEN 1 ELSE 0 END)
+		FROM labcentral_runtime_invocations WHERE operation_id = ?`, created.OperationID).Scan(&unknown, &succeeded); err != nil {
+		t.Fatal(err)
+	}
+	if unknown != 0 || succeeded != 4 {
+		t.Fatalf("invocation states unknown=%d succeeded=%d", unknown, succeeded)
+	}
+}
+
+func TestWorkerReleasesPlannedClaimsWhenLifetimeExpiresBeforeProviderWork(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:worker-preflight-expiry?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := localdb.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	engine := newTestEngine()
+	dockerService, err := dockerprovider.NewService(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordingProvider{ProviderServiceServer: dockerService}
+	provider, closeProvider := testProviderClient(t, recorder)
+	defer closeProvider()
+	ids := &sequenceIDs{}
+	service, err := controlplane.NewService(testRenderer(t), store, provider, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := controlplane.NewWorker(store, provider, ids, controlplane.WorkerOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile("../../examples/docker-laptop/lab.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.CreateInstance(ctx, source, true, "expire-before-provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	validationsBefore := recorder.validationCount()
+	var resourceID string
+	var plan []byte
+	if err := db.QueryRowContext(ctx, `SELECT resource_id, provider_plan FROM labcentral_local_resources
+		WHERE instance_id = ? AND kind = 'Network' LIMIT 1`, created.InstanceID).Scan(&resourceID, &plan); err != nil {
+		t.Fatal(err)
+	}
+	planDigest := sha256.Sum256(plan)
+	if _, err := db.ExecContext(ctx, `INSERT INTO labcentral_provider_allocation_claims
+		(target_id, namespace, claim_value, instance_id, resource_id, plan_digest, state, created_at_us, updated_at_us)
+		VALUES (?, 'test-allocation', 'reserved-1', ?, ?, ?, 'committed', 1, 1)`,
+		controlplane.LocalDockerTarget, created.InstanceID, resourceID, fmt.Sprintf("%x", planDigest)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE labcentral_local_instances SET expires_at_us = 1 WHERE instance_id = ?`, created.InstanceID); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatalf("expire before provider work: %v", err)
+	}
+	instance, err := store.GetInstance(ctx, created.InstanceID)
+	if err != nil || instance.Phase != domain.InstanceFailed {
+		t.Fatalf("expired preflight instance = %#v, %v", instance, err)
+	}
+	claims, err := store.ListClaims(ctx, created.InstanceID)
+	if err != nil || len(claims) != 1 || claims[0].State != application.AllocationReleased {
+		t.Fatalf("expired preflight claims = %#v, %v", claims, err)
+	}
+	if recorder.validationCount() != validationsBefore || engine.objectCount() != 0 {
+		t.Fatalf("provider reached after preflight expiry: validations %d -> %d, objects=%d", validationsBefore, recorder.validationCount(), engine.objectCount())
 	}
 }
 
@@ -820,6 +961,50 @@ type recordingProvider struct {
 	plans       []*pluginv1.PlanResourceRequest
 	validations int
 }
+
+type dropFirstApplyProvider struct {
+	pluginv1.ProviderServiceServer
+	mu                 sync.Mutex
+	dropped            bool
+	applyCalls         int
+	getInvocationCalls int
+}
+
+func (provider *dropFirstApplyProvider) ApplyResource(request *pluginv1.ApplyResourceRequest, stream pluginv1.ProviderService_ApplyResourceServer) error {
+	provider.mu.Lock()
+	provider.applyCalls++
+	drop := !provider.dropped
+	if drop {
+		provider.dropped = true
+	}
+	provider.mu.Unlock()
+	if !drop {
+		return provider.ProviderServiceServer.ApplyResource(request, stream)
+	}
+	if err := provider.ProviderServiceServer.ApplyResource(request, &discardApplyResponses{ProviderService_ApplyResourceServer: stream}); err != nil {
+		return err
+	}
+	return errors.New("simulated lost final provider response")
+}
+
+func (provider *dropFirstApplyProvider) GetInvocation(ctx context.Context, request *pluginv1.GetInvocationRequest) (*pluginv1.GetInvocationResponse, error) {
+	provider.mu.Lock()
+	provider.getInvocationCalls++
+	provider.mu.Unlock()
+	return provider.ProviderServiceServer.GetInvocation(ctx, request)
+}
+
+func (provider *dropFirstApplyProvider) counts() (int, int) {
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	return provider.applyCalls, provider.getInvocationCalls
+}
+
+type discardApplyResponses struct {
+	pluginv1.ProviderService_ApplyResourceServer
+}
+
+func (*discardApplyResponses) Send(*pluginv1.ApplyResourceResponse) error { return nil }
 
 func (provider *recordingProvider) ValidateLab(ctx context.Context, request *pluginv1.ValidateLabRequest) (*pluginv1.ValidateLabResponse, error) {
 	provider.mu.Lock()

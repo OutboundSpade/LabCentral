@@ -409,6 +409,10 @@ func tryCreateAccessTestInstance(store *Store, instanceID string, projectID doma
 		Payload:        []byte(`{"schemaVersion":1}`),
 		AuditID:        "audit." + instanceID,
 		EventID:        "event." + instanceID,
+		Quota: application.InstanceQuotaRequest{
+			ReservationID: domain.QuotaReservationID("quota." + instanceID),
+			Amounts:       []application.QuotaAmount{{Dimension: application.QuotaInstances, Value: 1}},
+		},
 	})
 	return err
 }

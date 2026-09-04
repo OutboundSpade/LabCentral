@@ -34,6 +34,7 @@ const (
 	authLifecycleMigrationID = "0006_authority_lifecycle"
 	templateMigrationID      = "0007_classroom_governance_foundation"
 	auditMigrationID         = "0008_governance_audit_events"
+	quotaMigrationID         = "0009_classroom_quota_expiration"
 	migrationLockID          = int64(0x4c616243656e7472)
 )
 
@@ -183,7 +184,13 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, templateMigrationID, s.templateMigrationStatements()); err != nil {
 		return err
 	}
-	return s.applyMigration(ctx, auditMigrationID, auditMigrationStatements(s.integerType(), s.blobType()))
+	if err := s.applyMigration(ctx, auditMigrationID, auditMigrationStatements(s.integerType(), s.blobType())); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, quotaMigrationID, s.quotaMigrationStatements()); err != nil {
+		return err
+	}
+	return s.backfillLegacyInstanceQuota(ctx)
 }
 
 func (s *Store) lockMigrations(ctx context.Context) (func(), error) {
@@ -715,6 +722,10 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 	if err := s.validateInstanceScope(ctx, tx, request); err != nil {
 		return controlplane.EnqueueResult{}, err
 	}
+	lifetime, err := s.reserveInstanceQuotaTx(ctx, tx, request)
+	if err != nil {
+		return controlplane.EnqueueResult{}, err
+	}
 	ack := 0
 	if request.Acknowledged {
 		ack = 1
@@ -725,11 +736,16 @@ func (s *Store) createInstance(ctx context.Context, request controlplane.CreateI
 	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_instances
 		(instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation, resource_version,
-		 isolation_warning_acknowledged, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`),
+		 isolation_warning_acknowledged, expires_at_us, maximum_expires_at_us, expiration_warning_at_us,
+		 expiration_grace_seconds, lifetime_renewal_allowed, lifetime_renewal_window_seconds, lifetime_policy_digest,
+		 created_at_us, updated_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)`),
 		request.InstanceID, nullableString(string(request.RevisionID)), request.ProjectID, request.OwnerKind, request.OwnerID, request.CreatedBy,
 		request.ProviderTargetID, providerOverride, request.CanonicalDigest.Hex(), request.CanonicalJSON, request.SourceYAML,
-		domain.InstancePending, domain.LifecycleRunning, ack); err != nil {
+		domain.InstancePending, domain.LifecycleRunning, ack, timeMicrosOrZero(lifetime.ExpiresAt),
+		timeMicrosOrZero(lifetime.MaximumExpiresAt), timeMicrosOrZero(lifetime.ExpirationWarningAt),
+		lifetime.DestructionGraceSeconds, quotaBoolean(lifetime.RenewalAllowed), lifetime.RenewalWindowSeconds,
+		lifetime.PolicyDigest.Hex()); err != nil {
 		return controlplane.EnqueueResult{}, fmt.Errorf("insert local instance: %w", err)
 	}
 	for _, resource := range request.Resources {
@@ -877,7 +893,7 @@ func (s *Store) GetTargetSnapshot(ctx context.Context, targetID domain.ProviderT
 }
 
 func validateCreate(request controlplane.CreateInstanceRequest) error {
-	if request.InstanceID == "" || request.ProjectID == "" || request.OwnerKind == "" || request.OwnerID == "" || request.CreatedBy == "" || request.ProviderTargetID == "" || request.OperationID == "" || request.CanonicalDigest == "" || len(request.CanonicalJSON) == 0 || len(request.SourceYAML) == 0 || len(request.Resources) == 0 || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" {
+	if request.InstanceID == "" || request.ProjectID == "" || request.OwnerKind == "" || request.OwnerID == "" || request.CreatedBy == "" || request.ProviderTargetID == "" || request.OperationID == "" || request.CanonicalDigest == "" || len(request.CanonicalJSON) == 0 || len(request.SourceYAML) == 0 || len(request.Resources) == 0 || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" || request.Quota.ReservationID == "" {
 		return fmt.Errorf("local instance request is incomplete")
 	}
 	if request.SubjectID != request.CreatedBy {
@@ -891,6 +907,19 @@ func validateCreate(request controlplane.CreateInstanceRequest) error {
 	}
 	if request.ProviderTargetID == controlplane.LocalDockerTarget && !request.Acknowledged {
 		return fmt.Errorf("local Docker instance request must acknowledge Docker isolation")
+	}
+	if _, err := domain.NewQuotaReservationID(string(request.Quota.ReservationID)); err != nil {
+		return err
+	}
+	amounts, err := application.NormalizeQuotaAmounts(request.Quota.Amounts)
+	if err != nil {
+		return fmt.Errorf("local instance quota amounts are invalid: %w", err)
+	}
+	if len(amounts) == 0 {
+		return fmt.Errorf("local instance quota amounts are required")
+	}
+	if err := application.ValidateInstanceLifetimeRequest(request.Quota.Lifetime); err != nil {
+		return err
 	}
 	for _, resource := range request.Resources {
 		if resource.ID == "" || resource.ProviderPlanDigest == "" || len(resource.ProviderPlan) == 0 || resource.OwnershipToken == "" {
@@ -1011,6 +1040,9 @@ func (s *Store) QueueDestroy(ctx context.Context, request controlplane.QueueDest
 	if request.InstanceID == "" || request.OperationID == "" || request.SubjectID == "" || request.IdempotencyKey == "" || request.RequestDigest == "" || len(request.Payload) == 0 || request.AuditID == "" || request.EventID == "" {
 		return controlplane.EnqueueResult{}, fmt.Errorf("destroy request is incomplete")
 	}
+	if !request.ExpirationDueAt.IsZero() && request.SubjectID != controlplane.SystemExpirationActorID {
+		return controlplane.EnqueueResult{}, fmt.Errorf("expiration-gated destroy requires the expiration system actor")
+	}
 	for attempt := 0; ; attempt++ {
 		result, err := s.queueDestroy(ctx, request)
 		if !isRetryableTransactionConflict(err) || attempt == 4 {
@@ -1037,9 +1069,57 @@ func (s *Store) queueDestroy(ctx context.Context, request controlplane.QueueDest
 	} else if found {
 		return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: domain.OperationID(existing), Replay: true}, tx.Commit()
 	}
-	result, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_local_instances
-		SET desired_lifecycle = ?, resource_version = resource_version + 1, updated_at_us = `+s.nowMicros()+`
-		WHERE instance_id = ? AND phase <> ?`), domain.LifecycleDestroyed, request.InstanceID, domain.InstanceDestroyed)
+	instanceQuery := `SELECT phase, expires_at_us, expiration_grace_seconds
+		FROM labcentral_local_instances WHERE instance_id = ?`
+	if s.dialect == jobsdb.DialectPostgreSQL {
+		instanceQuery += ` FOR UPDATE`
+	}
+	var phase domain.InstancePhase
+	var expiresAtMicros, graceSeconds int64
+	if err := tx.QueryRowContext(ctx, s.bind(instanceQuery), request.InstanceID).Scan(&phase, &expiresAtMicros, &graceSeconds); errors.Is(err, sql.ErrNoRows) {
+		return controlplane.EnqueueResult{}, controlplane.ErrNotFound
+	} else if err != nil {
+		return controlplane.EnqueueResult{}, fmt.Errorf("lock instance for destroy: %w", err)
+	}
+	if phase == domain.InstanceDestroyed {
+		return controlplane.EnqueueResult{}, controlplane.ErrNotFound
+	}
+	if !request.ExpirationDueAt.IsZero() {
+		now, err := s.databaseNowTx(ctx, tx)
+		if err != nil {
+			return controlplane.EnqueueResult{}, err
+		}
+		if expiresAtMicros <= 0 || graceSeconds < 0 || request.ExpirationDueAt.UTC().UnixMicro() != expiresAtMicros ||
+			now.UnixMicro() < expiresAtMicros+graceSeconds*1_000_000 {
+			return controlplane.EnqueueResult{}, controlplane.ErrVersionConflict
+		}
+	}
+	activeOperation, activeKind, err := s.activeOperationTx(ctx, tx, request.InstanceID)
+	if err != nil {
+		return controlplane.EnqueueResult{}, err
+	}
+	if activeOperation != "" {
+		if activeKind != controlplane.OperationDestroy {
+			return controlplane.EnqueueResult{}, controlplane.ErrVersionConflict
+		}
+		if err := s.bindIdempotency(ctx, tx, request.SubjectID, action, request.IdempotencyKey, request.RequestDigest, string(activeOperation)); err != nil {
+			return controlplane.EnqueueResult{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return controlplane.EnqueueResult{}, err
+		}
+		return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: activeOperation, Replay: true}, nil
+	}
+	update := `UPDATE labcentral_local_instances
+		SET desired_lifecycle = ?, resource_version = resource_version + 1, updated_at_us = ` + s.nowMicros() + `
+		WHERE instance_id = ? AND phase <> ?`
+	arguments := []any{domain.LifecycleDestroyed, request.InstanceID, domain.InstanceDestroyed}
+	if !request.ExpirationDueAt.IsZero() {
+		update += ` AND expires_at_us = ? AND expires_at_us > 0
+			AND expires_at_us + expiration_grace_seconds * 1000000 <= ` + s.nowMicros()
+		arguments = append(arguments, request.ExpirationDueAt.UTC().UnixMicro())
+	}
+	result, err := tx.ExecContext(ctx, s.bind(update), arguments...)
 	if err != nil {
 		return controlplane.EnqueueResult{}, err
 	}
@@ -1056,6 +1136,26 @@ func (s *Store) queueDestroy(ctx context.Context, request controlplane.QueueDest
 		return controlplane.EnqueueResult{}, err
 	}
 	return controlplane.EnqueueResult{InstanceID: request.InstanceID, OperationID: request.OperationID}, nil
+}
+
+func (s *Store) activeOperationTx(ctx context.Context, tx *sql.Tx, instanceID domain.InstanceID) (domain.OperationID, controlplane.OperationKind, error) {
+	var operationID domain.OperationID
+	var kind controlplane.OperationKind
+	err := tx.QueryRowContext(ctx, s.bind(`SELECT operation.operation_id, operation.kind
+		FROM labcentral_local_operations operation
+		JOIN labcentral_jobs job ON job.operation_id = operation.operation_id
+		WHERE operation.instance_id = ?
+		AND job.state IN (?, ?, ?, ?)
+		ORDER BY operation.created_at_us DESC, operation.operation_id DESC LIMIT 1`),
+		instanceID, domain.OperationQueued, domain.OperationRunning,
+		domain.OperationCancelRequested, domain.OperationCompensating).Scan(&operationID, &kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("load active instance operation: %w", err)
+	}
+	return operationID, kind, nil
 }
 
 func (s *Store) enqueue(ctx context.Context, tx *sql.Tx, instanceID domain.InstanceID, operationID domain.OperationID, kind controlplane.OperationKind, payload []byte, subjectID domain.UserID, auditID, eventID string) error {
@@ -1138,19 +1238,20 @@ func (s *Store) bindIdempotency(ctx context.Context, tx *sql.Tx, subject domain.
 	return err
 }
 
-func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlplane.InstanceRecord, error) {
-	row := s.db.QueryRowContext(ctx, s.bind(`SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
+const instanceRecordSelect = `SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
 		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
-		error_code, error_message, created_at_us, updated_at_us
-		FROM labcentral_local_instances WHERE instance_id = ?`), id)
+		error_code, error_message, expires_at_us, maximum_expires_at_us, expiration_warning_at_us,
+		expiration_warning_emitted_at_us, expiration_grace_seconds, lifetime_renewal_allowed,
+		lifetime_renewal_window_seconds, lifetime_policy_digest, created_at_us, updated_at_us
+		FROM labcentral_local_instances`
+
+func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (controlplane.InstanceRecord, error) {
+	row := s.db.QueryRowContext(ctx, s.bind(instanceRecordSelect+` WHERE instance_id = ?`), id)
 	return scanInstance(row)
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]controlplane.InstanceRecord, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
-		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
-		error_code, error_message, created_at_us, updated_at_us
-		FROM labcentral_local_instances ORDER BY created_at_us, instance_id`))
+	rows, err := s.db.QueryContext(ctx, s.bind(instanceRecordSelect+` ORDER BY created_at_us, instance_id`))
 	if err != nil {
 		return nil, err
 	}
@@ -1182,10 +1283,7 @@ func (s *Store) ListInstancesByID(ctx context.Context, ids []domain.InstanceID) 
 		arguments = append(arguments, id)
 		placeholders = append(placeholders, "?")
 	}
-	query := `SELECT instance_id, revision_id, project_id, owner_kind, owner_id, created_by, provider_target_id, provider_override_json, canonical_digest, canonical_lab_json, source_yaml, phase,
-		desired_lifecycle, generation, resource_version, isolation_warning_acknowledged, outputs_json,
-		error_code, error_message, created_at_us, updated_at_us
-		FROM labcentral_local_instances WHERE instance_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY created_at_us, instance_id`
+	query := instanceRecordSelect + ` WHERE instance_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY created_at_us, instance_id`
 	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return nil, err
@@ -1208,9 +1306,13 @@ func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 	var record controlplane.InstanceRecord
 	var id, projectID, ownerKind, createdBy, targetID, digest, phase, lifecycle string
 	var revisionID sql.NullString
-	var generation, resourceVersion, acknowledged, createdAt, updatedAt int64
+	var generation, resourceVersion, acknowledged, expiresAt, maximumExpiresAt, warningAt, warningEmittedAt int64
+	var graceSeconds, renewalAllowed, renewalWindow, createdAt, updatedAt int64
+	var lifetimePolicyDigest string
 	err := row.Scan(&id, &revisionID, &projectID, &ownerKind, &record.OwnerID, &createdBy, &targetID, &record.ProviderOverrideJSON, &digest, &record.CanonicalLabJSON, &record.SourceYAML, &phase, &lifecycle,
-		&generation, &resourceVersion, &acknowledged, &record.OutputsJSON, &record.ErrorCode, &record.ErrorMessage, &createdAt, &updatedAt)
+		&generation, &resourceVersion, &acknowledged, &record.OutputsJSON, &record.ErrorCode, &record.ErrorMessage,
+		&expiresAt, &maximumExpiresAt, &warningAt, &warningEmittedAt, &graceSeconds, &renewalAllowed, &renewalWindow,
+		&lifetimePolicyDigest, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return controlplane.InstanceRecord{}, controlplane.ErrNotFound
 	}
@@ -1235,6 +1337,30 @@ func scanInstance(row scanner) (controlplane.InstanceRecord, error) {
 	record.Generation = domain.Generation(generation)
 	record.ResourceVersion = domain.ResourceVersion(resourceVersion)
 	record.IsolationWarningAcknowledged = acknowledged == 1
+	if expiresAt > 0 {
+		record.ExpiresAt = time.UnixMicro(expiresAt).UTC()
+	}
+	if maximumExpiresAt > 0 {
+		record.MaximumExpiresAt = time.UnixMicro(maximumExpiresAt).UTC()
+	}
+	if warningAt > 0 {
+		record.ExpirationWarningAt = time.UnixMicro(warningAt).UTC()
+	}
+	if warningEmittedAt > 0 {
+		record.ExpirationWarningEmittedAt = time.UnixMicro(warningEmittedAt).UTC()
+	}
+	if graceSeconds < 0 || renewalWindow < 0 {
+		return controlplane.InstanceRecord{}, fmt.Errorf("stored instance lifetime values are invalid")
+	}
+	record.ExpirationGraceSeconds = uint64(graceSeconds)
+	record.LifetimeRenewalAllowed = renewalAllowed != 0
+	record.LifetimeRenewalWindowSeconds = uint64(renewalWindow)
+	if lifetimePolicyDigest != "" {
+		record.LifetimePolicyDigest, err = domain.ParseSHA256Digest(lifetimePolicyDigest)
+		if err != nil {
+			return controlplane.InstanceRecord{}, fmt.Errorf("stored instance lifetime policy digest is invalid: %w", err)
+		}
+	}
 	record.CreatedAt = time.UnixMicro(createdAt).UTC()
 	record.UpdatedAt = time.UnixMicro(updatedAt).UTC()
 	return record, nil
@@ -1303,7 +1429,28 @@ func (s *Store) Claim(ctx context.Context, owner string, duration time.Duration)
 	if err != nil {
 		return controlplane.WorkClaim{}, err
 	}
-	return controlplane.WorkClaim{Operation: claim.Operation, LeaseOwner: claim.LeaseOwner, Payload: claim.Payload}, nil
+	result := controlplane.WorkClaim{Operation: claim.Operation, LeaseOwner: claim.LeaseOwner, Action: claim.Action, Payload: claim.Payload}
+	if claim.Action == application.ClaimGetInvocation {
+		var recovery controlplane.InvocationRecord
+		var digest string
+		err := s.db.QueryRowContext(ctx, s.bind(`SELECT invocation_id, operation_id, resource_id, action, idempotency_key, request_digest, state, provider_result
+			FROM labcentral_runtime_invocations WHERE operation_id = ? AND state = 'unknown'
+			ORDER BY updated_at_us DESC, invocation_id DESC LIMIT 1`), claim.Operation.ID).Scan(
+			&recovery.ID, &recovery.OperationID, &recovery.ResourceID, &recovery.Action, &recovery.IdempotencyKey,
+			&digest, &recovery.State, &recovery.ProviderResult)
+		if errors.Is(err, sql.ErrNoRows) {
+			return controlplane.WorkClaim{}, fmt.Errorf("operation requires invocation recovery but has no unknown invocation")
+		}
+		if err != nil {
+			return controlplane.WorkClaim{}, fmt.Errorf("load unknown runtime invocation: %w", err)
+		}
+		recovery.RequestDigest = domain.SHA256Digest(digest)
+		if _, err := domain.ParseSHA256Digest(digest); err != nil {
+			return controlplane.WorkClaim{}, fmt.Errorf("stored runtime invocation digest is invalid")
+		}
+		result.Recovery = &recovery
+	}
+	return result, nil
 }
 
 func (s *Store) Renew(ctx context.Context, fence controlplane.Fence, duration time.Duration) error {
@@ -1419,6 +1566,14 @@ func (s *Store) SaveResourceResult(ctx context.Context, update controlplane.Reso
 		WHERE invocation_id = ? AND operation_id = ?`), update.InvocationState, resultBytes, update.InvocationID, update.Fence.OperationID); err != nil {
 		return err
 	}
+	recoveryRequired := 0
+	if update.InvocationState == "unknown" {
+		recoveryRequired = 1
+	}
+	if _, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_jobs SET recovery_required = ?
+		WHERE operation_id = ?`), recoveryRequired, update.Fence.OperationID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -1485,6 +1640,9 @@ func (s *Store) Finalize(ctx context.Context, request controlplane.FinalizeReque
 		resource_version = resource_version + 1, event_sequence = event_sequence + 1
 		WHERE aggregate_id = (SELECT instance_id FROM labcentral_jobs WHERE operation_id = ?)
 		RETURNING aggregate_id, event_sequence`), "complete", request.State, request.InstancePhase, request.Fence.OperationID).Scan(&instanceID, &sequence); err != nil {
+		return err
+	}
+	if err := s.finalizeInstanceQuotaTx(ctx, tx, domain.InstanceID(instanceID), request.OperationKind, request.State, request.InstancePhase); err != nil {
 		return err
 	}
 	eventPayload := []byte(fmt.Sprintf(`{"operationId":%q,"kind":%q,"state":%q,"instancePhase":%q}`, request.Fence.OperationID, request.OperationKind, request.State, request.InstancePhase))

@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	ErrNoWork          = errors.New("no claimable local operation")
-	ErrNotFound        = errors.New("local control-plane record not found")
-	ErrAlreadyExists   = errors.New("control-plane record already exists")
-	ErrVersionConflict = errors.New("control-plane resource version conflict")
+	ErrNoWork           = errors.New("no claimable local operation")
+	ErrNotFound         = errors.New("local control-plane record not found")
+	ErrAlreadyExists    = errors.New("control-plane record already exists")
+	ErrVersionConflict  = errors.New("control-plane resource version conflict")
+	ErrAuthorityChanged = errors.New("control-plane authority changed before mutation")
 )
 
 type OperationKind string
@@ -43,6 +44,14 @@ type InstanceRecord struct {
 	OutputsJSON                  []byte
 	ErrorCode                    string
 	ErrorMessage                 string
+	ExpiresAt                    time.Time
+	MaximumExpiresAt             time.Time
+	ExpirationWarningAt          time.Time
+	ExpirationWarningEmittedAt   time.Time
+	ExpirationGraceSeconds       uint64
+	LifetimeRenewalAllowed       bool
+	LifetimeRenewalWindowSeconds uint64
+	LifetimePolicyDigest         domain.SHA256Digest
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
 }
@@ -237,17 +246,62 @@ type CreateInstanceRequest struct {
 	Payload              []byte
 	AuditID              string
 	EventID              string
+	Quota                application.InstanceQuotaRequest
 }
 
 type QueueDestroyRequest struct {
-	InstanceID     domain.InstanceID
-	OperationID    domain.OperationID
-	SubjectID      domain.UserID
-	IdempotencyKey string
-	RequestDigest  domain.SHA256Digest
-	Payload        []byte
-	AuditID        string
-	EventID        string
+	InstanceID      domain.InstanceID
+	OperationID     domain.OperationID
+	SubjectID       domain.UserID
+	IdempotencyKey  string
+	RequestDigest   domain.SHA256Digest
+	Payload         []byte
+	AuditID         string
+	EventID         string
+	ExpirationDueAt time.Time
+}
+
+type PutQuotaLimitRequest struct {
+	GovernanceRecordIDs
+	Scope                   application.QuotaScope
+	Dimension               application.QuotaDimension
+	Limit                   uint64
+	ExpectedResourceVersion domain.ResourceVersion
+	UpdatedBy               domain.UserID
+	IdempotencyKey          string
+	RequestDigest           domain.SHA256Digest
+}
+
+type PutLifetimePolicyRequest struct {
+	GovernanceRecordIDs
+	Policy                  application.LifetimePolicyRecord
+	ExpectedResourceVersion domain.ResourceVersion
+	UpdatedBy               domain.UserID
+	IdempotencyKey          string
+	RequestDigest           domain.SHA256Digest
+}
+
+type RenewInstanceLifetimeRequest struct {
+	GovernanceRecordIDs
+	InstanceID              domain.InstanceID
+	TTLSeconds              uint64
+	ExpectedResourceVersion domain.ResourceVersion
+	ActorID                 domain.UserID
+	IdempotencyKey          string
+	RequestDigest           domain.SHA256Digest
+}
+
+type ExpirationCandidate struct {
+	InstanceID      domain.InstanceID
+	ExpiresAt       time.Time
+	WarningAt       time.Time
+	GraceSeconds    uint64
+	ResourceVersion domain.ResourceVersion
+}
+
+type MarkExpirationWarningRequest struct {
+	GovernanceRecordIDs
+	Candidate ExpirationCandidate
 }
 
 type EnqueueResult struct {
@@ -259,6 +313,8 @@ type EnqueueResult struct {
 type WorkClaim struct {
 	Operation  domain.Operation
 	LeaseOwner string
+	Action     application.ClaimAction
+	Recovery   *InvocationRecord
 	Payload    []byte
 }
 
@@ -325,6 +381,18 @@ type Store interface {
 	PublishTemplateRevision(context.Context, PublishTemplateRevisionRequest) (TemplateRevisionRecord, error)
 	GetTemplateRevision(context.Context, domain.RevisionID) (TemplateRevisionRecord, error)
 	ListTemplateRevisions(context.Context, TemplateRevisionListRequest) (TemplateRevisionPage, error)
+	PutQuotaLimit(context.Context, PutQuotaLimitRequest) (application.QuotaLimitRecord, error)
+	GetQuotaLimit(context.Context, application.QuotaScope, application.QuotaDimension) (application.QuotaLimitRecord, error)
+	ListQuotaUsage(context.Context, application.QuotaScope) ([]application.QuotaUsageRecord, error)
+	PutLifetimePolicy(context.Context, PutLifetimePolicyRequest) (application.LifetimePolicyRecord, error)
+	GetLifetimePolicy(context.Context, application.QuotaScope) (application.LifetimePolicyRecord, error)
+	RenewInstanceLifetime(context.Context, RenewInstanceLifetimeRequest) (InstanceRecord, error)
+	ListExpirationWarnings(context.Context, uint32) ([]ExpirationCandidate, error)
+	MarkExpirationWarning(context.Context, MarkExpirationWarningRequest) (bool, error)
+	ListExpiredInstances(context.Context, uint32) ([]ExpirationCandidate, error)
+	ExpireStaleQuotaReservations(context.Context, uint32) (uint32, error)
+	RetainInstanceQuota(context.Context, Fence) error
+	ApplyExecutionAllowed(context.Context, Fence) (bool, error)
 	CreateInstance(context.Context, CreateInstanceRequest) (EnqueueResult, error)
 	SaveTargetSnapshot(context.Context, TargetSnapshot) error
 	GetTargetSnapshot(context.Context, domain.ProviderTargetID) (TargetSnapshot, error)

@@ -10,20 +10,21 @@ import (
 // IDs are opaque values. Their concrete representation is intentionally not
 // exposed to persistence, transport, or provider concerns.
 type (
-	UserID            string
-	OrganizationID    string
-	ProjectID         string
-	TeamID            string
-	ProviderTargetID  string
-	TemplateID        string
-	RevisionID        string
-	InstanceID        string
-	LogicalResourceID string
-	OperationID       string
-	InvocationID      string
-	SnapshotID        string
-	AccessSessionID   string
-	UploadID          string
+	UserID             string
+	OrganizationID     string
+	ProjectID          string
+	TeamID             string
+	ProviderTargetID   string
+	TemplateID         string
+	RevisionID         string
+	InstanceID         string
+	LogicalResourceID  string
+	OperationID        string
+	InvocationID       string
+	SnapshotID         string
+	AccessSessionID    string
+	QuotaReservationID string
+	UploadID           string
 )
 
 type (
@@ -84,6 +85,10 @@ func NewRevisionID(value string) (RevisionID, error) {
 
 func NewInstanceID(value string) (InstanceID, error) {
 	return InstanceID(value), validateOpaqueID("instance ID", value)
+}
+
+func NewQuotaReservationID(value string) (QuotaReservationID, error) {
+	return QuotaReservationID(value), validateOpaqueID("quota reservation ID", value)
 }
 
 func NewLogicalResourceID(value string) (LogicalResourceID, error) {

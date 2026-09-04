@@ -258,6 +258,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	refreshContext, cancelRefresh := context.WithCancel(ctx)
 	defer cancelRefresh()
 	go refreshProviderTargets(refreshContext, control, targets.IDs(), logger)
+	expirationContext, cancelExpiration := context.WithCancel(ctx)
+	defer cancelExpiration()
+	go sweepExpiredInstances(expirationContext, control, logger)
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
 		Owner: configuration.replicaID, Authorizer: authenticationOptions.Authorizer,
 		OnError: func(err error) { logger.Error("durable worker iteration failed", "error", err) },
@@ -369,6 +372,34 @@ func refreshProviderTargets(ctx context.Context, control *controlplane.Service, 
 					logger.Error("provider target refresh failed; cached evidence remains authoritative", "target", target, "error", err)
 				}
 			}
+		}
+	}
+}
+
+func sweepExpiredInstances(ctx context.Context, control *controlplane.Service, logger *slog.Logger) {
+	const batchSize = uint32(200)
+	run := func() {
+		result, err := control.RunExpirationSweep(ctx, batchSize)
+		if err != nil {
+			if ctx.Err() == nil {
+				logger.Error("instance expiration sweep failed", "error", err)
+			}
+			return
+		}
+		if result.ReservationsExpired > 0 || result.WarningsEmitted > 0 || result.DestroysEnqueued > 0 {
+			logger.Info("instance expiration sweep completed", "reservationsExpired", result.ReservationsExpired,
+				"warningsEmitted", result.WarningsEmitted, "destroysEnqueued", result.DestroysEnqueued)
+		}
+	}
+	run()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
 		}
 	}
 }

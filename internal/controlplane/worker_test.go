@@ -21,7 +21,8 @@ func TestFailedResourceLeftoverClassificationIsHonest(t *testing.T) {
 		want   bool
 	}{
 		{name: "no provider result", result: nil, want: false},
-		{name: "prewrite failure without leftovers", result: &pluginv1.ResourceResult{Error: failure, ObservedStateJson: []byte(`{"leftovers":[]}`)}, want: false},
+		{name: "unproven prewrite failure is retained", result: &pluginv1.ResourceResult{Error: failure, ObservedStateJson: []byte(`{"leftovers":[]}`)}, want: true},
+		{name: "explicitly compensated prewrite failure", result: &pluginv1.ResourceResult{Error: failure, CompensationComplete: true, ObservedStateJson: []byte(`{"leftovers":[]}`)}, want: false},
 		{name: "reported owned leftover", result: &pluginv1.ResourceResult{Error: failure, ObservedStateJson: []byte(`{"leftovers":["qemu/101"]}`)}, want: true},
 		{name: "incomplete attempted compensation", result: &pluginv1.ResourceResult{Error: failure, CompensationAttempted: true}, want: true},
 		{name: "confirmed compensation overrides stale observation", result: &pluginv1.ResourceResult{Error: failure, CompensationAttempted: true, CompensationComplete: true, ObservedStateJson: []byte(`{"leftovers":["qemu/101"]}`)}, want: false},

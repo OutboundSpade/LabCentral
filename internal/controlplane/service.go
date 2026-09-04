@@ -306,17 +306,25 @@ func (s *Service) CreateInstanceTarget(ctx context.Context, source []byte, ackno
 }
 
 func (s *Service) CreateInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
-	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, acknowledged, idempotencyKey, targetID, providerOverride)
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, application.InstanceLifetimeRequest{}, acknowledged, idempotencyKey, targetID, providerOverride)
+}
+
+func (s *Service) CreateInstanceTargetForLifetime(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, "", source, lifetime, acknowledged, idempotencyKey, targetID, providerOverride)
 }
 
 func (s *Service) CreateInstanceRevisionTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+	return s.CreateInstanceRevisionTargetForLifetime(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, application.InstanceLifetimeRequest{}, acknowledged, idempotencyKey, targetID, providerOverride)
+}
+
+func (s *Service) CreateInstanceRevisionTargetForLifetime(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
 	if _, err := domain.NewRevisionID(string(revisionID)); err != nil {
 		return EnqueueResult{}, err
 	}
-	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, acknowledged, idempotencyKey, targetID, providerOverride)
+	return s.createInstanceTargetFor(ctx, subjectID, projectID, ownerKind, ownerID, revisionID, source, lifetime, acknowledged, idempotencyKey, targetID, providerOverride)
 }
 
-func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
+func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.UserID, projectID domain.ProjectID, ownerKind application.OwnerKind, ownerID string, revisionID domain.RevisionID, source []byte, lifetime application.InstanceLifetimeRequest, acknowledged bool, idempotencyKey string, targetID domain.ProviderTargetID, providerOverride []byte) (EnqueueResult, error) {
 	if _, err := domain.NewUserID(string(subjectID)); err != nil {
 		return EnqueueResult{}, err
 	}
@@ -325,6 +333,9 @@ func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.
 	}
 	if !validOwner(ownerKind, ownerID) {
 		return EnqueueResult{}, fmt.Errorf("instance owner is invalid")
+	}
+	if err := application.ValidateInstanceLifetimeRequest(lifetime); err != nil {
+		return EnqueueResult{}, err
 	}
 	validation, err := s.ValidateTarget(ctx, source, acknowledged, targetID, providerOverride)
 	if err != nil {
@@ -348,10 +359,20 @@ func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.
 		return EnqueueResult{}, err
 	}
 	operationID := domain.OperationID(operationValue)
+	reservationValue, err := s.ids.New("qres")
+	if err != nil {
+		return EnqueueResult{}, err
+	}
+	reservationID := domain.QuotaReservationID(reservationValue)
 	payload, _ := json.Marshal(jobPayload{Version: jobPayloadVersion, Kind: OperationApply, InstanceID: instanceID})
-	requestDigest := digestBytes("labcentral.http.create-instance/v1", []byte(projectID), []byte(ownerKind), []byte(ownerID), source, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+	lifetimeDigest := []byte(fmt.Sprintf("%d:%t", lifetime.TTLSeconds, lifetime.Persistent))
+	requestDigest := digestBytes("labcentral.http.create-instance/v2", []byte(projectID), []byte(ownerKind), []byte(ownerID), source, lifetimeDigest, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
 	if revisionID != "" {
-		requestDigest = digestBytes("labcentral.http.create-instance-revision/v1", []byte(projectID), []byte(ownerKind), []byte(ownerID), []byte(revisionID), []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+		requestDigest = digestBytes("labcentral.http.create-instance-revision/v2", []byte(projectID), []byte(ownerKind), []byte(ownerID), []byte(revisionID), lifetimeDigest, []byte(fmt.Sprintf("%t", acknowledged)), []byte(targetID), providerOverride)
+	}
+	quotaAmounts, err := quotaAmountsForCanonical(validation.Canonical)
+	if err != nil {
+		return EnqueueResult{}, err
 	}
 	auditID, err := s.ids.New("audit")
 	if err != nil {
@@ -387,6 +408,7 @@ func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.
 			CanonicalJSON: validation.Canonical.CanonicalBytes, SourceYAML: source, Resources: resources, Acknowledged: acknowledged,
 			SubjectID: subjectID, IdempotencyKey: idempotencyKey, RequestDigest: requestDigest, Payload: payload,
 			AuditID: auditID, EventID: eventID,
+			Quota: application.InstanceQuotaRequest{ReservationID: reservationID, Amounts: quotaAmounts, Lifetime: lifetime},
 		})
 		if createErr == nil {
 			return result, nil

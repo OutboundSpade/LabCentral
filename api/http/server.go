@@ -92,6 +92,8 @@ type LabRequest struct {
 	ProjectID                      string          `json:"projectId,omitempty" maxLength:"128"`
 	OwnerKind                      string          `json:"ownerKind,omitempty" enum:"user,team,project"`
 	OwnerID                        string          `json:"ownerId,omitempty" maxLength:"128"`
+	TTLSeconds                     uint64          `json:"ttlSeconds,omitempty" maximum:"31622400"`
+	Persistent                     bool            `json:"persistent,omitempty"`
 	ProviderTargetID               string          `json:"providerTargetId,omitempty" maxLength:"128"`
 	ProviderOverride               json.RawMessage `json:"providerOverride,omitempty"`
 }
@@ -153,6 +155,8 @@ type InstanceDTO struct {
 	Resources        []ResourceDTO  `json:"resources,omitempty"`
 	ErrorCode        string         `json:"errorCode,omitempty"`
 	ErrorMessage     string         `json:"errorMessage,omitempty"`
+	ExpiresAt        *time.Time     `json:"expiresAt,omitempty"`
+	MaximumExpiresAt *time.Time     `json:"maximumExpiresAt,omitempty"`
 	CreatedAt        time.Time      `json:"createdAt"`
 	UpdatedAt        time.Time      `json:"updatedAt"`
 }
@@ -212,6 +216,42 @@ type EventRecordDTO struct {
 	Links             application.RecordLinks `json:"links"`
 	Payload           json.RawMessage         `json:"payload"`
 	OccurredAt        time.Time               `json:"occurredAt"`
+}
+
+type QuotaLimitMutationBody struct {
+	Limit uint64 `json:"limit" maximum:"9223372036854775807"`
+}
+
+type LifetimePolicyMutationBody struct {
+	DefaultTTLSeconds       uint64 `json:"defaultTtlSeconds" minimum:"1" maximum:"31622400"`
+	MaximumTTLSeconds       uint64 `json:"maximumTtlSeconds" minimum:"1" maximum:"31622400"`
+	RenewalWindowSeconds    uint64 `json:"renewalWindowSeconds" maximum:"31622400"`
+	WarningBeforeSeconds    uint64 `json:"warningBeforeSeconds" maximum:"31622400"`
+	DestructionGraceSeconds uint64 `json:"destructionGraceSeconds" maximum:"86400"`
+	RenewalAllowed          bool   `json:"renewalAllowed"`
+	PersistentAllowed       bool   `json:"persistentAllowed"`
+}
+
+type QuotaUsageDTO struct {
+	Dimension application.QuotaDimension `json:"dimension"`
+	Reserved  uint64                     `json:"reserved"`
+	Committed uint64                     `json:"committed"`
+	Retained  uint64                     `json:"retained"`
+	Total     uint64                     `json:"total"`
+	UpdatedAt time.Time                  `json:"updatedAt"`
+}
+
+type InstanceLifetimeDTO struct {
+	InstanceID                   string    `json:"instanceId"`
+	ExpiresAt                    time.Time `json:"expiresAt"`
+	MaximumExpiresAt             time.Time `json:"maximumExpiresAt"`
+	ExpirationWarningAt          time.Time `json:"expirationWarningAt"`
+	ExpirationGraceSeconds       uint64    `json:"expirationGraceSeconds"`
+	LifetimeRenewalAllowed       bool      `json:"lifetimeRenewalAllowed"`
+	LifetimeRenewalWindowSeconds uint64    `json:"lifetimeRenewalWindowSeconds"`
+	LifetimePolicyDigest         string    `json:"lifetimePolicyDigest"`
+	ResourceVersion              uint64    `json:"resourceVersion"`
+	UpdatedAt                    time.Time `json:"updatedAt"`
 }
 
 func register(api huma.API, service *controlplane.Service, exampleSource []byte, options Options, security *requestSecurity) {
@@ -362,6 +402,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 
 	registerTemplates(api, service, security)
 	registerAuditAndEvents(api, service, security)
+	registerQuotas(api, service, security)
 
 	huma.Post(api, "/lab-validations", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body ValidationBody }, error) {
 		if input.Body.Source == "" || input.Body.RevisionID != "" {
@@ -418,6 +459,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 				return nil, err
 			}
 			var result controlplane.EnqueueResult
+			lifetime := application.InstanceLifetimeRequest{TTLSeconds: input.Body.TTLSeconds, Persistent: input.Body.Persistent}
 			if input.Body.RevisionID != "" {
 				if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateRead, ScopeKind: application.ScopeProject, ScopeID: string(projectID)}); err != nil {
 					return nil, err
@@ -430,9 +472,9 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 				if openErr != nil {
 					return nil, apiError(openErr)
 				}
-				result, err = service.CreateInstanceRevisionTargetFor(ctx, actor.user.ID, projectID, ownerKind, ownerID, revisionID, source, input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
+				result, err = service.CreateInstanceRevisionTargetForLifetime(ctx, actor.user.ID, projectID, ownerKind, ownerID, revisionID, source, lifetime, input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
 			} else {
-				result, err = service.CreateInstanceTargetFor(ctx, actor.user.ID, projectID, ownerKind, ownerID, []byte(input.Body.Source), input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
+				result, err = service.CreateInstanceTargetForLifetime(ctx, actor.user.ID, projectID, ownerKind, ownerID, []byte(input.Body.Source), lifetime, input.Body.AcknowledgeDockerIsolationRisk, input.IdempotencyKey, targetID, input.Body.ProviderOverride)
 			}
 			if err != nil {
 				return nil, apiError(err)
@@ -530,6 +572,34 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			output.Body.Operation = operationDTO(operation)
 			return output, nil
 		})
+
+	type ExtendTTLInput struct {
+		ID             string `path:"id"`
+		IfMatch        string `header:"If-Match"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           struct {
+			TTLSeconds uint64 `json:"ttlSeconds" minimum:"1" maximum:"31622400"`
+		}
+	}
+	huma.Post(api, "/lab-instances/{id}/actions/extend-ttl", func(ctx context.Context, input *ExtendTTLInput) (*versionedOutput[InstanceLifetimeDTO], error) {
+		instanceID, err := domain.NewInstanceID(input.ID)
+		if err != nil {
+			return nil, huma.Error404NotFound("Resource was not found")
+		}
+		actor, err := authorizeInstanceActor(ctx, security, application.ActionInstanceTTLExtend, instanceID)
+		if err != nil {
+			return nil, err
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		instance, err := service.RenewInstanceLifetime(ctx, actor.user.ID, instanceID, input.Body.TTLSeconds, expected, input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[InstanceLifetimeDTO]{ETag: resourceETag(instance.ResourceVersion), Body: instanceLifetimeDTO(instance)}, nil
+	})
 
 	type OperationInput struct {
 		ID string `path:"id"`
@@ -1239,6 +1309,181 @@ func decodeCollectionCursor(value string, expectedKind byte) (uint64, string, er
 	return position, string(decoded[10:]), nil
 }
 
+func registerQuotas(api huma.API, service *controlplane.Service, security *requestSecurity) {
+	type QuotaScopeInput struct {
+		ScopeKind      string `path:"scopeKind" enum:"platform,organization,project,team,user,target"`
+		ScopeID        string `path:"scopeId" maxLength:"128"`
+		OrganizationID string `query:"organizationId" maxLength:"128"`
+	}
+	type QuotaLimitInput struct {
+		QuotaScopeInput
+		Dimension string `path:"dimension" enum:"instances,vms,containers,cpu_millis,memory_bytes,storage_bytes,public_ips,published_ports,snapshots"`
+	}
+	parseScope := func(kind, id, organizationID string) (application.QuotaScope, error) {
+		scope := application.QuotaScope{Kind: application.QuotaScopeKind(kind), ID: id, OrganizationID: domain.OrganizationID(organizationID)}
+		if err := application.ValidateQuotaScope(scope); err != nil {
+			return application.QuotaScope{}, huma.Error400BadRequest("Quota scope is invalid")
+		}
+		return scope, nil
+	}
+	authorizeScope := func(ctx context.Context, scope application.QuotaScope) (principal, error) {
+		request := application.AuthorizationRequest{Action: application.ActionQuotaManage}
+		switch scope.Kind {
+		case application.QuotaScopePlatform, application.QuotaScopeTarget:
+			request.ScopeKind, request.ScopeID = application.ScopePlatform, "platform"
+		case application.QuotaScopeOrganization:
+			request.ScopeKind, request.ScopeID = application.ScopeOrganization, scope.ID
+		case application.QuotaScopeProject:
+			request.ScopeKind, request.ScopeID = application.ScopeProject, scope.ID
+		case application.QuotaScopeTeam:
+			request.ScopeKind, request.ScopeID = application.ScopeTeam, scope.ID
+		case application.QuotaScopeUser:
+			request.ScopeKind, request.ScopeID = application.ScopeOrganization, string(scope.OrganizationID)
+		default:
+			return principal{}, huma.Error400BadRequest("Quota scope is invalid")
+		}
+		return authorizeActor(ctx, security, request)
+	}
+
+	huma.Get(api, "/quotas/{scopeKind}/{scopeId}/{dimension}", func(ctx context.Context, input *QuotaLimitInput) (*versionedOutput[application.QuotaLimitRecord], error) {
+		scope, err := parseScope(input.ScopeKind, input.ScopeID, input.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := authorizeScope(ctx, scope); err != nil {
+			return nil, err
+		}
+		dimension := application.QuotaDimension(input.Dimension)
+		if err := application.ValidateQuotaDimension(dimension); err != nil {
+			return nil, huma.Error400BadRequest("Quota dimension is invalid")
+		}
+		record, err := service.GetQuotaLimit(ctx, scope, dimension)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[application.QuotaLimitRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+
+	type putQuotaLimitInput struct {
+		QuotaLimitInput
+		IfMatch        string `header:"If-Match"`
+		IfNoneMatch    string `header:"If-None-Match"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           QuotaLimitMutationBody
+	}
+	huma.Put(api, "/quotas/{scopeKind}/{scopeId}/{dimension}", func(ctx context.Context, input *putQuotaLimitInput) (*versionedOutput[application.QuotaLimitRecord], error) {
+		scope, err := parseScope(input.ScopeKind, input.ScopeID, input.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		dimension := application.QuotaDimension(input.Dimension)
+		if err := application.ValidateQuotaDimension(dimension); err != nil {
+			return nil, huma.Error400BadRequest("Quota dimension is invalid")
+		}
+		actor, err := authorizeScope(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		expected, err := expectedUpsertResourceVersion(input.IfMatch, input.IfNoneMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := service.PutQuotaLimit(ctx, actor.user.ID, scope, dimension, input.Body.Limit, expected, input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[application.QuotaLimitRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+
+	huma.Get(api, "/quota-usage/{scopeKind}/{scopeId}", func(ctx context.Context, input *QuotaScopeInput) (*struct {
+		CacheControl string `header:"Cache-Control"`
+		Body         struct {
+			Scope application.QuotaScope `json:"scope"`
+			Items []QuotaUsageDTO        `json:"items"`
+		}
+	}, error) {
+		scope, err := parseScope(input.ScopeKind, input.ScopeID, input.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := authorizeScope(ctx, scope); err != nil {
+			return nil, err
+		}
+		records, err := service.ListQuotaUsage(ctx, scope)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct {
+			CacheControl string `header:"Cache-Control"`
+			Body         struct {
+				Scope application.QuotaScope `json:"scope"`
+				Items []QuotaUsageDTO        `json:"items"`
+			}
+		}{}
+		output.CacheControl = "no-store"
+		output.Body.Scope = scope
+		output.Body.Items = make([]QuotaUsageDTO, 0, len(records))
+		for _, record := range records {
+			output.Body.Items = append(output.Body.Items, QuotaUsageDTO{
+				Dimension: record.Dimension, Reserved: record.Reserved, Committed: record.Committed,
+				Retained: record.Retained, Total: record.Total(), UpdatedAt: record.UpdatedAt,
+			})
+		}
+		return output, nil
+	})
+
+	huma.Get(api, "/lifetime-policies/{scopeKind}/{scopeId}", func(ctx context.Context, input *QuotaScopeInput) (*versionedOutput[application.LifetimePolicyRecord], error) {
+		scope, err := parseScope(input.ScopeKind, input.ScopeID, input.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := authorizeScope(ctx, scope); err != nil {
+			return nil, err
+		}
+		record, err := service.GetLifetimePolicy(ctx, scope)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[application.LifetimePolicyRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+
+	type putLifetimePolicyInput struct {
+		QuotaScopeInput
+		IfMatch        string `header:"If-Match"`
+		IfNoneMatch    string `header:"If-None-Match"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           LifetimePolicyMutationBody
+	}
+	huma.Put(api, "/lifetime-policies/{scopeKind}/{scopeId}", func(ctx context.Context, input *putLifetimePolicyInput) (*versionedOutput[application.LifetimePolicyRecord], error) {
+		scope, err := parseScope(input.ScopeKind, input.ScopeID, input.OrganizationID)
+		if err != nil {
+			return nil, err
+		}
+		policy := application.LifetimePolicyRecord{
+			Scope: scope, DefaultTTLSeconds: input.Body.DefaultTTLSeconds,
+			MaximumTTLSeconds: input.Body.MaximumTTLSeconds, RenewalWindowSeconds: input.Body.RenewalWindowSeconds,
+			WarningBeforeSeconds: input.Body.WarningBeforeSeconds, DestructionGraceSecs: input.Body.DestructionGraceSeconds,
+			RenewalAllowed: input.Body.RenewalAllowed, PersistentAllowed: input.Body.PersistentAllowed,
+		}
+		if err := application.ValidateLifetimePolicy(policy); err != nil {
+			return nil, huma.Error400BadRequest("Lifetime policy is invalid")
+		}
+		actor, err := authorizeScope(ctx, policy.Scope)
+		if err != nil {
+			return nil, err
+		}
+		expected, err := expectedUpsertResourceVersion(input.IfMatch, input.IfNoneMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := service.PutLifetimePolicy(ctx, actor.user.ID, policy, expected, input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &versionedOutput[application.LifetimePolicyRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+}
+
 func registerAdministration(api huma.API, security *requestSecurity) {
 	if security.options.Mode == AuthModeNone {
 		return
@@ -1670,6 +1915,29 @@ func expectedResourceVersion(value string) (domain.ResourceVersion, error) {
 	return domain.ResourceVersion(parsed), nil
 }
 
+func expectedUpsertResourceVersion(ifMatch, ifNoneMatch string) (domain.ResourceVersion, error) {
+	if ifMatch != "" && ifNoneMatch != "" {
+		return 0, huma.Error400BadRequest("If-Match and If-None-Match cannot be combined")
+	}
+	if ifNoneMatch != "" {
+		if ifNoneMatch != "*" {
+			return 0, huma.Error400BadRequest("If-None-Match must be *")
+		}
+		return 0, nil
+	}
+	if ifMatch == "" {
+		return 0, huma.NewError(http.StatusPreconditionRequired, "If-Match or If-None-Match is required")
+	}
+	if len(ifMatch) < 3 || ifMatch[0] != '"' || ifMatch[len(ifMatch)-1] != '"' || strings.Contains(ifMatch[1:len(ifMatch)-1], `"`) {
+		return 0, huma.Error400BadRequest("If-Match must contain one quoted resource version")
+	}
+	parsed, err := strconv.ParseUint(ifMatch[1:len(ifMatch)-1], 10, 64)
+	if err != nil || parsed == 0 {
+		return 0, huma.Error400BadRequest("If-Match resource version is invalid")
+	}
+	return domain.ResourceVersion(parsed), nil
+}
+
 func administrationWriteError(err error, message string) error {
 	switch {
 	case errors.Is(err, application.ErrAuthVersionConflict):
@@ -1907,10 +2175,29 @@ func instanceDTO(source controlplane.InstanceRecord, resources []controlplane.Re
 		CanonicalDigest: source.CanonicalDigest.String(), ResourceVersion: uint64(source.ResourceVersion), Outputs: outputs,
 		ErrorCode: source.ErrorCode, ErrorMessage: source.ErrorMessage, CreatedAt: source.CreatedAt, UpdatedAt: source.UpdatedAt,
 	}
+	if !source.ExpiresAt.IsZero() {
+		expiresAt := source.ExpiresAt
+		result.ExpiresAt = &expiresAt
+	}
+	if !source.MaximumExpiresAt.IsZero() {
+		maximumExpiresAt := source.MaximumExpiresAt
+		result.MaximumExpiresAt = &maximumExpiresAt
+	}
 	for _, resource := range resources {
 		result.Resources = append(result.Resources, ResourceDTO{ID: string(resource.ID), Kind: string(resource.Kind), Phase: string(resource.Phase), ErrorCode: resource.ErrorCode})
 	}
 	return result
+}
+
+func instanceLifetimeDTO(source controlplane.InstanceRecord) InstanceLifetimeDTO {
+	return InstanceLifetimeDTO{
+		InstanceID: string(source.ID), ExpiresAt: source.ExpiresAt, MaximumExpiresAt: source.MaximumExpiresAt,
+		ExpirationWarningAt: source.ExpirationWarningAt, ExpirationGraceSeconds: source.ExpirationGraceSeconds,
+		LifetimeRenewalAllowed:       source.LifetimeRenewalAllowed,
+		LifetimeRenewalWindowSeconds: source.LifetimeRenewalWindowSeconds,
+		LifetimePolicyDigest:         source.LifetimePolicyDigest.String(), ResourceVersion: uint64(source.ResourceVersion),
+		UpdatedAt: source.UpdatedAt,
+	}
 }
 
 func requestTargetID(request LabRequest, configuredDefault string) domain.ProviderTargetID {
@@ -1945,7 +2232,17 @@ func apiError(err error) error {
 	if errors.Is(err, controlplane.ErrVersionConflict) {
 		return huma.NewError(http.StatusPreconditionFailed, "The resource version no longer matches")
 	}
+	if errors.Is(err, controlplane.ErrAuthorityChanged) {
+		return huma.Error404NotFound("Resource was not found")
+	}
 	var domainError *domain.DomainError
+	var quotaError *application.QuotaExceededError
+	if errors.As(err, &quotaError) {
+		return huma.Error422UnprocessableEntity("The request would exceed an applicable quota")
+	}
+	if errors.As(err, &domainError) && domainError.Class == domain.ErrorQuota {
+		return huma.Error422UnprocessableEntity(domainError.Message)
+	}
 	if errors.As(err, &domainError) && domainError.Code == "idempotency_conflict" {
 		return huma.Error409Conflict("Idempotency key is already bound to a different request")
 	}

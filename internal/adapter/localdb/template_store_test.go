@@ -426,6 +426,10 @@ func createRevisionBoundTestInstance(store *Store, instanceID string, projectID 
 		Acknowledged: true, SubjectID: "user.author", IdempotencyKey: "idempotency." + instanceID,
 		RequestDigest: domain.SHA256Digest(fmt.Sprintf("%x", requestSum)), Payload: []byte(`{"schemaVersion":1}`),
 		AuditID: "audit." + instanceID, EventID: "event." + instanceID,
+		Quota: application.InstanceQuotaRequest{
+			ReservationID: domain.QuotaReservationID("quota." + instanceID),
+			Amounts:       []application.QuotaAmount{{Dimension: application.QuotaInstances, Value: 1}},
+		},
 	})
 	return err
 }
