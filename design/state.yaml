@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
-phase: phase_3_production_storage_foundation
-lastUpdated: "2026-09-03"
+phase: phase_3_authenticated_control_plane_foundation
+lastUpdated: "2026-09-04"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -223,6 +223,7 @@ completedTasks:
   - TASK-PROXMOX-005
   - TASK-PROXMOX-006
   - TASK-PROD-001
+  - TASK-PROD-002
 currentTasks: []
 nextRecommendedTasks:
-  - TASK-PROD-002
+  - TASK-PROD-003

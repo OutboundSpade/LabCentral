@@ -8,7 +8,11 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
 
-var ErrAuthRecordNotFound = errors.New("authentication or authorization record not found")
+var (
+	ErrAuthRecordNotFound        = errors.New("authentication or authorization record not found")
+	ErrAuthVersionConflict       = errors.New("authentication or authorization resource version conflict")
+	ErrLastPlatformAdministrator = errors.New("the last active platform administrator cannot be removed")
+)
 
 // PermissionAction values are stable authorization contract identifiers.
 type PermissionAction string
@@ -65,13 +69,14 @@ const (
 )
 
 type UserRecord struct {
-	ID           domain.UserID `json:"id"`
-	Username     string        `json:"username"`
-	DisplayName  string        `json:"displayName"`
-	PasswordHash string        `json:"-"`
-	Disabled     bool          `json:"disabled"`
-	CreatedAt    time.Time     `json:"createdAt"`
-	UpdatedAt    time.Time     `json:"updatedAt"`
+	ID              domain.UserID          `json:"id"`
+	Username        string                 `json:"username"`
+	DisplayName     string                 `json:"displayName"`
+	PasswordHash    string                 `json:"-"`
+	Disabled        bool                   `json:"disabled"`
+	CreatedAt       time.Time              `json:"createdAt"`
+	UpdatedAt       time.Time              `json:"updatedAt"`
+	ResourceVersion domain.ResourceVersion `json:"resourceVersion,omitempty"`
 }
 
 type OrganizationRecord struct {
@@ -95,32 +100,35 @@ type TeamRecord struct {
 }
 
 type MembershipRecord struct {
-	ID             string                `json:"id"`
-	UserID         domain.UserID         `json:"userId"`
-	OrganizationID domain.OrganizationID `json:"organizationId"`
-	TeamID         domain.TeamID         `json:"teamId,omitempty"`
-	ValidFrom      time.Time             `json:"validFrom,omitempty"`
-	ValidUntil     time.Time             `json:"validUntil,omitempty"`
+	ID              string                 `json:"id"`
+	UserID          domain.UserID          `json:"userId"`
+	OrganizationID  domain.OrganizationID  `json:"organizationId"`
+	TeamID          domain.TeamID          `json:"teamId,omitempty"`
+	ValidFrom       time.Time              `json:"validFrom,omitempty"`
+	ValidUntil      time.Time              `json:"validUntil,omitempty"`
+	ResourceVersion domain.ResourceVersion `json:"resourceVersion,omitempty"`
 }
 
 type RoleAssignmentRecord struct {
-	ID          string      `json:"id"`
-	SubjectKind SubjectKind `json:"subjectKind"`
-	SubjectID   string      `json:"subjectId"`
-	ScopeKind   ScopeKind   `json:"scopeKind"`
-	ScopeID     string      `json:"scopeId"`
-	Role        Role        `json:"role"`
-	ValidFrom   time.Time   `json:"validFrom,omitempty"`
-	ValidUntil  time.Time   `json:"validUntil,omitempty"`
+	ID              string                 `json:"id"`
+	SubjectKind     SubjectKind            `json:"subjectKind"`
+	SubjectID       string                 `json:"subjectId"`
+	ScopeKind       ScopeKind              `json:"scopeKind"`
+	ScopeID         string                 `json:"scopeId"`
+	Role            Role                   `json:"role"`
+	ValidFrom       time.Time              `json:"validFrom,omitempty"`
+	ValidUntil      time.Time              `json:"validUntil,omitempty"`
+	ResourceVersion domain.ResourceVersion `json:"resourceVersion,omitempty"`
 }
 
 type TargetGrantRecord struct {
-	ID         string                  `json:"id"`
-	TargetID   domain.ProviderTargetID `json:"targetId"`
-	ScopeKind  ScopeKind               `json:"scopeKind"`
-	ScopeID    string                  `json:"scopeId"`
-	ValidFrom  time.Time               `json:"validFrom,omitempty"`
-	ValidUntil time.Time               `json:"validUntil,omitempty"`
+	ID              string                  `json:"id"`
+	TargetID        domain.ProviderTargetID `json:"targetId"`
+	ScopeKind       ScopeKind               `json:"scopeKind"`
+	ScopeID         string                  `json:"scopeId"`
+	ValidFrom       time.Time               `json:"validFrom,omitempty"`
+	ValidUntil      time.Time               `json:"validUntil,omitempty"`
+	ResourceVersion domain.ResourceVersion  `json:"resourceVersion,omitempty"`
 }
 
 type ExternalIdentityRecord struct {
@@ -129,9 +137,17 @@ type ExternalIdentityRecord struct {
 	UserID  domain.UserID
 }
 
+type SessionKind string
+
+const (
+	SessionKindBrowser SessionKind = "browser"
+	SessionKindBearer  SessionKind = "bearer"
+)
+
 type SessionRecord struct {
 	ID            string
 	UserID        domain.UserID
+	Kind          SessionKind
 	TokenHash     string
 	CSRFHash      string
 	KeyID         string
@@ -223,17 +239,26 @@ type AuthRepository interface {
 	HasUsers(context.Context) (bool, error)
 	CreateBootstrapAdministrator(context.Context, UserRecord, RoleAssignmentRecord, *ExternalIdentityRecord) (bool, error)
 	CreateUser(context.Context, UserRecord, *ExternalIdentityRecord) error
-	PutUser(context.Context, UserRecord) error
 	UserByID(context.Context, domain.UserID) (UserRecord, error)
 	UserByUsername(context.Context, string) (UserRecord, error)
 	LinkExternalIdentity(context.Context, ExternalIdentityRecord) error
 	UserByExternalIdentity(context.Context, string, string) (UserRecord, error)
-	PutOrganization(context.Context, OrganizationRecord) error
-	PutProject(context.Context, ProjectRecord) error
-	PutTeam(context.Context, TeamRecord) error
-	PutMembership(context.Context, MembershipRecord) error
-	PutRoleAssignment(context.Context, RoleAssignmentRecord) error
-	PutTargetGrant(context.Context, TargetGrantRecord) error
+	CreateOrganization(context.Context, OrganizationRecord) (OrganizationRecord, error)
+	UpdateOrganization(context.Context, OrganizationRecord, domain.ResourceVersion) (OrganizationRecord, error)
+	CreateProject(context.Context, ProjectRecord) (ProjectRecord, error)
+	UpdateProject(context.Context, ProjectRecord, domain.ResourceVersion) (ProjectRecord, error)
+	CreateTeam(context.Context, TeamRecord) (TeamRecord, error)
+	UpdateTeam(context.Context, TeamRecord, domain.ResourceVersion) (TeamRecord, error)
+	CreateMembership(context.Context, MembershipRecord) (MembershipRecord, error)
+	UpdateMembership(context.Context, MembershipRecord, domain.ResourceVersion) (MembershipRecord, error)
+	RevokeMembership(context.Context, string, domain.OrganizationID, domain.ResourceVersion, time.Time) (MembershipRecord, error)
+	CreateRoleAssignment(context.Context, RoleAssignmentRecord) (RoleAssignmentRecord, error)
+	UpdateRoleAssignment(context.Context, RoleAssignmentRecord, domain.ResourceVersion) (RoleAssignmentRecord, error)
+	RevokeRoleAssignment(context.Context, string, ScopeKind, string, domain.ResourceVersion, time.Time) (RoleAssignmentRecord, error)
+	CreateTargetGrant(context.Context, TargetGrantRecord) (TargetGrantRecord, error)
+	UpdateTargetGrant(context.Context, TargetGrantRecord, domain.ResourceVersion) (TargetGrantRecord, error)
+	RevokeTargetGrant(context.Context, string, domain.ResourceVersion, time.Time) (TargetGrantRecord, error)
+	SetUserDisabled(context.Context, domain.UserID, bool, domain.ResourceVersion, time.Time) (UserRecord, error)
 	AuthorizationSnapshot(context.Context, domain.UserID, time.Time) (AuthorizationSnapshot, error)
 	ResolveScope(context.Context, ScopeKind, string) (ScopeHierarchy, error)
 	CreateSession(context.Context, SessionRecord) error
@@ -242,6 +267,8 @@ type AuthRepository interface {
 	RevokeSession(context.Context, string, time.Time) error
 	CreatePasswordRecovery(context.Context, PasswordRecoveryRecord) error
 	ConsumePasswordRecovery(context.Context, string, string, string, time.Time) error
+	ConsumeAuthenticationAttempt(context.Context, string, time.Time, time.Duration, uint32) (bool, error)
+	ClearAuthenticationAttempts(context.Context, string) error
 	CreateOIDCFlow(context.Context, OIDCFlowRecord) error
 	ConsumeOIDCFlow(context.Context, string, string, string, time.Time) (OIDCFlowRecord, error)
 	InstanceAccess(context.Context, domain.InstanceID) (InstanceAccessRecord, error)

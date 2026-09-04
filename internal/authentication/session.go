@@ -81,17 +81,19 @@ type ManagerOptions struct {
 	SessionLifetime  time.Duration
 	RotationAge      time.Duration
 	RecoveryLifetime time.Duration
+	PasswordWorkers  uint8
 	Now              func() time.Time
 }
 
 type Manager struct {
-	repository application.AuthRepository
-	keyring    *Keyring
-	lifetime   time.Duration
-	rotation   time.Duration
-	recovery   time.Duration
-	now        func() time.Time
-	dummyHash  string
+	repository    application.AuthRepository
+	keyring       *Keyring
+	lifetime      time.Duration
+	rotation      time.Duration
+	recovery      time.Duration
+	now           func() time.Time
+	dummyHash     string
+	passwordSlots chan struct{}
 }
 
 type SessionCredentials struct {
@@ -124,15 +126,21 @@ func NewManager(repository application.AuthRepository, keyring *Keyring, options
 	if options.Now == nil {
 		options.Now = time.Now
 	}
+	if options.PasswordWorkers == 0 {
+		options.PasswordWorkers = 2
+	}
+	if options.PasswordWorkers > 16 {
+		return nil, fmt.Errorf("password worker limit must not exceed sixteen")
+	}
 	dummy, err := HashPassword([]byte("not-a-real-password-value"))
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{repository: repository, keyring: keyring, lifetime: options.SessionLifetime, rotation: options.RotationAge, recovery: options.RecoveryLifetime, now: options.Now, dummyHash: dummy}, nil
+	return &Manager{repository: repository, keyring: keyring, lifetime: options.SessionLifetime, rotation: options.RotationAge, recovery: options.RecoveryLifetime, now: options.Now, dummyHash: dummy, passwordSlots: make(chan struct{}, options.PasswordWorkers)}, nil
 }
 
 func (m *Manager) BootstrapLocalAdministrator(ctx context.Context, id domain.UserID, username, displayName string, password []byte) error {
-	encoded, err := HashPassword(password)
+	encoded, err := m.hashPassword(ctx, password)
 	if err != nil {
 		return err
 	}
@@ -177,7 +185,7 @@ func (m *Manager) BootstrapOIDCAdministrator(ctx context.Context, id domain.User
 }
 
 func (m *Manager) CreateLocalUser(ctx context.Context, id domain.UserID, username, displayName string, password []byte) error {
-	encoded, err := HashPassword(password)
+	encoded, err := m.hashPassword(ctx, password)
 	if err != nil {
 		return err
 	}
@@ -192,13 +200,64 @@ func (m *Manager) CreateOIDCUser(ctx context.Context, id domain.UserID, username
 func (m *Manager) AuthenticateLocal(ctx context.Context, username string, password []byte) (SessionCredentials, error) {
 	user, err := m.repository.UserByUsername(ctx, username)
 	if err != nil {
-		_ = VerifyPassword(m.dummyHash, password)
+		_ = m.verifyPassword(ctx, m.dummyHash, password)
 		return SessionCredentials{}, ErrInvalidCredentials
 	}
-	if user.Disabled || user.PasswordHash == "" || VerifyPassword(user.PasswordHash, password) != nil {
+	if user.Disabled || user.PasswordHash == "" || m.verifyPassword(ctx, user.PasswordHash, password) != nil {
 		return SessionCredentials{}, ErrInvalidCredentials
 	}
-	return m.newSession(ctx, user.ID, "")
+	return m.newSession(ctx, user.ID, "", application.SessionKindBrowser)
+}
+
+func (m *Manager) ConsumeAuthenticationAttempt(ctx context.Context, dimension, value string, window time.Duration, limit uint32) (bool, error) {
+	keys, err := m.authenticationAttemptKeys(dimension, value)
+	if err != nil {
+		return false, err
+	}
+	allowed := true
+	for _, key := range keys {
+		keyAllowed, err := m.repository.ConsumeAuthenticationAttempt(ctx, key, m.now().UTC(), window, limit)
+		if err != nil {
+			return false, err
+		}
+		allowed = allowed && keyAllowed
+	}
+	return allowed, nil
+}
+
+func (m *Manager) ClearAuthenticationAttempts(ctx context.Context, dimension, value string) error {
+	keys, err := m.authenticationAttemptKeys(dimension, value)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		if err := m.repository.ClearAuthenticationAttempts(ctx, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) authenticationAttemptKeys(dimension, value string) ([]string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch dimension {
+	case "login-global", "login-user", "login-ip", "recovery-ip", "oidc-begin-ip", "oidc-callback-ip":
+	default:
+		return nil, fmt.Errorf("authentication attempt dimension is invalid")
+	}
+	if value == "" || len(value) > 512 {
+		return nil, fmt.Errorf("authentication attempt value is invalid")
+	}
+	keys := make([]string, 0, len(m.keyring.keys))
+	seen := make(map[string]bool, len(m.keyring.keys))
+	for _, key := range m.keyring.keys {
+		hash := keyedHash(key.material, "auth-rate:"+dimension, value)
+		if !seen[hash] {
+			seen[hash] = true
+			keys = append(keys, hash)
+		}
+	}
+	return keys, nil
 }
 
 func (m *Manager) NewSessionForUser(ctx context.Context, userID domain.UserID) (SessionCredentials, error) {
@@ -206,7 +265,15 @@ func (m *Manager) NewSessionForUser(ctx context.Context, userID domain.UserID) (
 	if err != nil || user.Disabled {
 		return SessionCredentials{}, ErrUnauthenticated
 	}
-	return m.newSession(ctx, userID, "")
+	return m.newSession(ctx, userID, "", application.SessionKindBrowser)
+}
+
+func (m *Manager) NewBearerForUser(ctx context.Context, userID domain.UserID) (SessionCredentials, error) {
+	user, err := m.repository.UserByID(ctx, userID)
+	if err != nil || user.Disabled {
+		return SessionCredentials{}, ErrUnauthenticated
+	}
+	return m.newSession(ctx, userID, "", application.SessionKindBearer)
 }
 
 func (m *Manager) AuthenticateSession(ctx context.Context, cookieToken string) (SessionCredentials, error) {
@@ -223,9 +290,12 @@ func (m *Manager) AuthenticateSession(ctx context.Context, cookieToken string) (
 		if err != nil {
 			return SessionCredentials{}, err
 		}
+		if session.Kind != application.SessionKindBrowser {
+			return SessionCredentials{}, ErrUnauthenticated
+		}
 		credentials := SessionCredentials{Session: session, RequestSession: session, CookieToken: cookieToken}
 		if session.KeyID != m.keyring.current.id || !session.CreatedAt.IsZero() && now.Sub(session.CreatedAt) >= m.rotation {
-			replacement, err := m.newSessionRecord(session.UserID, session.ID)
+			replacement, err := m.newSessionRecord(session.UserID, session.ID, application.SessionKindBrowser)
 			if err != nil {
 				return SessionCredentials{}, err
 			}
@@ -237,6 +307,31 @@ func (m *Manager) AuthenticateSession(ctx context.Context, cookieToken string) (
 			return replacement, nil
 		}
 		return credentials, nil
+	}
+	return SessionCredentials{}, ErrUnauthenticated
+}
+
+// AuthenticateBearer validates an opaque session credential without rotating
+// it. Bearer clients cannot receive replacement cookies, so their credential
+// remains fixed until explicit revocation or its bounded session expiry.
+func (m *Manager) AuthenticateBearer(ctx context.Context, token string) (SessionCredentials, error) {
+	if len(token) < 32 || len(token) > 256 {
+		return SessionCredentials{}, ErrUnauthenticated
+	}
+	now := m.now().UTC()
+	for _, key := range m.keyring.keys {
+		hash := keyedHash(key.material, "session", token)
+		session, err := m.repository.SessionByTokenHash(ctx, hash, now)
+		if errors.Is(err, application.ErrAuthRecordNotFound) {
+			continue
+		}
+		if err != nil {
+			return SessionCredentials{}, err
+		}
+		if session.Kind != application.SessionKindBearer {
+			return SessionCredentials{}, ErrUnauthenticated
+		}
+		return SessionCredentials{Session: session, RequestSession: session, CookieToken: token}, nil
 	}
 	return SessionCredentials{}, ErrUnauthenticated
 }
@@ -288,7 +383,7 @@ func (m *Manager) RecoverLocalPassword(ctx context.Context, token string, passwo
 	if len(token) < 32 || len(token) > 256 {
 		return ErrUnauthenticated
 	}
-	encoded, err := HashPassword(password)
+	encoded, err := m.hashPassword(ctx, password)
 	if err != nil {
 		return err
 	}
@@ -306,8 +401,33 @@ func (m *Manager) RecoverLocalPassword(ctx context.Context, token string, passwo
 	return ErrUnauthenticated
 }
 
-func (m *Manager) newSession(ctx context.Context, userID domain.UserID, rotatedFrom string) (SessionCredentials, error) {
-	credentials, err := m.newSessionRecord(userID, rotatedFrom)
+func (m *Manager) hashPassword(ctx context.Context, password []byte) (string, error) {
+	if err := m.acquirePasswordSlot(ctx); err != nil {
+		return "", err
+	}
+	defer func() { <-m.passwordSlots }()
+	return HashPassword(password)
+}
+
+func (m *Manager) verifyPassword(ctx context.Context, encoded string, password []byte) error {
+	if err := m.acquirePasswordSlot(ctx); err != nil {
+		return err
+	}
+	defer func() { <-m.passwordSlots }()
+	return VerifyPassword(encoded, password)
+}
+
+func (m *Manager) acquirePasswordSlot(ctx context.Context) error {
+	select {
+	case m.passwordSlots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (m *Manager) newSession(ctx context.Context, userID domain.UserID, rotatedFrom string, kind application.SessionKind) (SessionCredentials, error) {
+	credentials, err := m.newSessionRecord(userID, rotatedFrom, kind)
 	if err != nil {
 		return SessionCredentials{}, err
 	}
@@ -317,7 +437,7 @@ func (m *Manager) newSession(ctx context.Context, userID domain.UserID, rotatedF
 	return credentials, nil
 }
 
-func (m *Manager) newSessionRecord(userID domain.UserID, rotatedFrom string) (SessionCredentials, error) {
+func (m *Manager) newSessionRecord(userID domain.UserID, rotatedFrom string, kind application.SessionKind) (SessionCredentials, error) {
 	sessionID, err := randomID("session")
 	if err != nil {
 		return SessionCredentials{}, err
@@ -336,10 +456,10 @@ func (m *Manager) newSessionRecord(userID domain.UserID, rotatedFrom string) (Se
 	zero(csrfBytes)
 	now := m.now().UTC()
 	record := application.SessionRecord{
-		ID: sessionID, UserID: userID,
+		ID: sessionID, UserID: userID, Kind: kind,
 		TokenHash: keyedHash(m.keyring.current.material, "session", cookieToken),
 		CSRFHash:  keyedHash(m.keyring.current.material, "csrf", csrfToken),
-		KeyID:     m.keyring.current.id, ExpiresAt: now.Add(m.lifetime), RotatedFromID: rotatedFrom,
+		KeyID:     m.keyring.current.id, ExpiresAt: now.Add(m.lifetime), RotatedFromID: rotatedFrom, CreatedAt: now,
 	}
 	return SessionCredentials{Session: record, RequestSession: record, CookieToken: cookieToken, CSRFToken: csrfToken}, nil
 }

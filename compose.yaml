@@ -26,6 +26,8 @@ services:
       - 127.0.0.1:${LABCENTRAL_PORT:-8080}
       - --data-dir
       - /var/lib/labcentral
+      - --auth-mode
+      - none
     volumes:
       - type: bind
         source: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}

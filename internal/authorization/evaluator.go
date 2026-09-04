@@ -70,6 +70,11 @@ func (e *Evaluator) Authorize(ctx context.Context, request application.Authoriza
 		if request.TargetID != "" && requiresTargetGrant(request.Action) && !hasTargetGrant(request, hierarchy, snapshot) {
 			continue
 		}
+		if request.Action == application.ActionProviderTargetHealthRead && request.TargetID != "" &&
+			assignment.Role != application.RolePlatformAdministrator && assignment.Role != application.RoleProviderAdministrator &&
+			!hasTargetGrant(request, hierarchy, snapshot) {
+			continue
+		}
 		return nil
 	}
 	return ErrDenied
@@ -219,15 +224,13 @@ func roleAllows(role application.Role, action application.PermissionAction) bool
 	case application.RoleOrganizationAdministrator:
 		switch action {
 		case application.ActionOrganizationManage, application.ActionProjectManage, application.ActionTeamManage,
-			application.ActionMembershipManage, application.ActionRoleAssignmentManage,
-			application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-			application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionProviderTargetHealthRead:
+			application.ActionMembershipManage, application.ActionRoleAssignmentManage:
 			return true
 		}
 	case application.RoleProviderAdministrator:
 		return action == application.ActionProviderTargetHealthRead || action == application.ActionProviderTargetGrant
 	case application.RoleLabAuthor:
-		return action == application.ActionInstanceValidate || action == application.ActionInstancePlan || action == application.ActionInstanceRead
+		return action == application.ActionInstanceValidate || action == application.ActionInstancePlan
 	case application.RoleInstructor:
 		switch action {
 		case application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
@@ -260,6 +263,9 @@ func knownAction(action application.PermissionAction) bool {
 }
 
 func assignmentCovers(assignment application.RoleAssignmentRecord, hierarchy application.ScopeHierarchy, request application.AuthorizationRequest, snapshot application.AuthorizationSnapshot) bool {
+	if assignment.SubjectKind == application.SubjectUser && assignment.ScopeKind != application.ScopePlatform && !isOrganizationMember(hierarchy.OrganizationID, snapshot) {
+		return false
+	}
 	switch assignment.ScopeKind {
 	case application.ScopePlatform:
 		return assignment.ScopeID == "platform"
@@ -277,8 +283,26 @@ func assignmentCovers(assignment application.RoleAssignmentRecord, hierarchy app
 	}
 }
 
+func isOrganizationMember(organizationID domain.OrganizationID, snapshot application.AuthorizationSnapshot) bool {
+	for _, membership := range snapshot.Memberships {
+		if membership.OrganizationID == organizationID {
+			return true
+		}
+	}
+	return false
+}
+
 func requiresOwnerRelationship(role application.Role, action application.PermissionAction) bool {
-	return role == application.RoleParticipant && (action == application.ActionInstanceCreate || action == application.ActionInstanceRead || action == application.ActionInstanceDestroy)
+	if role != application.RoleParticipant {
+		return false
+	}
+	switch action {
+	case application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
+		application.ActionInstanceRead, application.ActionInstanceDestroy:
+		return true
+	default:
+		return false
+	}
 }
 
 func ownsResource(request application.AuthorizationRequest, snapshot application.AuthorizationSnapshot) bool {

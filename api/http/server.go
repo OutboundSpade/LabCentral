@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,11 @@ const NoAuthWarning = "Authentication is disabled. LabCentral is bound to loopba
 type Server struct {
 	Handler http.Handler
 	API     huma.API
+}
+
+type versionedOutput[T any] struct {
+	ETag string `header:"ETag"`
+	Body T
 }
 
 type Options struct {
@@ -161,17 +167,47 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	registerAuthentication(api, security)
 	registerAdministration(api, security)
 
-	huma.Get(api, "/provider-targets", func(ctx context.Context, _ *struct{}) (*struct {
+	type providerTargetsInput struct {
+		ProjectID string `query:"projectId" maxLength:"128"`
+	}
+	huma.Get(api, "/provider-targets", func(ctx context.Context, input *providerTargetsInput) (*struct {
 		Body struct {
 			Items []ProviderTargetDTO `json:"items"`
 		}
 	}, error) {
-		if err := authorize(ctx, security, application.AuthorizationRequest{
+		authorizationRequest := application.AuthorizationRequest{
 			Action: application.ActionProviderTargetHealthRead, ScopeKind: application.ScopePlatform, ScopeID: "platform",
-		}); err != nil {
+		}
+		var allowedTargetIDs []domain.ProviderTargetID
+		if security.options.Mode != AuthModeNone {
+			projectID, err := domain.NewProjectID(input.ProjectID)
+			if err != nil {
+				return nil, huma.Error400BadRequest("Project ID is required and must be valid")
+			}
+			authorizationRequest.ScopeKind, authorizationRequest.ScopeID = application.ScopeProject, string(projectID)
+		}
+		if err := authorize(ctx, security, authorizationRequest); err != nil {
 			return nil, err
 		}
-		targets, err := service.ListProviderTargets(ctx)
+		if security.options.Mode != AuthModeNone {
+			actor, _ := requestPrincipal(ctx)
+			for _, targetID := range service.ProviderTargetIDs() {
+				request := authorizationRequest
+				request.SubjectID, request.TargetID = actor.user.ID, targetID
+				if err := security.options.Authorizer.Authorize(ctx, request); err == nil {
+					allowedTargetIDs = append(allowedTargetIDs, targetID)
+				} else if !errors.Is(err, authorization.ErrDenied) {
+					return nil, authorizationError(err, false)
+				}
+			}
+		}
+		var targets []controlplane.ProviderTargetStatus
+		var err error
+		if security.options.Mode == AuthModeNone {
+			targets, err = service.ListProviderTargets(ctx)
+		} else {
+			targets, err = service.ListProviderTargetsByID(ctx, allowedTargetIDs)
+		}
 		if err != nil {
 			return nil, apiError(err)
 		}
@@ -207,7 +243,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			return nil, huma.Error400BadRequest("Provider target ID is invalid")
 		}
 		actor, err := authorizeActor(ctx, security, application.AuthorizationRequest{
-			Action: application.ActionProviderTargetHealthRead, ScopeKind: application.ScopePlatform, ScopeID: "platform",
+			Action: application.ActionProviderTargetHealthRead, ScopeKind: application.ScopePlatform, ScopeID: "platform", TargetID: id,
 		})
 		if err != nil {
 			return nil, err
@@ -215,7 +251,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		if err := service.RefreshTargetAs(ctx, actor.user.ID, id); err != nil {
 			return nil, huma.Error503ServiceUnavailable("Provider target discovery failed")
 		}
-		targets, err := service.ListProviderTargets(ctx)
+		targets, err := service.ListProviderTargetsByID(ctx, []domain.ProviderTargetID{id})
 		if err != nil {
 			return nil, apiError(err)
 		}
@@ -426,6 +462,20 @@ type authenticationOutput struct {
 }
 
 func registerAuthentication(api huma.API, security *requestSecurity) {
+	consumeIPLimit := func(ctx context.Context, dimension string, window time.Duration, limit uint32) error {
+		address, ok := requestClientAddress(ctx)
+		if !ok {
+			return huma.Error500InternalServerError("Authentication request context is unavailable")
+		}
+		allowed, err := security.options.Manager.ConsumeAuthenticationAttempt(ctx, dimension, address, window, limit)
+		if err != nil {
+			return huma.Error500InternalServerError("Authentication rate limit is unavailable")
+		}
+		if !allowed {
+			return authenticationRateLimitError(window)
+		}
+		return nil
+	}
 	type localLoginInput struct {
 		Body struct {
 			Username string `json:"username" minLength:"1" maxLength:"63"`
@@ -436,11 +486,31 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 		if security.options.Mode != AuthModeLocal {
 			return nil, huma.Error404NotFound("Authentication method is not enabled")
 		}
+		allowed, err := security.options.Manager.ConsumeAuthenticationAttempt(ctx, "login-global", "installation", time.Minute, 300)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Authentication rate limit is unavailable")
+		}
+		if !allowed {
+			return nil, authenticationRateLimitError(time.Minute)
+		}
+		if err := consumeIPLimit(ctx, "login-ip", time.Minute, 300); err != nil {
+			return nil, err
+		}
+		allowed, err = security.options.Manager.ConsumeAuthenticationAttempt(ctx, "login-user", input.Body.Username, 15*time.Minute, 5)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Authentication rate limit is unavailable")
+		}
+		if !allowed {
+			return nil, authenticationRateLimitError(15 * time.Minute)
+		}
 		password := []byte(input.Body.Password)
 		defer clear(password)
 		credentials, err := security.options.Manager.AuthenticateLocal(ctx, input.Body.Username, password)
 		if err != nil {
 			return nil, huma.Error401Unauthorized("Credentials were rejected")
+		}
+		if err := security.options.Manager.ClearAuthenticationAttempts(ctx, "login-user", input.Body.Username); err != nil {
+			return nil, huma.Error500InternalServerError("Authentication rate limit is unavailable")
 		}
 		user, err := security.options.Repository.UserByID(ctx, credentials.Session.UserID)
 		if err != nil {
@@ -463,6 +533,9 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 		func(ctx context.Context, input *localRecoveryInput) (*struct{ Status int }, error) {
 			if security.options.Mode != AuthModeLocal {
 				return nil, huma.Error404NotFound("Authentication method is not enabled")
+			}
+			if err := consumeIPLimit(ctx, "recovery-ip", 15*time.Minute, 10); err != nil {
+				return nil, err
 			}
 			password := []byte(input.Body.NewPassword)
 			defer clear(password)
@@ -493,6 +566,32 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 			}{Status: http.StatusNoContent, Cookies: expiredCookies()}, nil
 		})
 
+	type bearerTokenOutput struct {
+		Body struct {
+			Token     string    `json:"token"`
+			TokenType string    `json:"tokenType"`
+			ExpiresAt time.Time `json:"expiresAt"`
+		}
+	}
+	huma.Post(api, "/auth/tokens", func(ctx context.Context, _ *struct{}) (*bearerTokenOutput, error) {
+		if security.options.Mode == AuthModeNone {
+			return nil, huma.Error404NotFound("Authentication is not enabled")
+		}
+		actor, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication is required")
+		}
+		credentials, err := security.options.Manager.NewBearerForUser(ctx, actor.user.ID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Bearer credential could not be issued")
+		}
+		output := &bearerTokenOutput{}
+		output.Body.Token = credentials.CookieToken
+		output.Body.TokenType = "Bearer"
+		output.Body.ExpiresAt = credentials.Session.ExpiresAt
+		return output, nil
+	})
+
 	type oidcBeginInput struct {
 		Redirect string `query:"redirect" default:"/" maxLength:"2048"`
 	}
@@ -505,6 +604,9 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 		func(ctx context.Context, input *oidcBeginInput) (*redirectOutput, error) {
 			if security.options.Mode != AuthModeOIDC {
 				return nil, huma.Error404NotFound("Authentication method is not enabled")
+			}
+			if err := consumeIPLimit(ctx, "oidc-begin-ip", 10*time.Minute, 300); err != nil {
+				return nil, err
 			}
 			result, err := security.options.OIDC.Begin(ctx, input.Redirect)
 			if err != nil {
@@ -530,6 +632,9 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 			if security.options.Mode != AuthModeOIDC {
 				return nil, huma.Error404NotFound("Authentication method is not enabled")
 			}
+			if err := consumeIPLimit(ctx, "oidc-callback-ip", 10*time.Minute, 300); err != nil {
+				return nil, err
+			}
 			result, err := security.options.OIDC.Callback(ctx, input.State, input.Code, input.BrowserBinding.Value)
 			if err != nil {
 				return nil, huma.Error401Unauthorized("OIDC login response was rejected")
@@ -541,6 +646,13 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 			})
 			return &redirectOutput{Status: http.StatusSeeOther, Location: result.RedirectPath, Cookies: cookies}, nil
 		})
+}
+
+func authenticationRateLimitError(window time.Duration) error {
+	retrySeconds := int64((window + time.Second - 1) / time.Second)
+	return huma.ErrorWithHeaders(huma.Error429TooManyRequests("Too many authentication attempts"), http.Header{
+		"Retry-After": []string{strconv.FormatInt(retrySeconds, 10)},
+	})
 }
 
 func registerAdministration(api huma.API, security *requestSecurity) {
@@ -556,7 +668,7 @@ func registerAdministration(api huma.API, security *requestSecurity) {
 			ExternalSubject string `json:"externalSubject,omitempty" maxLength:"512"`
 		}
 	}
-	huma.Post(api, "/users", func(ctx context.Context, input *userInput) (*struct{ Body application.UserRecord }, error) {
+	huma.Post(api, "/users", func(ctx context.Context, input *userInput) (*versionedOutput[application.UserRecord], error) {
 		if security.options.Mode == AuthModeNone {
 			return nil, huma.Error404NotFound("User administration is not enabled")
 		}
@@ -592,62 +704,186 @@ func registerAdministration(api huma.API, security *requestSecurity) {
 			return nil, huma.Error500InternalServerError("User could not be loaded")
 		}
 		user.PasswordHash = ""
-		return &struct{ Body application.UserRecord }{Body: user}, nil
+		return &versionedOutput[application.UserRecord]{ETag: resourceETag(user.ResourceVersion), Body: user}, nil
+	})
+	type userStateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+	}
+	setUserDisabled := func(disabled bool) func(context.Context, *userStateInput) (*versionedOutput[application.UserRecord], error) {
+		return func(ctx context.Context, input *userStateInput) (*versionedOutput[application.UserRecord], error) {
+			if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionMembershipManage, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+				return nil, err
+			}
+			userID, err := domain.NewUserID(input.ID)
+			if err != nil {
+				return nil, huma.Error400BadRequest("User ID is invalid")
+			}
+			expected, err := expectedResourceVersion(input.IfMatch)
+			if err != nil {
+				return nil, err
+			}
+			user, err := security.options.Repository.SetUserDisabled(ctx, userID, disabled, expected, time.Now().UTC())
+			if err != nil {
+				return nil, administrationWriteError(err, "User state could not be changed")
+			}
+			user.PasswordHash = ""
+			return &versionedOutput[application.UserRecord]{ETag: resourceETag(user.ResourceVersion), Body: user}, nil
+		}
+	}
+	huma.Post(api, "/users/{id}/actions/disable", setUserDisabled(true))
+	huma.Post(api, "/users/{id}/actions/enable", setUserDisabled(false))
+	type issueRecoveryInput struct {
+		ID string `path:"id"`
+	}
+	huma.Post(api, "/users/{id}/actions/issue-password-recovery", func(ctx context.Context, input *issueRecoveryInput) (*struct {
+		Body struct {
+			Token string `json:"token"`
+		}
+	}, error) {
+		if security.options.Mode != AuthModeLocal {
+			return nil, huma.Error404NotFound("Local password recovery is not enabled")
+		}
+		if err := authorize(ctx, security, application.AuthorizationRequest{
+			Action: application.ActionMembershipManage, ScopeKind: application.ScopePlatform, ScopeID: "platform",
+		}); err != nil {
+			return nil, err
+		}
+		userID, err := domain.NewUserID(input.ID)
+		if err != nil {
+			return nil, huma.Error404NotFound("User was not found")
+		}
+		token, err := security.options.Manager.IssuePasswordRecovery(ctx, userID)
+		if err != nil {
+			return nil, huma.Error404NotFound("User was not found")
+		}
+		output := &struct {
+			Body struct {
+				Token string `json:"token"`
+			}
+		}{}
+		output.Body.Token = token
+		return output, nil
 	})
 
 	type organizationInput struct {
 		Body application.OrganizationRecord
 	}
-	huma.Post(api, "/organizations", func(ctx context.Context, input *organizationInput) (*struct {
-		Body application.OrganizationRecord
-	}, error) {
+	huma.Post(api, "/organizations", func(ctx context.Context, input *organizationInput) (*versionedOutput[application.OrganizationRecord], error) {
 		if err := authorize(ctx, security, application.AuthorizationRequest{
 			Action: application.ActionOrganizationManage, ScopeKind: application.ScopePlatform, ScopeID: "platform",
 		}); err != nil {
 			return nil, err
 		}
-		if err := security.options.Repository.PutOrganization(ctx, input.Body); err != nil {
-			return nil, huma.Error400BadRequest("Organization could not be saved")
+		record, err := security.options.Repository.CreateOrganization(ctx, input.Body)
+		if err != nil {
+			return nil, administrationWriteError(err, "Organization could not be created")
 		}
-		return &struct {
-			Body application.OrganizationRecord
-		}{Body: input.Body}, nil
+		return &versionedOutput[application.OrganizationRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type organizationUpdateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+		Body    application.OrganizationRecord
+	}
+	huma.Put(api, "/organizations/{id}", func(ctx context.Context, input *organizationUpdateInput) (*versionedOutput[application.OrganizationRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionOrganizationManage, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+			return nil, err
+		}
+		if input.ID != string(input.Body.ID) {
+			return nil, huma.Error400BadRequest("Organization path and body IDs must match")
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.UpdateOrganization(ctx, input.Body, expected)
+		if err != nil {
+			return nil, administrationWriteError(err, "Organization could not be updated")
+		}
+		return &versionedOutput[application.OrganizationRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
 	})
 
 	type projectInput struct {
 		Body application.ProjectRecord
 	}
-	huma.Post(api, "/projects", func(ctx context.Context, input *projectInput) (*struct{ Body application.ProjectRecord }, error) {
+	huma.Post(api, "/projects", func(ctx context.Context, input *projectInput) (*versionedOutput[application.ProjectRecord], error) {
 		if err := authorize(ctx, security, application.AuthorizationRequest{
 			Action: application.ActionProjectManage, ScopeKind: application.ScopeOrganization, ScopeID: string(input.Body.OrganizationID),
 		}); err != nil {
 			return nil, err
 		}
-		if err := security.options.Repository.PutProject(ctx, input.Body); err != nil {
-			return nil, huma.Error400BadRequest("Project could not be saved")
+		record, err := security.options.Repository.CreateProject(ctx, input.Body)
+		if err != nil {
+			return nil, administrationWriteError(err, "Project could not be created")
 		}
-		return &struct{ Body application.ProjectRecord }{Body: input.Body}, nil
+		return &versionedOutput[application.ProjectRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type projectUpdateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+		Body    application.ProjectRecord
+	}
+	huma.Put(api, "/projects/{id}", func(ctx context.Context, input *projectUpdateInput) (*versionedOutput[application.ProjectRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionProjectManage, ScopeKind: application.ScopeOrganization, ScopeID: string(input.Body.OrganizationID)}); err != nil {
+			return nil, err
+		}
+		if input.ID != string(input.Body.ID) {
+			return nil, huma.Error400BadRequest("Project path and body IDs must match")
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.UpdateProject(ctx, input.Body, expected)
+		if err != nil {
+			return nil, administrationWriteError(err, "Project could not be updated")
+		}
+		return &versionedOutput[application.ProjectRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
 	})
 
 	type teamInput struct {
 		Body application.TeamRecord
 	}
-	huma.Post(api, "/teams", func(ctx context.Context, input *teamInput) (*struct{ Body application.TeamRecord }, error) {
+	huma.Post(api, "/teams", func(ctx context.Context, input *teamInput) (*versionedOutput[application.TeamRecord], error) {
 		if err := authorize(ctx, security, application.AuthorizationRequest{
 			Action: application.ActionTeamManage, ScopeKind: application.ScopeOrganization, ScopeID: string(input.Body.OrganizationID),
 		}); err != nil {
 			return nil, err
 		}
-		if err := security.options.Repository.PutTeam(ctx, input.Body); err != nil {
-			return nil, huma.Error400BadRequest("Team could not be saved")
+		record, err := security.options.Repository.CreateTeam(ctx, input.Body)
+		if err != nil {
+			return nil, administrationWriteError(err, "Team could not be created")
 		}
-		return &struct{ Body application.TeamRecord }{Body: input.Body}, nil
+		return &versionedOutput[application.TeamRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type teamUpdateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+		Body    application.TeamRecord
+	}
+	huma.Put(api, "/teams/{id}", func(ctx context.Context, input *teamUpdateInput) (*versionedOutput[application.TeamRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionTeamManage, ScopeKind: application.ScopeOrganization, ScopeID: string(input.Body.OrganizationID)}); err != nil {
+			return nil, err
+		}
+		if input.ID != string(input.Body.ID) {
+			return nil, huma.Error400BadRequest("Team path and body IDs must match")
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.UpdateTeam(ctx, input.Body, expected)
+		if err != nil {
+			return nil, administrationWriteError(err, "Team could not be updated")
+		}
+		return &versionedOutput[application.TeamRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
 	})
 
 	type membershipInput struct {
 		Body application.MembershipRecord
 	}
-	huma.Post(api, "/memberships", func(ctx context.Context, input *membershipInput) (*struct{ Body application.MembershipRecord }, error) {
+	huma.Post(api, "/memberships", func(ctx context.Context, input *membershipInput) (*versionedOutput[application.MembershipRecord], error) {
 		if err := authorize(ctx, security, application.AuthorizationRequest{
 			Action: application.ActionMembershipManage, ScopeKind: application.ScopeOrganization, ScopeID: string(input.Body.OrganizationID),
 		}); err != nil {
@@ -656,18 +892,65 @@ func registerAdministration(api huma.API, security *requestSecurity) {
 		if input.Body.ValidFrom.IsZero() {
 			input.Body.ValidFrom = time.Now().UTC()
 		}
-		if err := security.options.Repository.PutMembership(ctx, input.Body); err != nil {
-			return nil, huma.Error400BadRequest("Membership could not be saved")
+		record, err := security.options.Repository.CreateMembership(ctx, input.Body)
+		if err != nil {
+			return nil, administrationWriteError(err, "Membership could not be created")
 		}
-		return &struct{ Body application.MembershipRecord }{Body: input.Body}, nil
+		return &versionedOutput[application.MembershipRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type membershipUpdateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+		Body    application.MembershipRecord
+	}
+	huma.Put(api, "/memberships/{id}", func(ctx context.Context, input *membershipUpdateInput) (*versionedOutput[application.MembershipRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionMembershipManage, ScopeKind: application.ScopeOrganization, ScopeID: string(input.Body.OrganizationID)}); err != nil {
+			return nil, err
+		}
+		if input.ID != input.Body.ID {
+			return nil, huma.Error400BadRequest("Membership path and body IDs must match")
+		}
+		if input.Body.ValidFrom.IsZero() {
+			return nil, huma.Error400BadRequest("Membership renewal requires validFrom")
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.UpdateMembership(ctx, input.Body, expected)
+		if err != nil {
+			return nil, administrationWriteError(err, "Membership could not be updated")
+		}
+		return &versionedOutput[application.MembershipRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type membershipRevokeInput struct {
+		ID             string `path:"id"`
+		OrganizationID string `query:"organizationId" required:"true"`
+		IfMatch        string `header:"If-Match"`
+	}
+	huma.Post(api, "/memberships/{id}/actions/revoke", func(ctx context.Context, input *membershipRevokeInput) (*versionedOutput[application.MembershipRecord], error) {
+		organizationID, err := domain.NewOrganizationID(input.OrganizationID)
+		if err != nil {
+			return nil, huma.Error400BadRequest("Organization ID is invalid")
+		}
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionMembershipManage, ScopeKind: application.ScopeOrganization, ScopeID: string(organizationID)}); err != nil {
+			return nil, err
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.RevokeMembership(ctx, input.ID, organizationID, expected, time.Now().UTC())
+		if err != nil {
+			return nil, administrationWriteError(err, "Membership could not be revoked")
+		}
+		return &versionedOutput[application.MembershipRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
 	})
 
 	type roleAssignmentInput struct {
 		Body application.RoleAssignmentRecord
 	}
-	huma.Post(api, "/role-assignments", func(ctx context.Context, input *roleAssignmentInput) (*struct {
-		Body application.RoleAssignmentRecord
-	}, error) {
+	huma.Post(api, "/role-assignments", func(ctx context.Context, input *roleAssignmentInput) (*versionedOutput[application.RoleAssignmentRecord], error) {
 		if err := authorize(ctx, security, application.AuthorizationRequest{
 			Action: application.ActionRoleAssignmentManage, ScopeKind: input.Body.ScopeKind, ScopeID: input.Body.ScopeID,
 		}); err != nil {
@@ -676,18 +959,59 @@ func registerAdministration(api huma.API, security *requestSecurity) {
 		if input.Body.ValidFrom.IsZero() {
 			input.Body.ValidFrom = time.Now().UTC()
 		}
-		if err := security.options.Repository.PutRoleAssignment(ctx, input.Body); err != nil {
-			return nil, huma.Error400BadRequest("Role assignment could not be saved")
+		record, err := security.options.Repository.CreateRoleAssignment(ctx, input.Body)
+		if err != nil {
+			return nil, administrationWriteError(err, "Role assignment could not be created")
 		}
-		return &struct {
-			Body application.RoleAssignmentRecord
-		}{Body: input.Body}, nil
+		return &versionedOutput[application.RoleAssignmentRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type roleAssignmentUpdateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+		Body    application.RoleAssignmentRecord
+	}
+	huma.Put(api, "/role-assignments/{id}", func(ctx context.Context, input *roleAssignmentUpdateInput) (*versionedOutput[application.RoleAssignmentRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionRoleAssignmentManage, ScopeKind: input.Body.ScopeKind, ScopeID: input.Body.ScopeID}); err != nil {
+			return nil, err
+		}
+		if input.ID != input.Body.ID || input.Body.ValidFrom.IsZero() {
+			return nil, huma.Error400BadRequest("Role assignment path/body or validity is invalid")
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.UpdateRoleAssignment(ctx, input.Body, expected)
+		if err != nil {
+			return nil, administrationWriteError(err, "Role assignment could not be updated")
+		}
+		return &versionedOutput[application.RoleAssignmentRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type roleAssignmentRevokeInput struct {
+		ID        string                `path:"id"`
+		ScopeKind application.ScopeKind `query:"scopeKind" required:"true"`
+		ScopeID   string                `query:"scopeId" required:"true"`
+		IfMatch   string                `header:"If-Match"`
+	}
+	huma.Post(api, "/role-assignments/{id}/actions/revoke", func(ctx context.Context, input *roleAssignmentRevokeInput) (*versionedOutput[application.RoleAssignmentRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionRoleAssignmentManage, ScopeKind: input.ScopeKind, ScopeID: input.ScopeID}); err != nil {
+			return nil, err
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.RevokeRoleAssignment(ctx, input.ID, input.ScopeKind, input.ScopeID, expected, time.Now().UTC())
+		if err != nil {
+			return nil, administrationWriteError(err, "Role assignment could not be revoked")
+		}
+		return &versionedOutput[application.RoleAssignmentRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
 	})
 
 	type targetGrantInput struct {
 		Body application.TargetGrantRecord
 	}
-	huma.Post(api, "/provider-target-grants", func(ctx context.Context, input *targetGrantInput) (*struct{ Body application.TargetGrantRecord }, error) {
+	huma.Post(api, "/provider-target-grants", func(ctx context.Context, input *targetGrantInput) (*versionedOutput[application.TargetGrantRecord], error) {
 		if err := authorize(ctx, security, application.AuthorizationRequest{
 			Action: application.ActionProviderTargetGrant, ScopeKind: application.ScopePlatform, ScopeID: "platform",
 		}); err != nil {
@@ -696,11 +1020,83 @@ func registerAdministration(api huma.API, security *requestSecurity) {
 		if input.Body.ValidFrom.IsZero() {
 			input.Body.ValidFrom = time.Now().UTC()
 		}
-		if err := security.options.Repository.PutTargetGrant(ctx, input.Body); err != nil {
-			return nil, huma.Error400BadRequest("Provider target grant could not be saved")
+		record, err := security.options.Repository.CreateTargetGrant(ctx, input.Body)
+		if err != nil {
+			return nil, administrationWriteError(err, "Provider target grant could not be created")
 		}
-		return &struct{ Body application.TargetGrantRecord }{Body: input.Body}, nil
+		return &versionedOutput[application.TargetGrantRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
 	})
+	type targetGrantUpdateInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+		Body    application.TargetGrantRecord
+	}
+	huma.Put(api, "/provider-target-grants/{id}", func(ctx context.Context, input *targetGrantUpdateInput) (*versionedOutput[application.TargetGrantRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionProviderTargetGrant, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+			return nil, err
+		}
+		if input.ID != input.Body.ID || input.Body.ValidFrom.IsZero() {
+			return nil, huma.Error400BadRequest("Provider target grant path/body or validity is invalid")
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.UpdateTargetGrant(ctx, input.Body, expected)
+		if err != nil {
+			return nil, administrationWriteError(err, "Provider target grant could not be updated")
+		}
+		return &versionedOutput[application.TargetGrantRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+	type targetGrantRevokeInput struct {
+		ID      string `path:"id"`
+		IfMatch string `header:"If-Match"`
+	}
+	huma.Post(api, "/provider-target-grants/{id}/actions/revoke", func(ctx context.Context, input *targetGrantRevokeInput) (*versionedOutput[application.TargetGrantRecord], error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionProviderTargetGrant, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+			return nil, err
+		}
+		expected, err := expectedResourceVersion(input.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		record, err := security.options.Repository.RevokeTargetGrant(ctx, input.ID, expected, time.Now().UTC())
+		if err != nil {
+			return nil, administrationWriteError(err, "Provider target grant could not be revoked")
+		}
+		return &versionedOutput[application.TargetGrantRecord]{ETag: resourceETag(record.ResourceVersion), Body: record}, nil
+	})
+}
+
+func resourceETag(version domain.ResourceVersion) string {
+	return fmt.Sprintf(`"%d"`, version)
+}
+
+func expectedResourceVersion(value string) (domain.ResourceVersion, error) {
+	if value == "" {
+		return 0, huma.NewError(http.StatusPreconditionRequired, "If-Match is required")
+	}
+	if len(value) < 3 || value[0] != '"' || value[len(value)-1] != '"' || strings.Contains(value[1:len(value)-1], `"`) {
+		return 0, huma.Error400BadRequest("If-Match must contain one quoted resource version")
+	}
+	parsed, err := strconv.ParseUint(value[1:len(value)-1], 10, 64)
+	if err != nil || parsed == 0 {
+		return 0, huma.Error400BadRequest("If-Match resource version is invalid")
+	}
+	return domain.ResourceVersion(parsed), nil
+}
+
+func administrationWriteError(err error, message string) error {
+	switch {
+	case errors.Is(err, application.ErrAuthVersionConflict):
+		return huma.NewError(http.StatusPreconditionFailed, "The resource version no longer matches")
+	case errors.Is(err, application.ErrLastPlatformAdministrator):
+		return huma.Error409Conflict("At least one active platform administrator must remain")
+	case errors.Is(err, application.ErrAuthRecordNotFound):
+		return huma.Error404NotFound("The requested administrative resource was not found")
+	default:
+		return huma.Error400BadRequest(message)
+	}
 }
 
 func sessionForPrincipal(ctx context.Context, security *requestSecurity) (Session, error) {

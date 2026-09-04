@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
+	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	httpapi "github.com/OutboundSpade/LabCentral/api/http"
@@ -185,6 +190,27 @@ func TestAuthenticationStartupContract(t *testing.T) {
 	}
 }
 
+func TestAuthenticationModeMustBeExplicit(t *testing.T) {
+	configuration := config{
+		deploymentMode: deploymentModeSingleNode,
+		replicaID:      "local-worker",
+		artifactMode:   artifactModeLocal,
+	}
+	if err := validateConfig(configuration); err == nil || !strings.Contains(err.Error(), "--auth-mode must be explicitly set") {
+		t.Fatalf("missing authentication mode error = %v", err)
+	}
+	configuration.authMode = httpapi.AuthModeNone
+	if err := validateConfig(configuration); err != nil {
+		t.Fatalf("explicit no-auth mode was rejected: %v", err)
+	}
+	if err := validateListenerSecurity(configuration, true); err != nil {
+		t.Fatalf("explicit loopback no-auth mode was rejected: %v", err)
+	}
+	if err := validateListenerSecurity(configuration, false); err == nil {
+		t.Fatal("explicit no-auth mode accepted a non-loopback listener")
+	}
+}
+
 func TestFirstLocalStartupBootstrapsExactlyOnceFromPrivateFiles(t *testing.T) {
 	directory := t.TempDir()
 	keyringPath := filepath.Join(directory, "session-keys.json")
@@ -220,6 +246,124 @@ func TestFirstLocalStartupBootstrapsExactlyOnceFromPrivateFiles(t *testing.T) {
 	configuration.bootstrapPasswordFile = ""
 	if _, err := configureHTTPAuthentication(context.Background(), configuration, store); err != nil {
 		t.Fatalf("restart required bootstrap secret again: %v", err)
+	}
+	configuration.authMode = httpapi.AuthModeNone
+	if _, err := configureHTTPAuthentication(context.Background(), configuration, store); err == nil {
+		t.Fatal("authenticated installation was downgraded to no-auth")
+	}
+}
+
+func TestFailedFirstBootstrapDoesNotPersistAuthenticationMode(t *testing.T) {
+	directory := t.TempDir()
+	keyringPath := writeTestSessionKeyring(t, directory)
+	store, err := localdb.Open(context.Background(), filepath.Join(directory, "control-plane.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	configuration := config{
+		authMode: httpapi.AuthModeLocal, publicOrigin: "https://labs.example.test", sessionKeyringFile: keyringPath,
+		bootstrapUserID: "user.bootstrap-admin", bootstrapUsername: "bootstrap-admin", bootstrapDisplayName: "Bootstrap administrator",
+	}
+	if _, err := configureHTTPAuthentication(context.Background(), configuration, store); err == nil || !strings.Contains(err.Error(), "--bootstrap-password-file") {
+		t.Fatalf("failed bootstrap error = %v", err)
+	}
+	if err := store.ValidateAuthenticationStartup(context.Background(), httpapi.AuthModeNone); err != nil {
+		t.Fatalf("failed bootstrap persisted authentication mode: %v", err)
+	}
+}
+
+func TestLegacyAuthenticationPreflightHasNoExternalActivity(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(directory, "labcentral.db")
+	seedLegacyInstance(t, databasePath)
+	keyringPath := writeTestSessionKeyring(t, directory)
+	passwordPath := filepath.Join(directory, "bootstrap-password")
+	if err := os.WriteFile(passwordPath, []byte("a-production-length-password\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secretPath := filepath.Join(directory, "oidc-secret")
+	if err := os.WriteFile(secretPath, []byte("client-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	markerPath := filepath.Join(directory, "provider-started")
+	pluginPath := filepath.Join(directory, "provider-marker")
+	plugin := []byte("#!/bin/sh\n: > '" + markerPath + "'\nexit 1\n")
+	if err := os.WriteFile(pluginPath, plugin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(plugin)
+	if err := os.WriteFile(pluginPath+".sha256", []byte(fmt.Sprintf("%x\n", digest)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	base := config{
+		listen: "127.0.0.1:0", dataDir: directory, deploymentMode: deploymentModeSingleNode,
+		replicaID: "local-worker", artifactMode: artifactModeLocal, dockerPlugin: pluginPath,
+		publicOrigin: "https://labs.example.test", trustedProxyCIDRs: "127.0.0.1/32", sessionKeyringFile: keyringPath,
+		bootstrapUserID: "user.bootstrap-admin", bootstrapUsername: "bootstrap-admin", bootstrapDisplayName: "Bootstrap administrator",
+	}
+	local := base
+	local.authMode = httpapi.AuthModeLocal
+	local.bootstrapPasswordFile = passwordPath
+	if err := runConfigured(slogDiscard(), local); err == nil || !strings.Contains(err.Error(), "legacy no-auth database") {
+		t.Fatalf("legacy local-auth startup error = %v", err)
+	}
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Fatalf("provider was started before legacy preflight: %v", err)
+	}
+
+	var oidcRequests atomic.Int32
+	issuer := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		oidcRequests.Add(1)
+	}))
+	defer issuer.Close()
+	oidc := base
+	oidc.authMode = httpapi.AuthModeOIDC
+	oidc.oidcIssuer = issuer.URL
+	oidc.oidcClientID = "labcentral"
+	oidc.oidcClientSecretFile = secretPath
+	oidc.bootstrapOIDCSubject = "bootstrap-subject"
+	if err := runConfigured(slogDiscard(), oidc); err == nil || !strings.Contains(err.Error(), "legacy no-auth database") {
+		t.Fatalf("legacy OIDC startup error = %v", err)
+	}
+	if got := oidcRequests.Load(); got != 0 {
+		t.Fatalf("OIDC issuer received %d request(s) before legacy preflight", got)
+	}
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Fatalf("provider was started before OIDC legacy preflight: %v", err)
+	}
+
+	store, err := localdb.Open(context.Background(), databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnsureAuthenticationMode(context.Background(), httpapi.AuthModeLocal); err != nil {
+		_ = store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := runConfigured(slogDiscard(), oidc); err == nil || !strings.Contains(err.Error(), "conflicts with installation mode \"local\"") {
+		t.Fatalf("conflicting OIDC startup error = %v", err)
+	}
+	if got := oidcRequests.Load(); got != 0 {
+		t.Fatalf("OIDC issuer received %d request(s) before mode-conflict preflight", got)
+	}
+
+	none := config{
+		listen: "127.0.0.1:0", dataDir: directory, deploymentMode: deploymentModeSingleNode,
+		replicaID: "local-worker", artifactMode: artifactModeLocal, dockerPlugin: pluginPath, authMode: httpapi.AuthModeNone,
+	}
+	if err := runConfigured(slogDiscard(), none); err == nil || !strings.Contains(err.Error(), "cannot be downgraded to no-auth") {
+		t.Fatalf("no-auth downgrade error = %v", err)
+	}
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Fatalf("provider was started before authentication-mode conflict checks: %v", err)
 	}
 }
 
@@ -296,8 +440,13 @@ func TestPackagedProxmoxServiceUsesAdjacentChecksumFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	contents := string(service)
-	if !strings.Contains(contents, "--proxmox-plugin /opt/labcentral/lab-provider-proxmox") {
+	if !strings.Contains(contents, "--proxmox-plugin=/opt/labcentral/lab-provider-proxmox") {
 		t.Fatal("packaged service does not select the Proxmox provider")
+	}
+	for _, required := range []string{"--auth-mode=${LABCENTRAL_AUTH_MODE}", "--public-origin=${LABCENTRAL_PUBLIC_ORIGIN}", "--session-keyring-file=${LABCENTRAL_SESSION_KEYRING_FILE}"} {
+		if !strings.Contains(contents, required) {
+			t.Fatalf("packaged service is missing authenticated option %q", required)
+		}
 	}
 	if strings.Contains(contents, "--proxmox-plugin-sha256") {
 		t.Fatal("packaged service passes the checksum filename as a literal digest")
@@ -334,3 +483,43 @@ type stubListener struct{ address net.Addr }
 func (stubListener) Accept() (net.Conn, error) { return nil, io.EOF }
 func (stubListener) Close() error              { return nil }
 func (s stubListener) Addr() net.Addr          { return s.address }
+
+func slogDiscard() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func writeTestSessionKeyring(t *testing.T, directory string) string {
+	t.Helper()
+	path := filepath.Join(directory, "session-keys.json")
+	material := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))
+	if err := os.WriteFile(path, []byte(`{"schemaVersion":"labcentral.session-keys/v1","currentKeyId":"current","keys":[{"id":"current","material":"`+material+`"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func seedLegacyInstance(t *testing.T, databasePath string) {
+	t.Helper()
+	store, err := localdb.Open(context.Background(), databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO labcentral_local_instances
+		(instance_id, canonical_digest, canonical_lab_json, source_yaml, phase, desired_lifecycle, generation,
+		resource_version, isolation_warning_acknowledged, outputs_json, error_code, error_message, created_at_us,
+		updated_at_us, provider_target_id, provider_override_json, project_id, owner_kind, owner_id, created_by)
+		VALUES (?, ?, ?, ?, 'pending', 'running', 1, 1, 1, ?, '', '', 1, 1, 'target.local-docker', ?,
+		'project.local', 'user', 'local-admin', 'local-admin')`,
+		"instance.legacy", strings.Repeat("a", 64), []byte(`{}`), []byte("apiVersion: labs.labcentral.io/v1alpha1\n"), []byte(`{}`), []byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

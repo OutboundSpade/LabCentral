@@ -40,9 +40,11 @@ type AuthenticationOptions struct {
 type principal struct {
 	user    application.UserRecord
 	session application.SessionRecord
+	bearer  bool
 }
 
 type principalContextKey struct{}
+type clientAddressContextKey struct{}
 
 type requestSecurity struct {
 	options      AuthenticationOptions
@@ -51,7 +53,7 @@ type requestSecurity struct {
 
 func newRequestSecurity(options AuthenticationOptions) (*requestSecurity, error) {
 	if options.Mode == "" {
-		options.Mode = AuthModeNone
+		return nil, errors.New("HTTP authentication mode must be explicitly selected")
 	}
 	security := &requestSecurity{options: options}
 	if options.Mode == AuthModeNone {
@@ -75,7 +77,7 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if s.options.Mode != AuthModeNone {
 			response.Header().Set("Strict-Transport-Security", "max-age=31536000")
-			if strings.HasPrefix(request.URL.Path, "/api/v1/auth/") || request.URL.Path == "/api/v1/session" {
+			if strings.HasPrefix(request.URL.Path, "/api/v1/auth/") || request.URL.Path == "/api/v1/session" || strings.HasSuffix(request.URL.Path, "/actions/issue-password-recovery") {
 				response.Header().Set("Cache-Control", "no-store")
 			}
 		}
@@ -88,14 +90,29 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 			writeProblem(response, http.StatusBadRequest, "invalid_public_origin", "The request did not arrive through the configured HTTPS origin.")
 			return
 		}
+		clientAddress, err := s.clientAddress(request)
+		if err != nil {
+			writeProblem(response, http.StatusBadRequest, "invalid_forwarded_address", "The forwarded client address was rejected.")
+			return
+		}
+		request = request.WithContext(context.WithValue(request.Context(), clientAddressContextKey{}, clientAddress))
 		public := publicAuthenticationPath(request.URL.Path)
 		mutating := request.Method != http.MethodGet && request.Method != http.MethodHead && request.Method != http.MethodOptions
-		if mutating && !s.validOrigin(request) {
+		bearerToken, bearerSupplied, bearerErr := requestBearerToken(request)
+		if bearerErr != nil {
+			writeProblem(response, http.StatusUnauthorized, "authentication_required", "The authorization credential was rejected.")
+			return
+		}
+		cookie, cookieErr := request.Cookie(sessionCookieName)
+		if bearerSupplied && cookieErr == nil {
+			writeProblem(response, http.StatusBadRequest, "ambiguous_authentication", "Cookie and bearer credentials must not be combined.")
+			return
+		}
+		if mutating && !bearerSupplied && !s.validOrigin(request) {
 			writeProblem(response, http.StatusForbidden, "csrf_origin_invalid", "The request origin was rejected.")
 			return
 		}
-		cookie, err := request.Cookie(sessionCookieName)
-		if err != nil {
+		if !bearerSupplied && cookieErr != nil {
 			if public {
 				next.ServeHTTP(response, request)
 				return
@@ -103,9 +120,14 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 			writeProblem(response, http.StatusUnauthorized, "authentication_required", "Authentication is required.")
 			return
 		}
-		credentials, err := s.options.Manager.AuthenticateSession(request.Context(), cookie.Value)
+		var credentials authentication.SessionCredentials
+		if bearerSupplied {
+			credentials, err = s.options.Manager.AuthenticateBearer(request.Context(), bearerToken)
+		} else {
+			credentials, err = s.options.Manager.AuthenticateSession(request.Context(), cookie.Value)
+		}
 		if err != nil {
-			if public {
+			if public && !bearerSupplied {
 				appendCookies(headerAppender{response}, expiredCookies())
 				next.ServeHTTP(response, request)
 				return
@@ -118,10 +140,10 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 			writeProblem(response, http.StatusUnauthorized, "authentication_required", "Authentication is required.")
 			return
 		}
-		if credentials.Rotated {
+		if credentials.Rotated && !bearerSupplied {
 			appendCookies(headerAppender{response}, sessionCookies(credentials))
 		}
-		if mutating && !public {
+		if mutating && !public && !bearerSupplied {
 			csrfCookie, cookieErr := request.Cookie(csrfCookieName)
 			csrfHeader := request.Header.Get("X-CSRF-Token")
 			if cookieErr != nil || csrfCookie.Value == "" || csrfHeader != csrfCookie.Value || s.options.Manager.ValidateCSRF(credentials.RequestSession, csrfHeader) != nil {
@@ -129,9 +151,24 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 				return
 			}
 		}
-		request = request.WithContext(context.WithValue(request.Context(), principalContextKey{}, principal{user: user, session: credentials.Session}))
+		request = request.WithContext(context.WithValue(request.Context(), principalContextKey{}, principal{user: user, session: credentials.Session, bearer: bearerSupplied}))
 		next.ServeHTTP(response, request)
 	})
+}
+
+func requestBearerToken(request *http.Request) (string, bool, error) {
+	values := request.Header.Values("Authorization")
+	if len(values) == 0 {
+		return "", false, nil
+	}
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
+		return "", true, errors.New("authorization header is invalid")
+	}
+	token := strings.TrimPrefix(values[0], "Bearer ")
+	if token == "" || strings.TrimSpace(token) != token || strings.Contains(token, " ") || len(token) > 256 {
+		return "", true, errors.New("bearer token is invalid")
+	}
+	return token, true, nil
 }
 
 func (s *requestSecurity) validPublicRequest(request *http.Request) bool {
@@ -161,12 +198,56 @@ func (s *requestSecurity) isTrustedProxy(remoteAddress string) bool {
 	if ip == nil {
 		return false
 	}
+	return s.isTrustedIP(ip)
+}
+
+func (s *requestSecurity) isTrustedIP(ip net.IP) bool {
 	for _, network := range s.options.TrustedProxies {
 		if network != nil && network.Contains(ip) {
 			return true
 		}
 	}
 	return false
+}
+
+func (s *requestSecurity) clientAddress(request *http.Request) (string, error) {
+	host, _, err := net.SplitHostPort(request.RemoteAddr)
+	if err != nil {
+		return "", err
+	}
+	peer := net.ParseIP(host)
+	if peer == nil {
+		return "", errors.New("request peer is not an IP address")
+	}
+	if !s.isTrustedIP(peer) {
+		return peer.String(), nil
+	}
+	forwarded := request.Header.Values("X-Forwarded-For")
+	if len(forwarded) == 0 {
+		return peer.String(), nil
+	}
+	if len(forwarded) != 1 {
+		return "", errors.New("forwarded address is ambiguous")
+	}
+	parts := strings.Split(forwarded[0], ",")
+	if len(parts) == 0 || len(parts) > 32 {
+		return "", errors.New("forwarded address chain is invalid")
+	}
+	chain := make([]net.IP, 0, len(parts)+1)
+	for _, part := range parts {
+		ip := net.ParseIP(strings.TrimSpace(part))
+		if ip == nil {
+			return "", errors.New("forwarded address is invalid")
+		}
+		chain = append(chain, ip)
+	}
+	chain = append(chain, peer)
+	for index := len(chain) - 1; index >= 0; index-- {
+		if !s.isTrustedIP(chain[index]) {
+			return chain[index].String(), nil
+		}
+	}
+	return chain[0].String(), nil
 }
 
 func publicAuthenticationPath(path string) bool {
@@ -181,6 +262,11 @@ func publicAuthenticationPath(path string) bool {
 func requestPrincipal(ctx context.Context) (principal, bool) {
 	value, ok := ctx.Value(principalContextKey{}).(principal)
 	return value, ok && value.user.ID != ""
+}
+
+func requestClientAddress(ctx context.Context) (string, bool) {
+	value, ok := ctx.Value(clientAddressContextKey{}).(string)
+	return value, ok && value != ""
 }
 
 func sessionCookies(credentials authentication.SessionCredentials) []http.Cookie {

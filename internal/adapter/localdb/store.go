@@ -27,10 +27,12 @@ import (
 )
 
 const (
-	migrationID       = "0002_local_vertical_slice"
-	targetMigrationID = "0003_local_provider_target_binding"
-	authMigrationID   = "0004_identity_tenancy_rbac"
-	migrationLockID   = int64(0x4c616243656e7472)
+	migrationID              = "0002_local_vertical_slice"
+	targetMigrationID        = "0003_local_provider_target_binding"
+	authMigrationID          = "0004_identity_tenancy_rbac"
+	authHardeningMigrationID = "0005_authentication_hardening"
+	authLifecycleMigrationID = "0006_authority_lifecycle"
+	migrationLockID          = int64(0x4c616243656e7472)
 )
 
 type Store struct {
@@ -167,7 +169,13 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, targetMigrationID, s.targetMigrationStatements()); err != nil {
 		return err
 	}
-	return s.applyMigration(ctx, authMigrationID, s.authMigrationStatements())
+	if err := s.applyMigration(ctx, authMigrationID, s.authMigrationStatements()); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, authHardeningMigrationID, authenticationHardeningMigrationStatements(s.integerType())); err != nil {
+		return err
+	}
+	return s.applyMigration(ctx, authLifecycleMigrationID, authenticationLifecycleMigrationStatements(s.integerType()))
 }
 
 func (s *Store) lockMigrations(ctx context.Context) (func(), error) {
@@ -524,6 +532,38 @@ func (s *Store) authMigrationStatements() []string {
 		return authMigrationStatements("BYTEA", "BIGINT")
 	}
 	return authMigrationStatements("BLOB", "INTEGER")
+}
+
+func (s *Store) integerType() string {
+	if s.dialect == jobsdb.DialectPostgreSQL {
+		return "BIGINT"
+	}
+	return "INTEGER"
+}
+
+func authenticationHardeningMigrationStatements(integerType string) []string {
+	return []string{
+		`CREATE INDEX labcentral_sessions_expiry_gc_idx ON labcentral_sessions(expires_at_us)`,
+		`CREATE INDEX labcentral_password_recovery_expiry_gc_idx ON labcentral_password_recovery_tokens(expires_at_us)`,
+		`CREATE INDEX labcentral_oidc_flows_expiry_gc_idx ON labcentral_oidc_flows(expires_at_us)`,
+		`CREATE TABLE labcentral_authentication_attempts (
+			attempt_key TEXT PRIMARY KEY,
+			window_started_at_us ` + integerType + ` NOT NULL,
+			attempt_count ` + integerType + ` NOT NULL CHECK (attempt_count > 0),
+			updated_at_us ` + integerType + ` NOT NULL
+		)`,
+		`CREATE INDEX labcentral_authentication_attempts_updated_idx ON labcentral_authentication_attempts(updated_at_us)`,
+	}
+}
+
+func authenticationLifecycleMigrationStatements(integerType string) []string {
+	return []string{
+		`ALTER TABLE labcentral_users ADD COLUMN resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0)`,
+		`ALTER TABLE labcentral_memberships ADD COLUMN resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0)`,
+		`ALTER TABLE labcentral_role_assignments ADD COLUMN resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0)`,
+		`ALTER TABLE labcentral_provider_target_grants ADD COLUMN resource_version ` + integerType + ` NOT NULL DEFAULT 1 CHECK (resource_version > 0)`,
+		`ALTER TABLE labcentral_sessions ADD COLUMN credential_kind TEXT NOT NULL DEFAULT 'browser' CHECK (credential_kind IN ('browser', 'bearer'))`,
+	}
 }
 
 func checksum(statements []string) string {

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +79,9 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	if err := store.EnsureAuthenticationMode(ctx, "local"); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.RefuseAuthenticationDowngrade(ctx); err == nil {
+		t.Fatal("authenticated installation accepted a no-auth downgrade")
+	}
 	if err := store.EnsureAuthenticationMode(ctx, "local"); err != nil {
 		t.Fatalf("same authentication mode was not idempotent: %v", err)
 	}
@@ -97,6 +101,31 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		if err := store.PutOrganization(ctx, organization); err != nil {
 			t.Fatal(err)
 		}
+	}
+	updateStart := make(chan struct{})
+	updateResults := make(chan error, 2)
+	for _, name := range []string{"beta-one", "beta-two"} {
+		name := name
+		go func() {
+			<-updateStart
+			_, updateErr := store.UpdateOrganization(ctx, application.OrganizationRecord{ID: "org.beta", Name: name}, 1)
+			updateResults <- updateErr
+		}()
+	}
+	close(updateStart)
+	updateSuccesses, updateConflicts := 0, 0
+	for range 2 {
+		switch err := <-updateResults; {
+		case err == nil:
+			updateSuccesses++
+		case errors.Is(err, application.ErrAuthVersionConflict):
+			updateConflicts++
+		default:
+			t.Fatalf("concurrent organization update: %v", err)
+		}
+	}
+	if updateSuccesses != 1 || updateConflicts != 1 {
+		t.Fatalf("concurrent organization updates successes=%d conflicts=%d", updateSuccesses, updateConflicts)
 	}
 	for _, project := range []application.ProjectRecord{
 		{ID: "project.alpha", OrganizationID: "org.alpha", Name: "alpha-class"},
@@ -125,8 +154,8 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		t.Fatalf("team organization changed: %#v, %v", scope, err)
 	}
 	for _, membership := range []application.MembershipRecord{
-		{ID: "membership.alice.org", UserID: "user.alice", OrganizationID: "org.alpha", ValidFrom: now.Add(-time.Hour)},
-		{ID: "membership.alice.team", UserID: "user.alice", OrganizationID: "org.alpha", TeamID: "team.alpha", ValidFrom: now.Add(-time.Hour)},
+		{ID: "membership.alice.org", UserID: "user.alice", OrganizationID: "org.alpha", ValidFrom: now.Add(-time.Hour), ValidUntil: now.Add(time.Hour)},
+		{ID: "membership.alice.team", UserID: "user.alice", OrganizationID: "org.alpha", TeamID: "team.alpha", ValidFrom: now.Add(-time.Hour), ValidUntil: now.Add(time.Hour)},
 		{ID: "membership.bob.org", UserID: "user.bob", OrganizationID: "org.beta", ValidFrom: now.Add(-time.Hour)},
 	} {
 		if err := store.PutMembership(ctx, membership); err != nil {
@@ -156,7 +185,9 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	assertAuthorized := func(name string, request application.AuthorizationRequest, allowed bool) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
-			request.Now = now
+			if request.Now.IsZero() {
+				request.Now = now
+			}
 			err := evaluator.Authorize(ctx, request)
 			if allowed && err != nil {
 				t.Fatalf("authorized request denied: %v", err)
@@ -176,6 +207,12 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	missingTarget := create
 	missingTarget.TargetID = ""
 	assertAuthorized("missing target", missingTarget, false)
+	grantedHealth := base
+	grantedHealth.Action, grantedHealth.TargetID = application.ActionProviderTargetHealthRead, "target.alpha"
+	assertAuthorized("granted target health", grantedHealth, true)
+	ungrantedHealth := grantedHealth
+	ungrantedHealth.TargetID = "target.ungranted"
+	assertAuthorized("ungranted target health", ungrantedHealth, false)
 	crossOrganizationOwner := create
 	crossOrganizationOwner.OwnerKind, crossOrganizationOwner.OwnerID = application.OwnerTeam, "team.beta"
 	assertAuthorized("cross organization owner", crossOrganizationOwner, false)
@@ -188,6 +225,9 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	foreignRead := ownedRead
 	foreignRead.OwnerID = "user.bob"
 	assertAuthorized("instructor reads another participant instance", foreignRead, true)
+	expiredMembershipRead := foreignRead
+	expiredMembershipRead.Now = now.Add(2 * time.Hour)
+	assertAuthorized("expired organization membership", expiredMembershipRead, false)
 	teamRead := ownedRead
 	teamRead.OwnerKind, teamRead.OwnerID = application.OwnerTeam, "team.alpha"
 	assertAuthorized("team instance read", teamRead, true)
@@ -246,6 +286,62 @@ func runIdentityConformance(t *testing.T, store *Store) {
 	assertIDs("user.alice", "instance.alpha-user", "instance.alpha-team")
 	assertIDs("user.bob", "instance.beta-user")
 
+	rateKey := strings.Repeat("a", 64)
+	for attempt := 1; attempt <= 3; attempt++ {
+		allowed, err := store.ConsumeAuthenticationAttempt(ctx, rateKey, now, time.Minute, 2)
+		if err != nil || allowed != (attempt <= 2) {
+			t.Fatalf("authentication attempt %d allowed=%t err=%v", attempt, allowed, err)
+		}
+	}
+	allowed, err := store.ConsumeAuthenticationAttempt(ctx, rateKey, now.Add(24*time.Hour), time.Minute, 2)
+	if err != nil || allowed {
+		t.Fatalf("process clock skew reset authentication window allowed=%t err=%v", allowed, err)
+	}
+	if _, err := store.db.ExecContext(ctx, store.bind(`UPDATE labcentral_authentication_attempts SET window_started_at_us = 0 WHERE attempt_key = ?`), rateKey); err != nil {
+		t.Fatal(err)
+	}
+	allowed, err = store.ConsumeAuthenticationAttempt(ctx, rateKey, now, time.Minute, 2)
+	if err != nil || !allowed {
+		t.Fatalf("database-expired authentication window allowed=%t err=%v", allowed, err)
+	}
+	if err := store.ClearAuthenticationAttempts(ctx, rateKey); err != nil {
+		t.Fatal(err)
+	}
+	allowed, err = store.ConsumeAuthenticationAttempt(ctx, rateKey, now, time.Minute, 2)
+	if err != nil || !allowed {
+		t.Fatalf("cleared authentication window allowed=%t err=%v", allowed, err)
+	}
+	concurrentKey := strings.Repeat("b", 64)
+	start := make(chan struct{})
+	results := make(chan struct {
+		allowed bool
+		err     error
+	}, 2)
+	for range 2 {
+		go func() {
+			<-start
+			value, consumeErr := store.ConsumeAuthenticationAttempt(ctx, concurrentKey, now, time.Minute, 1)
+			results <- struct {
+				allowed bool
+				err     error
+			}{value, consumeErr}
+		}()
+	}
+	close(start)
+	allowedCount := 0
+	for range 2 {
+		result := <-results
+		if result.err != nil {
+			t.Fatalf("concurrent authentication attempt: %v", result.err)
+		}
+		if result.allowed {
+			allowedCount++
+		}
+	}
+	if allowedCount != 1 {
+		t.Fatalf("concurrent authentication attempts allowed %d, want 1", allowedCount)
+	}
+
 	if err := store.LinkExternalIdentity(ctx, application.ExternalIdentityRecord{Issuer: "https://issuer.example", Subject: "subject-alice", UserID: "user.alice"}); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +350,7 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		t.Fatalf("external identity user = %#v, %v", external, err)
 	}
 	session := application.SessionRecord{
-		ID: "session.old", UserID: "user.alice", TokenHash: "token-old", CSRFHash: "csrf-old", KeyID: "key-1", ExpiresAt: now.Add(time.Hour),
+		ID: "session.old", UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-old", CSRFHash: "csrf-old", KeyID: "key-1", ExpiresAt: now.Add(time.Hour),
 	}
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
@@ -263,7 +359,7 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		t.Fatalf("session lookup = %#v, %v", found, err)
 	}
 	replacement := application.SessionRecord{
-		ID: "session.new", UserID: "user.alice", TokenHash: "token-new", CSRFHash: "csrf-new", KeyID: "key-2",
+		ID: "session.new", UserID: "user.alice", Kind: application.SessionKindBrowser, TokenHash: "token-new", CSRFHash: "csrf-new", KeyID: "key-2",
 		ExpiresAt: now.Add(2 * time.Hour), RotatedFromID: session.ID,
 	}
 	if err := store.RotateSession(ctx, session.ID, replacement, now); err != nil {

@@ -38,7 +38,7 @@ test:
 	cd web && $(BUN) run check && $(BUN) run build
 
 run: build
-	./bin/labd
+	./bin/labd --auth-mode=none
 
 release:
 	$(GO) run ./tools/release -version "$(VERSION)" -goos "$(RELEASE_GOOS)" -goarch "$(RELEASE_GOARCH)"

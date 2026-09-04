@@ -448,6 +448,25 @@ func (s *Service) ProviderKinds() []string {
 }
 
 func (s *Service) ListProviderTargets(ctx context.Context) ([]ProviderTargetStatus, error) {
+	return s.listProviderTargets(ctx, nil)
+}
+
+func (s *Service) ProviderTargetIDs() []domain.ProviderTargetID {
+	if s == nil || s.targets == nil {
+		return []domain.ProviderTargetID{}
+	}
+	return s.targets.IDs()
+}
+
+func (s *Service) ListProviderTargetsByID(ctx context.Context, ids []domain.ProviderTargetID) ([]ProviderTargetStatus, error) {
+	allowed := make(map[domain.ProviderTargetID]bool, len(ids))
+	for _, id := range ids {
+		allowed[id] = true
+	}
+	return s.listProviderTargets(ctx, allowed)
+}
+
+func (s *Service) listProviderTargets(ctx context.Context, allowed map[domain.ProviderTargetID]bool) ([]ProviderTargetStatus, error) {
 	if s == nil || s.targets == nil || s.store == nil {
 		return []ProviderTargetStatus{}, nil
 	}
@@ -455,6 +474,9 @@ func (s *Service) ListProviderTargets(ctx context.Context) ([]ProviderTargetStat
 	result := make([]ProviderTargetStatus, 0, len(registered))
 	now := time.Now()
 	for _, target := range registered {
+		if allowed != nil && !allowed[target.ID] {
+			continue
+		}
 		status := ProviderTargetStatus{
 			ID: target.ID, ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
 			ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,

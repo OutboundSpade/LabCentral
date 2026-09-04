@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -36,6 +37,14 @@ func TestSanitizeRemote(t *testing.T) {
 		if actual := sanitizeRemote(input); actual != expected {
 			t.Errorf("sanitizeRemote(%q) = %q, want %q", input, actual, expected)
 		}
+	}
+}
+
+func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
+	t.Parallel()
+	readme := releaseReadme("v1.0.0", "linux", "amd64", "labd", "lab-provider-docker", "lab-provider-proxmox")
+	if !strings.Contains(readme, "--auth-mode=none") {
+		t.Fatal("release launch instructions omit the required authentication mode")
 	}
 }
 

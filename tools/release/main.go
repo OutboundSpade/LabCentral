@@ -464,11 +464,11 @@ a separate process.
 
 For the local Docker example, run:
 
-    ./%s --listen 127.0.0.1:8080 --data-dir ./labcentral-data
+    ./%s --listen 127.0.0.1:8080 --data-dir ./labcentral-data --auth-mode=none
 
 The Docker provider uses DOCKER_HOST, or the platform's default Docker Engine
 endpoint when it is unset. Access to a Docker socket is effectively host-level
-control. LabCentral has no authentication in this slice, refuses non-loopback
+control. This command explicitly selects no authentication; LabCentral refuses non-loopback
 listeners by default, and is not a sandbox for hostile workloads. For Proxmox,
 follow docs/proxmox-deployment.md. Production VM mutation remains closed unless
 signed exact-target evidence matches the installed provider build and fresh

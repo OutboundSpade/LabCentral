@@ -64,6 +64,43 @@ func TestOIDCAuthorizationCodePKCEAndOneUseState(t *testing.T) {
 	}
 }
 
+func TestOIDCRefreshesJWKSAfterSigningKeyRotation(t *testing.T) {
+	provider := newTestOIDCProvider(t)
+	store, _, service := newOIDCTestServices(t, provider)
+	ctx := context.Background()
+	if err := store.PutUser(ctx, application.UserRecord{ID: "user.oidc", Username: "oidc-user", DisplayName: "OIDC User"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.LinkExternalIdentity(ctx, application.ExternalIdentityRecord{Issuer: provider.server.URL, Subject: "subject-1", UserID: "user.oidc"}); err != nil {
+		t.Fatal(err)
+	}
+
+	login := func() {
+		t.Helper()
+		begin, err := service.Begin(ctx, "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := url.Parse(begin.AuthorizationURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		query := parsed.Query()
+		provider.prepare(query.Get("nonce"), query.Get("code_challenge"), oidcTokenOptions{})
+		result, err := service.Callback(ctx, query.Get("state"), "authorization-code", begin.BrowserBinding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Credentials.Session.UserID != "user.oidc" {
+			t.Fatalf("OIDC session user = %q", result.Credentials.Session.UserID)
+		}
+	}
+
+	login() // Populate the verifier's remote-key cache with the original key.
+	provider.rotateSigningKey()
+	login() // An unknown key ID must trigger a fresh JWKS fetch and verify cleanly.
+}
+
 func TestOIDCRejectsNonceAudienceIssuerSignaturePKCEAndUnlinkedIdentity(t *testing.T) {
 	for _, testCase := range []struct {
 		name         string
@@ -71,9 +108,13 @@ func TestOIDCRejectsNonceAudienceIssuerSignaturePKCEAndUnlinkedIdentity(t *testi
 		linked       bool
 		breakPKCE    bool
 		breakBinding bool
+		accepted     bool
 	}{
 		{name: "nonce", options: oidcTokenOptions{nonce: "attacker-nonce"}, linked: true},
 		{name: "audience", options: oidcTokenOptions{audience: "other-client"}, linked: true},
+		{name: "multiple audiences without authorized party", options: oidcTokenOptions{audiences: []string{"client", "other-client"}}, linked: true},
+		{name: "multiple audiences with wrong authorized party", options: oidcTokenOptions{audiences: []string{"client", "other-client"}, authorizedParty: "other-client"}, linked: true},
+		{name: "multiple audiences with matching authorized party", options: oidcTokenOptions{audiences: []string{"client", "other-client"}, authorizedParty: "client"}, linked: true, accepted: true},
 		{name: "issuer", options: oidcTokenOptions{issuer: "https://attacker.invalid"}, linked: true},
 		{name: "signature", options: oidcTokenOptions{wrongSigningKey: true}, linked: true},
 		{name: "PKCE", linked: true, breakPKCE: true},
@@ -106,7 +147,11 @@ func TestOIDCRejectsNonceAudienceIssuerSignaturePKCEAndUnlinkedIdentity(t *testi
 			if testCase.breakBinding {
 				binding = strings.Repeat("x", len(binding))
 			}
-			if _, err := service.Callback(context.Background(), query.Get("state"), "authorization-code", binding); !errors.Is(err, authentication.ErrUnauthenticated) {
+			_, err = service.Callback(context.Background(), query.Get("state"), "authorization-code", binding)
+			if testCase.accepted && err != nil {
+				t.Fatalf("valid OIDC callback returned %v", err)
+			}
+			if !testCase.accepted && !errors.Is(err, authentication.ErrUnauthenticated) {
 				t.Fatalf("invalid OIDC callback returned %v", err)
 			}
 		})
@@ -136,6 +181,44 @@ func TestOIDCRejectsUnsafeConfigurationAndRedirects(t *testing.T) {
 		if _, err := service.Begin(context.Background(), redirect); !errors.Is(err, authentication.ErrUnauthenticated) {
 			t.Fatalf("unsafe post-login redirect %q returned %v", redirect, err)
 		}
+	}
+}
+
+func TestOIDCRejectsRedirectedOversizedAndInsecureDiscovery(t *testing.T) {
+	provider := newTestOIDCProvider(t)
+	store, manager, _ := newOIDCTestServices(t, provider)
+	keyring := parseKeyring(t, "current", map[string]byte{"current": 'o'})
+	for _, mode := range []string{"redirect", "oversized", "insecure-endpoint"} {
+		t.Run(mode, func(t *testing.T) {
+			var server *httptest.Server
+			server = httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if mode == "redirect" && request.URL.Path == "/.well-known/openid-configuration" {
+					http.Redirect(response, request, server.URL+"/metadata", http.StatusFound)
+					return
+				}
+				if mode == "oversized" {
+					response.Header().Set("Content-Type", "application/json")
+					_, _ = response.Write([]byte(strings.Repeat("x", (2<<20)+1)))
+					return
+				}
+				endpointBase := server.URL
+				if mode == "insecure-endpoint" {
+					endpointBase = "http://issuer.invalid"
+				}
+				writeJSON(response, map[string]any{
+					"issuer": server.URL, "authorization_endpoint": endpointBase + "/authorize", "token_endpoint": endpointBase + "/token",
+					"jwks_uri": endpointBase + "/keys", "response_types_supported": []string{"code"}, "subject_types_supported": []string{"public"},
+					"id_token_signing_alg_values_supported": []string{"RS256"}, "code_challenge_methods_supported": []string{"S256"},
+				})
+			}))
+			defer server.Close()
+			_, err := authentication.NewOIDCService(context.Background(), store, manager, keyring, authentication.OIDCConfig{
+				Issuer: server.URL, ClientID: "client", ClientSecret: "secret", RedirectURL: "https://lab.example/callback", HTTPClient: server.Client(),
+			})
+			if err == nil {
+				t.Fatal("unsafe OIDC discovery was accepted")
+			}
+		})
 	}
 }
 
@@ -172,6 +255,8 @@ type oidcTokenOptions struct {
 	nonce           string
 	issuer          string
 	audience        string
+	audiences       []string
+	authorizedParty string
 	wrongSigningKey bool
 }
 
@@ -179,6 +264,7 @@ type testOIDCProvider struct {
 	t             *testing.T
 	server        *httptest.Server
 	key           *rsa.PrivateKey
+	keyID         string
 	wrongKey      *rsa.PrivateKey
 	mu            sync.Mutex
 	nonce         string
@@ -196,10 +282,21 @@ func newTestOIDCProvider(t *testing.T) *testOIDCProvider {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := &testOIDCProvider{t: t, key: key, wrongKey: wrongKey}
+	provider := &testOIDCProvider{t: t, key: key, keyID: "test-key", wrongKey: wrongKey}
 	provider.server = httptest.NewTLSServer(http.HandlerFunc(provider.serveHTTP))
 	t.Cleanup(provider.server.Close)
 	return provider
+}
+
+func (p *testOIDCProvider) rotateSigningKey() {
+	p.t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		p.t.Fatal(err)
+	}
+	p.mu.Lock()
+	p.key, p.keyID = key, "rotated-key"
+	p.mu.Unlock()
 }
 
 func (p *testOIDCProvider) prepare(nonce, codeChallenge string, options oidcTokenOptions) {
@@ -218,7 +315,10 @@ func (p *testOIDCProvider) serveHTTP(response http.ResponseWriter, request *http
 			"code_challenge_methods_supported": []string{"S256"},
 		})
 	case "/keys":
-		writeJSON(response, map[string]any{"keys": []jose.JSONWebKey{{Key: &p.key.PublicKey, KeyID: "test-key", Algorithm: "RS256", Use: "sig"}}})
+		p.mu.Lock()
+		key, keyID := p.key, p.keyID
+		p.mu.Unlock()
+		writeJSON(response, map[string]any{"keys": []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: keyID, Algorithm: "RS256", Use: "sig"}}})
 	case "/token":
 		p.token(response, request)
 	default:
@@ -233,7 +333,7 @@ func (p *testOIDCProvider) token(response http.ResponseWriter, request *http.Req
 	}
 	username, password, basic := request.BasicAuth()
 	p.mu.Lock()
-	nonce, challenge, options := p.nonce, p.codeChallenge, p.options
+	nonce, challenge, options, key, keyID := p.nonce, p.codeChallenge, p.options, p.key, p.keyID
 	p.mu.Unlock()
 	verifierDigest := sha256.Sum256([]byte(request.Form.Get("code_verifier")))
 	if !basic || username != "client" || password != "secret" || request.Form.Get("grant_type") != "authorization_code" ||
@@ -241,21 +341,23 @@ func (p *testOIDCProvider) token(response http.ResponseWriter, request *http.Req
 		writeJSONStatus(response, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
 		return
 	}
-	issuer, audience, claimNonce := p.server.URL, "client", nonce
+	issuer, audience, claimNonce := p.server.URL, jwt.Audience{"client"}, nonce
 	if options.issuer != "" {
 		issuer = options.issuer
 	}
 	if options.audience != "" {
-		audience = options.audience
+		audience = jwt.Audience{options.audience}
+	}
+	if len(options.audiences) > 0 {
+		audience = append(jwt.Audience(nil), options.audiences...)
 	}
 	if options.nonce != "" {
 		claimNonce = options.nonce
 	}
-	key := p.key
 	if options.wrongSigningKey {
 		key = p.wrongKey
 	}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test-key"))
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", keyID))
 	if err != nil {
 		p.t.Errorf("create signer: %v", err)
 		http.Error(response, "signer", http.StatusInternalServerError)
@@ -263,10 +365,11 @@ func (p *testOIDCProvider) token(response http.ResponseWriter, request *http.Req
 	}
 	now := time.Now()
 	raw, err := jwt.Signed(signer).Claims(jwt.Claims{
-		Issuer: issuer, Subject: "subject-1", Audience: jwt.Audience{audience}, IssuedAt: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+		Issuer: issuer, Subject: "subject-1", Audience: audience, IssuedAt: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(5 * time.Minute)),
 	}).Claims(struct {
-		Nonce string `json:"nonce"`
-	}{Nonce: claimNonce}).Serialize()
+		Nonce           string `json:"nonce"`
+		AuthorizedParty string `json:"azp,omitempty"`
+	}{Nonce: claimNonce, AuthorizedParty: options.authorizedParty}).Serialize()
 	if err != nil {
 		p.t.Errorf("sign ID token: %v", err)
 		http.Error(response, "token", http.StatusInternalServerError)

@@ -39,6 +39,18 @@ func (s *Store) EnsureAuthenticationMode(ctx context.Context, mode string) error
 	return tx.Commit()
 }
 
+func (s *Store) RefuseAuthenticationDowngrade(ctx context.Context) error {
+	var recorded string
+	err := s.db.QueryRowContext(ctx, `SELECT setting_value FROM labcentral_installation_settings WHERE setting_key = 'authentication_mode'`).Scan(&recorded)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("installation authentication mode %q cannot be downgraded to no-auth", recorded)
+}
+
 func (s *Store) HasUsers(ctx context.Context) (bool, error) {
 	var exists int
 	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM labcentral_users LIMIT 1`).Scan(&exists)
@@ -50,7 +62,7 @@ func (s *Store) HasUsers(ctx context.Context) (bool, error) {
 
 func (s *Store) CreateBootstrapAdministrator(ctx context.Context, user application.UserRecord, assignment application.RoleAssignmentRecord, identity *application.ExternalIdentityRecord) (bool, error) {
 	if _, err := domain.NewUserID(string(user.ID)); err != nil || !identityNamePattern.MatchString(user.Username) || user.DisplayName == "" || user.PasswordHash == "" && identity == nil ||
-		assignment.SubjectKind != application.SubjectUser || assignment.SubjectID != string(user.ID) || assignment.ScopeKind != application.ScopePlatform || assignment.ScopeID != "platform" || assignment.Role != application.RolePlatformAdministrator {
+		assignment.SubjectKind != application.SubjectUser || assignment.SubjectID != string(user.ID) || assignment.ScopeKind != application.ScopePlatform || assignment.ScopeID != "platform" || assignment.Role != application.RolePlatformAdministrator || !assignment.ValidUntil.IsZero() {
 		return false, fmt.Errorf("bootstrap administrator is invalid")
 	}
 	if identity != nil {
@@ -101,6 +113,20 @@ func (s *Store) CreateBootstrapAdministrator(ctx context.Context, user applicati
 			return false, err
 		}
 	}
+	mode := "local"
+	if identity != nil {
+		mode = "oidc"
+	}
+	modeResult, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_installation_settings (setting_key, setting_value, updated_at_us)
+		VALUES ('authentication_mode', ?, `+s.nowMicros()+`)
+		ON CONFLICT(setting_key) DO UPDATE SET updated_at_us = `+s.nowMicros()+`
+		WHERE labcentral_installation_settings.setting_value = excluded.setting_value`), mode)
+	if err != nil {
+		return false, err
+	}
+	if affected, _ := modeResult.RowsAffected(); affected != 1 {
+		return false, fmt.Errorf("bootstrap authentication mode conflicts with installation mode")
+	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
@@ -132,7 +158,8 @@ func (s *Store) PutUser(ctx context.Context, record application.UserRecord) erro
 		(user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us)
 		VALUES (?, ?, ?, ?, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)
 		ON CONFLICT (user_id) DO UPDATE SET username = excluded.username, display_name = excluded.display_name,
-		password_hash = excluded.password_hash, disabled = excluded.disabled, updated_at_us = `+s.nowMicros()),
+		password_hash = excluded.password_hash, disabled = excluded.disabled,
+		resource_version = labcentral_users.resource_version + 1, updated_at_us = `+s.nowMicros()),
 		record.ID, record.Username, record.DisplayName, record.PasswordHash, disabled)
 	if err != nil {
 		return fmt.Errorf("save user: %w", err)
@@ -184,7 +211,7 @@ func (s *Store) UserByID(ctx context.Context, id domain.UserID) (application.Use
 	if _, err := domain.NewUserID(string(id)); err != nil {
 		return application.UserRecord{}, err
 	}
-	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us
+	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us, resource_version
 		FROM labcentral_users WHERE user_id = ?`), id))
 }
 
@@ -192,7 +219,7 @@ func (s *Store) UserByUsername(ctx context.Context, username string) (applicatio
 	if !identityNamePattern.MatchString(username) {
 		return application.UserRecord{}, application.ErrAuthRecordNotFound
 	}
-	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us
+	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us, resource_version
 		FROM labcentral_users WHERE username = ?`), username))
 }
 
@@ -201,7 +228,7 @@ func scanUser(row scanner) (application.UserRecord, error) {
 	var id string
 	var disabled int
 	var created, updated int64
-	if err := row.Scan(&id, &record.Username, &record.DisplayName, &record.PasswordHash, &disabled, &created, &updated); errors.Is(err, sql.ErrNoRows) {
+	if err := row.Scan(&id, &record.Username, &record.DisplayName, &record.PasswordHash, &disabled, &created, &updated, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
 		return application.UserRecord{}, application.ErrAuthRecordNotFound
 	} else if err != nil {
 		return application.UserRecord{}, err
@@ -239,7 +266,7 @@ func (s *Store) LinkExternalIdentity(ctx context.Context, record application.Ext
 
 func (s *Store) UserByExternalIdentity(ctx context.Context, issuer, subject string) (application.UserRecord, error) {
 	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT users.user_id, users.username, users.display_name, users.password_hash,
-		users.disabled, users.created_at_us, users.updated_at_us
+		users.disabled, users.created_at_us, users.updated_at_us, users.resource_version
 		FROM labcentral_auth_identities identities JOIN labcentral_users users ON users.user_id = identities.user_id
 		WHERE identities.issuer = ? AND identities.subject = ?`), issuer, subject))
 }
@@ -330,6 +357,9 @@ func (s *Store) PutRoleAssignment(ctx context.Context, record application.RoleAs
 	if record.ID == "" || len(record.ID) > 128 || !validSubjectKind(record.SubjectKind) || !validScope(record.ScopeKind, record.ScopeID) || !validRole(record.Role) || !validRoleScope(record.Role, record.ScopeKind) || record.SubjectID == "" || len(record.SubjectID) > 128 {
 		return fmt.Errorf("role assignment is invalid")
 	}
+	if record.Role == application.RolePlatformAdministrator && !record.ValidUntil.IsZero() {
+		return fmt.Errorf("platform-administrator assignments must not expire")
+	}
 	from, until, err := validity(record.ValidFrom, record.ValidUntil)
 	if err != nil {
 		return err
@@ -397,7 +427,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	}
 	result := application.AuthorizationSnapshot{User: user}
 	nowMicros := now.UTC().UnixMicro()
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT membership_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT membership_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version
 		FROM labcentral_memberships WHERE user_id = ? AND valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?)
 		ORDER BY organization_id, team_id, membership_id`), userID, nowMicros, nowMicros)
 	if err != nil {
@@ -407,7 +437,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 		var membership application.MembershipRecord
 		var organizationID, teamID string
 		var from, until int64
-		if err := rows.Scan(&membership.ID, &organizationID, &teamID, &from, &until); err != nil {
+		if err := rows.Scan(&membership.ID, &organizationID, &teamID, &from, &until, &membership.ResourceVersion); err != nil {
 			_ = rows.Close()
 			return application.AuthorizationSnapshot{}, err
 		}
@@ -418,7 +448,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	if err := rows.Close(); err != nil {
 		return application.AuthorizationSnapshot{}, err
 	}
-	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT assignment_id, subject_kind, subject_id, scope_kind, scope_id, role, valid_from_us, valid_until_us
+	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT assignment_id, subject_kind, subject_id, scope_kind, scope_id, role, valid_from_us, valid_until_us, resource_version
 		FROM labcentral_role_assignments assignments
 		WHERE valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?) AND
 		((subject_kind = 'user' AND subject_id = ?) OR (subject_kind = 'team' AND subject_id IN
@@ -430,7 +460,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	for rows.Next() {
 		var assignment application.RoleAssignmentRecord
 		var from, until int64
-		if err := rows.Scan(&assignment.ID, &assignment.SubjectKind, &assignment.SubjectID, &assignment.ScopeKind, &assignment.ScopeID, &assignment.Role, &from, &until); err != nil {
+		if err := rows.Scan(&assignment.ID, &assignment.SubjectKind, &assignment.SubjectID, &assignment.ScopeKind, &assignment.ScopeID, &assignment.Role, &from, &until, &assignment.ResourceVersion); err != nil {
 			_ = rows.Close()
 			return application.AuthorizationSnapshot{}, err
 		}
@@ -440,7 +470,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	if err := rows.Close(); err != nil {
 		return application.AuthorizationSnapshot{}, err
 	}
-	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us
+	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version
 		FROM labcentral_provider_target_grants WHERE valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?)
 		ORDER BY target_id, scope_kind, scope_id`), nowMicros, nowMicros)
 	if err != nil {
@@ -451,7 +481,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 		var grant application.TargetGrantRecord
 		var targetID string
 		var from, until int64
-		if err := rows.Scan(&grant.ID, &targetID, &grant.ScopeKind, &grant.ScopeID, &from, &until); err != nil {
+		if err := rows.Scan(&grant.ID, &targetID, &grant.ScopeKind, &grant.ScopeID, &from, &until, &grant.ResourceVersion); err != nil {
 			return application.AuthorizationSnapshot{}, err
 		}
 		grant.TargetID, grant.ValidFrom, grant.ValidUntil = domain.ProviderTargetID(targetID), time.UnixMicro(from).UTC(), optionalTime(until)
@@ -497,9 +527,14 @@ func (s *Store) CreateSession(ctx context.Context, record application.SessionRec
 	if err := validateSession(record); err != nil {
 		return err
 	}
+	if !record.CreatedAt.IsZero() {
+		if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_sessions WHERE expires_at_us <= ?`), record.CreatedAt.UTC().UnixMicro()); err != nil {
+			return fmt.Errorf("prune expired sessions: %w", err)
+		}
+	}
 	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_sessions
-		(session_id, user_id, token_hash, csrf_hash, key_id, expires_at_us, rotated_from_id, created_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), record.ID, record.UserID, record.TokenHash, record.CSRFHash, record.KeyID, record.ExpiresAt.UnixMicro(), record.RotatedFromID)
+		(session_id, user_id, credential_kind, token_hash, csrf_hash, key_id, expires_at_us, rotated_from_id, created_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), record.ID, record.UserID, record.Kind, record.TokenHash, record.CSRFHash, record.KeyID, record.ExpiresAt.UnixMicro(), record.RotatedFromID)
 	return wrapIdentityError("create session", err)
 }
 
@@ -507,11 +542,11 @@ func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash string, now ti
 	var record application.SessionRecord
 	var userID string
 	var expires, revoked, created int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT sessions.session_id, sessions.user_id, sessions.token_hash, sessions.csrf_hash,
+	err := s.db.QueryRowContext(ctx, s.bind(`SELECT sessions.session_id, sessions.user_id, sessions.credential_kind, sessions.token_hash, sessions.csrf_hash,
 		sessions.key_id, sessions.expires_at_us, sessions.rotated_from_id, sessions.revoked_at_us, sessions.created_at_us
 		FROM labcentral_sessions sessions JOIN labcentral_users users ON users.user_id = sessions.user_id
 		WHERE sessions.token_hash = ? AND sessions.expires_at_us > ? AND sessions.revoked_at_us = 0 AND users.disabled = 0`), tokenHash, now.UTC().UnixMicro()).Scan(
-		&record.ID, &userID, &record.TokenHash, &record.CSRFHash, &record.KeyID, &expires, &record.RotatedFromID, &revoked, &created)
+		&record.ID, &userID, &record.Kind, &record.TokenHash, &record.CSRFHash, &record.KeyID, &expires, &record.RotatedFromID, &revoked, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.SessionRecord{}, application.ErrAuthRecordNotFound
 	}
@@ -531,6 +566,9 @@ func (s *Store) RotateSession(ctx context.Context, oldID string, replacement app
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, s.bind(`DELETE FROM labcentral_sessions WHERE expires_at_us <= ? AND session_id <> ?`), now.UTC().UnixMicro(), oldID); err != nil {
+		return fmt.Errorf("prune expired sessions: %w", err)
+	}
 	updated, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_sessions SET revoked_at_us = ?
 		WHERE session_id = ? AND revoked_at_us = 0 AND expires_at_us > ?`), now.UTC().UnixMicro(), oldID, now.UTC().UnixMicro())
 	if err != nil {
@@ -540,8 +578,8 @@ func (s *Store) RotateSession(ctx context.Context, oldID string, replacement app
 		return application.ErrAuthRecordNotFound
 	}
 	_, err = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_sessions
-		(session_id, user_id, token_hash, csrf_hash, key_id, expires_at_us, rotated_from_id, created_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), replacement.ID, replacement.UserID, replacement.TokenHash, replacement.CSRFHash, replacement.KeyID, replacement.ExpiresAt.UnixMicro(), oldID)
+		(session_id, user_id, credential_kind, token_hash, csrf_hash, key_id, expires_at_us, rotated_from_id, created_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), replacement.ID, replacement.UserID, replacement.Kind, replacement.TokenHash, replacement.CSRFHash, replacement.KeyID, replacement.ExpiresAt.UnixMicro(), oldID)
 	if err != nil {
 		return err
 	}
@@ -565,6 +603,9 @@ func (s *Store) CreatePasswordRecovery(ctx context.Context, record application.P
 	}
 	if _, err := domain.NewUserID(string(record.UserID)); err != nil {
 		return err
+	}
+	if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_password_recovery_tokens WHERE expires_at_us <= ?`), record.ExpiresAt.UTC().Add(-time.Hour).UnixMicro()); err != nil {
+		return fmt.Errorf("prune expired password recovery tokens: %w", err)
 	}
 	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_password_recovery_tokens
 		(token_id, user_id, token_hash, key_id, expires_at_us, created_at_us)
@@ -609,10 +650,41 @@ func (s *Store) ConsumePasswordRecovery(ctx context.Context, tokenHash, keyID, p
 	return tx.Commit()
 }
 
+func (s *Store) ConsumeAuthenticationAttempt(ctx context.Context, key string, now time.Time, window time.Duration, limit uint32) (bool, error) {
+	if len(key) != 64 || now.IsZero() || window <= 0 || window > 24*time.Hour || limit == 0 || limit > 10000 {
+		return false, fmt.Errorf("authentication attempt limit is invalid")
+	}
+	if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_authentication_attempts WHERE updated_at_us <= `+s.nowMicros()+` - ?`), (24 * time.Hour).Microseconds()); err != nil {
+		return false, fmt.Errorf("prune authentication attempts: %w", err)
+	}
+	var count int64
+	query := `INSERT INTO labcentral_authentication_attempts
+		(attempt_key, window_started_at_us, attempt_count, updated_at_us) VALUES (?, ` + s.nowMicros() + `, 1, ` + s.nowMicros() + `)
+		ON CONFLICT(attempt_key) DO UPDATE SET
+		window_started_at_us = CASE WHEN labcentral_authentication_attempts.window_started_at_us <= ` + s.nowMicros() + ` - ? THEN excluded.window_started_at_us ELSE labcentral_authentication_attempts.window_started_at_us END,
+		attempt_count = CASE WHEN labcentral_authentication_attempts.window_started_at_us <= ` + s.nowMicros() + ` - ? THEN 1 WHEN labcentral_authentication_attempts.attempt_count < ? THEN labcentral_authentication_attempts.attempt_count + 1 ELSE labcentral_authentication_attempts.attempt_count END,
+		updated_at_us = excluded.updated_at_us RETURNING attempt_count`
+	if err := s.db.QueryRowContext(ctx, s.bind(query), key, window.Microseconds(), window.Microseconds(), int64(limit)+1).Scan(&count); err != nil {
+		return false, fmt.Errorf("consume authentication attempt: %w", err)
+	}
+	return count <= int64(limit), nil
+}
+
+func (s *Store) ClearAuthenticationAttempts(ctx context.Context, key string) error {
+	if len(key) != 64 {
+		return fmt.Errorf("authentication attempt key is invalid")
+	}
+	_, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_authentication_attempts WHERE attempt_key = ?`), key)
+	return err
+}
+
 func (s *Store) CreateOIDCFlow(ctx context.Context, record application.OIDCFlowRecord) error {
 	if record.ID == "" || len(record.ID) > 128 || record.StateHash == "" || len(record.StateHash) > 256 || record.BrowserHash == "" || len(record.BrowserHash) > 256 || record.NonceHash == "" || len(record.NonceHash) > 256 ||
 		len(record.PKCECiphertext) < 32 || len(record.PKCECiphertext) > 1024 || record.KeyID == "" || len(record.KeyID) > 64 || !safeRedirectPath(record.RedirectPath) || record.ExpiresAt.IsZero() {
 		return fmt.Errorf("OIDC flow record is invalid")
+	}
+	if _, err := s.db.ExecContext(ctx, s.bind(`DELETE FROM labcentral_oidc_flows WHERE expires_at_us <= ?`), record.ExpiresAt.UTC().Add(-10*time.Minute).UnixMicro()); err != nil {
+		return fmt.Errorf("prune expired OIDC flows: %w", err)
 	}
 	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_oidc_flows
 		(flow_id, state_hash, browser_hash, nonce_hash, pkce_verifier, key_id, redirect_path, expires_at_us, created_at_us)
@@ -807,7 +879,7 @@ func (s *Store) OwnerBelongsToScope(ctx context.Context, kind application.OwnerK
 }
 
 func validateSession(record application.SessionRecord) error {
-	if record.ID == "" || len(record.ID) > 128 || record.TokenHash == "" || len(record.TokenHash) > 256 || record.CSRFHash == "" || len(record.CSRFHash) > 256 || record.KeyID == "" || len(record.KeyID) > 64 || record.ExpiresAt.IsZero() {
+	if record.ID == "" || len(record.ID) > 128 || record.Kind != application.SessionKindBrowser && record.Kind != application.SessionKindBearer || record.TokenHash == "" || len(record.TokenHash) > 256 || record.CSRFHash == "" || len(record.CSRFHash) > 256 || record.KeyID == "" || len(record.KeyID) > 64 || record.ExpiresAt.IsZero() {
 		return fmt.Errorf("session record is invalid")
 	}
 	_, err := domain.NewUserID(string(record.UserID))

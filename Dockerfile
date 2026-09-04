@@ -45,4 +45,4 @@ EXPOSE 8080
 USER 0:0
 HEALTHCHECK --interval=10s --timeout=4s --start-period=10s --retries=3 CMD ["/usr/local/bin/labd", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/labd"]
-CMD ["--listen", "127.0.0.1:8080", "--data-dir", "/var/lib/labcentral"]
+CMD ["--listen", "127.0.0.1:8080", "--data-dir", "/var/lib/labcentral", "--auth-mode", "none"]

@@ -1,5 +1,5 @@
 formatVersion: 1
-lastUpdated: "2026-09-03"
+lastUpdated: "2026-09-04"
 tasks:
   - id: TASK-DESIGN-001
     title: Interpret and trace product requirements
@@ -237,7 +237,7 @@ tasks:
       - Startup selects SQLite only for local single-node mode and requires PostgreSQL plus shared durable artifacts for multi-replica mode; backup and restore compatibility are tested.
   - id: TASK-PROD-002
     title: Implement HTTPS, local and OIDC authentication, tenancy, and scope-aware RBAC
-    status: proposed
+    status: complete
     dependencies: [TASK-PROD-001]
     relatedAdrs: [ADR-0009, ADR-0010, ADR-0011]
     relatedDocuments: [api/http, internal/application, internal/controlplane, web, docs/design/auth-tenancy-rbac.md, docs/design/http-api.md, docs/design/security-threat-model.md, docs/design/testing.md]

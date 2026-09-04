@@ -129,6 +129,10 @@ func healthcheck() error {
 
 func run(logger *slog.Logger) error {
 	configuration := parseFlags()
+	return runConfigured(logger, configuration)
+}
+
+func runConfigured(logger *slog.Logger, configuration config) error {
 	if err := validateConfig(configuration); err != nil {
 		return err
 	}
@@ -161,6 +165,16 @@ func run(logger *slog.Logger) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	store, err := openControlPlaneStore(ctx, configuration)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	authenticationOptions, err := configureHTTPAuthentication(ctx, configuration, store)
+	if err != nil {
+		return err
+	}
+
 	targetBindings := make([]controlplane.TargetBinding, 0, 2)
 	providerExamples := make(map[string]httpapi.ProviderExample, 2)
 	var dockerPlugin *pluginhost.Client
@@ -210,15 +224,6 @@ func run(logger *slog.Logger) error {
 		defaultTargetID = string(controlplane.LocalDockerTarget)
 	}
 
-	store, err := openControlPlaneStore(ctx, configuration)
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-	authenticationOptions, err := configureHTTPAuthentication(ctx, configuration, store)
-	if err != nil {
-		return err
-	}
 	artifactDirectory := configuration.artifactDir
 	if artifactDirectory == "" {
 		artifactDirectory = filepath.Join(configuration.dataDir, "artifacts")
@@ -385,7 +390,7 @@ func parseFlags() config {
 	flag.StringVar(&result.proxmoxCredentialFile, "proxmox-credential-file", "", "mode-0600 file containing the Proxmox credential JSON envelope")
 	flag.StringVar(&result.proxmoxQualificationDocument, "proxmox-qualification-document", "", "signed exact-target qualification evidence; requires the trust policy")
 	flag.StringVar(&result.proxmoxQualificationTrust, "proxmox-qualification-trust", "", "reviewer trust policy for signed exact-target qualification evidence")
-	flag.StringVar(&result.authMode, "auth-mode", httpapi.AuthModeNone, "authentication mode: none, local, or oidc")
+	flag.StringVar(&result.authMode, "auth-mode", "", "required authentication mode: none, local, or oidc")
 	flag.StringVar(&result.publicOrigin, "public-origin", "", "exact public HTTPS origin, for example https://labs.example.edu")
 	flag.StringVar(&result.tlsCertificateFile, "tls-certificate-file", "", "protected PEM certificate chain for direct HTTPS")
 	flag.StringVar(&result.tlsKeyFile, "tls-key-file", "", "owner-only PEM private key for direct HTTPS")
@@ -404,6 +409,9 @@ func parseFlags() config {
 }
 
 func validateConfig(configuration config) error {
+	if configuration.authMode == "" {
+		return fmt.Errorf("--auth-mode must be explicitly set to none, local, or oidc")
+	}
 	switch configuration.deploymentMode {
 	case deploymentModeSingleNode:
 		if configuration.postgresDSNFile != "" {
@@ -469,6 +477,9 @@ func validateConfig(configuration config) error {
 }
 
 func configureHTTPAuthentication(ctx context.Context, configuration config, store *localdb.Store) (httpapi.AuthenticationOptions, error) {
+	if err := store.ValidateAuthenticationStartup(ctx, configuration.authMode); err != nil {
+		return httpapi.AuthenticationOptions{}, err
+	}
 	if configuration.authMode == httpapi.AuthModeNone {
 		return httpapi.AuthenticationOptions{Mode: httpapi.AuthModeNone}, nil
 	}
@@ -484,6 +495,17 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 	manager, err := authentication.NewManager(store, keyring, authentication.ManagerOptions{})
 	if err != nil {
 		return httpapi.AuthenticationOptions{}, err
+	}
+	hasUsers, err := store.HasUsers(ctx)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, fmt.Errorf("inspect authentication bootstrap state: %w", err)
+	}
+	bootstrapUserID, err := domain.NewUserID(configuration.bootstrapUserID)
+	if err != nil {
+		return httpapi.AuthenticationOptions{}, fmt.Errorf("invalid bootstrap user ID: %w", err)
+	}
+	if !hasUsers && configuration.authMode == httpapi.AuthModeOIDC && configuration.bootstrapOIDCSubject == "" {
+		return httpapi.AuthenticationOptions{}, fmt.Errorf("the first OIDC startup requires --bootstrap-oidc-subject")
 	}
 	var oidcService *authentication.OIDCService
 	if configuration.authMode == httpapi.AuthModeOIDC {
@@ -502,19 +524,6 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 			return httpapi.AuthenticationOptions{}, err
 		}
 	}
-	if configuration.deploymentMode == deploymentModeMultiReplica {
-		if err := store.EnsureAuthenticationMode(ctx, configuration.authMode); err != nil {
-			return httpapi.AuthenticationOptions{}, err
-		}
-	}
-	hasUsers, err := store.HasUsers(ctx)
-	if err != nil {
-		return httpapi.AuthenticationOptions{}, fmt.Errorf("inspect authentication bootstrap state: %w", err)
-	}
-	bootstrapUserID, err := domain.NewUserID(configuration.bootstrapUserID)
-	if err != nil {
-		return httpapi.AuthenticationOptions{}, fmt.Errorf("invalid bootstrap user ID: %w", err)
-	}
 	if !hasUsers {
 		switch configuration.authMode {
 		case httpapi.AuthModeLocal:
@@ -532,13 +541,13 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 				return httpapi.AuthenticationOptions{}, fmt.Errorf("bootstrap local administrator: %w", err)
 			}
 		case httpapi.AuthModeOIDC:
-			if configuration.bootstrapOIDCSubject == "" {
-				return httpapi.AuthenticationOptions{}, fmt.Errorf("the first OIDC startup requires --bootstrap-oidc-subject")
-			}
 			if err := manager.BootstrapOIDCAdministrator(ctx, bootstrapUserID, configuration.bootstrapUsername, configuration.bootstrapDisplayName, configuration.oidcIssuer, configuration.bootstrapOIDCSubject); err != nil {
 				return httpapi.AuthenticationOptions{}, fmt.Errorf("bootstrap OIDC administrator: %w", err)
 			}
 		}
+	}
+	if err := store.EnsureAuthenticationMode(ctx, configuration.authMode); err != nil {
+		return httpapi.AuthenticationOptions{}, err
 	}
 	evaluator, err := authorization.New(store)
 	if err != nil {

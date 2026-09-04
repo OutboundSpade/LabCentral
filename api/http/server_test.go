@@ -93,9 +93,19 @@ func TestBootstrapAndStaticAssetsCarrySecurityWarnings(t *testing.T) {
 func testServer(t *testing.T) *Server {
 	t.Helper()
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
-	server, err := New(new(controlplane.Service), []byte("example"), static, Options{DefaultProviderTargetID: "target.local-docker"})
+	server, err := New(new(controlplane.Service), []byte("example"), static, Options{
+		DefaultProviderTargetID: "target.local-docker",
+		Authentication:          AuthenticationOptions{Mode: AuthModeNone},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return server
+}
+
+func TestServerConstructionRequiresExplicitAuthenticationMode(t *testing.T) {
+	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
+	if _, err := New(new(controlplane.Service), []byte("example"), static, Options{}); err == nil {
+		t.Fatal("server construction accepted an omitted authentication mode")
+	}
 }
