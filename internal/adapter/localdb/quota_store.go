@@ -435,6 +435,19 @@ func (s *Store) putQuotaLimit(ctx context.Context, request controlplane.PutQuota
 			err = s.backfillQuotaScopeDimensionTx(ctx, tx, request.Scope, request.Dimension)
 		}
 	} else {
+		// Migration-created platform limits intentionally exist before any
+		// usage is recorded. Materialize their zero-valued ledger row on the
+		// first administrative update, just as admission does on first use.
+		if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_quota_usage
+			(scope_kind, scope_id, organization_id, dimension, reserved_value, committed_value, retained_value, updated_at_us)
+			VALUES (?, ?, ?, ?, 0, 0, 0, `+s.nowMicros()+`)
+			ON CONFLICT (scope_kind, scope_id, organization_id, dimension) DO NOTHING`),
+			request.Scope.Kind, request.Scope.ID, request.Scope.OrganizationID, request.Dimension); err != nil {
+			return application.QuotaLimitRecord{}, fmt.Errorf("initialize updated quota usage: %w", err)
+		}
+		if err := s.backfillQuotaScopeDimensionTx(ctx, tx, request.Scope, request.Dimension); err != nil {
+			return application.QuotaLimitRecord{}, err
+		}
 		usage, usageErr := getQuotaUsageTx(ctx, tx, s, request.Scope, request.Dimension, true)
 		if usageErr != nil {
 			return application.QuotaLimitRecord{}, usageErr

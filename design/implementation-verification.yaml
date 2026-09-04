@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T07:37:43Z"
+verifiedAt: "2026-09-04T07:49:56Z"
 result: pass
-scope: task_prod_004_automated_encrypted_recovery_checkpoint
+scope: task_prod_004_postgresql_100_instance_resilience_checkpoint
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -99,6 +99,10 @@ commands:
   - bun run check and bun run build after recovery release packaging and documentation
   - build clean-tree VERSION=0.2.0-recovery-check native archives twice with SOURCE_DATE_EPOCH=1788507372; compare compressed bytes
   - extract the recovery-check archive; verify SHA256SUMS, recovery executable mode, recovery runbook, SBOM age component, and recovery provenance subject
+  - LABCENTRAL_TEST_POSTGRES_DSN=<disposable-postgresql-18-url> go test -count=1 -v ./internal/controlplane -run '^TestPostgreSQLHundredInstanceMultiReplicaResilience$'
+  - LABCENTRAL_TEST_POSTGRES_DSN=<disposable-postgresql-18-url> LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER=labcentral-postgres-prod1 go test -count=1 ./...
+  - the same complete repository suite under go test -race -count=1 ./...
+  - go vet ./... and python3 tools/verify_phase0.py after TEST-PROD-RESILIENCE-001 through TEST-PROD-RESILIENCE-005
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -301,8 +305,16 @@ checks:
   - empty_postgresql_database_and_nonexistent_filesystem_destinations
   - native_database_lock_integrity_and_two_component_prestaging
   - real_postgresql_18_custom_dump_decrypt_verify_and_restore
+  - provider_invocation_v2_instance_resource_and_generation_scoping
+  - legacy_prepared_provider_invocation_upgrade_fallback
+  - migration_created_platform_quota_update_parity
+  - four_replica_100_instance_abandoned_claim_takeover
+  - full_classroom_destroy_quota_claim_and_provider_absence
 notes:
-  - TASK-PROD-004 remains intentionally partial. Shared-RWX failover/chaos evidence, 100-instance load/soak evidence, deployment-specific disaster-recovery evidence, and signed publisher releases remain open.
+  - TASK-PROD-004 remains intentionally partial. Live Proxmox/RWX load and long-soak evidence, shared-RWX failover/chaos evidence, deployment-specific disaster-recovery evidence, and signed publisher releases remain open.
+  - TEST-PROD-RESILIENCE-001 through TEST-PROD-RESILIENCE-005 passed normal and race-enabled CI. The isolated PostgreSQL 18 rehearsal used four independent worker pools, deliberately expired one acquired lease, reached 100 ready two-container Instances in 2.39 seconds, and destroyed all 100 in 0.89 seconds under the two-minute objectives.
+  - The 100-Instance terminal audit found 200 succeeded Operations, 600 destroyed logical resources, 400 distinct provider ownership tokens before teardown, and zero queued/running/recovery-required jobs, unknown/cleanup-failed resources, orphaned or active allocation claims, active quota, or provider objects afterward. This deterministic provider-protocol run does not prove site-specific Proxmox, guest-boot, CNI, or RWX capacity.
+  - The first scale attempt failed safely and exposed two defects before any external provider was contacted: migration-created platform quota limits lacked a lazily initialized usage row, and provider mutation v1 digests could collide across identical Instances. SQLite/PostgreSQL parity now covers quota adjustment; provider invocation digest v2 binds Instance/resource/generation and retries only the exact v1 digest when recovering already prepared pre-upgrade work.
   - TEST-PROD-RECOVERY-001 through TEST-PROD-RECOVERY-005 passed normal and race-enabled CI. The disposable PostgreSQL 18 runner invoked real pg_dump and pg_restore, decrypted and authenticated the set, restored a new database and state root, matched audit/event/job watermarks, and reopened the restored store. The operator-provided database container remains running; every temporary source/restore database was removed.
   - Native recovery proved that a live labd lock excludes backup, SQLite integrity and watermarks survive restoration, and an unsafe second component commits neither the core nor provider destination. The recovery binary also cross-compiled for the Windows archive while native SQLite/systemd commands remain explicitly POSIX-only.
   - Clean commit 4af2094 produced two byte-identical 0.2.0-recovery-check Linux/amd64 archives at sha256:4cf2052cae0128e53258745364bc9780601014f813bdef3b172516c01398c2e9. Every extracted checksum passed; the executable, PostgreSQL and recovery runbooks, CycloneDX age v1.3.2 component, and recovery provenance subject were present.

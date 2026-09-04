@@ -375,19 +375,48 @@ func (w *Worker) destroy(ctx context.Context, fence Fence, actorID domain.UserID
 	return w.finalize(ctx, fence, actorID, OperationDestroy, domain.OperationSucceeded, domain.InstanceDestroyed, "Lab was destroyed", "", "", []byte(`{}`))
 }
 
+func providerInvocationDigest(generation domain.Generation, action string, instance InstanceRecord, resource ResourceRecord) domain.SHA256Digest {
+	return digestBytes("labcentral.provider-invocation/v2",
+		[]byte(action), []byte(instance.ProviderTargetID), []byte(instance.ID), []byte(resource.ID),
+		[]byte(fmt.Sprint(generation)), resource.CanonicalJSON, resource.ProviderPlan, resource.ProviderState)
+}
+
+func legacyProviderInvocationDigest(action string, instance InstanceRecord, resource ResourceRecord) domain.SHA256Digest {
+	return digestBytes("labcentral.provider-invocation/v1",
+		[]byte(action), []byte(instance.ProviderTargetID), resource.CanonicalJSON, resource.ProviderPlan, resource.ProviderState)
+}
+
+type invocationPreparer interface {
+	PrepareInvocation(context.Context, PrepareInvocationRequest) (InvocationRecord, error)
+}
+
+func prepareProviderInvocation(ctx context.Context, store invocationPreparer, request PrepareInvocationRequest, legacyDigest domain.SHA256Digest) (InvocationRecord, error) {
+	prepared, err := store.PrepareInvocation(ctx, request)
+	var conflict *domain.DomainError
+	if errors.As(err, &conflict) && conflict.Code == "idempotency_conflict" {
+		// An operation prepared by a pre-v2 worker must retain its original
+		// provider key across a rolling upgrade. Only the exact legacy digest
+		// can satisfy the existing operation/resource/action binding.
+		request.IdempotencyKey = legacyDigest.Hex()
+		request.RequestDigest = legacyDigest
+		return store.PrepareInvocation(ctx, request)
+	}
+	return prepared, err
+}
+
 func (w *Worker) invoke(ctx context.Context, fence Fence, actorID domain.UserID, instance InstanceRecord, resource ResourceRecord, action string) (*pluginv1.ResourceResult, error) {
 	if err := w.authorizeActor(ctx, actorID, action, instance); err != nil {
 		return nil, err
 	}
-	requestDigest := digestBytes("labcentral.provider-invocation/v1", []byte(action), []byte(instance.ProviderTargetID), resource.CanonicalJSON, resource.ProviderPlan, resource.ProviderState)
+	requestDigest := providerInvocationDigest(fence.Generation, action, instance, resource)
 	invocationValue, err := w.ids.New("inv")
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := w.store.PrepareInvocation(ctx, PrepareInvocationRequest{
+	prepared, err := prepareProviderInvocation(ctx, w.store, PrepareInvocationRequest{
 		Fence: fence, InvocationID: domain.InvocationID(invocationValue), ResourceID: resource.ID, Action: action,
 		IdempotencyKey: requestDigest.Hex(), RequestDigest: requestDigest,
-	})
+	}, legacyProviderInvocationDigest(action, instance, resource))
 	if err != nil {
 		return nil, err
 	}

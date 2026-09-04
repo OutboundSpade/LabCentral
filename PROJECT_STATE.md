@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, native multi-service deployment, and automated encrypted offline-recovery checkpoints are implemented, while load/failover/disaster-recovery evidence and signed-publisher release gates remain open.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, native multi-service deployment, automated encrypted offline recovery, and 100-Instance PostgreSQL control-plane resilience checkpoints are implemented, while live target load/soak, shared-RWX failover/disaster-recovery evidence, and signed-publisher release gates remain open.
 **Updated:** 2026-09-04
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -164,6 +164,17 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   at SHA-256 `4cf2052cae0128e53258745364bc9780601014f813bdef3b172516c01398c2e9`;
   every extracted checksum and the recovery SBOM/provenance/runbook inventory
   passed.
+- The first scale checkpoint drives one atomic 100-team classroom through four
+  independent PostgreSQL worker pools, deliberately abandons one claimed job,
+  and requires fencing takeover, 100 ready Instances, and complete 100-Instance
+  reverse destruction within the documented two-minute objectives. The
+  disposable run reached ready in 2.39 seconds and destroyed in 0.89 seconds,
+  with 400 unique provider ownership tokens, 200 successful Operations, 600
+  destroyed resources, and no active work, quota, allocation claim, cleanup
+  record, or provider object. The rehearsal exposed and fixed lazy usage-row
+  initialization for migration-created platform quotas and cross-Instance
+  provider invocation-key collisions; digest v2 remains stable across takeover
+  and has an exact v1 compatibility fallback for previously prepared work.
 
 ## Open questions and risks
 

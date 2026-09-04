@@ -116,6 +116,19 @@ off-workload and separately recoverable. The exact operator procedure is
 contract is
 [`../../design/contracts/production-recovery.yaml`](../../design/contracts/production-recovery.yaml).
 
+The repository's 100-Instance resilience gate uses four independent
+PostgreSQL worker pools, expires one deliberately abandoned claim, and drives
+the full apply/destroy path under the accepted two-minute queue objective. It
+also verifies per-Instance provider ownership, terminal quota/claim release,
+aggregate telemetry, and zero provider leftovers. Its machine-readable
+contract is
+[`../../design/contracts/production-resilience.yaml`](../../design/contracts/production-resilience.yaml).
+Because its provider Engine is deterministic and in-process, it validates the
+control plane rather than site-specific Proxmox or RWX capacity. Production
+admission still requires the operator to repeat T4 load, soak, node loss,
+storage loss, credential/evidence expiry, upgrade/rollback, and restored-site
+recovery on the exact deployment.
+
 ## Kubernetes production base
 
 The first Kubernetes checkpoint is a two-replica StatefulSet with stable Pod

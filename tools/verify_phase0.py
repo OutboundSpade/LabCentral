@@ -304,6 +304,7 @@ def collect_test_ids() -> set[str]:
         ROOT / "design/contracts/production-observability.yaml",
         ROOT / "design/contracts/production-topology.yaml",
         ROOT / "design/contracts/production-recovery.yaml",
+        ROOT / "design/contracts/production-resilience.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
         ROOT / "schemas/fixtures/parser/cases.yaml",
         ROOT / "schemas/fixtures/canonical/vectors.yaml",
@@ -660,6 +661,21 @@ def verify_contract_catalogs() -> None:
         if postgresql_test:
             assert re.search(rf"func\s+{re.escape(postgresql_test)}\s*\(", go_test_source), (
                 f"access case references missing PostgreSQL test: {case['id']}: {postgresql_test}"
+            )
+    resilience = load_yaml(ROOT / "design/contracts/production-resilience.yaml")
+    assert resilience["suite"] == "labcentral.production-resilience/v1alpha1"
+    assert resilience["objectives"] == {
+        "classroomSize": 100,
+        "workerReplicas": 4,
+        "admissionToReadyMaximumSeconds": 120,
+        "destroyMaximumSeconds": 120,
+    }
+    assert len(resilience["cases"]) == 5, "production resilience suite must retain all five checkpoint cases"
+    for case in resilience["cases"]:
+        assert case.get("goTests"), f"production resilience case has no Go test bindings: {case['id']}"
+        for go_test in case["goTests"]:
+            assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+                f"production resilience case references missing Go test: {case['id']}: {go_test}"
             )
     topology = load_yaml(ROOT / "design/contracts/production-topology.yaml")
     assert topology["suite"] == "labcentral.production-topology/v1alpha1"

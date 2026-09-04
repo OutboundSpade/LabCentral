@@ -260,7 +260,7 @@ tasks:
     status: in_progress
     dependencies: [TASK-PROD-003]
     relatedAdrs: [ADR-0001, ADR-0002, ADR-0006, ADR-0008, ADR-0011]
-    relatedDocuments: [deploy, tools/release, tools/recovery, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, docs/operations/recovery.md, design/contracts/production-recovery.yaml]
+    relatedDocuments: [deploy, tools/release, tools/recovery, docs/design/deployment.md, docs/design/security-threat-model.md, docs/design/testing.md, docs/operations/recovery.md, design/contracts/production-recovery.yaml, design/contracts/production-resilience.yaml]
     acceptanceCriteria:
       - Supported native and Kubernetes deployment assets include PostgreSQL, shared artifact storage, TLS/identity secrets, dedicated provider identities, network policy, disruption/upgrade strategy, encrypted backup/restore, metrics, traces, alerts, and documented key/token rotation.
       - Load, soak, chaos, upgrade, restore, credential-revocation, evidence-expiry, and disaster-recovery tests meet documented service objectives at the 100-instance classroom target without cross-tenant access or leaked secrets.

@@ -224,6 +224,36 @@ func runQuotaExpirationConformance(t *testing.T, store *Store) {
 	t.Helper()
 	ctx := context.Background()
 	setupQuotaTestTenancy(t, store)
+	platformScope := application.QuotaScope{Kind: application.QuotaScopePlatform, ID: "platform"}
+	defaultContainers, err := store.GetQuotaLimit(ctx, platformScope, application.QuotaContainers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedContainers, err := store.PutQuotaLimit(ctx, controlplane.PutQuotaLimitRequest{
+		GovernanceRecordIDs: governanceIDs("platform-containers-update"), Scope: platformScope,
+		Dimension: application.QuotaContainers, Limit: defaultContainers.Limit + 1,
+		ExpectedResourceVersion: defaultContainers.ResourceVersion, UpdatedBy: "user.quota",
+		IdempotencyKey: "idem.platform-containers-update", RequestDigest: testRequestDigest("platform-containers-update"),
+	})
+	if err != nil {
+		t.Fatalf("update unused migration-created platform quota: %v", err)
+	}
+	if updatedContainers.ResourceVersion != defaultContainers.ResourceVersion+1 {
+		t.Fatalf("updated platform quota version = %d, want %d", updatedContainers.ResourceVersion, defaultContainers.ResourceVersion+1)
+	}
+	usage, err := store.ListQuotaUsage(ctx, platformScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundContainers := false
+	for _, item := range usage {
+		if item.Dimension == application.QuotaContainers {
+			foundContainers = item.Reserved == 0 && item.Committed == 0 && item.Retained == 0
+		}
+	}
+	if !foundContainers {
+		t.Fatalf("updated platform container quota has no zero-valued usage ledger: %#v", usage)
+	}
 
 	alphaScope := quotaTestProjectScope("project.alpha")
 	alphaLimit := putQuotaTestLimit(t, store, alphaScope, 1, 0, "alpha-limit")
