@@ -160,6 +160,10 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   components are staged before commit. `TEST-PROD-RECOVERY-001` through `005`
   pass locally, including a real custom dump/decrypt/verify/restore against the
   disposable PostgreSQL 18 test bed and a reopened restored SQLite database.
+  Clean commit `4af2094` also produced byte-identical recovery-check archives
+  at SHA-256 `4cf2052cae0128e53258745364bc9780601014f813bdef3b172516c01398c2e9`;
+  every extracted checksum and the recovery SBOM/provenance/runbook inventory
+  passed.
 
 ## Open questions and risks
 
