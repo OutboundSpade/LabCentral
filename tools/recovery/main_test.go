@@ -353,6 +353,7 @@ func TestPostgreSQLRecoveryCreateVerifyRestore(t *testing.T) {
 	password, _ := parsed.User.Password()
 	t.Setenv("RECOVERY_TEST_CONTAINER", container)
 	t.Setenv("RECOVERY_TEST_PASSWORD", password)
+	t.Setenv("RECOVERY_TEST_USER", parsed.User.Username())
 
 	admin, err := sql.Open("pgx", baseDSN)
 	if err != nil {
@@ -569,7 +570,7 @@ done
 test -n "$output"
 test -n "$database"
 docker exec -e PGPASSWORD="$RECOVERY_TEST_PASSWORD" "$RECOVERY_TEST_CONTAINER" pg_dump \
-  --format=custom --no-owner --no-privileges --username postgres --dbname "$database" > "$output"
+  --format=custom --no-owner --no-privileges --username "$RECOVERY_TEST_USER" --dbname "$database" > "$output"
 `
 	restoreScript := `#!/bin/sh
 set -eu
@@ -589,7 +590,7 @@ done
 test -n "$dump"
 test -n "$database"
 docker exec -i -e PGPASSWORD="$RECOVERY_TEST_PASSWORD" "$RECOVERY_TEST_CONTAINER" pg_restore \
-  --exit-on-error --no-owner --no-privileges --username postgres --dbname "$database" < "$dump"
+  --exit-on-error --no-owner --no-privileges --username "$RECOVERY_TEST_USER" --dbname "$database" < "$dump"
 `
 	if err := os.WriteFile(dump, []byte(dumpScript), 0o700); err != nil {
 		t.Fatal(err)

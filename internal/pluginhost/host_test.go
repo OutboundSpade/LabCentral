@@ -344,6 +344,11 @@ func TestLaunchRejectsMutableOrIndirectPluginExecutable(t *testing.T) {
 	if err := os.WriteFile(executable, []byte("not executed"), 0o777); err != nil {
 		t.Fatal(err)
 	}
+	// WriteFile applies the process umask. Force the unsafe permissions so the
+	// assertion is identical on developer machines and hosted CI runners.
+	if err := os.Chmod(executable, 0o777); err != nil {
+		t.Fatal(err)
+	}
 	configuration := pluginhost.Config{
 		Executable: executable, ExecutableSHA256: fileDigest(t, executable), RuntimeParent: directory,
 		ConfiguredPluginID: dockerprovider.PluginID, ConfiguredProviderKind: "docker", PluginInstanceID: "plugin_instance_test",

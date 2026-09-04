@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -39,6 +41,22 @@ func (s *Store) ReserveClaims(ctx context.Context, request application.ReserveAl
 	if err != nil {
 		return err
 	}
+	for attempt := 0; ; attempt++ {
+		err := s.reserveClaims(ctx, request, claims)
+		if !isRetryableAllocationTransactionConflict(err) || attempt == 7 {
+			return err
+		}
+		if err := waitAllocationTransactionRetry(ctx, attempt); err != nil {
+			return err
+		}
+	}
+}
+
+func (s *Store) reserveClaims(
+	ctx context.Context,
+	request application.ReserveAllocationClaimsRequest,
+	claims []application.AllocationKey,
+) error {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return fmt.Errorf("begin allocation reservation: %w", err)
@@ -141,6 +159,24 @@ func (s *Store) transitionClaims(
 	for _, state := range allowed {
 		allowedStates[state] = true
 	}
+	for attempt := 0; ; attempt++ {
+		err := s.transitionClaimsAttempt(ctx, request, claims, destination, allowedStates)
+		if !isRetryableAllocationTransactionConflict(err) || attempt == 7 {
+			return err
+		}
+		if err := waitAllocationTransactionRetry(ctx, attempt); err != nil {
+			return err
+		}
+	}
+}
+
+func (s *Store) transitionClaimsAttempt(
+	ctx context.Context,
+	request application.MutateAllocationClaimsRequest,
+	claims []application.AllocationKey,
+	destination application.AllocationClaimState,
+	allowedStates map[application.AllocationClaimState]bool,
+) error {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return fmt.Errorf("begin allocation transition: %w", err)
@@ -190,6 +226,22 @@ func (s *Store) transitionClaims(
 		return fmt.Errorf("commit allocation transition: %w", err)
 	}
 	return nil
+}
+
+func isRetryableAllocationTransactionConflict(err error) bool {
+	var postgresError *pgconn.PgError
+	return errors.As(err, &postgresError) && (postgresError.Code == "40001" || postgresError.Code == "40P01")
+}
+
+func waitAllocationTransactionRetry(ctx context.Context, attempt int) error {
+	timer := time.NewTimer(time.Duration(attempt+1) * 5 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Store) ListClaims(ctx context.Context, instanceID domain.InstanceID) ([]application.AllocationClaim, error) {

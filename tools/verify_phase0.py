@@ -969,8 +969,8 @@ def verify_release_supply_chain() -> None:
         assert "go test -count=1 ./..." in text_value
         assert "go test -race -count=1 ./..." in text_value
         assert "go vet ./..." in text_value
-        assert "govulncheck ./..." in text_value
-        assert "bun audit --audit-level=high" in text_value
+        assert "timeout 300s govulncheck ./..." in text_value
+        assert "timeout 300s bun audit --audit-level=high" in text_value
         assert "python3 tools/verify_phase0.py" in text_value
 
     required_publisher_fragments = [
