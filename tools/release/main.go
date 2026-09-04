@@ -562,6 +562,9 @@ func copyReleaseFile(source, destination string) error {
 	if err != nil {
 		return fmt.Errorf("read release asset %s: %w", source, err)
 	}
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("create release asset directory: %w", err)
+	}
 	return writeFile(destination, contents, 0o644)
 }
 

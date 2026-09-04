@@ -125,3 +125,19 @@ func TestWriteArchiveIsDeterministicAndNormalized(t *testing.T) {
 		t.Fatalf("modes = %#v, want %#v", modes, wantModes)
 	}
 }
+
+func TestReleaseAssetPreservesCanonicalDirectoryLayout(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source.md")
+	if err := os.WriteFile(source, []byte("guide"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(root, "archive", "docs", "operations", "guide.md")
+	if err := copyReleaseFile(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(destination)
+	if err != nil || string(b) != "guide" {
+		t.Fatal("release guide was not copied", err)
+	}
+}
