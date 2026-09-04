@@ -700,7 +700,7 @@ func (s *Store) CreateInstance(ctx context.Context, request controlplane.CreateI
 	}
 	for attempt := 0; ; attempt++ {
 		result, err := s.createInstance(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 4 {
+		if !isRetryableTransactionConflict(err) || attempt == 7 {
 			return result, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -1112,7 +1112,7 @@ func (s *Store) QueueDestroy(ctx context.Context, request controlplane.QueueDest
 	}
 	for attempt := 0; ; attempt++ {
 		result, err := s.queueDestroy(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 4 {
+		if !isRetryableTransactionConflict(err) || attempt == 7 {
 			return result, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
