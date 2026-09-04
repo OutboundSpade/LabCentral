@@ -322,7 +322,7 @@ checks:
   - four_replica_100_instance_abandoned_claim_takeover
   - full_classroom_destroy_quota_claim_and_provider_absence
   - build_linked_server_version_in_bootstrap_api
-  - read_only_full_sha_pinned_change_ci
+  - contents_read_only_full_sha_pinned_change_ci
   - exact_repository_semver_tag_protected_publisher
   - independent_native_archive_byte_reproduction
   - exact_workflow_tag_fulcio_identity_sign_and_verify
@@ -331,7 +331,7 @@ checks:
   - packaged_release_verification_and_compatibility_matrix
 notes:
   - TASK-PROD-004 remains intentionally partial. Live Proxmox/RWX load and long-soak evidence, shared-RWX failover/chaos evidence, deployment-specific disaster-recovery evidence, protected GitHub environment/branch/tag control readback, and the first signed publisher ceremony remain open.
-  - TEST-PROD-RELEASE-001 through TEST-PROD-RELEASE-007 passed. Actionlint accepted both workflows; the repository verifier proved normal CI grants no token permissions, all third-party actions use full commit SHAs, and release creation follows byte comparison, checksum verification, exact-identity Cosign verification, and both attestations.
+  - TEST-PROD-RELEASE-001 through TEST-PROD-RELEASE-007 passed. Actionlint accepted both workflows; the repository verifier proved normal CI grants only the contents-read permission required to check out this private repository, all third-party actions use full commit SHAs, and release creation follows byte comparison, checksum verification, exact-identity Cosign verification, and both attestations.
   - The web build was clean and reproducible from the locked dependency graph, bun audit passed at the high severity threshold, and govulncheck v1.7.0 found no reachable Go vulnerabilities. The full normal and race-enabled Go suites passed against the retained disposable PostgreSQL 18 container, including real recovery tooling and the 100-Instance checkpoint; all per-test schemas and databases were removed.
   - The protected publisher workflow is implemented but has not been represented as live evidence. An owner must configure and independently read back the publisher-release environment and branch/tag protections, then approve the first immutable SemVer tag run. No release asset or image was published by this local checkpoint.
   - Clean revision dd6fc1b produced two byte-identical v0.2.0-publisher-check Linux/amd64 archives at sha256:d5686a105ace30c8977ec4d324f2b3e7e66064e071cb1469b3d3d2c5c7b28b33. The adjacent checksum and every archive-wide checksum passed; release.json bound the version/target and included docs/compatibility.md plus docs/operations/release-verification.md, and the packaged labd help smoke succeeded.

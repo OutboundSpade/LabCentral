@@ -175,7 +175,7 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   initialization for migration-created platform quotas and cross-Instance
   provider invocation-key collisions; digest v2 remains stable across takeover
   and has an exact v1 compatibility fallback for previously prepared work.
-- The release-supply-chain checkpoint adds read-only pull-request/main CI and a
+- The release-supply-chain checkpoint adds contents-read-only pull-request/main CI and a
   protected, exact-repository, SemVer-tag publisher. Every external action is
   full-commit pinned. The publisher runs normal/race/PostgreSQL/design/web and
   vulnerability gates, builds and byte-compares two native archives, verifies

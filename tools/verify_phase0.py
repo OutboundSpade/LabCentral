@@ -945,7 +945,7 @@ def verify_release_supply_chain() -> None:
     ci_text = ci_path.read_text(encoding="utf-8")
     publisher_text = publisher_path.read_text(encoding="utf-8")
 
-    assert ci["permissions"] == {}, "normal CI must grant no GitHub token permissions"
+    assert ci["permissions"] == {"contents": "read"}, "normal CI must grant only repository-content read access"
     assert publisher["permissions"] == {}, "publisher must default to no GitHub token permissions"
     publish_job = publisher["jobs"]["publish"]
     assert publish_job["environment"] == "publisher-release"

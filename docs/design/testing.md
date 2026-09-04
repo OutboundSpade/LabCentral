@@ -173,7 +173,7 @@ admitting a production classroom.
 
 [`production-release.yaml`](../../design/contracts/production-release.yaml)
 indexes the release-supply-chain checkpoint. Static verification rejects
-mutable third-party action references, write-capable normal CI, a publisher
+mutable third-party action references, normal CI permissions beyond repository-content read, a publisher
 without the exact repository/protected environment, missing PostgreSQL/race/
 vulnerability gates, a single native build, publication before same-run
 signature verification, or release packaging without the compatibility and

@@ -28,7 +28,7 @@ required by `labd`. A clean named-volume start and restart are executable gates;
 the data layout remains at the original mount root.
 
 `TEST-PROD-RELEASE-001` through `007` bind the production publisher contract.
-Normal change CI has no token permissions. The tag-only publisher is exact-
+Normal change CI has only repository-content read permission. The tag-only publisher is exact-
 repository and protected-environment scoped; it accepts only SemVer tags whose
 commit is reachable from `origin/main`, reruns all production gates, independently
 builds and compares two native archives, and verifies external/internal

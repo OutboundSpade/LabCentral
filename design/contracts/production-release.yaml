@@ -20,7 +20,7 @@ cases:
   - id: TEST-PROD-RELEASE-002
     title: Normal CI is read-only and pins every third-party action by full commit
     evidence: workflow_static_verifier
-    expect: {topLevelPermissions: empty, mutableActionTags: 0, postgresql18Gate: true, normalAndRace: true, vulnerabilityScan: true}
+    expect: {tokenPermissions: contents_read_only, mutableActionTags: 0, postgresql18Gate: true, normalAndRace: true, vulnerabilityScan: true}
   - id: TEST-PROD-RELEASE-003
     title: Publisher accepts only an exact SemVer tag commit reachable from main behind a protected environment
     evidence: workflow_static_verifier
