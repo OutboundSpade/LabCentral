@@ -1,0 +1,39 @@
+# LabCentral release compatibility
+
+This matrix is the compatibility contract for the first `v0.2.x` production
+release line. A later release may narrow or extend it only through an accepted
+ADR and updated executable compatibility fixtures. A package or image is
+supported only when its version, digest, deployment mode, provider target, and
+qualification evidence all match.
+
+| Surface | `v0.2.x` reads/accepts | Write/emission behavior | Rollback boundary |
+|---|---|---|---|
+| Control-plane API | HTTP `/api/v1`; `server-info.apiVersion=v1` | Emits API v1 and the linked release version in `server-info.serverVersion` | Clients must ignore additive response fields. No API v2 client is accepted. |
+| Lab declaration | `labcentral.io/v1alpha1` authoring and `canonical.labcentral.io/v1alpha1` rendered Labs | Emits immutable, content-addressed v1alpha1 revisions | No automatic downgrade to another schema. Retain the original authoring bundle and rendered revision. |
+| Plugin transport | Protocol major 1. Docker provider minor 0; Proxmox provider minors 0–1; noVNC access minor 2 | Negotiates the highest supported common minor and gates minor features explicitly | Protocol major changes require side-by-side migration. Core and plugin binaries must come from the same release archive or image. |
+| Plugin state | Docker state major 1; `proxmox.qemu-state/v1.0`; `proxmox.invocation-journal/v1.0`; `novnc.access-state` major 1 | Preserves typed versioned state and refuses unknown majors | The Proxmox prior-build rehearsal proves current `v1.0` terminal journals and state remain readable. Never roll back across an emitted state major without a separately tested converter. |
+| Proxmox target configuration | `proxmox.target-config/v1.1` and `v1.2`; browser console access requires `v1.2` | Writes QEMU plan/state v1.0 and journal v1.0 | Preserve the target JSON and journal together. A binary that does not list the configured schema is not a rollback candidate. |
+| Persistence | PostgreSQL 18 for multi-replica production; SQLite for the qualified single-node native topology. Job migrations `0001`–`0002`; control-plane migrations `0002_local_vertical_slice` through `0011_controlled_access_sessions` | Applies checksummed forward migrations under a database-wide migration lock; migrations are additive and never silently rewritten | There are no down migrations. Roll back only to a build independently proven to read the highest applied migration, or restore the pre-upgrade encrypted recovery set into a new database/state root. |
+| Recovery sets | `labcentral.recovery/v1`, recovery tool major 1, exact release match by default | Emits signed, age-encrypted, checksummed database/state sets | Restore with the exact release recorded in the manifest. Cross-release restore requires a separately rehearsed compatibility exception. |
+| Native artifact | Linux/amd64 | Reproducible `.tar.gz`, external Sigstore bundle, checksums, CycloneDX 1.6 SBOM, source facts, and GitHub SLSA provenance | Keep the old verified archive, checksum, Sigstore bundle, qualification evidence, configuration, and recovery set until the new release passes acceptance. |
+| Container image | Linux/amd64, always selected by `sha256:` digest | Publishes a keylessly signed GHCR digest with a GitHub provenance attestation | Keep the previous digest. Tags are discovery aliases and are never rollback identities. |
+| Proxmox VE | Only an exact target/build/profile with fresh signed qualification evidence. The disposable testbed exercised PVE 9.2.2; this is not a blanket support claim. | Mutation rechecks live inventory, executable/source digests, policy, permissions, and evidence before each write path | Any PVE update invalidates the old exact-build evidence until requalification. |
+
+Windows compilation is a portability check, not a production support claim.
+Provider capabilities remain target-discovered facts. In particular, a matching
+PVE version does not establish storage, bridge, template, permission, guest
+agent, or workload-capacity compatibility.
+
+## Upgrade and rollback decision
+
+Before an upgrade, verify the new archive or image by digest, take and verify an
+encrypted recovery set, retain the old artifact and exact-target evidence, and
+run the deployment-specific preflight. Upgrade one control-plane replica at a
+time only when both builds support the applied database and plugin-state
+versions. Do not run mixed provider builds against the same Proxmox journal.
+
+Rollback is allowed only before an incompatible schema/state has been emitted.
+If the compatibility check is uncertain, keep ingress and provider mutation
+closed and restore the pre-upgrade set with its exact release into new storage.
+The procedures in [recovery.md](operations/recovery.md) and the applicable
+deployment runbook are authoritative.

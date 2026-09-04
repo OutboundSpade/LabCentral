@@ -104,6 +104,8 @@ def verify_yaml_and_json() -> None:
         load_yaml(path)
     for path in ROOT.glob("deploy/kubernetes/*.yaml"):
         load_yaml_documents(path)
+    for path in ROOT.glob(".github/workflows/*.yml"):
+        load_yaml(path)
     json.loads((ROOT / "schemas/lab-v1alpha1.schema.json").read_text(encoding="utf-8"))
     for path in ROOT.glob("design/contracts/*.json"):
         schema = json.loads(path.read_text(encoding="utf-8"))
@@ -305,6 +307,7 @@ def collect_test_ids() -> set[str]:
         ROOT / "design/contracts/production-topology.yaml",
         ROOT / "design/contracts/production-recovery.yaml",
         ROOT / "design/contracts/production-resilience.yaml",
+        ROOT / "design/contracts/production-release.yaml",
         ROOT / "schemas/fixtures/lab/invalid/expected-errors.yaml",
         ROOT / "schemas/fixtures/parser/cases.yaml",
         ROOT / "schemas/fixtures/canonical/vectors.yaml",
@@ -677,6 +680,23 @@ def verify_contract_catalogs() -> None:
             assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
                 f"production resilience case references missing Go test: {case['id']}: {go_test}"
             )
+    release = load_yaml(ROOT / "design/contracts/production-release.yaml")
+    assert release["suite"] == "labcentral.production-release/v1alpha1"
+    assert release["publisher"] == {
+        "repository": "OutboundSpade/LabCentral",
+        "workflow": ".github/workflows/publisher-release.yml",
+        "environment": "publisher-release",
+        "runner": "github-hosted",
+        "oidcIssuer": "https://token.actions.githubusercontent.com",
+        "certificateIdentityPrefix": "https://github.com/OutboundSpade/LabCentral/.github/workflows/publisher-release.yml@refs/tags/",
+        "releaseRefPattern": "vMAJOR.MINOR.PATCH",
+    }
+    assert len(release["cases"]) == 7, "production release suite must retain all seven cases"
+    for case in release["cases"]:
+        for go_test in case.get("goTests", []):
+            assert re.search(rf"func\s+{re.escape(go_test)}\s*\(", go_test_source), (
+                f"production release case references missing Go test: {case['id']}: {go_test}"
+            )
     topology = load_yaml(ROOT / "design/contracts/production-topology.yaml")
     assert topology["suite"] == "labcentral.production-topology/v1alpha1"
     assert len(topology["cases"]) == 8, "production topology suite must retain all eight checkpoint cases"
@@ -917,6 +937,85 @@ def verify_native_topology() -> None:
         assert packaged in release_source, f"native asset is not packaged: {packaged}"
 
 
+def verify_release_supply_chain() -> None:
+    ci_path = ROOT / ".github/workflows/ci.yml"
+    publisher_path = ROOT / ".github/workflows/publisher-release.yml"
+    ci = load_yaml(ci_path)
+    publisher = load_yaml(publisher_path)
+    ci_text = ci_path.read_text(encoding="utf-8")
+    publisher_text = publisher_path.read_text(encoding="utf-8")
+
+    assert ci["permissions"] == {}, "normal CI must grant no GitHub token permissions"
+    assert publisher["permissions"] == {}, "publisher must default to no GitHub token permissions"
+    publish_job = publisher["jobs"]["publish"]
+    assert publish_job["environment"] == "publisher-release"
+    assert publish_job["runs-on"] == "ubuntu-24.04"
+    assert publish_job["permissions"] == {
+        "attestations": "write",
+        "contents": "write",
+        "id-token": "write",
+        "packages": "write",
+    }
+    assert "github.repository == 'OutboundSpade/LabCentral'" in publish_job["if"]
+
+    for path, text_value in [(ci_path, ci_text), (publisher_path, publisher_text)]:
+        actions = re.findall(r"^\s*uses:\s*([^\s#]+)", text_value, re.MULTILINE)
+        assert actions, f"workflow has no pinned actions: {path}"
+        for action in actions:
+            assert re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action), f"workflow action is not full-SHA pinned: {path}: {action}"
+
+    for text_value in [ci_text, publisher_text]:
+        assert "postgres:18@sha256:" in text_value
+        assert "go test -count=1 ./..." in text_value
+        assert "go test -race -count=1 ./..." in text_value
+        assert "go vet ./..." in text_value
+        assert "govulncheck ./..." in text_value
+        assert "bun audit --audit-level=high" in text_value
+        assert "python3 tools/verify_phase0.py" in text_value
+
+    required_publisher_fragments = [
+        "git rev-parse \"$GITHUB_REF_NAME^{commit}\"",
+        "git merge-base --is-ancestor \"$GITHUB_SHA\" refs/remotes/origin/main",
+        "test -z \"$(git status --porcelain=v1)\"",
+        "SOURCE_DATE_EPOCH=\"$epoch\" go run ./tools/release",
+        'cmp "dist/first/$asset" "dist/second/$asset"',
+        'sha256sum -c "$asset.sha256"',
+        "sha256sum -c SHA256SUMS",
+        "cosign sign-blob --yes --bundle",
+        "cosign verify-blob",
+        "--certificate-identity \"$identity\"",
+        "--certificate-oidc-issuer \"$SIGSTORE_OIDC_ISSUER\"",
+        "cosign sign --yes \"$IMAGE_REFERENCE\"",
+        "cosign verify",
+        "subject-path: ${{ steps.native.outputs.path }}",
+        "subject-digest: ${{ steps.image.outputs.digest }}",
+        "push-to-registry: true",
+        "gh release create \"$GITHUB_REF_NAME\"",
+        "--verify-tag",
+    ]
+    for fragment in required_publisher_fragments:
+        assert fragment in publisher_text, f"publisher gate is missing: {fragment}"
+    assert publisher_text.index("cosign verify-blob") < publisher_text.index("gh release create")
+    assert publisher_text.index("cosign verify \\") < publisher_text.index("gh release create")
+    assert publisher_text.count("go run ./tools/release") == 2
+
+    identity = "https://github.com/OutboundSpade/LabCentral/.github/workflows/publisher-release.yml@refs/tags/"
+    assert identity in publisher_text
+    assert "https://token.actions.githubusercontent.com" in publisher_text
+    release_source = (ROOT / "tools/release/main.go").read_text(encoding="utf-8")
+    for packaged in [
+        "docs/operations/release-verification.md",
+        "docs/compatibility.md",
+    ]:
+        assert packaged in release_source, f"release guidance is not packaged: {packaged}"
+    release_guide = (ROOT / "docs/operations/release-verification.md").read_text(encoding="utf-8")
+    assert "--cert-identity \"$IDENTITY\"" in release_guide
+    assert "--source-ref \"refs/tags/${VERSION}\"" in release_guide
+    server_source = (ROOT / "api/http/server.go").read_text(encoding="utf-8")
+    assert 'ServerVersion: options.ServerVersion' in server_source
+    assert 'ServerVersion: "0.1.0"' not in server_source
+
+
 def verify_markdown_links_and_state() -> None:
     link_pattern = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
     for markdown in ROOT.rglob("*.md"):
@@ -975,6 +1074,7 @@ def main() -> int:
         ("Proxmox QEMU mutation design contract", verify_proxmox_mutation_contract),
         ("Kubernetes production topology", verify_kubernetes_topology),
         ("native production topology", verify_native_topology),
+        ("production release supply chain", verify_release_supply_chain),
         ("documentation links and project state", verify_markdown_links_and_state),
     ]
     for label, check in checks:

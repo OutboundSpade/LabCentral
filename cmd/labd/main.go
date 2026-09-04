@@ -396,7 +396,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	go func() { workerDone <- worker.Run(workerContext) }()
 
 	apiServer, err := httpapi.New(control, dockerlaptop.LabYAML(), webassets.FS(), httpapi.Options{
-		NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples, Authentication: authenticationOptions,
+		ServerVersion: version, NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples, Authentication: authenticationOptions,
 	})
 	if err != nil {
 		return err

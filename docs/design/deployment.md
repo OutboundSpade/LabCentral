@@ -18,7 +18,7 @@ The server always refuses a non-loopback no-auth listener. No-auth is an explici
 `TASK-RELEASE-001` adds these supported laptop artifacts:
 
 - `make release VERSION=<version>` writes `dist/labcentral-<version>-<os>-<arch>.tar.gz` and its adjacent checksum. Archive headers, ordering, ownership, modes, gzip metadata, build IDs, and timestamps are normalized. `SOURCE_DATE_EPOCH` selects the timestamp and otherwise defaults to the Git commit time. Production release creation refuses a dirty Git worktree so embedded source provenance matches compiled code.
-- The archive contains `labd`, the Docker and Proxmox providers, the noVNC access plugin, the Proxmox qualification utility, provider checksums and v1 manifests, the build-embedded Proxmox source-tree digest, Kubernetes and three-service systemd assets, deployment examples/runbooks, archive-wide `SHA256SUMS`, a CycloneDX 1.6 SBOM, release metadata, and source/build provenance. Provenance is neither signed nor a SLSA attestation. Linux amd64 is the verified target; Windows IPC remains gated by `OQ-GUEST-001`.
+- The archive contains `labd`, the Docker and Proxmox providers, the noVNC access plugin, the Proxmox qualification utility, provider checksums and v1 manifests, the build-embedded Proxmox source-tree digest, Kubernetes and three-service systemd assets, deployment examples/runbooks, the compatibility matrix, archive-wide `SHA256SUMS`, a CycloneDX 1.6 SBOM, release metadata, and source/build facts. The internal `provenance.json` is not a signature; the protected publisher adds an external Sigstore bundle and GitHub SLSA provenance after byte-reproducibility checks. Linux amd64 is the verified target; Windows IPC remains gated by `OQ-GUEST-001`.
 - `make image VERSION=<version> IMAGE=<tag>` uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing only `labd`, the three official runtime executables/checksums, the Proxmox source digest, and the system CA bundle. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
 - `docker compose up -d --build` persists `/var/lib/labcentral` in the named `labcentral-data` volume, mounts the explicitly selected `${DOCKER_SOCKET_PATH:-/var/run/docker.sock}`, and uses host networking. `LABCENTRAL_PORT`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` override the loopback port, image, and volume name. `docker compose down` preserves state; `docker compose down --volumes` deliberately removes it.
 
@@ -26,6 +26,18 @@ The scratch image creates `/var/lib/labcentral` as mode `0700` before declaring
 it as a volume, so Docker's first-use copy-up preserves the private mountpoint
 required by `labd`. A clean named-volume start and restart are executable gates;
 the data layout remains at the original mount root.
+
+`TEST-PROD-RELEASE-001` through `007` bind the production publisher contract.
+Normal change CI has no token permissions. The tag-only publisher is exact-
+repository and protected-environment scoped; it accepts only SemVer tags whose
+commit is reachable from `origin/main`, reruns all production gates, independently
+builds and compares two native archives, and verifies external/internal
+checksums. GitHub OIDC then keylessly signs the archive and digest-qualified
+GHCR image. Same-run verification constrains the exact workflow/tag Fulcio
+identity and issuer before GitHub attestations and the release are created.
+Repository environment/branch/tag protection and the approving reviewer remain
+owner controls. See [`../operations/release-verification.md`](../operations/release-verification.md)
+and [`../compatibility.md`](../compatibility.md).
 
 Host networking is part of the laptop correctness boundary: it preserves a true host-loopback no-auth listener and lets the containerized control plane probe provider-published `127.0.0.1` ports. It is supported directly by Docker Engine on Linux; Docker Desktop 4.34 or newer requires the host-networking setting to be enabled. This Compose form is not declared supported on other platforms.
 

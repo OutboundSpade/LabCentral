@@ -160,6 +160,8 @@ documents:
     status: complete
   - path: tools/release
     status: complete
+  - path: .github/workflows
+    status: in_progress
   - path: tools/proxmox-qualification
     status: complete
   - path: tools/proxmox-probe-agent
@@ -174,6 +176,10 @@ documents:
     status: in_progress
   - path: docs/operations/kubernetes-proxmox.md
     status: in_progress
+  - path: docs/operations/release-verification.md
+    status: in_progress
+  - path: docs/compatibility.md
+    status: complete
   - path: examples
     status: complete
 openQuestions:

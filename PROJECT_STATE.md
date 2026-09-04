@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, native multi-service deployment, automated encrypted offline recovery, and 100-Instance PostgreSQL control-plane resilience checkpoints are implemented, while live target load/soak, shared-RWX failover/disaster-recovery evidence, and signed-publisher release gates remain open.
+**Phase:** Design, Phase 0B architecture foundation, the packaged Phase 1 Docker laptop vertical slice, `TASK-PROXMOX-001` through `TASK-PROXMOX-006`, and `TASK-PROD-001` through `TASK-PROD-003` are complete. Immutable reusable Lab Template revisions, generalized append-only audit/event production, scoped quota/lifetime governance, atomic 1–100-owner classroom batch creation, and the isolated controlled Proxmox/noVNC access runtime are implemented. `TASK-PROD-004` is active; its production-observability, shared Proxmox journal-coordination, fail-closed Kubernetes, native multi-service deployment, automated encrypted offline recovery, 100-Instance PostgreSQL control-plane resilience, and protected-publisher implementation checkpoints are complete, while live target load/soak, shared-RWX failover/disaster-recovery evidence, repository publisher-control approval, and the first signed release ceremony remain open.
 **Updated:** 2026-09-04
 
 LabCentral is a modular-monolith Go control plane with a Huma/OpenAPI HTTP contract, a statically exported SvelteKit/DaisyUI frontend, SQLite/PostgreSQL persistence adapters, database-backed durable operations/outbox, and separately supervised provider/access plugin processes using versioned Protobuf/gRPC. A Lab Instance is bound to one centrally registered, initially global Provider Target. Portable resources are typed `Network`, `Volume`, `VM`, `Container`, `AccessEndpoint`, and `Output`; images, artifacts, secrets, and attachments are typed references or embedded subresources.
@@ -175,6 +175,18 @@ The design-only Phase 0 exit criteria are accepted: executable schema/canonical 
   initialization for migration-created platform quotas and cross-Instance
   provider invocation-key collisions; digest v2 remains stable across takeover
   and has an exact v1 compatibility fallback for previously prepared work.
+- The release-supply-chain checkpoint adds read-only pull-request/main CI and a
+  protected, exact-repository, SemVer-tag publisher. Every external action is
+  full-commit pinned. The publisher runs normal/race/PostgreSQL/design/web and
+  vulnerability gates, builds and byte-compares two native archives, verifies
+  external and internal checksums, keylessly signs and same-run verifies both
+  the archive and digest-qualified GHCR image against the exact workflow/tag
+  Fulcio identity, attaches GitHub SLSA provenance, and creates the release only
+  after those gates pass. The API now reports the build-linked server version,
+  and the archive ships exact signature/attestation verification instructions
+  plus the `v0.2.x` API, protocol, state, migration, recovery, target, upgrade,
+  and rollback compatibility matrix. Repository environment/branch/tag review
+  controls and the first live publisher ceremony require owner action.
 
 ## Open questions and risks
 

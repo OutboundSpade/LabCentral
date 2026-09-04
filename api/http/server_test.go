@@ -257,7 +257,7 @@ func auditTestServer(t *testing.T) (*Server, *localdb.Store) {
 	}
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
 	server, err := New(service, []byte("example"), static, Options{
-		DefaultProviderTargetID: "target.local-docker", Authentication: AuthenticationOptions{Mode: AuthModeNone},
+		ServerVersion: "v0.2.0-test", DefaultProviderTargetID: "target.local-docker", Authentication: AuthenticationOptions{Mode: AuthModeNone},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestBootstrapAndStaticAssetsCarrySecurityWarnings(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil {
 		t.Fatal(err)
 	}
-	if info.AuthMode != "none" || info.NoAuthWarning == "" || info.DefaultProviderTargetID != "target.local-docker" {
+	if info.ServerVersion != "v0.2.0-test" || info.AuthMode != "none" || info.NoAuthWarning == "" || info.DefaultProviderTargetID != "target.local-docker" {
 		t.Fatalf("server info did not expose no-auth warning: %#v", info)
 	}
 
@@ -306,6 +306,7 @@ func testServer(t *testing.T) *Server {
 	t.Helper()
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
 	server, err := New(new(controlplane.Service), []byte("example"), static, Options{
+		ServerVersion:           "v0.2.0-test",
 		DefaultProviderTargetID: "target.local-docker",
 		Authentication:          AuthenticationOptions{Mode: AuthModeNone},
 	})
@@ -319,5 +320,17 @@ func TestServerConstructionRequiresExplicitAuthenticationMode(t *testing.T) {
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
 	if _, err := New(new(controlplane.Service), []byte("example"), static, Options{}); err == nil {
 		t.Fatal("server construction accepted an omitted authentication mode")
+	}
+}
+
+func TestServerVersionMustBeBoundedPrintableAndTrimmed(t *testing.T) {
+	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
+	for _, invalid := range []string{" v0.2.0", "v0.2.0\n", strings.Repeat("v", 129)} {
+		if _, err := New(new(controlplane.Service), []byte("example"), static, Options{
+			ServerVersion:  invalid,
+			Authentication: AuthenticationOptions{Mode: AuthModeNone},
+		}); err == nil {
+			t.Fatalf("server construction accepted invalid version %q", invalid)
+		}
 	}
 }

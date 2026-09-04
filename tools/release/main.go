@@ -98,7 +98,7 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer os.RemoveAll(temporary)
 	root := filepath.Join(temporary, baseName)
-	for _, directory := range []string{"plugins", "deploy", "deploy/kubernetes", "docs"} {
+	for _, directory := range []string{"plugins", "deploy", "deploy/kubernetes", "docs", "docs/operations"} {
 		if err := os.MkdirAll(filepath.Join(root, directory), 0o755); err != nil {
 			return err
 		}
@@ -290,6 +290,8 @@ func run(ctx context.Context, args []string) error {
 		"docs/operations/observability.md":                   "docs/observability.md",
 		"docs/operations/postgresql-control-plane.md":        "docs/postgresql-control-plane.md",
 		"docs/operations/recovery.md":                        "docs/recovery.md",
+		"docs/operations/release-verification.md":            "docs/operations/release-verification.md",
+		"docs/compatibility.md":                              "docs/compatibility.md",
 	} {
 		if err := copyReleaseFile(sourcePath, filepath.Join(root, destination)); err != nil {
 			return err
@@ -534,12 +536,15 @@ placeholder. Production VM mutation remains closed unless
 signed exact-target evidence matches the installed provider build and fresh
 live target inventory.
 
-Verify every packaged file with:
+Before trusting this archive, verify its external Sigstore bundle and GitHub
+provenance attestation with the exact workflow-and-tag identity in
+docs/operations/release-verification.md. Then verify every packaged file with:
 
     sha256sum -c SHA256SUMS
 
 The CycloneDX inventory is sbom.cdx.json. provenance.json records source and
-build facts but is not a signature or a SLSA attestation.
+build facts but is not a signature or a SLSA attestation. Read
+docs/compatibility.md before installing, upgrading, or rolling back.
 `, version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, recoveryName, labdName)
 }
 

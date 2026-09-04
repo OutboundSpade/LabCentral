@@ -58,6 +58,12 @@ func TestReleaseReadmeSelectsAuthenticationModeExplicitly(t *testing.T) {
 	if !strings.Contains(readme, "labcentral-recovery") || !strings.Contains(readme, "docs/recovery.md") {
 		t.Fatal("release instructions omit the encrypted recovery utility")
 	}
+	if !strings.Contains(readme, "docs/operations/release-verification.md") || !strings.Contains(readme, "external Sigstore bundle") {
+		t.Fatal("release instructions omit external signature verification")
+	}
+	if !strings.Contains(readme, "docs/compatibility.md") || !strings.Contains(readme, "provenance attestation") {
+		t.Fatal("release instructions omit compatibility or provenance verification")
+	}
 }
 
 func TestWriteArchiveIsDeterministicAndNormalized(t *testing.T) {

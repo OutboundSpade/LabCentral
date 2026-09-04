@@ -171,6 +171,18 @@ boot path can sustain 100 VMs. Those deployment-specific T4 load, long-soak,
 cross-node RWX failover, and disaster-recovery gates remain mandatory before
 admitting a production classroom.
 
+[`production-release.yaml`](../../design/contracts/production-release.yaml)
+indexes the release-supply-chain checkpoint. Static verification rejects
+mutable third-party action references, write-capable normal CI, a publisher
+without the exact repository/protected environment, missing PostgreSQL/race/
+vulnerability gates, a single native build, publication before same-run
+signature verification, or release packaging without the compatibility and
+operator-verification documents. `TestBootstrapAndStaticAssetsCarrySecurityWarnings`
+also proves that server-info exposes the linked release version rather than a
+hard-coded product value. The first real tag run, protected-environment
+readback, and independent reviewer acceptance remain external release evidence;
+the static suite cannot manufacture those GitHub controls.
+
 `TASK-PROXMOX-001` adds the normal-CI T0 HTTPS discovery fake. `TASK-PROXMOX-004` extends T0 with closed-schema planning/state/journal tests, a stateful mutation fake, and an HTTPS method/path/form fake. Tests pin the API-token header, private-CA verification, redirect refusal, envelope/response/inventory bounds, provider-returned paths, deterministic evidence, every allowed mutation endpoint and safe field, committed claims/dependency state, ownership, optimistic config, UPID/task bounds, compensation, absence-confirmed destroy, lifecycle idempotency, restart at every checkpoint, and credential/guest/upstream canary absence. The default constructor is asserted closed; separate production-constructor tests require a non-nil authorizer and prove authorization on discovery plus fail-closed reviewer rejection. Build the binary with `make build-proxmox-provider`; the disposable testbed T3 evidence package and read-only cross-build T4 rehearsal pass.
 
 `TEST-PROXMOX-023`, the `TASK-PROXMOX-005` control-plane T0 integration test, runs a protocol-v1.1 provider through real in-process gRPC and the migrated SQLite store. It persists expiring discovery evidence and visible freshness status, proves scoped credential/config delivery, atomically commits Network/VM plans and claims, forces a second instance through conflict exclusions, passes committed Network state/claims into the VM mutation, routes apply/destroy by persisted target after enqueue, releases claims only on successful absence, and proves an `unsupported` refreshed capability blocks create. Normal CI still contacts no external target. The protected exact-profile lifecycle, guest-connectivity, and failure/recovery runs passed, and their closed testbed artifact verifies `qualifies=true` for its exact target/candidate.

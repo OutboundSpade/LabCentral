@@ -1,7 +1,7 @@
 formatVersion: 1
-verifiedAt: "2026-09-04T07:49:56Z"
+verifiedAt: "2026-09-04T08:19:44Z"
 result: pass
-scope: task_prod_004_postgresql_100_instance_resilience_checkpoint
+scope: task_prod_004_protected_publisher_implementation_checkpoint
 toolchain:
   go: "1.27.1"
   bun: "1.3.14"
@@ -103,6 +103,12 @@ commands:
   - LABCENTRAL_TEST_POSTGRES_DSN=<disposable-postgresql-18-url> LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER=labcentral-postgres-prod1 go test -count=1 ./...
   - the same complete repository suite under go test -race -count=1 ./...
   - go vet ./... and python3 tools/verify_phase0.py after TEST-PROD-RESILIENCE-001 through TEST-PROD-RESILIENCE-005
+  - bun install --frozen-lockfile, bun run check, bun run build, git diff --exit-code -- web/build, and bun audit --audit-level=high
+  - go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+  - go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+  - LABCENTRAL_TEST_POSTGRES_DSN=<disposable-postgresql-18-url> LABCENTRAL_TEST_POSTGRES_TOOLS_CONTAINER=labcentral-postgres-prod1 go test -count=1 ./...
+  - the same complete repository suite under go test -race -count=1 ./...
+  - go vet ./... and python3 tools/verify_phase0.py after TEST-PROD-RELEASE-001 through TEST-PROD-RELEASE-007
 checks:
   - typed_identity_and_digest_validation
   - closed_logical_resource_sum
@@ -310,8 +316,19 @@ checks:
   - migration_created_platform_quota_update_parity
   - four_replica_100_instance_abandoned_claim_takeover
   - full_classroom_destroy_quota_claim_and_provider_absence
+  - build_linked_server_version_in_bootstrap_api
+  - read_only_full_sha_pinned_change_ci
+  - exact_repository_semver_tag_protected_publisher
+  - independent_native_archive_byte_reproduction
+  - exact_workflow_tag_fulcio_identity_sign_and_verify
+  - signed_digest_qualified_container_image
+  - github_native_and_oci_slsa_provenance
+  - packaged_release_verification_and_compatibility_matrix
 notes:
-  - TASK-PROD-004 remains intentionally partial. Live Proxmox/RWX load and long-soak evidence, shared-RWX failover/chaos evidence, deployment-specific disaster-recovery evidence, and signed publisher releases remain open.
+  - TASK-PROD-004 remains intentionally partial. Live Proxmox/RWX load and long-soak evidence, shared-RWX failover/chaos evidence, deployment-specific disaster-recovery evidence, protected GitHub environment/branch/tag control readback, and the first signed publisher ceremony remain open.
+  - TEST-PROD-RELEASE-001 through TEST-PROD-RELEASE-007 passed. Actionlint accepted both workflows; the repository verifier proved normal CI grants no token permissions, all third-party actions use full commit SHAs, and release creation follows byte comparison, checksum verification, exact-identity Cosign verification, and both attestations.
+  - The web build was clean and reproducible from the locked dependency graph, bun audit passed at the high severity threshold, and govulncheck v1.7.0 found no reachable Go vulnerabilities. The full normal and race-enabled Go suites passed against the retained disposable PostgreSQL 18 container, including real recovery tooling and the 100-Instance checkpoint; all per-test schemas and databases were removed.
+  - The protected publisher workflow is implemented but has not been represented as live evidence. An owner must configure and independently read back the publisher-release environment and branch/tag protections, then approve the first immutable SemVer tag run. No release asset or image was published by this local checkpoint.
   - TEST-PROD-RESILIENCE-001 through TEST-PROD-RESILIENCE-005 passed normal and race-enabled CI. The isolated PostgreSQL 18 rehearsal used four independent worker pools, deliberately expired one acquired lease, reached 100 ready two-container Instances in 2.39 seconds, and destroyed all 100 in 0.89 seconds under the two-minute objectives.
   - The 100-Instance terminal audit found 200 succeeded Operations, 600 destroyed logical resources, 400 distinct provider ownership tokens before teardown, and zero queued/running/recovery-required jobs, unknown/cleanup-failed resources, orphaned or active allocation claims, active quota, or provider objects afterward. This deterministic provider-protocol run does not prove site-specific Proxmox, guest-boot, CNI, or RWX capacity.
   - The first scale attempt failed safely and exposed two defects before any external provider was contacted: migration-created platform quota limits lacked a lazily initialized usage row, and provider mutation v1 digests could collide across identical Instances. SQLite/PostgreSQL parity now covers quota adjustment; provider invocation digest v2 binds Instance/resource/generation and retries only the exact v1 digest when recovering already prepared pre-upgrade work.

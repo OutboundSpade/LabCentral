@@ -36,6 +36,7 @@ type versionedOutput[T any] struct {
 }
 
 type Options struct {
+	ServerVersion           string
 	NoAuthWarning           string
 	DefaultProviderTargetID string
 	ProviderExamples        map[string]ProviderExample
@@ -55,6 +56,13 @@ func New(service *controlplane.Service, exampleSource []byte, static fs.FS, opti
 	security, err := newRequestSecurity(options.Authentication)
 	if err != nil {
 		return nil, err
+	}
+	if options.ServerVersion == "" {
+		options.ServerVersion = "dev"
+	}
+	if len(options.ServerVersion) > 128 || strings.TrimSpace(options.ServerVersion) != options.ServerVersion ||
+		strings.IndexFunc(options.ServerVersion, func(value rune) bool { return value < ' ' || value == 0x7f }) >= 0 {
+		return nil, fmt.Errorf("server version must be a trimmed printable value of at most 128 bytes")
 	}
 	config := huma.DefaultConfig("LabCentral API", "1.0.0")
 	config.Info.Description = "Canonical local LabCentral control-plane API. Mutations are durable asynchronous operations."
@@ -313,7 +321,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			warning = options.NoAuthWarning
 		}
 		return &struct{ Body ServerInfo }{Body: ServerInfo{
-			ServerVersion: "0.1.0", APIVersion: "v1", APIBase: "/api/v1", AuthMode: security.options.Mode, AuthMethods: authMethods(security.options.Mode),
+			ServerVersion: options.ServerVersion, APIVersion: "v1", APIBase: "/api/v1", AuthMode: security.options.Mode, AuthMethods: authMethods(security.options.Mode),
 			EnabledProviderKinds: service.ProviderKinds(), DefaultProviderTargetID: options.DefaultProviderTargetID, NoAuthWarning: warning,
 			UIFeatures: uiFeatures(service),
 		}}, nil
