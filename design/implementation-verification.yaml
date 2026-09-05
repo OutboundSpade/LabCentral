@@ -433,5 +433,25 @@ pilotDeploymentHardening:
     validation: Three race-enabled deterministic runs preserved exactly one job, operation, audit, event and instance version increment; five race-enabled classroom repetitions and the complete race-enabled Go suite passed with disposable PostgreSQL 18.
   boundaries:
     - The live pilot uses the unchanged previously qualified rc6 provider on the exact PVE1 configuration; no evidence was re-signed or transferred to a new provider binary.
-    - Kali VM 101 network access remains incomplete pending its address and existing admin connection.
+    - The owner selected Tailscale and withdrew VM 101 access on 2026-09-05; TASK-PILOT-001 is complete.
     - Live load/soak, cross-node journal failover/disaster recovery and protected publisher ceremony remain open under TASK-PROD-004.
+
+
+nativeDeploymentHardening:
+  date: "2026-09-05"
+  task: TASK-PROD-005
+  status: in_progress
+  coreBuild: main-8a01cb0-native
+  providerSHA256: 5430f8b18a22f4714513b209ddc37b2d3fca4493b550137f16a3c529277e6d27
+  deployment: deploy/proxmox/pve1/README.md
+  completed:
+    - Owner-approved stopped-state migration acquired the SQLite lock, checked integrity and inactive operations, and hash-compared complete core and provider state; audit/event watermarks 196/196 and two jobs.
+    - Distinct native UIDs, mode-2770 IPC directories, owner-only mode-0400 core secrets, read-only application filesystems and preserved signed journal path in a provider-only bind mount.
+    - Dedicated UID firewall behavior passed in a fresh network namespace against synthetic listeners; no real provider or guest traffic was used by that test.
+    - Authenticated HTTPS login, ready example instance and fresh qualified native VM discovery passed after migration; live namespace checks denied cross-service state and operator home access.
+    - Recovery and HTTP regression suites passed; plugin-host and core tests passed with required local sockets enabled; all final design/document consistency checks and native unit validation passed.
+  remaining:
+    - Obtain off-host backup destination and recovery-key custody; rehearse encrypted recovery and schedule verified backups.
+    - Enable tailnet HTTPS, deploy trusted certificate renewal, and connect health alerts to an operator destination.
+    - Establish protected branch and publisher-release environment controls with independent release approval.
+    - Retain TASK-PROD-004 scale, failover, current-provider qualification and signed-release gates.
