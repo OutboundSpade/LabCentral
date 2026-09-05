@@ -66,3 +66,9 @@ universal target guarantees.
 
 - [Huma OpenAPI generation](https://huma.rocks/features/openapi-generation/) — the registered API exposes its OpenAPI document for offline export; product route registration remains authoritative.
 - [openapi-typescript introduction](https://openapi-ts.dev/introduction) — OpenAPI 3.x schema-to-TypeScript generation. This repository pins generator 7.13.0 and checks generated DTO drift in CI.
+
+## Native deployment hardening references (retrieved 2026-09-05)
+
+- [systemd 257 execution settings](https://github.com/systemd/systemd/blob/v257/man/systemd.exec.xml) — `ProtectHome=tmpfs` permits explicit bind mounts beneath an otherwise hidden home directory; systemd manages runtime-directory ownership and modes before applying the service sandbox. Checked against the installed systemd 257 manual and actual service namespaces.
+- [nftables reference](https://www.netfilter.org/projects/nftables/manpage.html) — `--check` validates without applying rules; `destroy table` accepts an absent table. The PVE1 profile replaces only its named table and tests UID/port filtering in a disposable network namespace.
+- [Tailscale HTTPS configuration](https://tailscale.com/docs/how-to/set-up-https-certificates) — tailnet HTTPS certificates require an admin-console setting. File-based `tailscale cert` installations require operator-managed renewal; merely obtaining a certificate does not install recurring renewal.

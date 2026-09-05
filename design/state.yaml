@@ -21,7 +21,7 @@ proposedAdrs: []
 supersededAdrs: [ADR-0011, ADR-0012, ADR-0014]
 documents:
   - path: docs/operations/pve1-pilot.md
-    status: in_progress
+    status: complete
   - path: docs/operations/plugin-installation.md
     status: complete
   - path: design/contracts/architecture-conformance.yaml
@@ -219,6 +219,7 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-PILOT-001
   - TASK-ARCH-002
   - TASK-ARCH-001
   - TASK-DESIGN-001
@@ -250,5 +251,5 @@ completedTasks:
   - TASK-PROD-003
 currentTasks:
   - TASK-PROD-004
-  - TASK-PILOT-001
+  - TASK-PROD-005
 nextRecommendedTasks: []

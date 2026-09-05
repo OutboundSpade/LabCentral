@@ -890,23 +890,22 @@ def verify_native_topology() -> None:
     assert "--access-plugin-runtime-dir=/run/labcentral-access/ipc" in core_text
     assert "--proxmox-plugin=/opt" not in core_text and "--access-plugin=/opt" not in core_text
     assert set(systemd_values(paths["core"], "LoadCredential")) == {
-        "proxmox-credential.json:/etc/labcentral/proxmox-credential.json",
         "proxmox-registration.token:/etc/labcentral/proxmox-registration.token",
         "access-registration.token:/etc/labcentral/access-registration.token",
     }
     assert "${CREDENTIALS_DIRECTORY}/proxmox-registration.token" in core_text
     assert "${CREDENTIALS_DIRECTORY}/access-registration.token" in core_text
-    assert "${CREDENTIALS_DIRECTORY}/proxmox-credential.json" in core_text
+    assert "--proxmox-credential-file=/etc/labcentral/proxmox-credential.json" in core_text
 
     provider_text = paths["provider"].read_text(encoding="utf-8")
     access_text = paths["access"].read_text(encoding="utf-8")
-    assert systemd_values(paths["provider"], "RuntimeDirectory") == ["labcentral-proxmox"]
-    assert systemd_values(paths["provider"], "RuntimeDirectoryMode") == ["0770"]
+    assert systemd_values(paths["provider"], "RuntimeDirectory") == ["labcentral-proxmox labcentral-proxmox/ipc"]
+    assert systemd_values(paths["provider"], "RuntimeDirectoryMode") == ["2770"]
     assert systemd_values(paths["provider"], "StateDirectory") == ["labcentral-proxmox"]
     assert systemd_values(paths["provider"], "StateDirectoryMode") == ["0700"]
     assert "--initialize-journal-directory=/var/lib/labcentral-proxmox/proxmox-journal" in provider_text
-    assert systemd_values(paths["access"], "RuntimeDirectory") == ["labcentral-access"]
-    assert systemd_values(paths["access"], "RuntimeDirectoryMode") == ["0770"]
+    assert systemd_values(paths["access"], "RuntimeDirectory") == ["labcentral-access labcentral-access/ipc"]
+    assert systemd_values(paths["access"], "RuntimeDirectoryMode") == ["2770"]
     assert "InaccessiblePaths=/var/lib/labcentral" in provider_text
     assert "InaccessiblePaths=/var/lib/labcentral /var/lib/labcentral-proxmox" in access_text
     for path, credential in [
