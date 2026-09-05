@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -704,7 +705,7 @@ func (s *Store) CreateInstance(ctx context.Context, request application.CreateIn
 	}
 	for attempt := 0; ; attempt++ {
 		result, err := s.createInstance(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return result, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -857,7 +858,7 @@ func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request a
 func (s *Store) SaveTargetSnapshot(ctx context.Context, snapshot application.TargetSnapshot) error {
 	for attempt := 0; ; attempt++ {
 		err := s.saveTargetSnapshot(ctx, snapshot)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -1116,7 +1117,7 @@ func (s *Store) QueueDestroy(ctx context.Context, request application.QueueDestr
 	}
 	for attempt := 0; ; attempt++ {
 		result, err := s.queueDestroy(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return result, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -1889,13 +1890,19 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(err.Error(), "UNIQUE constraint failed:")
 }
 
+// Retry only whole, rolled-back database transactions. The bounded exponential
+// delay lets classroom audit-write bursts drain without synchronizing callers.
+const maximumTransactionAttempts = 16
+
 func isRetryableTransactionConflict(err error) bool {
 	var postgresError *pgconn.PgError
 	return errors.As(err, &postgresError) && (postgresError.Code == "40001" || postgresError.Code == "40P01")
 }
 
 func waitTransactionRetry(ctx context.Context, attempt int) error {
-	timer := time.NewTimer(time.Duration(attempt+1) * 5 * time.Millisecond)
+	ceiling := min(5*time.Millisecond<<min(attempt, 6), 250*time.Millisecond)
+	delay := ceiling/2 + time.Duration(rand.Int64N(int64(ceiling/2)+1))
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():

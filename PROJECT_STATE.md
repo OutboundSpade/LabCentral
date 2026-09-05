@@ -28,4 +28,6 @@ The full race-enabled Go suite passed with disposable PostgreSQL 18. A CI-expose
 
 A [PVE1 pilot](docs/operations/pve1-pilot.md) now runs authenticated HTTPS with current-main core plus a static asset fix and the unchanged, previously qualified rc6 provider. A live HTTP check caught missing embedded SvelteKit `_app` assets; the fix and regression test cover the actual browser boot URLs. Its isolated Debian example VM 910000 is ready and expires on 2026-09-06 at 02:45 UTC. Kali VM 101 connectivity remains unverified pending its address/admin connection. This pilot does not qualify current-main provider binaries or complete any remaining production milestone gate.
 
+Pilot CI also exposed audit-write contention exhausting the existing PostgreSQL retry window during classroom teardown. The shared policy now uses at most 16 attempts with capped randomized exponential backoff. A deterministic eight-conflict regression, five repetitions of the 100-instance scenario, and the full Go suite passed with PostgreSQL under the race detector; provider calls remain outside database retries. The deployed SQLite pilot is unaffected by PostgreSQL transaction conflicts.
+
 **Next action:** finish UI access and login verification from Kali VM 101, then resume deployment-specific live load/soak and shared-journal failover evidence before release.

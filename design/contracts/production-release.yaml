@@ -14,9 +14,9 @@ artifacts:
   container: [digestQualifiedImage, sigstoreSignature, githubProvenance]
 cases:
   - id: TEST-PROD-RELEASE-001
-    title: Runtime API reports the build-linked release version
-    goTests: [TestBootstrapAndStaticAssetsCarrySecurityWarnings]
-    expect: {developmentDefault: dev, publisherValue: tag, hardcodedProductVersion: false}
+    title: Runtime API reports the build-linked release version and serves the embedded UI boot assets
+    goTests: [TestBootstrapAndStaticAssetsCarrySecurityWarnings, TestEmbeddedUIBootAssetsAreServed]
+    expect: {developmentDefault: dev, publisherValue: tag, hardcodedProductVersion: false, embeddedBootAssetStatus: 200}
   - id: TEST-PROD-RELEASE-002
     title: Normal CI is read-only and pins every third-party action by full commit
     evidence: workflow_static_verifier

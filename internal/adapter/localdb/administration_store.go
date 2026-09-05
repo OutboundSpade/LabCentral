@@ -489,7 +489,7 @@ func (s *Store) UpdateRoleAssignment(ctx context.Context, record application.Rol
 func (s *Store) RevokeRoleAssignment(ctx context.Context, id string, scopeKind application.ScopeKind, scopeID string, expected domain.ResourceVersion, now time.Time) (application.RoleAssignmentRecord, error) {
 	for attempt := 0; ; attempt++ {
 		record, err := s.revokeRoleAssignment(ctx, id, scopeKind, scopeID, expected, now)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -684,7 +684,7 @@ func (s *Store) targetGrantByID(ctx context.Context, id string) (application.Tar
 func (s *Store) SetUserDisabled(ctx context.Context, userID domain.UserID, disabled bool, expected domain.ResourceVersion, now time.Time) (application.UserRecord, error) {
 	for attempt := 0; ; attempt++ {
 		record, err := s.setUserDisabled(ctx, userID, disabled, expected, now)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {

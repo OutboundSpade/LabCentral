@@ -11,6 +11,7 @@ tasks:
       - Use an unchanged qualified provider and exact target configuration for a bounded benign example; retain ordinary admission and ownership checks.
       - Verify authenticated HTTPS, durable service restart, successful instance creation, and independent Proxmox running/network observations.
       - Fix the live-discovered embedded UI asset omission and test HTTP delivery of the actual generated JavaScript and stylesheet boot assets.
+      - Resolve the hosted classroom teardown audit-contention failure while preserving bounded database-only retries, idempotency, and atomic job/audit/event writes.
       - Verify UI login and instance visibility from Kali VM 101 without exposing private operations or provider management endpoints.
       - Record expiration, cleanup instructions, build and qualification boundaries, and remaining production gates; do not relabel the pilot as production qualification.
   - id: TASK-ARCH-001

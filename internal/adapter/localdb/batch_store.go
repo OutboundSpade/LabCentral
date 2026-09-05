@@ -49,7 +49,7 @@ func (s *Store) CreateInstanceBatch(ctx context.Context, request application.Cre
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.createInstanceBatch(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {

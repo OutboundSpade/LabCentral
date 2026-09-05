@@ -22,8 +22,8 @@ cases:
     expect: {instancesReady: 100, abandonedClaimRecovered: true, fencingAdvanced: true, failedOperations: 0, objectiveSeconds: 120}
   - id: TEST-PROD-RESILIENCE-004
     title: Full classroom teardown retains owner isolation and leaves no active work, quota, claim, or provider object
-    goTests: [TestPostgreSQLHundredInstanceMultiReplicaResilience, TestSQLiteIdentityRBACAndSessionConformance, TestPostgreSQLIdentityRBACAndSessionConformance]
-    expect: {ownerBindingsCrossed: 0, uniqueProviderOwnershipTokens: 400, providerObjectsAfterDestroy: 0, activeQuotaAfterDestroy: 0, cleanupLeftovers: 0}
+    goTests: [TestPostgreSQLHundredInstanceMultiReplicaResilience, TestPostgreSQLDestroyRetriesAuditContentionAtomically, TestSQLiteIdentityRBACAndSessionConformance, TestPostgreSQLIdentityRBACAndSessionConformance]
+    expect: {ownerBindingsCrossed: 0, uniqueProviderOwnershipTokens: 400, providerObjectsAfterDestroy: 0, activeQuotaAfterDestroy: 0, cleanupLeftovers: 0, injectedAuditConflicts: 8, destroyJobsAfterRetryAndReplay: 1, instanceVersionIncrementsAfterRetry: 1}
   - id: TEST-PROD-RESILIENCE-005
     title: Scale telemetry and adjacent security sinks remain aggregate-only and secret-free
     goTests: [TestOperationalMetricsExposeOnlyClosedAggregateDimensions, TestHTTPTraceOmitsPathQueryAndIdentifiers, TestProviderContract014SecretCanaryAbsent]
