@@ -592,9 +592,9 @@ func TestPackagedProxmoxServicesUseExternalIdentityBoundary(t *testing.T) {
 	for _, required := range []string{
 		"--proxmox-plugin-runtime-dir=/run/labcentral-proxmox/ipc",
 		"--proxmox-plugin-token-file=${CREDENTIALS_DIRECTORY}/proxmox-registration.token",
-		"--proxmox-credential-file=${CREDENTIALS_DIRECTORY}/proxmox-credential.json",
+		"--proxmox-credential-file=/etc/labcentral/proxmox-credential.json",
 		"--access-plugin-runtime-dir=/run/labcentral-access/ipc",
-		"LoadCredential=proxmox-credential.json:/etc/labcentral/proxmox-credential.json",
+		"LoadCredential=proxmox-registration.token:/etc/labcentral/proxmox-registration.token",
 	} {
 		if !strings.Contains(contents, required) {
 			t.Fatalf("packaged core service is missing external boundary %q", required)
@@ -602,6 +602,9 @@ func TestPackagedProxmoxServicesUseExternalIdentityBoundary(t *testing.T) {
 	}
 	if strings.Contains(contents, "--proxmox-plugin=/opt") || strings.Contains(contents, "--access-plugin=/opt") {
 		t.Fatal("packaged core service launches a production plugin under the core identity")
+	}
+	if strings.Contains(contents, "LoadCredential=proxmox-credential.json:") {
+		t.Fatal("provider secret projection conflicts with the single-node owner-only secret reader")
 	}
 	for _, required := range []string{"--auth-mode=${LABCENTRAL_AUTH_MODE}", "--public-origin=${LABCENTRAL_PUBLIC_ORIGIN}", "--session-keyring-file=${LABCENTRAL_SESSION_KEYRING_FILE}", "--observability-listen=${LABCENTRAL_OBSERVABILITY_LISTEN}"} {
 		if !strings.Contains(contents, required) {
@@ -616,6 +619,8 @@ func TestPackagedProxmoxServicesUseExternalIdentityBoundary(t *testing.T) {
 	for _, required := range []string{
 		"User=labcentral-proxmox",
 		"Group=labcentral-proxmox-ipc",
+		"RuntimeDirectory=labcentral-proxmox labcentral-proxmox/ipc",
+		"RuntimeDirectoryMode=2770",
 		"ExecStart=/opt/labcentral/lab-provider-proxmox",
 		"LoadCredential=proxmox-registration.token:/etc/labcentral/proxmox-registration.token",
 		"IPAddressDeny=any",

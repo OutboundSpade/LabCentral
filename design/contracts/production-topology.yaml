@@ -30,11 +30,13 @@ cases:
     binding: tools/verify_phase0.py#verify_kubernetes_topology
     expect: {defaultDenyIngress: true, defaultDenyEgress: true, dns: explicit, postgresql: explicit, proxmox: explicit, oidc: explicit}
   - id: TEST-PROD-TOPOLOGY-007
-    title: Native core, provider, and access services use separate operating-system identities and private credential projections
+    title: Native services use distinct identities, inherited IPC groups, owner-only secrets and private registration-token projections
     binding: tools/verify_phase0.py#verify_native_topology
     processBinding: internal/pluginhost/host_test.go#TestAttachUsesGroupRestrictedIPCAndProtectedTokenFile
-    expect: {distinctUsers: true, separateIPCGroupPerPlugin: true, systemdCredentials: true, directTokenEnvironment: false, hostLossTerminatesPlugin: true}
+    packagingBinding: cmd/labd/main_test.go#TestPackagedProxmoxServicesUseExternalIdentityBoundary
+    expect: {distinctUsers: true, separateIPCGroupPerPlugin: true, nativeRuntimeDirectoryMode: "2770", coreSecretMode: "0400", systemdCredentials: true, projectedSecretScope: registrationTokensOnly, directTokenEnvironment: false, hostLossTerminatesPlugin: true}
   - id: TEST-PROD-TOPOLOGY-008
     title: Native services start behind fail-closed network policy and cannot traverse each other's private state
     binding: tools/verify_phase0.py#verify_native_topology
+    siteNetworkBinding: tools/provider-testenv/pve1-egress-check.py
     expect: {defaultNetworkDeny: true, loopbackOnlyUntilOperatorAllowlist: true, providerJournalOwner: labcentral-proxmox, crossStateAccess: false, systemCallAllowlist: true}
