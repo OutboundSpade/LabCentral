@@ -370,7 +370,7 @@ func (s *Store) PutQuotaLimit(ctx context.Context, request application.PutQuotaL
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.putQuotaLimit(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -709,7 +709,7 @@ func (s *Store) PutLifetimePolicy(ctx context.Context, request application.PutLi
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.putLifetimePolicy(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -1054,7 +1054,7 @@ func (s *Store) RenewInstanceLifetime(ctx context.Context, request application.R
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.renewInstanceLifetime(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -1446,7 +1446,7 @@ func (s *Store) ExpireStaleQuotaReservations(ctx context.Context, limit uint32) 
 	}
 	for attempt := 0; ; attempt++ {
 		expired, err := s.expireStaleQuotaReservations(ctx, limit)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return expired, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -1731,7 +1731,7 @@ func (s *Store) RetainInstanceQuota(ctx context.Context, fence application.Fence
 	}()
 	for attempt := 0; ; attempt++ {
 		err = s.retainInstanceQuota(ctx, fence)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return err
 		}
 		if err = waitTransactionRetry(ctx, attempt); err != nil {
@@ -1766,7 +1766,7 @@ func (s *Store) ApplyExecutionAllowed(ctx context.Context, fence application.Fen
 	}()
 	for attempt := 0; ; attempt++ {
 		allowed, err = s.applyExecutionAllowed(ctx, fence)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return allowed, err
 		}
 		if err = waitTransactionRetry(ctx, attempt); err != nil {

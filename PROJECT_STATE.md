@@ -1,9 +1,9 @@
 # LabCentral project state
 
-**Updated:** 2026-09-04
+**Updated:** 2026-09-05
 **Completed:** `TASK-ARCH-002` architecture simplification and local verification.
 
-**Current work:** `TASK-PROD-004` production qualification remains in progress.
+**Current work:** `TASK-PROD-004` production qualification and `TASK-PILOT-001` Kali UI access remain in progress.
 
 LabCentral is a Go modular monolith with a Huma/OpenAPI API, static SvelteKit UI, SQLite/PostgreSQL persistence, durable database jobs/outbox, and separate provider/access processes. Portable resource types remain closed and typed. One instance belongs to one target. Core owns authorization, quota, lifetime and ownership decisions; plugins own infrastructure translation and execution journals.
 
@@ -26,4 +26,8 @@ The [architecture audit](docs/design/architecture-audit-2026-09-04.md) is the hi
 
 The full race-enabled Go suite passed with disposable PostgreSQL 18. A CI-exposed lease-renewal conflict was reproduced and fixed with bounded database-only retries; three deterministic conflict runs and five 100-instance runs passed under the race detector. Targeted normal tests, Go vet, design/protocol/schema/link checks, generated OpenAPI/TypeScript, Svelte checks/build, and dependency scans passed. See the [verification record](design/implementation-verification.yaml) for scope and exclusions.
 
-**Next action:** resume the outstanding production qualification gates in `design/checklist.yaml`, starting with deployment-specific live load/soak and shared-journal failover evidence before release.
+A [PVE1 pilot](docs/operations/pve1-pilot.md) now runs authenticated HTTPS with current-main core plus a static asset fix and the unchanged, previously qualified rc6 provider. A live HTTP check caught missing embedded SvelteKit `_app` assets; the fix and regression test cover the actual browser boot URLs. Its isolated Debian example VM 910000 is ready and expires on 2026-09-06 at 02:45 UTC. Kali VM 101 connectivity remains unverified pending its address/admin connection. This pilot does not qualify current-main provider binaries or complete any remaining production milestone gate.
+
+Pilot CI also exposed audit-write contention exhausting the existing PostgreSQL retry window during classroom teardown. The shared policy now uses at most 16 attempts with capped randomized exponential backoff. A deterministic eight-conflict regression, five repetitions of the 100-instance scenario, and the full Go suite passed with PostgreSQL under the race detector; provider calls remain outside database retries. The deployed SQLite pilot is unaffected by PostgreSQL transaction conflicts.
+
+**Next action:** finish UI access and login verification from Kali VM 101, then resume deployment-specific live load/soak and shared-journal failover evidence before release.

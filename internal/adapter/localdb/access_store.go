@@ -87,7 +87,7 @@ func (s *Store) BeginAccessSession(ctx context.Context, request application.Begi
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.beginAccessSession(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -456,7 +456,7 @@ func (s *Store) RevokeAccessSession(ctx context.Context, request application.Rev
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.revokeAccessSession(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -746,7 +746,7 @@ func (s *Store) mutateAccessSession(ctx context.Context, mutate func(*sql.Tx) (a
 		} else {
 			_ = tx.Rollback()
 		}
-		if !isRetryableTransactionConflict(mutateErr) || attempt == 7 {
+		if !isRetryableTransactionConflict(mutateErr) || attempt+1 >= maximumTransactionAttempts {
 			return record, mutateErr
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {

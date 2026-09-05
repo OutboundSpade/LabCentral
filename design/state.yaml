@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
 phase: phase_3_production_topology_in_progress
-lastUpdated: "2026-09-04"
+lastUpdated: "2026-09-05"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -20,6 +20,8 @@ acceptedAdrs:
 proposedAdrs: []
 supersededAdrs: [ADR-0011, ADR-0012, ADR-0014]
 documents:
+  - path: docs/operations/pve1-pilot.md
+    status: in_progress
   - path: docs/operations/plugin-installation.md
     status: complete
   - path: design/contracts/architecture-conformance.yaml
@@ -248,4 +250,5 @@ completedTasks:
   - TASK-PROD-003
 currentTasks:
   - TASK-PROD-004
+  - TASK-PILOT-001
 nextRecommendedTasks: []

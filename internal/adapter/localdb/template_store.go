@@ -45,7 +45,7 @@ func (s *Store) CreateLabTemplate(ctx context.Context, request application.Creat
 			}
 			continue
 		}
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -111,7 +111,7 @@ func (s *Store) UpdateLabTemplate(ctx context.Context, request application.Updat
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.updateLabTemplate(ctx, request)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {

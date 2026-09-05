@@ -7,7 +7,9 @@ import (
 	"io/fs"
 )
 
-//go:embed build
+// Include SvelteKit's underscore-prefixed _app directory.
+//
+//go:embed all:build
 var content embed.FS
 
 func FS() fs.FS {

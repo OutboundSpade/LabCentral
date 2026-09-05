@@ -135,7 +135,7 @@ func (s *Store) AppendAuditRecord(ctx context.Context, appendRecord application.
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.appendAuditRecord(ctx, appendRecord)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -195,7 +195,7 @@ func (s *Store) AppendEventRecord(ctx context.Context, appendRecord application.
 	}
 	for attempt := 0; ; attempt++ {
 		record, err := s.appendEventRecord(ctx, appendRecord)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return record, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {
@@ -213,7 +213,7 @@ func (s *Store) AppendGovernanceRecords(ctx context.Context, audit application.A
 	}
 	for attempt := 0; ; attempt++ {
 		auditRecord, eventRecord, err := s.appendGovernanceRecords(ctx, audit, event)
-		if !isRetryableTransactionConflict(err) || attempt == 7 {
+		if !isRetryableTransactionConflict(err) || attempt+1 >= maximumTransactionAttempts {
 			return auditRecord, eventRecord, err
 		}
 		if err := waitTransactionRetry(ctx, attempt); err != nil {

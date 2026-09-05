@@ -417,3 +417,21 @@ architectureCIHardening:
   reproduction: TEST-ARCH-012 deterministically holds the job row, starts a serializable policy or quota transaction, then commits a lease renewal to invalidate its first snapshot.
   fix: Apply bounded existing transaction-conflict retries to apply-policy checks and quota retention; recheck fences each attempt and never replay provider calls.
   validation: The deterministic PostgreSQL conflict test passed three race-enabled repetitions; the 100-instance multi-replica test passed five race-enabled repetitions after the fix.
+
+pilotDeploymentHardening:
+  date: "2026-09-05"
+  task: TASK-PILOT-001
+  embeddedUI:
+    contract: TEST-PROD-RELEASE-001
+    reproduction: All eight browser boot asset URLs returned HTTP 404 because default Go embedding excludes underscore-prefixed directories.
+    fix: Include all generated build assets and serve the actual embedded index boot URLs in the HTTP regression test.
+    validation: Live boot assets returned HTTP 200; credential-free Chromium rendered sign-in without JavaScript errors; authenticated HTTPS API checks confirmed the ready instance after service restart.
+  classroomAuditContention:
+    contract: TEST-PROD-RESILIENCE-004
+    reproduction: CI run 33940546089 exhausted eight serializable transaction attempts at audit stream allocation during 100-instance teardown; a deterministic PostgreSQL trigger reproduced eight aborted destroy transactions.
+    fix: Share a 16-attempt bound and randomized exponential backoff capped at 250 ms; retry only complete database transactions and honor cancellation.
+    validation: Three race-enabled deterministic runs preserved exactly one job, operation, audit, event and instance version increment; five race-enabled classroom repetitions and the complete race-enabled Go suite passed with disposable PostgreSQL 18.
+  boundaries:
+    - The live pilot uses the unchanged previously qualified rc6 provider on the exact PVE1 configuration; no evidence was re-signed or transferred to a new provider binary.
+    - Kali VM 101 network access remains incomplete pending its address and existing admin connection.
+    - Live load/soak, cross-node journal failover/disaster recovery and protected publisher ceremony remain open under TASK-PROD-004.
