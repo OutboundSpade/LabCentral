@@ -1,6 +1,18 @@
 formatVersion: 1
-lastUpdated: "2026-09-04"
+lastUpdated: "2026-09-05"
 tasks:
+  - id: TASK-PILOT-001
+    title: Deploy the owner-requested PVE1 example and verify UI access from Kali VM 101
+    status: in_progress
+    dependencies: [TASK-ARCH-002]
+    relatedAdrs: [ADR-0004, ADR-0008, ADR-0009, ADR-0015, ADR-0017]
+    relatedDocuments: [docs/operations/pve1-pilot.md, docs/operations/proxmox-deployment.md]
+    acceptanceCriteria:
+      - Use an unchanged qualified provider and exact target configuration for a bounded benign example; retain ordinary admission and ownership checks.
+      - Verify authenticated HTTPS, durable service restart, successful instance creation, and independent Proxmox running/network observations.
+      - Fix the live-discovered embedded UI asset omission and test HTTP delivery of the actual generated JavaScript and stylesheet boot assets.
+      - Verify UI login and instance visibility from Kali VM 101 without exposing private operations or provider management endpoints.
+      - Record expiration, cleanup instructions, build and qualification boundaries, and remaining production gates; do not relabel the pilot as production qualification.
   - id: TASK-ARCH-001
     title: Audit architecture against the multi-provider and third-party-plugin priority
     status: complete
