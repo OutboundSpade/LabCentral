@@ -451,7 +451,7 @@ nativeDeploymentHardening:
     - Authenticated HTTPS login, ready example instance and fresh qualified native VM discovery passed after migration; live namespace checks denied cross-service state and operator home access.
     - Recovery and HTTP regression suites passed; plugin-host and core tests passed with required local sockets enabled; all final design/document consistency checks and native unit validation passed.
   remaining:
-    - Obtain off-host backup destination and recovery-key custody; rehearse encrypted recovery and schedule verified backups.
+    - Existing encrypted restic/R2 home backups exclude active /var/lib state; integrate offline recovery sets with that destination after establishing separate off-host recovery-key custody, then rehearse restore and schedule verified backups.
     - Enable tailnet HTTPS, deploy trusted certificate renewal, and connect health alerts to an operator destination.
     - Establish protected branch and publisher-release environment controls with independent release approval.
     - Retain TASK-PROD-004 scale, failover, current-provider qualification and signed-release gates.
