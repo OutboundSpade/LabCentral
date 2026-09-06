@@ -72,3 +72,7 @@ universal target guarantees.
 - [systemd 257 execution settings](https://github.com/systemd/systemd/blob/v257/man/systemd.exec.xml) — `ProtectHome=tmpfs` permits explicit bind mounts beneath an otherwise hidden home directory; systemd manages runtime-directory ownership and modes before applying the service sandbox. Checked against the installed systemd 257 manual and actual service namespaces.
 - [nftables reference](https://www.netfilter.org/projects/nftables/manpage.html) — `--check` validates without applying rules; `destroy table` accepts an absent table. The PVE1 profile replaces only its named table and tests UID/port filtering in a disposable network namespace.
 - [Tailscale HTTPS configuration](https://tailscale.com/docs/how-to/set-up-https-certificates) — tailnet HTTPS certificates require an admin-console setting. File-based `tailscale cert` installations require operator-managed renewal; merely obtaining a certificate does not install recurring renewal.
+
+## Browser startup reference (retrieved 2026-09-06)
+
+- [noVNC 1.7.0 browser capability detection](https://github.com/novnc/noVNC/blob/v1.7.0/core/util/browser.js) — module evaluation awaits video-decoder detection. The optional console library therefore loads only inside the console flow, after the main application has rendered; browser regression tests include detection that never completes.
