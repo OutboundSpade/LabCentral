@@ -1,7 +1,7 @@
 <script lang="ts">
   import ParameterInputs from '$lib/ParameterInputs.svelte';
   import { onMount, tick } from 'svelte';
-  import RFB from '@novnc/novnc';
+  import type RFB from '@novnc/novnc';
   import {
     api,
     ApiError,
@@ -37,6 +37,7 @@
 	let consoleTarget = $state<HTMLDivElement>();
 	let consoleClient: RFB | null = null;
 	let consoleSocket: WebSocket | null = null;
+	let disposed = false;
 
   let username = $state('');
   let password = $state('');
@@ -67,6 +68,7 @@
 			void bootstrap();
 		}
 		return () => {
+			disposed = true;
 			consoleClient?.disconnect();
 			consoleSocket?.close();
 		};
@@ -80,6 +82,14 @@
 			consoleStatus = 'This launch token is absent or has already been consumed. Return to the lab and request a new console.';
 			return;
 		}
+		let ConsoleClient: typeof RFB;
+		try {
+			({ default: ConsoleClient } = await import('@novnc/novnc'));
+		} catch {
+			consoleStatus = 'The console client could not load. Return to the lab and request a new console.';
+			return;
+		}
+		if (disposed) return;
 		const target = consoleTarget;
 		const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 		const socket = new WebSocket(`${scheme}//${window.location.host}/access-proxy/v1/access/${encodeURIComponent(accessSessionId)}/websocket`, ['binary']);
@@ -95,7 +105,7 @@
 				return;
 			}
 			try {
-				consoleClient = new RFB(target, socket, { shared: false });
+				consoleClient = new ConsoleClient(target, socket, { shared: false });
 				consoleClient.scaleViewport = true;
 				consoleClient.resizeSession = true;
 				consoleClient.addEventListener('connect', () => {

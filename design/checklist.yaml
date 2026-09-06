@@ -1,5 +1,5 @@
 formatVersion: 1
-lastUpdated: "2026-09-05"
+lastUpdated: "2026-09-06"
 tasks:
   - id: TASK-PILOT-001
     title: Deploy the owner-requested PVE1 example over authenticated Tailscale HTTPS
@@ -23,6 +23,7 @@ tasks:
     acceptanceCriteria:
       - Move binaries and state out of the checkout and isolate core and provider identities, filesystem access, credentials, and network access.
       - Preserve the existing signed target configuration, provider identity, journal continuity, and instance ownership during migration.
+      - Verify the built sign-in page in Chromium, Firefox and WebKit, including when optional console capability detection never completes.
       - Create and verify an encrypted recovery set, restore it into separate storage, and rehearse recovery without introducing a second live mutation owner.
       - Establish certificate renewal, backup scheduling and off-host custody, health monitoring, and reviewed release controls before claiming production readiness.
       - Retain the broader TASK-PROD-004 gates unless a separately recorded owner-approved release scope revises their milestone placement.

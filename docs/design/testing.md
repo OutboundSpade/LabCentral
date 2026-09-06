@@ -1,5 +1,13 @@
 # Testing strategy
 
+The production web export has a browser startup gate under `TASK-PROD-005`:
+after `bun run build` in `web`, install the pinned Playwright browsers with
+`bunx playwright install --with-deps chromium firefox webkit`, then run
+`bun run test:browser`. The test serves the real export with a credential-free
+API fixture, checks visible sign-in controls and runtime errors in all three
+engines, and repeats with optional console video detection permanently stalled.
+HTTP asset status checks alone cannot detect module initialization failures.
+
 ## Test layers
 
 - Domain unit/property tests: typed values, state machines, quotas, authorization, scheduler determinism, reference/graph/cycle/topological/reverse ordering.

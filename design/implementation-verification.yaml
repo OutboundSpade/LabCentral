@@ -455,3 +455,13 @@ nativeDeploymentHardening:
     - Enable tailnet HTTPS, deploy trusted certificate renewal, and connect health alerts to an operator destination.
     - Establish protected branch and publisher-release environment controls with independent release approval.
     - Retain TASK-PROD-004 scale, failover, current-provider qualification and signed-release gates.
+
+browserStartupRepair:
+  date: "2026-09-06"
+  task: TASK-PROD-005
+  contract: TEST-PROD-RELEASE-001
+  reproduction: The live production export rendered an empty body in Playwright 1.55 WebKit with an uninitialized template-function error; disabling minification did not resolve it.
+  fix: Defer noVNC initialization until an authorized console request; contain module-loading failures and prevent late connections after unmount.
+  regression: web/tests/startup.mjs serves the production export with a credential-free API fixture and verifies sign-in in Chromium, Firefox and WebKit with normal and permanently stalled console capability detection.
+  validation: All six browser cases passed with Playwright 1.63; the same test failed against the pre-fix export when console detection stalled. The deployed HTTPS page also rendered in all three Playwright 1.55 engines, including the WebKit version that reproduced the original blank page.
+  deployment: main-cd2bffd-browser-fix; unchanged rc6 provider and signed target configuration.
