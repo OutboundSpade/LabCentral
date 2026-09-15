@@ -840,19 +840,20 @@ func (s *Store) loadAccessResourceTx(ctx context.Context, tx *sql.Tx, instanceID
 	if err != nil {
 		return application.InstanceRecord{}, "", err
 	}
-	resourceQuery := `SELECT kind, phase, provider_state FROM labcentral_local_resources WHERE instance_id = ? AND resource_id = ?`
+	resourceQuery := `SELECT kind, phase, provider_state, canonical_resource_json FROM labcentral_local_resources WHERE instance_id = ? AND resource_id = ?`
 	if lock && s.dialect == jobsdb.DialectPostgreSQL {
 		resourceQuery += ` FOR UPDATE`
 	}
 	var kind, phase string
-	var providerState []byte
-	if err := tx.QueryRowContext(ctx, s.bind(resourceQuery), instanceID, resourceID).Scan(&kind, &phase, &providerState); err != nil {
+	var providerState, canonicalJSON []byte
+	if err := tx.QueryRowContext(ctx, s.bind(resourceQuery), instanceID, resourceID).Scan(&kind, &phase, &providerState, &canonicalJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return application.InstanceRecord{}, "", application.ErrNotFound
 		}
 		return application.InstanceRecord{}, "", err
 	}
-	if kind != string(domain.ResourceVM) || (phase != string(domain.ResourceReady) && phase != string(domain.ResourcePaused)) || len(providerState) == 0 {
+	resource := application.ResourceRecord{Kind: domain.ResourceKind(kind), CanonicalJSON: canonicalJSON}
+	if !resource.UsesVirtualMachine() || (phase != string(domain.ResourceReady) && phase != string(domain.ResourcePaused)) || len(providerState) == 0 {
 		return application.InstanceRecord{}, "", application.ErrAuthorityChanged
 	}
 	state := &pluginv1.ProviderState{}

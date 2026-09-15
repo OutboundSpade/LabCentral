@@ -314,6 +314,14 @@ func runProviderTargetStoreConformance(t *testing.T, store *localdb.Store) {
 		t.Fatal(err)
 	}
 
+	// More than eight occupied allocations must not exhaust the collision retry
+	// budget. This shared conformance case runs against SQLite and PostgreSQL.
+	for i := 0; i < 12; i++ {
+		if _, err := service.CreateInstanceTarget(ctx, []byte(providerTargetLab), false, fmt.Sprintf("many-existing-%d", i), targetID, nil); err != nil {
+			t.Fatalf("lab %d beyond existing claims: %v", i+1, err)
+		}
+	}
+
 	server.mu.Lock()
 	server.support = pluginv1.Capability_SUPPORT_UNSUPPORTED
 	server.mu.Unlock()
@@ -346,6 +354,7 @@ func runProviderTargetStoreConformance(t *testing.T, store *localdb.Store) {
 	if !foundDependency {
 		t.Fatal("worker did not deliver the committed Network dependency to the VM")
 	}
+
 }
 
 func directDigest(value []byte) string {

@@ -13,6 +13,7 @@
     api,
     ApiError,
     mutationHeaders,
+    type Instance,
     type AccessSession,
     type AccessLaunch,
   } from "./api";
@@ -53,6 +54,23 @@
     } else consoleClient.sendKey(specialKey === "tab" ? 0xff09 : 0xff1b);
     consoleClient.focus();
   }
+  let lab = $state<Instance>();
+  let resourceID = $state("");
+  async function loadMachines(id: string) {
+    try {
+      const session = await api<AccessSession>(
+        `/access-sessions/${encodeURIComponent(id)}`,
+      );
+      const instance = await api<Instance>(
+        `/lab-instances/${encodeURIComponent(session.instanceId)}`,
+      );
+      if (disposed || id !== currentID) return;
+      lab = instance;
+      resourceID = session.resourceId;
+    } catch {
+      /* Console transport remains usable if metadata cannot load. */
+    }
+  }
   let disposed = false;
   let currentID = "";
   let attempt = 0,
@@ -72,6 +90,7 @@
   }
   onMount(() => {
     currentID = accessSessionId;
+    void loadMachines(currentID);
     void connectConsole();
     const changed = () => {
       fullscreen = !!document.fullscreenElement;
@@ -100,7 +119,7 @@
     reconnecting = true;
     retryTimer = setTimeout(() => void connectConsole(), delay);
   }
-  async function connectConsole() {
+  async function connectConsole(selectedResource?: string) {
     clearTimeout(retryTimer);
     const mine = ++generation;
     request?.abort();
@@ -111,7 +130,7 @@
     denied = false;
     consoleStatus = "Connecting to your lab…";
     const tokenKey = `labcentral.access-token.v1.${currentID}`;
-    let token = sessionStorage.getItem(tokenKey);
+    let token = selectedResource ? null : sessionStorage.getItem(tokenKey);
     sessionStorage.removeItem(tokenKey);
     try {
       if (!token) {
@@ -136,7 +155,7 @@
           headers: mutationHeaders(),
           body: JSON.stringify({
             instanceId: previous.instanceId,
-            resourceId: previous.resourceId,
+            resourceId: selectedResource ?? previous.resourceId,
             method: previous.method,
             durationSeconds: 1800,
           }),
@@ -155,6 +174,8 @@
         )
           throw new Error("Invalid console launch response.");
         currentID = launch.session.id;
+        resourceID = launch.session.resourceId;
+        void loadMachines(currentID);
         token = launch.oneTimeToken;
         replaceState(expected, page.state);
         // Retire the replaced access grant. Failure is harmless: its bounded
@@ -272,9 +293,30 @@
   class="flex h-dvh flex-col gap-3 bg-base-100 p-3 text-base-content"
 >
   <header class="flex flex-wrap items-center gap-4">
-    <a href="/" class="btn btn-sm btn-ghost"><ArrowLeft size={16} /> My labs</a
+    <a
+      href={lab ? `/lab/?id=${encodeURIComponent(lab.id)}` : "/"}
+      class="btn btn-sm btn-ghost"
+      ><ArrowLeft size={16} /> {lab ? "Lab details" : "My labs"}</a
     ><Terminal size={18} />
     <h1 class="text-sm font-semibold">Lab console</h1>
+    {#if lab?.resources?.length}
+      <select
+        class="select select-sm w-auto"
+        aria-label="Machine"
+        value={resourceID}
+        disabled={reconnecting}
+        onchange={(event) => {
+          attempt = 0;
+          void connectConsole(event.currentTarget.value);
+        }}
+      >
+        {#each lab.resources.filter((r) => (r.kind === "VM" || r.virtualMachine) && r.phase === "ready") as resource}
+          <option value={resource.id}
+            >{resource.id.replace(/^[^.]+\./, "")}</option
+          >
+        {/each}
+      </select>
+    {/if}
     <p class="text-sm text-base-content/70" aria-live="polite">
       {consoleStatus}
     </p>

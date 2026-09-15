@@ -44,6 +44,7 @@ const server=createServer(async(req,res)=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
 try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
+ if(process.env.LABCENTRAL_BROWSER && process.env.LABCENTRAL_BROWSER!==name)continue;
  const browser=await engine.launch();try{
   subjectId="user.student";noProjects=false;sessionDenied=false;reads=[];labs=[];mutations=[];outage=false;role='participant';
   const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(10000);
@@ -98,6 +99,15 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   assert.equal(mutations.find(m=>m.path==='/quotas/project/project.class/instances').body.limit,25);
   assert.equal(mutations.find(m=>m.path==='/lifetime-policies/project/project.class').body.defaultTtlSeconds,14400);
   await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');await page.getByRole('heading',{name:'Students & labs'}).waitFor();await page.getByLabel('Select Alex Morgan').check();await page.getByRole('button',{name:'Launch labs',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByLabel('Workstation name',{exact:false}).fill('classroom');await page.getByLabel('Lab lifetime (minutes)',{exact:false}).fill('90');await page.getByRole('button',{name:'Launch for 1 selected'}).click();await page.getByText('Classroom launch accepted.').waitFor();await page.waitForFunction(()=>!document.querySelector('button.btn-primary:disabled'));assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.owners[0].ownerId,'user.student');assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.ttlSeconds,5400);await page.getByRole('dialog',{name:'Launch classroom labs'}).waitFor({state:'hidden'});
+  labs=[{...lab,id:'instance.bulk-a'},{...lab,id:'instance.bulk-b'}];
+  await page.reload();await page.getByRole('heading',{name:'Students & labs'}).waitFor();
+  await page.getByRole('checkbox',{name:'Select all active labs'}).check();
+  await page.getByRole('button',{name:'End selected labs'}).click();
+  await page.getByRole('heading',{name:'Delete 2 labs?'}).waitFor();
+  await page.getByRole('button',{name:'Delete labs and files'}).click();
+  await page.getByText('2 deletions queued.').waitFor();
+  assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-a/actions/destroy'));
+  assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-b/actions/destroy'));
   await page.setViewportSize({width:390,height:844});
   for(const route of ['','launch','classroom','people','settings']){
    await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{level:1}).waitFor();await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} ${route} mobile overflow`);if(name==='chromium')await page.screenshot({path:new URL(`mobile-${route||'labs'}.png`,shots).pathname,fullPage:true});

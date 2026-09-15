@@ -24,3 +24,7 @@ The reusable runtime contract is documented in `provider-contract.md`. Bootstrap
 ## Image building
 
 Builds are separate durable operations executed in isolated, disposable builders with no provider/control credentials, restricted egress, resource/time/output limits, provenance, and mandatory content digest. Bundle build contexts never execute inside `labd`. External image resolution is disabled by default pending OQ-IMAGE-001.
+
+## Approved container VM runtime
+
+[ADR-0022](../adr/0022-proxmox-container-vm-runtime.md) adds a fixed, typed guest runtime for explicitly VM-isolated containers. It does not enable author-supplied cloud-init or arbitrary host commands. The immutable runtime image preloads approved OCI digests; bootstrap binds a guest once and starts a rootless workload through a fixed entrypoint. See [setup and supported fields](../operations/container-vm-runtime.md).

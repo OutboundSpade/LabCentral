@@ -500,7 +500,7 @@ func instanceDTO(source controlplane.InstanceRecord, resources []controlplane.Re
 		result.MaximumExpiresAt = &maximumExpiresAt
 	}
 	for _, resource := range resources {
-		result.Resources = append(result.Resources, ResourceDTO{ID: string(resource.ID), Kind: string(resource.Kind), Phase: string(resource.Phase), ErrorCode: resource.ErrorCode})
+		result.Resources = append(result.Resources, ResourceDTO{VirtualMachine: resource.UsesVirtualMachine(), ID: string(resource.ID), Kind: string(resource.Kind), Phase: string(resource.Phase), ErrorCode: resource.ErrorCode})
 	}
 	return result
 }

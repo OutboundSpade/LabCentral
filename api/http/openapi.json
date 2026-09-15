@@ -2366,6 +2366,10 @@
           },
           "phase": {
             "type": "string"
+          },
+          "virtualMachine": {
+            "description": "Resource has explicit virtual machine realization.",
+            "type": "boolean"
           }
         },
         "required": [

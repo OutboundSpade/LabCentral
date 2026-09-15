@@ -59,14 +59,14 @@
     ),
   );
   let vmLabs = $derived(
-    active.filter((i) => i.resources?.some((r) => r.kind === "VM")),
+    active.filter((i) => i.resources?.some((r) => (r.kind === "VM" || r.virtualMachine))),
   );
   let visible = $derived(vmLabs.slice(vmPage * 25, vmPage * 25 + 25));
   let clock = $state(Date.now());
   let measurements = $derived(
     visible.flatMap((lab) =>
       (lab.resources ?? [])
-        .filter((r) => r.kind === "VM")
+        .filter((r) => (r.kind === "VM" || r.virtualMachine))
         .map((resource) => ({
           label: `${name(lab)} · ${lab.id.slice(-8)} / ${resource.id}`,
           usage: measured(lab.id, resource.id),
@@ -349,7 +349,7 @@
         ></thead
       >
       <tbody
-        >{#each visible as lab (lab.id)}{#each lab.resources?.filter((r) => r.kind === "VM") ?? [] as resource}{@const u =
+        >{#each visible as lab (lab.id)}{#each lab.resources?.filter((r) => (r.kind === "VM" || r.virtualMachine)) ?? [] as resource}{@const u =
               measured(lab.id, resource.id)}<tr>
               <td
                 ><a

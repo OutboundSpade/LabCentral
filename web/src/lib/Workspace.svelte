@@ -21,6 +21,7 @@
   import DocumentEditor from "./DocumentEditor.svelte";
   import ProviderOptions from "./ProviderOptions.svelte";
   import LabDetail from "./LabDetail.svelte";
+  import BulkLabControls from "./BulkLabControls.svelte";
   import LabList from "./LabList.svelte";
   import Operations from "./Operations.svelte";
   import Notifications from "./Notifications.svelte";
@@ -94,6 +95,11 @@
   let batch = $state<Batch>();
   let activeOperation = $state<Operation>();
   let search = $state("");
+  let selectedClassroomLabs = $state<string[]>([]);
+  let bulkBusy = $state(false);
+  let bulkResults = $state<
+    Record<string, { operation?: Operation; error?: string; key: string }>
+  >({});
   let showEnded = $state(false);
   let detailId = $derived(page.url.searchParams.get("id") ?? "");
   let drawerOpen = $state(false);
@@ -303,6 +309,9 @@
       revisionId = "";
       revisions = [];
       selectedOwners = [];
+      selectedClassroomLabs = [];
+      bulkResults = {};
+      bulkBusy = false;
       batch = undefined;
       activeOperation = undefined;
       instances = [];
@@ -663,7 +672,7 @@
       ((instance.revisionId &&
         revisionTemplates[instance.revisionId]?.name.replaceAll("-", " ")) ||
         instance.resources
-          ?.find((r) => r.kind === "VM")
+          ?.find((r) => r.kind === "VM" || r.virtualMachine)
           ?.id?.replaceAll("-", " ")) ??
       "Lab workspace"
     );
@@ -1125,8 +1134,21 @@
                 </div>
               </div>
               <p class="mb-4 text-sm text-base-content/70">
-                Select students, then choose a template and launch options.
+                Select students to launch labs. Select labs to end them
+                together.
               </p>
+              {#key projectId}<BulkLabControls
+                  instances={instances.filter((i) => i.phase !== "destroyed")}
+                  name={labName}
+                  owner={(i) =>
+                    roster.find((p) => p.id === i.ownerId)?.displayName ??
+                    i.ownerId}
+                  {refresh}
+                  label="End selected labs"
+                  bind:selected={selectedClassroomLabs}
+                  bind:busy={bulkBusy}
+                  bind:results={bulkResults}
+                />{/key}
               <div class="overflow-x-auto rounded-box border border-base-300">
                 <table class="table">
                   <thead
@@ -1171,6 +1193,20 @@
                             {#each instances.filter((i) => i.ownerId === person.id && (showEnded || i.phase !== "destroyed")) as instance (instance.id)}<div
                                 class="flex flex-wrap items-center gap-3"
                               >
+                                {#if instance.phase !== "destroyed"}<input
+                                    type="checkbox"
+                                    class="checkbox checkbox-sm"
+                                    aria-label={`Select lab ${labName(instance)} for ${person.name}`}
+                                    value={instance.id}
+                                    bind:group={selectedClassroomLabs}
+                                    disabled={bulkBusy ||
+                                      !!bulkResults[instance.id]?.operation ||
+                                      (instance.desiredLifecycle ===
+                                        "destroyed" &&
+                                        !["failed", "degraded"].includes(
+                                          instance.phase,
+                                        ))}
+                                  />{/if}
                                 <a
                                   class="link font-medium"
                                   href={`/lab/?id=${instance.id}`}
@@ -1184,6 +1220,12 @@
                                     onclick={() => confirmEnd(instance)}
                                     >End lab</button
                                   >{/if}
+                                {#if bulkResults[instance.id]?.error}<p
+                                    class="w-full text-sm text-error"
+                                    role="alert"
+                                  >
+                                    {bulkResults[instance.id].error}
+                                  </p>{/if}
                               </div>{:else}<span
                                 class="text-sm text-base-content/60"
                                 >No active labs</span

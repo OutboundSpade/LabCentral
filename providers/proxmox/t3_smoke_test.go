@@ -131,7 +131,9 @@ func TestContractTESTPROXMOX025CredentialedSmokeRequiresExplicitTargetConfirmati
 // performs one exact-profile Network/VM create, stop/start/pause/resume, owned
 // reverse destroy, and positive provider absence check. It is not the complete
 // T3 matrix and does not produce qualifying evidence by itself.
-func TestCredentialedProxmoxT3Smoke(t *testing.T) {
+func TestCredentialedProxmoxT3Smoke(t *testing.T)     { runCredentialedSmoke(t, false) }
+func TestCredentialedProxmoxT3Container(t *testing.T) { runCredentialedSmoke(t, true) }
+func runCredentialedSmoke(t *testing.T, container bool) {
 	activation, err := readT3Activation(os.Getenv)
 	if err != nil {
 		t.Fatal(err)
@@ -186,6 +188,24 @@ func TestCredentialedProxmoxT3Smoke(t *testing.T) {
 	}
 
 	labJSON, networkJSON, vmJSON, overrideJSON, err := t3Documents(profile)
+	if container {
+		if config.ContainerRuntime == nil || profile.TemplateAlias != config.ContainerRuntime.TemplateAlias {
+			t.Fatal("container runtime qualification profile required")
+		}
+		var lab canonicalLabDocument
+		json.Unmarshal(labJSON, &lab)
+		var vm canonicalVMSpec
+		json.Unmarshal(lab.Resources[1].Spec, &vm)
+		spec := canonicalContainerSpec{Compute: vm.Compute, Isolation: "virtualMachine", RealizationPreference: []string{"viaVM"}, Interfaces: vm.Interfaces, Command: []string{"python3"}, Args: []string{"-m", "http.server", "8080"}}
+		image := strings.Split(config.ContainerRuntime.Images[0], "@")
+		spec.Image.Repository = image[0]
+		spec.Image.Digest = image[1]
+		lab.Resources[1].Kind = "Container"
+		lab.Resources[1].Spec, _ = json.Marshal(spec)
+		vmJSON, _ = json.Marshal(lab.Resources[1])
+		labJSON, _ = json.Marshal(lab)
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +276,7 @@ func TestCredentialedProxmoxT3Smoke(t *testing.T) {
 	}
 	vmResult := finalApplyResult(vmStream.events)
 	if vmResult == nil || vmResult.GetError() != nil {
-		t.Fatalf("T3 VM apply failed: %#v", vmResult)
+		t.Fatalf("T3 VM apply failed: %v", vmResult.GetError())
 	}
 	vmState := vmResult.GetProviderState()
 	vmDestroyed := false
@@ -291,6 +311,25 @@ func TestCredentialedProxmoxT3Smoke(t *testing.T) {
 		vmState = result.GetProviderState()
 	}
 
+	if container {
+		var plan QEMUPlan
+		json.Unmarshal(vmInput.ProviderPlan, &plan)
+		runtimeClient, e := NewClientFromEnvelopes(configBytes, credentialBytes)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer runtimeClient.CloseIdleConnections()
+		for i := 0; i < 60; i++ {
+			if runtimeClient.GuestAgentPing(ctx, config.DestinationNode, profile.ExpectedVMID) == nil {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		if e = runtimeClient.EnsureContainerRuntime(ctx, config.DestinationNode, profile.ExpectedVMID, *plan.Container); e != nil {
+			t.Fatal("container restart/replay", e)
+		}
+		t.Log("container runtime ready after stop/start/pause/resume and idempotent bootstrap replay")
+	}
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cleanupCancel()
 	if err := destroyT3VM(cleanupCtx, service, profile, target, vmInput, vmState); err != nil {

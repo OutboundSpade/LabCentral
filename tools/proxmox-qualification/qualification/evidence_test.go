@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -209,3 +210,29 @@ func assertReasons(t *testing.T, result Verification, expected ...string) {
 }
 
 func digest(character string) string { return "sha256:" + strings.Repeat(character, 64) }
+
+func TestRuntimeEvidenceRequiresVersionTranscriptAndExactPool(t *testing.T) {
+	evidence := passingEvidence()
+	evidence.Profile.ContainerRuntime = &RuntimeProfileEvidence{SchemaVersion: "labcentral.container-vm/v1", Pool: "lab", TemplateAlias: "debian", Images: []string{"docker.io/library/python@" + digest("a")}}
+	if _, _, err := validateEvidence(evidence); err == nil {
+		t.Fatal("legacy evidence accepted runtime")
+	}
+	evidence.SchemaVersion = RuntimeEvidenceSchema
+	if _, _, err := validateEvidence(evidence); err == nil {
+		t.Fatal("missing runtime transcript accepted")
+	}
+	evidence.ContainerRuntimeTranscriptDigest = digest("b")
+	for i := range evidence.Profile.Permissions {
+		if evidence.Profile.Permissions[i].Path == "/pool/lab" {
+			evidence.Profile.Permissions[i].Privileges = append(evidence.Profile.Permissions[i].Privileges, "VM.GuestAgent.Unrestricted")
+			sort.Strings(evidence.Profile.Permissions[i].Privileges)
+		}
+	}
+	if _, _, err := validateEvidence(evidence); err != nil {
+		t.Fatal(err)
+	}
+	evidence.Profile.ContainerRuntime.Pool = "other"
+	if _, _, err := validateEvidence(evidence); err == nil {
+		t.Fatal("guest exec accepted outside runtime pool")
+	}
+}

@@ -592,6 +592,19 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 	if err := decodeEnvelope(input.GetProviderPlan(), maximumConfigBytes, &plan); err != nil || plan.validate() != nil || validatePlanBindings(config, plan, input.GetCanonicalResourceJson()) != nil {
 		return nil, executionFailure("invalid_provider_plan", "invalid_declaration", "Proxmox provider plan is invalid", false, resourceID)
 	}
+	// A newly qualified target may add templates or runtime capabilities. Existing
+	// owned resources can still be deleted when every physical binding remains in
+	// the current allowlist. Never refresh metadata for create/update operations.
+	if action == "destroy" && input.GetPriorState() != nil {
+		state, err := decodeQEMUState(input.GetPriorState())
+		if err != nil || !stateMatchesPlan(config, state, plan, input.GetPriorState()) {
+			return nil, executionFailure("invalid_provider_state", "ownership_mismatch", "Cleanup state does not match its original plan", false, resourceID)
+		}
+		plan.ConfigFingerprint = input.GetTarget().GetConfigFingerprint()
+		plan.CapabilityDigest = config.Qualification.CapabilityDigest
+		plan.InventoryDigest = config.Qualification.InventoryDigest
+		plan.PolicyDigest = config.Qualification.PolicyDigest
+	}
 	call := input.GetContext()
 	if plan.TargetID != input.GetTarget().GetTargetId() || plan.ConfigFingerprint != input.GetTarget().GetConfigFingerprint() || plan.CapabilityDigest != config.Qualification.CapabilityDigest || plan.InventoryDigest != config.Qualification.InventoryDigest || plan.PolicyDigest != config.Qualification.PolicyDigest || plan.InputDigest != digestDocument(input.GetCanonicalResourceJson()) || plan.InstanceID != call.GetLabInstanceId() || plan.LogicalResourceID != call.GetLogicalResourceId() || plan.Generation != call.GetDesiredGeneration() || call.GetProviderTargetId() != plan.TargetID || call.GetInvocationId() == "" || call.GetOperationId() == "" || call.GetIdempotencyKey() == "" || call.GetFencingToken() == 0 {
 		return nil, executionFailure("stale_plan", "conflict", "Proxmox provider plan binding is stale", false, resourceID)
@@ -997,6 +1010,21 @@ func (service *Service) applyVM(ctx context.Context, prepared *preparedExecution
 		}
 		return prepared.fail(phase, "provider_drift", "conflict", "Proxmox VM drifted before readiness", false, true, complete, leftovers)
 	}
+
+	if plan.Container != nil {
+		runtime, ok := prepared.client.(containerRuntimeAPI)
+		if !ok {
+			return prepared.fail("partial", "runtime_unavailable", "provider_failure", "Container runtime API unavailable", false, false, false, []string{fmt.Sprintf("qemu/%d", vmid)})
+		}
+		if err := runtime.EnsureContainerRuntime(ctx, plan.Destination.Node, vmid, *plan.Container); err != nil {
+			complete, leftovers := service.compensateVM(ctx, prepared)
+			phase := "failed"
+			if !complete {
+				phase = "partial"
+			}
+			return prepared.fail(phase, "container_not_ready", "provider_failure", "Container workload did not become ready", true, true, complete, leftovers)
+		}
+	}
 	state := qemuVMState(plan, finalConfig, "ready", prepared.record.TaskUPID)
 	observed := &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "VM", Node: plan.Destination.Node, VMID: vmid, PowerState: "running", GuestReady: true, ConfigDigest: finalConfig.Digest, Networks: append([]NetworkBinding(nil), plan.Networks...)}
 	result := successResult(state, observed, prepared.input.GetOwnershipTokens())
@@ -1085,9 +1113,9 @@ func qualifiedReleaseMatchesInventory(qualified string, observed Version) bool {
 }
 
 func permissionsSatisfy(config TargetConfig, actual EffectivePermissions) bool {
-	for _, privileges := range actual.Paths {
+	for path, privileges := range actual.Paths {
 		for _, privilege := range privileges {
-			if _, forbidden := forbiddenMutationPrivileges[privilege]; forbidden {
+			if _, forbidden := forbiddenMutationPrivileges[privilege]; forbidden && !(privilege == "VM.GuestAgent.Unrestricted" && config.ContainerRuntime != nil && config.Pool != "" && (path == "/pool/"+config.Pool || runtimeVMPath(config, path))) {
 				return false
 			}
 		}
@@ -1511,23 +1539,27 @@ func ownershipTag(marker OwnershipMarker) string {
 }
 
 func safeVMName(instanceID, resourceID string) string {
-	value := strings.ToLower(instanceID + "-" + resourceID)
-	var builder strings.Builder
-	for _, character := range value {
-		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-' {
-			builder.WriteRune(character)
+	logical := resourceID
+	if index := strings.IndexByte(logical, '.'); index >= 0 {
+		logical = logical[index+1:]
+	}
+	var name strings.Builder
+	for _, c := range strings.ToLower(logical) {
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			name.WriteRune(c)
 		} else {
-			builder.WriteByte('-')
+			name.WriteByte('-')
+		}
+		if name.Len() >= 12 {
+			break
 		}
 	}
-	name := strings.Trim(builder.String(), "-")
-	if len(name) > 63 {
-		name = name[:46] + "-" + strings.TrimPrefix(digestDocument([]byte(value)), "sha256:")[:16]
+	prefix := strings.Trim(name.String(), "-")
+	if prefix == "" {
+		prefix = "machine"
 	}
-	if name == "" {
-		return "labcentral-vm"
-	}
-	return name
+	digest := sha256.Sum256([]byte(instanceID + "\x00" + resourceID))
+	return prefix + "-" + hex.EncodeToString(digest[:4])
 }
 
 func planVMID(plan QEMUPlan) uint32 {

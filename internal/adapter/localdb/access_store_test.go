@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -38,6 +39,37 @@ func TestPostgreSQLAccessSessionConformance(t *testing.T) {
 		t.Fatal(err)
 	}
 	runAccessSessionConformance(t, store)
+}
+
+func TestSQLiteContainerVMAccessSessionConformance(t *testing.T) {
+	runAccessSessionConformance(t, newSQLiteAccessContractStore(t), true)
+}
+
+func TestPostgreSQLContainerVMAccessSessionConformance(t *testing.T) {
+	store := newPostgreSQLQuotaTestStore(t, "container_vm_access")
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runAccessSessionConformance(t, store, true)
+}
+
+func TestProcessContainerCannotOpenVMAccessSession(t *testing.T) {
+	store := newSQLiteAccessContractStore(t)
+	setupQuotaTestTenancy(t, store)
+	instance, digest := createReadyAccessTestInstance(t, store, "instance.container")
+	setAccessTestContainer(t, store, instance.ID, `{"spec":{"isolation":"process","realizationPreference":["native"]}}`)
+	_, err := store.BeginAccessSession(context.Background(), accessBeginTestRequest(instance, digest, "access.container", "container"))
+	if !errors.Is(err, application.ErrAuthorityChanged) {
+		t.Fatalf("process container access: %v", err)
+	}
+}
+
+func setAccessTestContainer(t *testing.T, store *Store, id domain.InstanceID, canonical string) {
+	t.Helper()
+	_, err := store.db.ExecContext(context.Background(), store.bind(`UPDATE labcentral_local_resources SET kind = ?, canonical_resource_json = ? WHERE instance_id = ? AND resource_id = ?`), domain.ResourceContainer, []byte(canonical), id, "vm.test")
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestAccessContract004ConcurrentExchangeHasOneWinner(t *testing.T) {
@@ -225,11 +257,14 @@ func accessTestIdentity() application.AccessCallbackIdentity {
 	}
 }
 
-func runAccessSessionConformance(t *testing.T, store *Store) {
+func runAccessSessionConformance(t *testing.T, store *Store, containerVM ...bool) {
 	t.Helper()
 	ctx := context.Background()
 	setupQuotaTestTenancy(t, store)
 	instance, providerDigest := createReadyAccessTestInstance(t, store, "instance.access")
+	if len(containerVM) > 0 && containerVM[0] {
+		setAccessTestContainer(t, store, instance.ID, `{"spec":{"isolation":"virtualMachine","realizationPreference":["viaVM"]}}`)
+	}
 	identity := accessTestIdentity()
 	pending := beginAccessTestSession(t, store, instance, providerDigest, "access.one", "one")
 	launchHash := accessTestHash("launch-token")

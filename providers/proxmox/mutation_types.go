@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"net"
 	"net/netip"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 
 const (
 	validationPlanV10 = "proxmox.validation-plan/v1.0"
+	qemuPlanV11       = "proxmox.qemu-plan/v1.1"
 	qemuPlanV10       = "proxmox.qemu-plan/v1.0"
 	qemuStateV10      = "proxmox.qemu-state/v1.0"
 	journalV10        = "proxmox.invocation-journal/v1.0"
@@ -183,6 +185,7 @@ type PlanWarning struct {
 }
 
 type QEMUPlan struct {
+	Container         *containervm.Config `json:"container,omitempty"`
 	SchemaVersion     string              `json:"schemaVersion"`
 	Action            string              `json:"action"`
 	ResourceKind      string              `json:"resourceKind"`
@@ -285,7 +288,13 @@ func marshalDigest(document any) ([]byte, string, error) {
 }
 
 func (plan QEMUPlan) validate() error {
-	if plan.SchemaVersion != qemuPlanV10 || plan.Action != "ensure" || (plan.ResourceKind != "Network" && plan.ResourceKind != "VM") {
+	if plan.Container != nil && (plan.SchemaVersion != qemuPlanV11 || plan.ResourceKind != "VM" || plan.Container.Validate() != nil) {
+		return fmt.Errorf("invalid container plan")
+	}
+	if plan.SchemaVersion == qemuPlanV11 && plan.Container == nil {
+		return fmt.Errorf("missing container bootstrap")
+	}
+	if (plan.SchemaVersion != qemuPlanV10 && plan.SchemaVersion != qemuPlanV11) || plan.Action != "ensure" || (plan.ResourceKind != "Network" && plan.ResourceKind != "VM") {
 		return fmt.Errorf("invalid plan identity")
 	}
 	if plan.TargetID == "" || !sha256Pattern.MatchString(plan.ConfigFingerprint) || !sha256Pattern.MatchString(plan.CapabilityDigest) || !sha256Pattern.MatchString(plan.InventoryDigest) || !sha256Pattern.MatchString(plan.PolicyDigest) || !sha256Pattern.MatchString(plan.InputDigest) || plan.InstanceID == "" || !logicalIDPattern.MatchString(plan.LogicalResourceID) || plan.Generation == 0 {

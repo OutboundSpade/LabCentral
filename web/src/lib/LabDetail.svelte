@@ -68,7 +68,7 @@
           <div class="flex items-center gap-3">
             <StatusBadge
               state={resource.phase}
-            />{#if browserConsole && resource.kind === "VM" && resource.phase === "ready"}<button
+            />{#if browserConsole && (resource.kind === "VM" || resource.virtualMachine) && resource.phase === "ready"}<button
                 class="btn btn-primary"
                 disabled={busy}
                 onclick={() => onopen(detail!, resource.id)}

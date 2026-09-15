@@ -110,3 +110,5 @@ same still-unused VMID before the admission transaction runs. Exclusions are
 copied and deduplicated; a provider returning an excluded claim produces a
 validation error. SQLite/PostgreSQL regressions cover three VMs sharing an
 allocation namespace, successful execution and owned cleanup.
+
+Planning first snapshots occupied target allocation keys (held, committed and orphaned; released keys are reusable). The existing eight retries address newly concurrent claims, rather than sequentially discovering old allocations. The transaction remains authoritative. A bounded snapshot of 4096 keys fails explicitly above its supported size.

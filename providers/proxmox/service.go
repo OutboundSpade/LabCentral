@@ -97,6 +97,9 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 		if decodeEnvelope(request.GetTarget().GetConfigEnvelope(), maximumConfigBytes, &config) == nil && config.ConsoleAccess.Enabled {
 			enableConsoleAccessCapability(capabilities, evidence, config.ConsoleAccess.MaximumDurationSeconds)
 		}
+		if config.ContainerRuntime != nil {
+			capabilities = append(capabilities, capability("workload.container", pluginv1.Capability_SUPPORT_EMULATED, evidence, []string{"one dedicated VM per container", "explicit virtualMachine isolation and viaVM realization", "approved offline images only", "no mounts, secrets or published ports"}))
+		}
 	}
 	return &pluginv1.DiscoverTargetResponse{
 		Capabilities:         capabilities,

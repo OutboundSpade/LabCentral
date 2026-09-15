@@ -18,7 +18,7 @@ assign your membership and project role, then choose **Check for access**.
    workspace and template defaults. Only published revisions are available.
 2. Select **Launch lab**. Provisioning is asynchronous; **My labs** shows progress.
 3. Open the lab details for instructions and **Open console** when ready.
-4. The console toolbar controls scaling, special keys, full screen and view-only
+4. Use **Machine** to switch between ready machines in the same lab. The console toolbar controls scaling, special keys, full screen and view-only
    mode. Reloading obtains a fresh authorized connection. Dropped connections
    retry automatically, with a Reconnect button after bounded retries. Revoked
    access stops retries; return to your lab or sign in again as directed.
@@ -86,3 +86,5 @@ and a restart. The UI manages provider discovery and access; it does not upload
 or execute plugins. See the [installation guide](../operations/plugin-installation.md).
 
 See [template examples and requirements](templates.md) for VM and container exercises.
+
+To end several classroom labs, select their lab checkboxes or **Select all active labs**, then **End selected labs**. The confirmation lists each lab and owner. Individual failures can be retried without repeating accepted deletions. For VM-isolated containers, see [using the runtime console](../operations/container-vm-runtime.md).

@@ -1995,3 +1995,25 @@ func (s *Store) Ping(ctx context.Context) error {
 }
 
 var _ application.Store = (*Store)(nil)
+
+// ListTargetAllocationKeys snapshots occupied claims for planning. The subsequent
+// transaction still owns uniqueness; stale snapshots use bounded conflict retries.
+func (s *Store) ListTargetAllocationKeys(ctx context.Context, target domain.ProviderTargetID) ([]application.AllocationKey, error) {
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT namespace,claim_value FROM labcentral_provider_allocation_claims WHERE target_id=? AND state<>'released' ORDER BY namespace,claim_value LIMIT 4097`), target)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []application.AllocationKey
+	for rows.Next() {
+		key := application.AllocationKey{TargetID: target}
+		if err := rows.Scan(&key.Namespace, &key.Value); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) > 4096 {
+		return nil, fmt.Errorf("target exceeds the supported occupied allocation snapshot")
+	}
+	return keys, rows.Err()
+}

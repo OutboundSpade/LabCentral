@@ -1291,3 +1291,32 @@ func TestUsageReadRequiresOwnedVMAndLeavesMutationStateAlone(t *testing.T) {
 		t.Fatal("read mutated VM")
 	}
 }
+
+func TestOwnedCleanupSurvivesQualifiedMetadataRefresh(t *testing.T) {
+	fixture := newExecutionFixture(t)
+	result := applyVMFixture(t, fixture)
+	if result.GetError() != nil {
+		t.Fatal(result.GetError())
+	}
+	var config TargetConfig
+	json.Unmarshal(fixture.target.ConfigEnvelope, &config)
+	config.Qualification.CapabilityDigest = sha("5")
+	config.Qualification.PolicyDigest = sha("6")
+	fixture.target.ConfigEnvelope, _ = json.Marshal(config)
+	fixture.target.ConfigFingerprint = sha("7")
+	stale := applyVMFixture(t, fixture)
+	if stale.GetError().GetCode() != "stale_plan" {
+		t.Fatal("stale create was refreshed", stale.GetError())
+	}
+	input := cloneMutationInput(fixture.vmInput)
+	input.Context = completeCall("cleanup-refreshed", "vm.lab", fixture.target.TargetId)
+	input.PriorState = result.GetProviderState()
+	stream := &destroyCapture{}
+	if err := fixture.service.DestroyResource(&pluginv1.DestroyResourceRequest{Input: input}, stream); err != nil {
+		t.Fatal(err)
+	}
+	final := stream.events[len(stream.events)-1].GetEvent().GetResult()
+	if final.GetError() != nil || fixture.fake.deleteCalls != 1 {
+		t.Fatal("owned cleanup", final.GetError())
+	}
+}

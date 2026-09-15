@@ -122,10 +122,11 @@ type OperationDTO struct {
 }
 
 type ResourceDTO struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Phase     string `json:"phase"`
-	ErrorCode string `json:"errorCode,omitempty"`
+	VirtualMachine bool   `json:"virtualMachine,omitempty" doc:"Resource has explicit virtual machine realization."`
+	ID             string `json:"id"`
+	Kind           string `json:"kind"`
+	Phase          string `json:"phase"`
+	ErrorCode      string `json:"errorCode,omitempty"`
 }
 
 type InstanceDTO struct {

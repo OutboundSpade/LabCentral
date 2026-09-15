@@ -202,3 +202,5 @@ to the field or dialog. Accepted launches navigate back to My labs for progress.
 Catalogue template names are readable Unicode display text (1–63 characters),
 separate from stable template IDs and declarative resource names. Invalid names
 produce a validation response. Create, rename and persisted readback are tested.
+
+Classroom and My labs share confirmed bulk deletion, per-lab outcomes, four bounded requests and stable retry keys. Classroom offers selection beside each lab and all-active selection. The console has a ready-machine selector and a link back to that lab; switching creates a fresh authorized session and retires the old grant.

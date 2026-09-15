@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labcentral.io/schemas/container-vm-runtime-v1.json",
+  "title": "Container VM bootstrap v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "installationId",
+    "instanceId",
+    "resourceId",
+    "generation",
+    "image"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "labcentral.container-vm/v1"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    },
+    "image": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$"
+    },
+    "environment": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 128,
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 4096,
+        "pattern": "^[^\\u0000]*$"
+      }
+    },
+    "installationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+    },
+    "instanceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+    },
+    "resourceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+    },
+    "command": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "maxLength": 4096,
+        "pattern": "^[^\\u0000]*$"
+      }
+    },
+    "args": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "maxLength": 4096,
+        "pattern": "^[^\\u0000]*$"
+      }
+    }
+  }
+}

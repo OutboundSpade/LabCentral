@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -203,6 +204,23 @@ type ResourceRecord struct {
 	ErrorCode         string
 	ErrorMessage      string
 	UpdatedAt         time.Time
+}
+
+// UsesVirtualMachine reflects explicit portable VM realization, never provider type.
+func (r ResourceRecord) UsesVirtualMachine() bool {
+	if r.Kind == domain.ResourceVM {
+		return true
+	}
+	if r.Kind != domain.ResourceContainer {
+		return false
+	}
+	var resource struct {
+		Spec struct {
+			Isolation             domain.IsolationClass         `json:"isolation"`
+			RealizationPreference []domain.ContainerRealization `json:"realizationPreference"`
+		} `json:"spec"`
+	}
+	return json.Unmarshal(r.CanonicalJSON, &resource) == nil && resource.Spec.Isolation == domain.IsolationVirtualMachine && len(resource.Spec.RealizationPreference) == 1 && resource.Spec.RealizationPreference[0] == domain.ContainerViaVM
 }
 
 type OperationRecord struct {
@@ -580,6 +598,7 @@ type TemplateStore interface {
 }
 
 type InstanceStore interface {
+	ListTargetAllocationKeys(context.Context, domain.ProviderTargetID) ([]AllocationKey, error)
 	PutQuotaLimit(context.Context, PutQuotaLimitRequest) (QuotaLimitRecord, error)
 	GetQuotaLimit(context.Context, QuotaScope, QuotaDimension) (QuotaLimitRecord, error)
 	ListQuotaUsage(context.Context, QuotaScope) ([]QuotaUsageRecord, error)

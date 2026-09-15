@@ -81,7 +81,7 @@ func (s *Service) ReadInstanceUsage(ctx context.Context, subject domain.UserID, 
 		}
 		out := InstanceUsage{InstanceID: string(id), Items: []VMUsage{}}
 		for _, r := range resources {
-			if r.Kind != domain.ResourceVM {
+			if !r.UsesVirtualMachine() {
 				continue
 			}
 			item := VMUsage{ResourceID: string(r.ID), Status: "unavailable"}

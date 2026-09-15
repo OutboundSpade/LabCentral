@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"io"
 	"regexp"
 	"sort"
@@ -22,10 +23,11 @@ import (
 )
 
 const (
-	EvidenceSchema  = "labcentral.proxmox-qualification-evidence/v1"
-	EnvelopeSchema  = "labcentral.proxmox-qualification-envelope/v1"
-	SignatureMethod = "Ed25519"
-	ProviderPlugin  = "io.labcentral.provider.proxmox"
+	RuntimeEvidenceSchema = "labcentral.proxmox-qualification-evidence/v1.1"
+	EvidenceSchema        = "labcentral.proxmox-qualification-evidence/v1"
+	EnvelopeSchema        = "labcentral.proxmox-qualification-envelope/v1"
+	SignatureMethod       = "Ed25519"
+	ProviderPlugin        = "io.labcentral.provider.proxmox"
 
 	MaxDocumentBytes = 1 << 20
 	MaxValidity      = 30 * 24 * time.Hour
@@ -72,17 +74,18 @@ var requiredFeatures = []string{
 }
 
 type Evidence struct {
-	SchemaVersion string           `json:"schemaVersion"`
-	RunID         string           `json:"runID"`
-	IssuedAt      string           `json:"issuedAt"`
-	ValidUntil    string           `json:"validUntil"`
-	Target        TargetEvidence   `json:"target"`
-	Build         BuildEvidence    `json:"build"`
-	Protocol      ProtocolEvidence `json:"protocol"`
-	Profile       ProfileEvidence  `json:"profile"`
-	Cases         []CaseEvidence   `json:"cases"`
-	Probes        []ProbeEvidence  `json:"probes"`
-	Cleanup       CleanupEvidence  `json:"cleanup"`
+	ContainerRuntimeTranscriptDigest string           `json:"containerRuntimeTranscriptDigest,omitempty"`
+	SchemaVersion                    string           `json:"schemaVersion"`
+	RunID                            string           `json:"runID"`
+	IssuedAt                         string           `json:"issuedAt"`
+	ValidUntil                       string           `json:"validUntil"`
+	Target                           TargetEvidence   `json:"target"`
+	Build                            BuildEvidence    `json:"build"`
+	Protocol                         ProtocolEvidence `json:"protocol"`
+	Profile                          ProfileEvidence  `json:"profile"`
+	Cases                            []CaseEvidence   `json:"cases"`
+	Probes                           []ProbeEvidence  `json:"probes"`
+	Cleanup                          CleanupEvidence  `json:"cleanup"`
 }
 
 type TargetEvidence struct {
@@ -109,13 +112,21 @@ type ProtocolEvidence struct {
 	Features []string `json:"features"`
 }
 
+type RuntimeProfileEvidence struct {
+	SchemaVersion string   `json:"schemaVersion"`
+	Pool          string   `json:"pool"`
+	TemplateAlias string   `json:"templateAlias"`
+	Images        []string `json:"images"`
+}
+
 type ProfileEvidence struct {
-	DestinationNode string               `json:"destinationNode"`
-	VMIDRanges      []IntegerRange       `json:"vmidRanges"`
-	Storages        []StorageEvidence    `json:"storages"`
-	Networks        []NetworkEvidence    `json:"networks"`
-	Templates       []TemplateEvidence   `json:"templates"`
-	Permissions     []PermissionEvidence `json:"permissions"`
+	ContainerRuntime *RuntimeProfileEvidence `json:"containerRuntime,omitempty"`
+	DestinationNode  string                  `json:"destinationNode"`
+	VMIDRanges       []IntegerRange          `json:"vmidRanges"`
+	Storages         []StorageEvidence       `json:"storages"`
+	Networks         []NetworkEvidence       `json:"networks"`
+	Templates        []TemplateEvidence      `json:"templates"`
+	Permissions      []PermissionEvidence    `json:"permissions"`
 }
 
 type IntegerRange struct {
@@ -381,8 +392,15 @@ func validatePolicy(policy VerificationPolicy) error {
 }
 
 func validateEvidence(evidence Evidence) (bool, []string, error) {
-	if evidence.SchemaVersion != EvidenceSchema || !stableIDPattern.MatchString(evidence.RunID) {
+	if (evidence.SchemaVersion != EvidenceSchema && evidence.SchemaVersion != RuntimeEvidenceSchema) || !stableIDPattern.MatchString(evidence.RunID) {
 		return false, nil, errors.New("qualification evidence identity is invalid")
+	}
+	if evidence.Profile.ContainerRuntime != nil {
+		if evidence.SchemaVersion != RuntimeEvidenceSchema || !digestPattern.MatchString(evidence.ContainerRuntimeTranscriptDigest) {
+			return false, nil, errors.New("runtime qualification transcript is required")
+		}
+	} else if evidence.SchemaVersion == RuntimeEvidenceSchema || evidence.ContainerRuntimeTranscriptDigest != "" {
+		return false, nil, errors.New("unexpected runtime qualification")
 	}
 	issuedAt, err := parseTimestamp(evidence.IssuedAt)
 	if err != nil {
@@ -493,6 +511,27 @@ func validateProfile(profile ProfileEvidence) error {
 		}
 		aliases[template.Alias], templateIDs[identity] = true, true
 	}
+	if runtime := profile.ContainerRuntime; runtime != nil {
+		if runtime.SchemaVersion != containervm.Version || !objectPattern.MatchString(runtime.Pool) || len(runtime.Images) == 0 || len(runtime.Images) > 64 {
+			return errors.New("runtime qualification profile invalid")
+		}
+		found := false
+		for _, t := range profile.Templates {
+			if t.Alias == runtime.TemplateAlias {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("runtime template not qualified")
+		}
+		seen := map[string]bool{}
+		for _, image := range runtime.Images {
+			if !containervm.ValidImage(image) || seen[image] {
+				return errors.New("runtime image invalid")
+			}
+			seen[image] = true
+		}
+	}
 	paths := make(map[string]bool)
 	for _, permission := range profile.Permissions {
 		if !validPermissionPath(permission.Path) || paths[permission.Path] || len(permission.Privileges) == 0 || len(permission.Privileges) > 32 {
@@ -501,7 +540,7 @@ func validateProfile(profile ProfileEvidence) error {
 		paths[permission.Path] = true
 		seen := make(map[string]bool)
 		for index, privilege := range permission.Privileges {
-			if !privilegePattern.MatchString(privilege) || privilege == "VM.GuestAgent.Unrestricted" || privilege == "Sys.Modify" || seen[privilege] || index > 0 && permission.Privileges[index-1] >= privilege {
+			if !privilegePattern.MatchString(privilege) || (privilege == "VM.GuestAgent.Unrestricted" && (profile.ContainerRuntime == nil || permission.Path != "/pool/"+profile.ContainerRuntime.Pool)) || privilege == "Sys.Modify" || seen[privilege] || index > 0 && permission.Privileges[index-1] >= privilege {
 				return errors.New("qualification privileges must be least-privilege, unique, and sorted")
 			}
 			seen[privilege] = true

@@ -89,6 +89,19 @@ func validateCanonicalLab(config TargetConfig, lab canonicalLabDocument, overrid
 	if _, ok := findNetworkProfile(config, selection.network); !ok {
 		return selection, []*pluginv1.StructuredError{mutationError("unknown_provider_profile", "invalid_declaration", "Provider override references an unavailable profile", "providerOverride", "")}
 	}
+
+	// Validate translated physical specs without changing the portable declaration.
+	lab.Resources = append([]canonicalResource(nil), lab.Resources...)
+	for i, resource := range lab.Resources {
+		if resource.Kind != "Container" {
+			continue
+		}
+		translated, _, err := containerVM(config, resource)
+		if err != nil {
+			return selection, []*pluginv1.StructuredError{mutationError("unsupported_container", "unsupported_capability", err.Error(), "resources", resource.ID)}
+		}
+		lab.Resources[i] = translated
+	}
 	networks := make(map[string]canonicalNetworkSpec)
 	resourceIDs := make(map[string]string)
 	vmCount := uint32(0)
@@ -255,6 +268,20 @@ func (service *Service) PlanResource(_ context.Context, request *pluginv1.PlanRe
 	if err != nil {
 		response.Error = mutationError("invalid_excluded_claim", "invalid_declaration", "Excluded allocation claims are invalid", "excludedAllocations", resource.ID)
 		return response, nil
+	}
+
+	if resource.Kind == "Container" {
+		translated, runtime, err := containerVM(config, resource)
+		if err != nil {
+			response.Error = mutationError("unsupported_container", "unsupported_capability", err.Error(), "resource", resource.ID)
+			return response, nil
+		}
+		runtime.InstanceID = plan.InstanceID
+		runtime.Generation = plan.Generation
+		plan.Container = &runtime
+		plan.SchemaVersion = qemuPlanV11
+		plan.ResourceKind = "VM"
+		resource = translated
 	}
 	switch resource.Kind {
 	case "Network":
@@ -470,8 +497,14 @@ func bytesToMiBRoundUp(value uint64) uint64 {
 
 func validatePlanBindings(config TargetConfig, plan QEMUPlan, resourceJSON []byte) error {
 	var resource canonicalResource
-	if err := decodeEnvelope(resourceJSON, maximumConfigBytes, &resource); err != nil || resource.ID != plan.LogicalResourceID || resource.Kind != plan.ResourceKind {
+	if err := decodeEnvelope(resourceJSON, maximumConfigBytes, &resource); err != nil || resource.ID != plan.LogicalResourceID {
 		return fmt.Errorf("plan resource binding is invalid")
+	}
+
+	var bindingErr error
+	resource, bindingErr = runtimeBinding(config, plan, resource)
+	if bindingErr != nil || resource.Kind != plan.ResourceKind {
+		return fmt.Errorf("plan runtime resource binding invalid")
 	}
 	if plan.ResourceKind == "Network" {
 		var spec canonicalNetworkSpec

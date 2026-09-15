@@ -106,3 +106,5 @@ for ten seconds. It forwards no opaque observation or provider state to clients
 and never persists the read result. Proxmox uses its existing VM.Audit status
 read after exact state/generation/ownership validation. This behavior-changing
 provider build requires fresh target qualification before deployment.
+
+The implemented Proxmox subset uses the closed [container VM bootstrap v1](../../design/contracts/container-vm-runtime.schema.json), shared `pkg/containervm` and the fixed `cmd/lab-container-vm` guest entrypoint. [ADR-0022](../adr/0022-proxmox-container-vm-runtime.md) defines its offline image, one-VM-per-container and exact-pool guest execution rules. Broader mounts, secrets, online pulls and other cloud adapters remain planned.

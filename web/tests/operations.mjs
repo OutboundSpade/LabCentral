@@ -4,7 +4,7 @@ import {createServer} from 'node:http';
 import {WebSocketServer} from 'ws';
 import {chromium,firefox,webkit} from 'playwright';
 const build=new URL('../build/',import.meta.url),shots=new URL(process.env.LABCENTRAL_SCREENSHOTS || '../../bin/classroom-ops-20260907/screenshots/',import.meta.url);await mkdir(shots,{recursive:true});
-let labs=[],deletes=[],fail=true,admin=false,usageDown=false,keys=[],renewals=0,revoked=false;
+let labs=[],deletes=[],fail=true,admin=false,usageDown=false,keys=[],renewals=0,revoked=false,selectedMachine="vm.workstation";
 const now=()=>new Date().toISOString();
 const lab=(id)=>({id:'instance.'+id,projectId:'project.class',revisionId:'revision.'+id,ownerKind:'user',ownerId:'user.student',phase:'ready',desiredLifecycle:'running',providerTargetId:'target.test',createdAt:now(),expiresAt:new Date(Date.now()+14400000).toISOString(),resources:[{id:'vm.workstation',kind:'VM',phase:'ready'}]});
 const operation={id:'operation.queued',instanceId:'instance.one',kind:'create',state:'queued',attempt:0,createdAt:now(),updatedAt:now()};
@@ -12,8 +12,9 @@ const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost'),path=url.pathname;const json=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data))};
  if(path.startsWith('/api/v1/')){
  const p=path.slice(7);let body='';for await(const c of req)body+=c;
- if(p.startsWith('/access-sessions/') && req.method==='GET')return json({id:p.split('/')[2],instanceId:'instance.one',resourceId:'vm.workstation',method:'vnc',state:revoked?'revoked':'expired',resourceVersion:1,closureRequired:false});
- if(p==='/access-sessions' && req.method==='POST'){renewals++;return json({session:{id:'access.renewed'+renewals},oneTimeToken:'test-console-'+renewals,launchUrl:'/access/access.renewed'+renewals},201);}
+ if(p==='/lab-instances/instance.one' && req.method==='GET')return json({...lab('one'),resources:[...lab('one').resources,{id:'vm.peer',kind:'VM',phase:'ready'}]});
+ if(p.startsWith('/access-sessions/') && req.method==='GET')return json({id:p.split('/')[2],instanceId:'instance.one',resourceId:selectedMachine,method:'vnc',state:revoked?'revoked':'expired',resourceVersion:1,closureRequired:false});
+ if(p==='/access-sessions' && req.method==='POST'){renewals++;selectedMachine=JSON.parse(body).resourceId;return json({session:{id:'access.renewed'+renewals,resourceId:selectedMachine},oneTimeToken:'test-console-'+renewals,launchUrl:'/access/access.renewed'+renewals},201);}
  if(p.endsWith('/actions/revoke'))return json({state:'revoked'});
  if(p==='/server-info')return json({authMode:'oidc',defaultProviderTargetId:'target.test',uiFeatures:['browser-vnc']});
  if(p==='/session')return json({subjectId:'user.student',displayName:'Alex',roles:[admin?'platform-administrator':'participant']});
@@ -52,7 +53,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.
 try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  if(process.env.LABCENTRAL_BROWSER && process.env.LABCENTRAL_BROWSER!==name)continue;
  const browser=await engine.launch();try{
- labs=[lab('one'),lab('two')];deletes=[];fail=true;admin=false;usageDown=false;keys=[];renewals=0;revoked=false;
+ labs=[lab('one'),lab('two')];deletes=[];fail=true;admin=false;usageDown=false;keys=[];renewals=0;revoked=false;selectedMachine="vm.workstation";
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
  await page.waitForLoadState("networkidle");await page.goto(origin);await page.getByRole('link',{name:'Lab one',exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'Operations',exact:true}).count(),0);
  await page.getByRole('checkbox',{name:'Select all active labs'}).check();await page.getByRole('button',{name:'Delete selected'}).click();await page.getByRole('heading',{name:'Delete 2 labs?'}).waitFor();await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(deletes.length,0);
@@ -77,7 +78,8 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  if(await page.getByRole('button',{name:'Exit full screen'}).isVisible())await page.getByRole('button',{name:'Exit full screen'}).click();else await page.getByText('Full screen is unavailable in this browser.').waitFor();
  await page.reload();await page.getByText('Connected',{exact:true}).waitFor();assert.equal(renewals,1);assert(new URL(page.url()).pathname==='/access/access.renewed1');
  for(const socket of wss.clients)socket.close();await page.waitForURL(origin+'/access/access.renewed2');await page.getByText('Connected',{exact:true}).waitFor();assert.equal(renewals,2);
- revoked=true;for(const socket of wss.clients)socket.close();await page.getByText('Console access was revoked. Return to your lab.').waitFor();assert.equal(renewals,2);assert(await page.getByRole('button',{name:'Reconnect',exact:true}).isDisabled());
+ await page.getByRole('combobox',{name:'Machine',exact:true}).selectOption('vm.peer');await page.waitForURL(origin+'/access/access.renewed3');await page.getByText('Connected',{exact:true}).waitFor();assert.equal(selectedMachine,'vm.peer');
+ revoked=true;for(const socket of wss.clients)socket.close();await page.getByText('Console access was revoked. Return to your lab.').waitFor();assert.equal(renewals,3);assert(await page.getByRole('button',{name:'Reconnect',exact:true}).isDisabled());
  if(name==='chromium')await page.screenshot({path:new URL('console-desktop.png',shots).pathname});await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
  console.log(`PASS ${name}: bulk cancel/partial failure/idempotent retry, admin usage/queue/errors/unavailable, real RFB special keys, resize/fullscreen/view-only and mobile`);
  }finally{await browser.close()}

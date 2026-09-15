@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -34,12 +35,14 @@ var templateDiskPattern = regexp.MustCompile(`^(scsi|virtio)[0-9]{1,2}$`)
 
 const (
 	targetConfigV11      = "proxmox.target-config/v1.1"
+	targetConfigV13      = "proxmox.target-config/v1.3"
 	targetConfigV12      = "proxmox.target-config/v1.2"
 	mutationInventoryV10 = "proxmox.mutation-inventory/v1.0"
 	supportedPVERange    = ">=9.0.0 <10.0.0"
 )
 
 type TargetConfig struct {
+	ContainerRuntime      *ContainerRuntimeProfile    `json:"containerRuntime,omitempty"`
 	SchemaVersion         string                      `json:"schemaVersion,omitempty"`
 	Endpoint              string                      `json:"endpoint"`
 	CACertificatePEM      string                      `json:"caCertificatePEM,omitempty"`
@@ -138,11 +141,27 @@ func (config TargetConfig) validateMutation() error {
 	if !config.MutationEnabled {
 		return nil
 	}
-	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 {
+	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 {
 		return fmt.Errorf("mutation requires schemaVersion %q or %q", targetConfigV11, targetConfigV12)
 	}
+	if runtime := config.ContainerRuntime; runtime != nil {
+		if config.SchemaVersion != targetConfigV13 || config.Pool == "" || runtime.SchemaVersion != containervm.Version || len(runtime.Images) == 0 || len(runtime.Images) > 64 {
+			return fmt.Errorf("invalid container runtime profile")
+		}
+		if _, ok := findTemplateProfile(config, runtime.TemplateAlias); !ok {
+			return fmt.Errorf("runtime template unavailable")
+		}
+		seen := map[string]bool{}
+		for _, image := range runtime.Images {
+			if !containervm.ValidImage(image) || seen[image] {
+				return fmt.Errorf("invalid runtime image")
+			}
+			seen[image] = true
+		}
+	}
+
 	if config.ConsoleAccess.Enabled {
-		if config.SchemaVersion != targetConfigV12 || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
+		if (config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13) || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
 			return fmt.Errorf("console access requires schemaVersion %q and a maximum duration between 60 and 3600 seconds", targetConfigV12)
 		}
 	} else if config.ConsoleAccess.MaximumDurationSeconds != 0 {
@@ -281,7 +300,7 @@ func validatePermissionScopes(config TargetConfig) error {
 			if !validField(privilege) {
 				return fmt.Errorf("permission scope privilege is invalid")
 			}
-			if _, forbidden := forbiddenMutationPrivileges[privilege]; forbidden {
+			if _, forbidden := forbiddenMutationPrivileges[privilege]; forbidden && !(privilege == "VM.GuestAgent.Unrestricted" && config.ContainerRuntime != nil && config.Pool != "" && scope.Path == "/pool/"+config.Pool) {
 				return fmt.Errorf("permission scope contains forbidden broad privilege %q", privilege)
 			}
 			if _, duplicate := seenPrivileges[privilege]; duplicate {
@@ -319,6 +338,9 @@ func expectedPermissionScopes(config TargetConfig) map[string]map[string]bool {
 		destinationPath = "/pool/" + config.Pool
 	}
 	add(destinationPath, "VM.Allocate", "VM.Audit", "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Memory", "VM.Config.Network", "VM.Config.Options", "VM.GuestAgent.Audit", "VM.PowerMgmt")
+	if config.ContainerRuntime != nil {
+		add(destinationPath, "VM.GuestAgent.Unrestricted")
+	}
 	if config.ConsoleAccess.Enabled {
 		add(destinationPath, "VM.Console")
 	}

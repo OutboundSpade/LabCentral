@@ -50,3 +50,13 @@ is silently weakened or rewritten.
 
 Container process isolation is appropriate here only for trusted teaching
 workloads. Arbitrary hostile code needs a separately verified sandbox or VM.
+
+### Containers with VM isolation
+
+For a qualified Proxmox runtime, declare `isolation: virtualMachine` and
+`realizationPreference: [viaVM]` on each container. These fields express the
+required isolation and realization; an image alone cannot imply that intent.
+The [web/client example](../../examples/proxmox-containers/lab.yaml) uses one
+VM per container and private static addresses. See [supported fields and console
+commands](../operations/container-vm-runtime.md). Each container also consumes a
+VM quota unit, with CPU and memory covering the entire guest.

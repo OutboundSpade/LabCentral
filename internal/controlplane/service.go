@@ -254,7 +254,10 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 		return PlanResult{}, nil, err
 	}
 	defer session.Close()
-	var plannedAllocations []application.AllocationKey
+	plannedAllocations, err := s.store.ListTargetAllocationKeys(ctx, validation.TargetID)
+	if err != nil {
+		return PlanResult{}, nil, err
+	}
 	for _, resource := range graph.Resources {
 		plan := ResourcePlan{ResourceID: string(resource.ID()), Kind: string(resource.Kind()), Action: "ensure"}
 		if !providerManagedKind(resource.Kind()) {

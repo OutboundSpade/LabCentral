@@ -90,3 +90,13 @@ The isolation runner binds that mechanism to two independently claimed VLANs and
 ## Future hardening
 
 Automatic bundle and per-plugin publisher-signature enforcement, external policy modules that only constrain, isolated image importers, hardware-backed key management, and anomaly/flow monitoring are roadmap items. They do not weaken current fail-closed defaults.
+
+## Offline container VM extension
+
+ADR-0022 confines author argv and literal environment values to a rootless workload
+inside a dedicated owned VM. The fixed QGA bootstrap receives no credentials,
+mounts or provider addresses, rejects replacement bindings and never executes an
+author-selected host program. Guest-exec permission is restricted to the exact
+configured pool and remains forbidden for VM-only profiles. A compromised guest
+may falsify workload readiness; authorization, ownership, claims and network
+isolation remain outside that guest.

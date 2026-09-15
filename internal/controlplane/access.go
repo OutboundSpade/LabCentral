@@ -388,7 +388,7 @@ func (s *Service) failCreatedAccessSession(ctx context.Context, pending AccessSe
 
 func accessResource(resources []ResourceRecord, id domain.LogicalResourceID) (ResourceRecord, error) {
 	for _, resource := range resources {
-		if resource.ID == id && resource.Kind == domain.ResourceVM && (resource.Phase == domain.ResourceReady || resource.Phase == domain.ResourcePaused) {
+		if resource.ID == id && resource.UsesVirtualMachine() && (resource.Phase == domain.ResourceReady || resource.Phase == domain.ResourcePaused) {
 			return resource, nil
 		}
 	}

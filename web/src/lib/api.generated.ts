@@ -1843,6 +1843,8 @@ export interface components {
             id: string;
             kind: string;
             phase: string;
+            /** @description Resource has explicit virtual machine realization. */
+            virtualMachine?: boolean;
         };
         ResourcePlan: {
             action: string;

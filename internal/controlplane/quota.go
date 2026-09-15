@@ -48,6 +48,11 @@ func quotaAmountsForCanonical(lab domain.CanonicalLab) ([]application.QuotaAmoun
 				return nil, err
 			}
 		case domain.Container:
+			if typed.Spec.Isolation == domain.IsolationVirtualMachine && len(typed.Spec.RealizationPreference) == 1 && typed.Spec.RealizationPreference[0] == domain.ContainerViaVM {
+				if err := add(application.QuotaVMs, 1); err != nil {
+					return nil, err
+				}
+			}
 			if err := add(application.QuotaContainers, 1); err != nil {
 				return nil, err
 			}

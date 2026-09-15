@@ -135,3 +135,8 @@ Navigation continuity reference (retrieved 2026-09-08):
 ## Classroom credential renewal (retrieved 2026-09-15)
 
 - [Proxmox token management synopsis](https://github.com/proxmox/pve-docs/blob/master/generated/pveum.1-synopsis.adoc): token modification supports a Unix-epoch expiry and separate privileges. TASK-TESTBED-004 updates only the existing token's expiry; effective permissions are checked against the six accepted target scopes. Live API evidence confirms expired credentials returned HTTP 401 and renewed credentials permit authenticated readiness reads.
+
+## Container VM runtime (retrieved 2026-09-15)
+
+- [Proxmox QEMU Agent API source](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu/Agent.pm): exec accepts a program/argument array, exec-status returns captured output; both require VM.GuestAgent.Unrestricted. ADR-0022 restricts its use to the fixed runtime entrypoint and exact pool.
+- [Podman run reference](https://docs.podman.io/en/latest/markdown/podman-run.1.html): offline pull policy, rootless execution, host network namespace, capability removal and no-new-privileges options inform the dedicated-VM runtime.

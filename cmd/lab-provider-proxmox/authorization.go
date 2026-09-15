@@ -112,6 +112,9 @@ func qualifiedPVEVersion(inventory proxmox.Inventory) string {
 
 func qualificationProfile(config proxmox.TargetConfig, inventory proxmox.Inventory) (qualification.ProfileEvidence, error) {
 	profile := qualification.ProfileEvidence{DestinationNode: config.DestinationNode}
+	if r := config.ContainerRuntime; r != nil {
+		profile.ContainerRuntime = &qualification.RuntimeProfileEvidence{SchemaVersion: r.SchemaVersion, Pool: config.Pool, TemplateAlias: r.TemplateAlias, Images: append([]string(nil), r.Images...)}
+	}
 	for _, value := range config.VMIDRanges {
 		profile.VMIDRanges = append(profile.VMIDRanges, qualification.IntegerRange{Start: value.Start, End: value.End})
 	}
@@ -157,6 +160,12 @@ func qualificationProfile(config proxmox.TargetConfig, inventory proxmox.Invento
 
 func normalizedQualificationProfile(profile qualification.ProfileEvidence) qualification.ProfileEvidence {
 	result := profile
+	if profile.ContainerRuntime != nil {
+		r := *profile.ContainerRuntime
+		r.Images = append([]string(nil), r.Images...)
+		sort.Strings(r.Images)
+		result.ContainerRuntime = &r
+	}
 	result.VMIDRanges = append([]qualification.IntegerRange(nil), profile.VMIDRanges...)
 	result.Storages = append([]qualification.StorageEvidence(nil), profile.Storages...)
 	result.Networks = append([]qualification.NetworkEvidence(nil), profile.Networks...)
