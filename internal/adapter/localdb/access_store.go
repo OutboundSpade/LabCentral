@@ -208,8 +208,16 @@ func (s *Store) FinalizeAccessSession(ctx context.Context, request application.F
 		if err := s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, record.SubjectID, now); err != nil {
 			return record, err
 		}
-		if !request.ExpiresAt.After(now) || request.ExpiresAt.After(record.ExpiresAt) || !request.LaunchExpiresAt.After(now) || request.LaunchExpiresAt.After(request.ExpiresAt) || request.LaunchExpiresAt.After(now.Add(application.DefaultAccessLaunchTTL)) {
+		if !request.ExpiresAt.After(now) || request.ExpiresAt.After(record.ExpiresAt) || !request.LaunchExpiresAt.After(now) || request.LaunchExpiresAt.After(request.ExpiresAt) {
 			return record, fmt.Errorf("access session validity is invalid")
+		}
+		// The database clock owns the TTL bound. Its precision (milliseconds
+		// on SQLite) or clock skew can put it just behind the application.
+		// Clamp the launch deadline instead of rejecting a valid request;
+		// never extend either the caller's deadline or the session lifetime.
+		launchExpiresAt := request.LaunchExpiresAt
+		if maximum := now.Add(application.DefaultAccessLaunchTTL); launchExpiresAt.After(maximum) {
+			launchExpiresAt = maximum
 		}
 		result, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_access_sessions SET
 			endpoint_schema_name = ?, endpoint_schema_major = ?, endpoint_schema_minor = ?, endpoint_digest = ?,
@@ -219,7 +227,7 @@ func (s *Store) FinalizeAccessSession(ctx context.Context, request application.F
 			state = 'ready', closure_required = 0, resource_version = resource_version + 1, updated_at_us = `+s.nowMicros()+`
 			WHERE access_session_id = ? AND resource_version = ?`),
 			request.EndpointSchemaName, request.EndpointSchemaMajor, request.EndpointSchemaMinor, request.EndpointDigest.Hex(),
-			request.LaunchToken.KeyID, request.LaunchToken.Digest, request.LaunchExpiresAt.UnixMicro(), request.ExpiresAt.UnixMicro(),
+			request.LaunchToken.KeyID, request.LaunchToken.Digest, launchExpiresAt.UnixMicro(), request.ExpiresAt.UnixMicro(),
 			request.AccessStateSchema, request.AccessStateMajor, request.AccessStateMinor, request.AccessStateDigest.Hex(), nullableBytes(request.AccessState),
 			request.ID, record.ResourceVersion)
 		if err != nil {

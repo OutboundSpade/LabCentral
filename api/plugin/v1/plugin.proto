@@ -228,6 +228,16 @@ message Progress {
   google.protobuf.Timestamp occurred_at = 5;
 }
 
+// Optional point-in-time measurements. Absence means unavailable, never zero.
+// CPU fraction is normalized to the VM's configured vCPU capacity.
+message ResourceUsage {
+  google.protobuf.Timestamp sampled_at = 1;
+  optional double cpu_fraction = 2;
+  optional uint32 virtual_cpus = 3;
+  optional uint64 memory_used_bytes = 4;
+  optional uint64 memory_capacity_bytes = 5;
+}
+
 message ResourceResult {
   ProviderState provider_state = 1;
   bytes observed_state_json = 2;
@@ -235,6 +245,7 @@ message ResourceResult {
   StructuredError error = 4;
   bool compensation_attempted = 5;
   bool compensation_complete = 6;
+  ResourceUsage usage = 7;
 }
 
 message InvocationEvent {

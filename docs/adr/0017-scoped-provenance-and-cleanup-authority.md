@@ -1,9 +1,9 @@
 # ADR-0017: Scoped provenance and separate cleanup authority
 
-- **Status:** Accepted
+- **Status:** Superseded
 - **Date:** 2026-09-04
 - **Supersedes:** ADR-0014
-- **Superseded by:** None
+- **Superseded by:** ADR-0018
 
 ## Decision
 

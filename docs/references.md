@@ -76,3 +76,54 @@ universal target guarantees.
 ## Browser startup reference (retrieved 2026-09-06)
 
 - [noVNC 1.7.0 browser capability detection](https://github.com/novnc/noVNC/blob/v1.7.0/core/util/browser.js) — module evaluation awaits video-decoder detection. The optional console library therefore loads only inside the console flow, after the main application has rendered; browser regression tests include detection that never completes.
+
+## Private classroom testbed references (retrieved 2026-09-07)
+
+| Subject | Primary source | Decision supported |
+|---|---|---|
+| OIDC provider setup | [Official installation](https://pocket-id.org/docs/setup/installation) | Standalone binary installation is supported; passkeys require a secure HTTPS context. |
+| OIDC provider configuration | [Environment variables](https://pocket-id.org/docs/configuration/environment-variables) | APP_URL, loopback HOST/PORT, encryption-key file, proxy trust and static setup API key are supported; retain local state and disable analytics for this test instance. |
+| OIDC provider pinned binary | [v2.14.0 release](https://github.com/pocket-id/pocket-id/releases/tag/v2.14.0) | Official AMD64 asset and release-provided SHA-256 pin used for installation. |
+| OIDC provider client/user API | [Pinned OIDC controller](https://github.com/pocket-id/pocket-id/blob/v2.14.0/backend/internal/controller/oidc_controller.go), [user DTO](https://github.com/pocket-id/pocket-id/blob/v2.14.0/backend/internal/dto/user_dto.go) | Exact callback, confidential PKCE client, separate client-secret endpoint and explicit user IDs. Live setup also required a test email address. |
+| Tailscale private HTTPS | [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve), [official stable packages](https://pkgs.tailscale.com/stable/) | Serve proxies loopback services to tailnet clients using HTTPS. Debian trixie packages installed; account enrollment and tailnet HTTPS enablement are external prerequisites. No Funnel. |
+| Proxmox guest-agent transfer | [QEMU agent API implementation](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu/Agent.pm) | File writes accept at most 60 KiB content; bounded independent chunks and final archive verification allow installation without opening an ingress listener. |
+
+
+Classroom readiness sources retrieved 2026-09-07:
+
+| Topic | Primary source | Decision supported |
+|---|---|---|
+| Read-only image measurement | [Proxmox QEMU drive schema](https://github.com/proxmox/qemu-server/blob/master/src/PVE/QemuServer/Drive.pm) | SCSI `ro=1` allows measuring an unmounted logical disk without writing the template. Guest read-only status and source configuration were independently checked. |
+| Isolated bridge allocation and apply | [Proxmox network API](https://github.com/proxmox/pve-manager/blob/master/PVE/API2/Network.pm) | `bridge_vids` restricts allowed VLANs. GET exposes pending changes; PUT applies interface changes through ifupdown2. A separate vmbr4 avoids editing the pilot bridge; pending diff and existing interfaces were checked. |
+
+Console transport sources retrieved 2026-09-07:
+
+| Topic | Primary source | Decision supported |
+|---|---|---|
+| Proxmox temporary VNC ports | [PVE Tools](https://github.com/proxmox/pve-common/blob/master/src/PVE/Tools.pm), [QEMU API](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu.pm) | VNC port allocation is 5900–5999. WebSocket access checks both VM.Console and its VNC ticket. Live PVE1 9.2.11 returned plain RFB on the temporary socket, unlike the newer upstream TLS-first path; transport must be verified on the actual target. |
+| Tailscale peer encryption | [Node keys](https://tailscale.com/docs/concepts/node-keys), [Tailscale identity](https://tailscale.com/docs/concepts/tailscale-identity) | Peer node public keys authenticate encrypted WireGuard connections. The explicit access profile pins the peer and binds the socket to the local Tailscale interface. |
+| Local peer lookup | [LocalAPI client](https://github.com/tailscale/tailscale/blob/main/client/local/local.go) | Whois uses the local privileged daemon over its Unix socket. The live access UID can read peer identity without Tailscale operator authority. |
+| Serve mount paths | [Serve implementation](https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/serve.go) | Serve strips a mount prefix and joins the configured backend path; the console mount forwards to the same path on the loopback backend. |
+
+| Console static routing | [SvelteKit adapter-static](https://svelte.dev/docs/kit/adapter-static), [path configuration](https://svelte.dev/docs/kit/configuration#paths) | A generated fallback supports non-prerendered dynamic routes; root-relative assets preserve nested-route boot. Retrieved 2026-09-07. |
+| OIDC provider enrollment links | [Pinned one-time access handler](https://github.com/pocket-id/pocket-id/blob/v2.14.0/backend/internal/onetimeaccess/handler.go), [official login-code dialog](https://github.com/pocket-id/pocket-id/blob/v2.14.0/frontend/src/lib/components/one-time-link-modal.svelte) | Admin-created single-use links support explicit TTLs. The 25 handoff links use 48 hours and are never consumed by automation or sent automatically. Retrieved 2026-09-07. |
+
+## Classroom operations update — retrieved 2026-09-07
+
+- [noVNC RFB API](https://novnc.com/noVNC/docs/API.html): existing scaleViewport,
+  resizeSession, viewOnly, sendKey and sendCtrlAltDel operations; remote resize
+  is a request to the server, while local fitting is a browser operation.
+- [Proxmox VM status return schema discussion](https://lore.proxmox.com/pve-devel/2b7a5f73-66f0-40e5-a65c-cc015ccb1a51@proxmox.com/t/): cpu, cpus, mem and maxmem
+  status fields. VM.Audit reads are measurements rather than quota reservations;
+  live target comparison remains required for this provider update.
+
+
+## TanStack request caching (retrieved 2026-09-08)
+
+- [TanStack QueryClient](https://tanstack.com/query/v5/docs/reference/QueryClient) — fetchQuery freshness, query cancellation, invalidation and cache clearing; verified against installed `@tanstack/query-core` 5.102.8 source and regression tests.
+- [Svelte QueryClientProvider](https://github.com/TanStack/query/blob/main/packages/svelte-query/src/QueryClientProvider.svelte) — shared client context and mount/unmount lifecycle; verified against installed `@tanstack/svelte-query` 6.1.48 source. No server-side UI runtime or cache persistence is added.
+
+
+Navigation continuity reference (retrieved 2026-09-08):
+
+- [SvelteKit state management](https://svelte.dev/docs/kit/state-management) and [navigation hooks](https://svelte.dev/docs/kit/$app-navigation) — shared layouts preserve component state; afterNavigate handles client route changes. Confirmed against the installed SvelteKit 2.70.3 types and the built three-engine navigation fixture.

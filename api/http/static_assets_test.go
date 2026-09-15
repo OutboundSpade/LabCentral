@@ -42,3 +42,26 @@ func TestEmbeddedUIBootAssetsAreServed(t *testing.T) {
 		})
 	}
 }
+
+func TestEmbeddedUIClassroomDeepLinks(t *testing.T) {
+	handler := staticHandler(webassets.FS())
+	for _, route := range []string{"/launch", "/templates", "/classroom", "/people", "/settings", "/lab?id=instance.test", "/access/access.test"} {
+		t.Run(route, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
+			if response.Code != 200 || !strings.Contains(response.Body.String(), "_app/") {
+				t.Fatalf("deep link status=%d", response.Code)
+			}
+			if strings.Contains(response.Body.String(), `"./_app/`) {
+				t.Fatal("deep link contains relative boot assets")
+			}
+		})
+	}
+	for _, route := range []string{"/missing", "/api/missing", "/launch/missing", "/access/_app/missing.js", "/access/invalid/id"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))
+		if response.Code != 404 {
+			t.Fatalf("unknown route %s status=%d", route, response.Code)
+		}
+	}
+}

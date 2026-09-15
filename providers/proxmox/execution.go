@@ -107,7 +107,9 @@ func (service *Service) ReadResource(ctx context.Context, request *pluginv1.Read
 	state.ConfigDigest = current.Digest
 	state.Phase = status.Status
 	observed := &QEMUObservedState{SchemaVersion: qemuStateV10, ResourceKind: "VM", Node: state.Node, VMID: state.VMID, PowerState: status.Status, ConfigDigest: current.Digest, Networks: append([]NetworkBinding(nil), state.Networks...)}
-	return &pluginv1.ReadResourceResponse{Result: successResult(&state, observed, input.GetPriorState().GetOwnershipIds())}, nil
+	result := successResult(&state, observed, input.GetPriorState().GetOwnershipIds())
+	result.Usage = &pluginv1.ResourceUsage{SampledAt: timestamppb.New(service.now()), CpuFraction: status.CPU, VirtualCpus: status.CPUs, MemoryUsedBytes: status.Memory, MemoryCapacityBytes: status.MaxMemory}
+	return &pluginv1.ReadResourceResponse{Result: result}, nil
 }
 
 func (service *Service) DestroyResource(request *pluginv1.DestroyResourceRequest, stream grpc.ServerStreamingServer[pluginv1.DestroyResourceResponse]) error {

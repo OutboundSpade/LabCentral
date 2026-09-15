@@ -29,3 +29,20 @@ The owner selected Tailscale and approved the native state/UID migration on
 custody, HTTPS enablement and release approval controls) are tracked in the
 [deployment record](../operations/pve1-pilot.md) under `TASK-PROD-005`.
 That deployment preference does not waive the existing scale or failover gates.
+
+On 2026-09-07 the owner approved a separate private classroom testbed on PVE1,
+OIDC provider as the example OIDC provider, and ephemeral labs with no scheduled
+backup or off-host recovery infrastructure. These choices are accepted in
+[classroom-ui.md](classroom-ui.md); they are not new open questions. Tailnet enrollment and instructor passkey enrollment are complete. Student
+passkey enrollment and acceptance results are tracked in
+[the testbed runbook](../operations/classroom-testbed.md). Production recovery
+requirements above are separate from this disposable testbed milestone.
+
+The classroom image and isolated vmbr4 bootstrap checks are now measured. The
+owner delegated review and signing to the implementation agent under ADR-0018.
+Actual T3 execution, reviewed signing and runtime activation are complete.
+ADR-0019 records the verified peer-pinned Tailscale console transport. The
+25-seat one-hour console soak, access expiry/revocation, control-VM restart,
+student workflow and independent cleanup have passed. TASK-TESTBED-001 is
+complete. No reviewer identity, deployment permission or VM-login input is
+pending; students enroll passkeys using their individual private links.

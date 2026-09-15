@@ -1267,3 +1267,27 @@ func TestCleanupFallbackOnlyDeletesPreviouslyOwnedResource(t *testing.T) {
 		t.Fatalf("cleanup result=%v deletes=%d authorizations=%d", result.GetError(), fixture.fake.deleteCalls, a.calls)
 	}
 }
+
+func TestUsageReadRequiresOwnedVMAndLeavesMutationStateAlone(t *testing.T) {
+	fixture := newExecutionFixture(t)
+	result := applyVMFixture(t, fixture)
+	input := cloneMutationInput(fixture.vmInput)
+	input.PriorState = result.GetProviderState()
+	before := fixture.fake.cloneCalls + fixture.fake.configureCalls + fixture.fake.lifecycleCalls["start"]
+	read, err := fixture.service.ReadResource(context.Background(), &pluginv1.ReadResourceRequest{Input: input})
+	if err != nil || read.GetResult().GetError() != nil || read.GetResult().GetUsage() == nil {
+		t.Fatalf("usage read: %v %v", err, read)
+	}
+	// The fake deliberately omits measurements; absence is distinct from idle zero.
+	if read.GetResult().GetUsage().CpuFraction != nil || read.GetResult().GetUsage().MemoryUsedBytes != nil {
+		t.Fatal("missing values fabricated")
+	}
+	input.Context.LabInstanceId = "instance.foreign"
+	denied, err := fixture.service.ReadResource(context.Background(), &pluginv1.ReadResourceRequest{Input: input})
+	if err != nil || denied.GetResult().GetError() == nil || denied.GetResult().GetUsage() != nil {
+		t.Fatal("foreign VM measurement allowed")
+	}
+	if before != fixture.fake.cloneCalls+fixture.fake.configureCalls+fixture.fake.lifecycleCalls["start"] {
+		t.Fatal("read mutated VM")
+	}
+}

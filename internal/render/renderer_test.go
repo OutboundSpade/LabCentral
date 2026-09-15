@@ -20,6 +20,7 @@ func TestRendererRendersExamplesDeterministically(t *testing.T) {
 		resources int
 		ids       []domain.LogicalResourceID
 	}{
+		{"classroom-debian", 2, []domain.LogicalResourceID{"network.classroom", "vm.workstation"}},
 		{"docker-laptop", 6, []domain.LogicalResourceID{"network.app", "volume.data", "container.client", "container.web", "access.client-shell", "output.web-url"}},
 		{"portable-containers", 6, []domain.LogicalResourceID{"network.service", "container.api", "container.collector", "container.loadgen[one]", "container.loadgen[two]", "access.api-shell"}},
 		{"routed-cyber-lab", 7, []domain.LogicalResourceID{"network.blue", "network.red", "vm.attacker", "vm.router", "vm.target", "access.attacker-console", "output.target-ip"}},

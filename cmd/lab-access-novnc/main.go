@@ -26,11 +26,27 @@ func main() {
 	listen := flags.String("listen", "127.0.0.1:8091", "private HTTP listen address for the reverse proxy")
 	publicOrigin := flags.String("public-origin", "", "browser-visible LabCentral HTTPS origin")
 	websocketBase := flags.String("websocket-base-path", "/access-proxy", "same-origin reverse-proxy path")
+	tailscaleProfileFile := flags.String("tailscale-upstream-profile", "", "optional operator-pinned Linux Tailscale console transport profile")
 	if err := flags.Parse(os.Args[1:]); err != nil || flags.NArg() != 0 || *publicOrigin == "" {
 		logger.Error("parse noVNC access plugin arguments")
 		os.Exit(1)
 	}
-	service, err := novnc.New(novnc.Config{PublicOrigin: *publicOrigin, WebSocketBasePath: *websocketBase})
+	var tailnet *novnc.TailscaleProfile
+	if *tailscaleProfileFile != "" {
+		file, err := os.Open(*tailscaleProfileFile)
+		if err != nil {
+			logger.Error("open tailnet console profile")
+			os.Exit(1)
+		}
+		contents, readErr := io.ReadAll(io.LimitReader(file, 4097))
+		_ = file.Close()
+		tailnet, err = novnc.ParseTailscaleProfile(contents)
+		if readErr != nil || err != nil {
+			logger.Error("invalid tailnet console profile")
+			os.Exit(1)
+		}
+	}
+	service, err := novnc.New(novnc.Config{PublicOrigin: *publicOrigin, WebSocketBasePath: *websocketBase, TailscaleProfile: tailnet})
 	if err != nil {
 		logger.Error("configure noVNC access plugin", "error", err)
 		os.Exit(1)

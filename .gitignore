@@ -8,3 +8,5 @@
 *.db-wal
 *.lock
 !web/bun.lock
+
+__pycache__/

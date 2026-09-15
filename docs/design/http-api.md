@@ -21,3 +21,38 @@ Local/OIDC mode uses secure cookies, exact Origin and CSRF checks for browser mu
 Access launches contain one-time tokens and a protected proxy URL, never provider management credentials. The separate access process exchanges tokens and periodically rechecks its authorization lease with core. Revocation/expiry and ownership changes close access conservatively.
 
 Static serving exposes only generated export files. Unknown paths do not receive a catch-all HTML page. Responses retain same-origin CSP, no-referrer, MIME-sniffing and frame protections. Problem responses sanitize provider errors and expose stable product error codes where supported.
+
+## Classroom discovery (TASK-UI-001)
+
+Authenticated `GET /projects` returns authorized project choices with evaluated
+`allowedActions` for navigation. `GET /users` and `GET /memberships` require
+membership administration at their declared scopes. `GET /projects/{id}/members`
+requires instructor batch authority on the exact target and returns only active
+users who may create their own lab there. Queries use bounded candidate pages,
+keyset pagination and visible-only continuation IDs; policy is re-evaluated on
+subsequent requests. Navigation visibility never grants mutation authority.
+
+`GET /lab-templates/{id}/revisions/{revisionId}/content` checks project/template
+binding, verifies stored content, and returns author source plus typed parameter
+declarations. The generated OpenAPI document registers authenticated handlers
+without constructing a running no-auth server. Static route shells are served
+for `/launch`, `/lab`, `/templates`, `/classroom`, `/people`, and `/settings`;
+unknown URLs remain 404. Valid `/access/{id}` paths serve the generated
+`200.html` shell and match an explicit client route. Root-relative boot assets
+prevent nested console URLs from requesting assets beneath `/access/`.
+Console launch accepts the exact expected path as a relative URL or an absolute
+URL on the configured origin; query strings, fragments and foreign origins are
+rejected. Launch material remains in session storage only until consumed.
+
+## Administrative operations (TASK-OPS-001)
+
+GET /admin/operations requires platform membership administration authority.
+It returns durable queued/running/failed counts and at most 200 operation rows,
+filtered by optional project and active/failed/all, with a time-and-ID cursor.
+GET /admin/lab-instances/{id}/usage requires the same platform authority plus
+instance read access, rechecked after the bounded provider call. Unavailable
+samples are explicit and never represented as zero usage. Responses exclude
+credentials, provider state and upstream addresses. The /operations static
+shell is administrative navigation; server authorization remains authoritative.
+Bulk UI deletion uses the existing per-instance destroy endpoint and preserves
+independent idempotency keys and results through uncertain-response retries.

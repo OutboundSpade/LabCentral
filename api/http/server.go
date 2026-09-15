@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
@@ -47,6 +48,7 @@ func New(service *controlplane.Service, exampleSource []byte, static fs.FS, opti
 	if options.NoAuthWarning == "" {
 		options.NoAuthWarning = NoAuthWarning
 	}
+	service.SetOperationsAuthorizer(options.Authentication.Authorizer)
 	register(api, service, exampleSource, options, security)
 	mux.Handle("/", staticHandler(static))
 	return &Server{Handler: securityHeaders(security.wrap(mux)), API: api}, nil
@@ -65,10 +67,24 @@ func staticHandler(content fs.FS) http.Handler {
 			return
 		}
 		if _, err := fs.Stat(content, clean); err != nil {
+			// SvelteKit exports these static route shells as <route>.html.
+			// Keep unknown URLs and API paths out of the SPA fallback.
+			switch clean {
+			case "launch", "templates", "classroom", "people", "settings", "lab", "operations":
+				if _, err := fs.Stat(content, clean+".html"); err == nil {
+					clone := request.Clone(request.Context())
+					clone.URL.Path = "/" + clean + ".html"
+					files.ServeHTTP(response, clone)
+					return
+				}
+			}
 			if strings.HasPrefix(clean, "access/") {
-				request.URL.Path = "/"
-				files.ServeHTTP(response, request)
-				return
+				if _, err := domain.NewAccessSessionID(strings.TrimPrefix(clean, "access/")); err == nil {
+					clone := request.Clone(request.Context())
+					clone.URL.Path = "/200.html"
+					files.ServeHTTP(response, clone)
+					return
+				}
 			}
 			http.NotFound(response, request)
 			return

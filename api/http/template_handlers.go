@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"time"
@@ -213,6 +214,36 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		RevisionID string `path:"revisionId" maxLength:"128"`
 		ProjectID  string `query:"projectId" required:"true" maxLength:"128"`
 	}
+	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}/content", func(ctx context.Context, input *revisionInput) (*struct{ Body TemplateContentDTO }, error) {
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
+		if err != nil {
+			return nil, err
+		}
+		id, err := domain.NewRevisionID(input.RevisionID)
+		if err != nil {
+			return nil, huma.Error404NotFound("Revision was not found")
+		}
+		actor, _ := requestPrincipal(ctx)
+		revision, source, err := service.OpenTemplateRevisionForProject(ctx, actor.user.ID, template.ProjectID, id)
+		if err != nil || revision.TemplateID != template.ID {
+			return nil, huma.Error404NotFound("Revision content is unavailable")
+		}
+		var representation struct {
+			Spec struct {
+				Parameters []TemplateParameterDTO `json:"parameters"`
+			} `json:"spec"`
+		}
+		if revision.RepresentationJSON != "" {
+			if err := json.Unmarshal([]byte(revision.RepresentationJSON), &representation); err != nil {
+				return nil, huma.Error500InternalServerError("Revision parameters could not be loaded")
+			}
+		}
+		parameters := representation.Spec.Parameters
+		if parameters == nil {
+			parameters = []TemplateParameterDTO{}
+		}
+		return &struct{ Body TemplateContentDTO }{Body: TemplateContentDTO{Source: string(source), Parameters: parameters}}, nil
+	})
 	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}", func(ctx context.Context, input *revisionInput) (*struct{ Body TemplateRevisionDTO }, error) {
 		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
 		if err != nil {

@@ -193,6 +193,22 @@ type TemplateRevisionDTO struct {
 	CreatedAt        time.Time `json:"createdAt"`
 }
 
+type TemplateParameterDTO struct {
+	Name        string            `json:"name"`
+	Type        string            `json:"type"`
+	Description string            `json:"description,omitempty"`
+	Required    bool              `json:"required,omitempty"`
+	Default     json.RawMessage   `json:"default,omitempty"`
+	Enum        []json.RawMessage `json:"enum,omitempty"`
+	Min         *float64          `json:"min,omitempty"`
+	Max         *float64          `json:"max,omitempty"`
+	Pattern     string            `json:"pattern,omitempty"`
+}
+type TemplateContentDTO struct {
+	Source     string                 `json:"source"`
+	Parameters []TemplateParameterDTO `json:"parameters"`
+}
+
 type AuditRecordDTO struct {
 	ID             string                    `json:"id"`
 	StreamPosition uint64                    `json:"streamPosition"`

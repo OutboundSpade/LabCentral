@@ -40,7 +40,7 @@ The core hosts an access-authorization callback service on the same host-created
 The callback service has three semantic operations:
 
 1. `ExchangeAccessToken` atomically consumes the one-time launch token and reauthorizes the current subject, ownership/share, membership, role, target grant, instance/resource state, method, audience, and access-plugin identity. Success returns an opaque short authorization lease; it returns no provider endpoint or authorization data.
-2. `RecheckAccessLease` repeats those current checks for an active connection. The initial default is a 15-second lease/recheck interval. A denial closes the stream. If core cannot be reached, an access plugin admits no new connection and closes an active stream no later than 30 seconds after its last successful authorization.
+2. `RecheckAccessLease` repeats those current checks for an active connection. The default authorization lease is 15 seconds and renewal is requested after 7.5 seconds, before that lease expires. A successful renewal moves the connection authorization deadline; it never extends the fixed access-session expiry. A denial closes the stream. If core cannot be reached, an access plugin admits no new connection and closes an active stream no later than 30 seconds after its last successful authorization.
 3. `EndAccessLease` reports a bounded safe terminal reason and releases the active connection record. It cannot turn a denied, expired, or revoked session back into `ready`.
 
 The callback caller is identified by the authenticated transport and registration session, not by a request-supplied plugin ID. Tokens and leases are compared by keyed hashes with constant-time equality and consume/renew against database time so concurrent control-plane replicas have one decision. Callback requests and responses are size/deadline bounded and excluded from generic request-body logging.
@@ -70,7 +70,7 @@ effective `VM.Console`, exact provider-state, generation, ownership-marker,
 and current VM-config checks. It returns a typed short-lived endpoint envelope
 directly to the access plugin through core. The plugin connects immediately,
 verifies the proxy against system roots plus the target-configured and
-Proxmox-returned CA material, consumes the Proxmox VNC challenge
+Proxmox-returned CA material by default, consumes the Proxmox VNC challenge
 itself, and presents a no-auth RFB stream only after core accepts the one-time
 launch exchange. The browser receives neither the Proxmox management origin,
 VNC password, nor API credential. Existing mutation qualification does not
@@ -83,3 +83,20 @@ Browser SSH is supported only when the selected image explicitly trusts an opera
 Future guest credential brokers may add per-instance/per-session passwords, users, RDP credentials, or API tokens; values use secret delivery and are never copied on clone unless explicitly regenerated.
 
 The executable cases for these rules are [`design/contracts/access-conformance.yaml`](../../design/contracts/access-conformance.yaml). All eighteen normal/guarded Go bindings now exist; `TEST-ACCESS-018` is an opt-in black-box run against an operator's disposable authenticated installation and skips before file or network access when inactive. `TEST-SEC-ACCESS-001` and `TEST-SEC-ACCESS-002` remain the threat-model anchors for single-use launch and telemetry secrecy.
+
+## Explicit encrypted tailnet transport
+
+[ADR-0019](../adr/0019-pinned-tailnet-console-transport.md) adds an operator-selected
+Linux transport for VNC sockets that are already inside Tailscale. A closed
+`labcentral.tailscale-vnc/v1` profile pins target, MagicDNS name, numeric tailnet
+address and node public key. The local tailscaled identity lookup must confirm
+the complete online peer binding. `SO_BINDTODEVICE=tailscale0` fixes the route
+to the encrypted tunnel, and the plugin permits only ports 5900–5999. There is
+no automatic TLS downgrade or management credential delivery to access.
+Default TLS transport and existing endpoint schemas remain unchanged.
+
+Launch finalization uses the database clock as the maximum launch-token TTL.
+If the application clock is slightly ahead (including SQLite millisecond
+rounding), finalization shortens the requested launch deadline to that bound.
+It never extends the caller deadline or fixed session lifetime; expired launch
+requests still fail. This avoids intermittent rejection at the TTL boundary.

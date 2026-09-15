@@ -177,7 +177,7 @@ func TestAccessContract008AuthorizationOutageFailsClosed(t *testing.T) {
 	lost := make(chan struct{}, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	go service.recheckLoop(ctx, current, callbacks, initial, lost)
+	go service.recheckLoop(ctx, current, callbacks, initial, lost, func(time.Time) {})
 	select {
 	case <-lost:
 	case <-ctx.Done():

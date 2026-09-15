@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
 phase: phase_3_production_topology_in_progress
-lastUpdated: "2026-09-06"
+lastUpdated: "2026-09-08"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -16,10 +16,16 @@ acceptedAdrs:
   - ADR-0013
   - ADR-0015
   - ADR-0016
-  - ADR-0017
+  - ADR-0018
+  - ADR-0019
+  - ADR-0020
 proposedAdrs: []
-supersededAdrs: [ADR-0011, ADR-0012, ADR-0014]
+supersededAdrs: [ADR-0011, ADR-0012, ADR-0014, ADR-0017]
 documents:
+  - path: docs/design/classroom-ui.md
+    status: complete
+  - path: docs/operations/classroom-testbed.md
+    status: complete
   - path: docs/operations/pve1-pilot.md
     status: complete
   - path: docs/operations/plugin-installation.md
@@ -219,6 +225,13 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-UI-004
+  - TASK-UI-003
+  - TASK-TESTBED-002
+  - TASK-OPS-001
+  - TASK-UI-002
+  - TASK-TESTBED-001
+  - TASK-UI-001
   - TASK-PILOT-001
   - TASK-ARCH-002
   - TASK-ARCH-001

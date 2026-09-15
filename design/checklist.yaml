@@ -1,6 +1,82 @@
 formatVersion: 1
-lastUpdated: "2026-09-06"
+lastUpdated: "2026-09-08"
 tasks:
+  - id: TASK-UI-004
+    title: Preserve workspace rendering across navigation
+    status: complete
+    dependencies: [TASK-UI-003]
+    relatedAdrs: [ADR-0009, ADR-0010]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Keep the authenticated shell mounted on internal navigation without startup-screen or whole-workspace skeleton flashes.
+      - Preserve existing data during background refresh, use cached destination data and recheck session authority without weakening identity reset.
+      - Verify delayed navigation, rapid changes, browser history, project scope and authentication in browser regressions; deploy the core-only fix to the private testbed.
+  - id: TASK-UI-003
+    title: Cache classroom requests with TanStack Query
+    status: complete
+    dependencies: [TASK-TESTBED-002]
+    relatedAdrs: [ADR-0009, ADR-0010, ADR-0020]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Reuse and deduplicate authorized GET requests with bounded in-memory freshness, preserving live operation and measurement polling.
+      - Invalidate reads after mutations and explicit refresh; clear identity-scoped cached data on authentication changes, denial and logout across tabs.
+      - Never cache credentials, one-use access launch tokens or authentication responses; retain canonical server authorization and mutation idempotency.
+      - Pass cache regression tests, Svelte build/check and three-engine browser workflows, then update the existing private testbed without changing the qualified provider.
+  - id: TASK-OPS-001
+    title: Add authorized VM usage and provisioning work queries
+    status: complete
+    dependencies: [TASK-UI-001, TASK-TESTBED-001]
+    relatedAdrs: [ADR-0006, ADR-0015, ADR-0018]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/design/http-api.md, docs/design/provider-contract.md]
+    acceptanceCriteria:
+      - Administrators can read current VM CPU and memory measurements with timestamps and explicit unavailable values through a typed API and optional provider read result.
+      - Queue and provisioning views expose durable operation state, attempts, resource progress and safe errors, with server authorization before reads.
+      - Older providers remain compatible and cannot imply measurement support; monitoring never changes desired state or persists read-back provider state.
+  - id: TASK-UI-002
+    title: Simplify the purple classroom UI and add bulk deletion and console controls
+    status: complete
+    dependencies: [TASK-OPS-001]
+    relatedAdrs: [ADR-0009, ADR-0015, ADR-0019]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/design/access-sessions.md]
+    acceptanceCriteria:
+      - Select visible active labs, confirm the exact selection and enqueue authorized per-lab deletion with individual failure reporting and safe retry.
+      - Use existing noVNC functions for full screen, resize modes and special keys in a compact accessible toolbar.
+      - Remove implementation clutter from ordinary flows, apply a restrained purple dark theme and provide an admin operations view.
+      - Pass Blueprint inspection and browser tests covering selection, failures, permissions and console controls.
+  - id: TASK-TESTBED-002
+    title: Verify and deploy the classroom operations update to the private testbed
+    status: complete
+    dependencies: [TASK-UI-002]
+    relatedAdrs: [ADR-0018, ADR-0019, ADR-0020]
+    relatedDocuments: [docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Deploy verified builds to the existing private classroom testbed while preserving user labs, enrollment links and the iad1 pilot.
+      - Requalify any changed provider build against the exact target and retain historical acceptance evidence separately.
+      - Verify real usage, console controls and bulk deletion on explicitly test-owned labs and record cleanup and current build evidence.
+  - id: TASK-UI-001
+    title: Deliver the owner-approved dark classroom interface and discoverable API
+    status: complete
+    dependencies: [TASK-ARCH-002, TASK-PROD-003]
+    relatedAdrs: [ADR-0009, ADR-0010, ADR-0016]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/design/http-api.md]
+    acceptanceCriteria:
+      - Students discover projects, launch published labs, follow progress, connect consoles and confirm ephemeral lab deletion without entering infrastructure IDs.
+      - Authors publish revisions, instructors manage classroom launches, and administrators manage identities and policy through the canonical API.
+      - OIDC and local sign-in, responsive layouts, accessibility and browser startup pass Blueprint inspection and browser workflow tests.
+      - Generated OpenAPI includes authenticated administration and typed frontend contracts remain synchronized.
+  - id: TASK-TESTBED-001
+    title: Deploy the private ephemeral classroom testbed on PVE1 with OIDC provider
+    status: complete # Signed T3; 26 OIDC logins; 25-console hour soak; expiry/revocation; VM restart; student workflow and independent cleanup passed.
+    dependencies: [TASK-UI-001]
+    relatedAdrs: [ADR-0004, ADR-0008, ADR-0009, ADR-0015, ADR-0018, ADR-0019]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Provision a separate Debian VM via the verified Proxmox API and expose authenticated HTTPS only over Tailscale.
+      - Use a separate OIDC provider test instance, explicit classroom memberships, and a published ephemeral Debian starter with usable browser consoles.
+      - Preserve local control state across restart and use exact-target reviewed qualification; keep the iad1 pilot unchanged.
+      - Verify 25 concurrent labs and consoles, a one-hour soak, expiry, cleanup and restart recovery.
+      - Omit scheduled backups and off-host recovery infrastructure for this disposable testbed; record reset and owned-resource reconciliation instructions.
+      - Record actual evidence and outstanding operator inputs without claiming production qualification.
   - id: TASK-PILOT-001
     title: Deploy the owner-requested PVE1 example over authenticated Tailscale HTTPS
     status: complete

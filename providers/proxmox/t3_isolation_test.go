@@ -523,7 +523,7 @@ func planT3IsolationResource(t *testing.T, service *Service, target *pluginv1.Ta
 		CanonicalResourceJson: resourceJSON, ProviderPlan: validationPlan,
 		OwnershipTokens: []string{randomT3Token(t)}, Dependencies: dependencies,
 	}
-	plan, err := service.PlanResource(context.Background(), &pluginv1.PlanResourceRequest{Input: input, ExcludedAllocations: excluded})
+	plan, err := t3ReservedPlan(t, service, context.Background(), &pluginv1.PlanResourceRequest{Input: input, ExcludedAllocations: excluded}, profile.ExpectedVMIDs[0], profile.ExpectedVLANs[0])
 	if err != nil || plan.GetError() != nil || !claimSetEquals(plan.GetProposedAllocations(), expectedNamespace, expectedValue) {
 		t.Fatalf("T3 isolation %s plan = %#v, %v", resourceID, plan, err)
 	}

@@ -262,7 +262,7 @@ func (s *Service) ExchangeAccessToken(ctx context.Context, identity application.
 	if !allowed {
 		return deniedAccessDecision(), nil
 	}
-	return application.AccessAuthorizationDecision{Granted: true, Lease: lease, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration}, nil
+	return application.AccessAuthorizationDecision{Granted: true, Lease: lease, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration / 2}, nil
 }
 
 func (s *Service) RecheckAccessLease(ctx context.Context, identity application.AccessCallbackIdentity, sessionID, lease string) (application.AccessAuthorizationDecision, error) {
@@ -289,7 +289,7 @@ func (s *Service) RecheckAccessLease(ctx context.Context, identity application.A
 	if !allowed {
 		return deniedAccessDecision(), nil
 	}
-	return application.AccessAuthorizationDecision{Granted: true, Lease: next, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration}, nil
+	return application.AccessAuthorizationDecision{Granted: true, Lease: next, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration / 2}, nil
 }
 
 func (s *Service) EndAccessLease(ctx context.Context, identity application.AccessCallbackIdentity, sessionID, lease, reason string) (bool, error) {

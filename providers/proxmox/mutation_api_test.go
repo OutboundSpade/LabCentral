@@ -33,7 +33,7 @@ func TestMutationClientUsesOnlyAllowlistedMethodsPathsAndSafeFields(t *testing.T
 			assertForm(t, request, map[string]string{"digest": strings.Repeat("a", 40), "sockets": "1", "cores": "2", "cpulimit": "1.5", "memory": "2048", "ciupgrade": "0", "onboot": "0", "description": "LCOWN1:test", "tags": "labcentral_test", "net0": "virtio=02:00:00:00:00:01,bridge=vmbr1,tag=200", "ipconfig0": "ip=10.20.0.10/24"})
 			writeAPIData(t, response, upidByType("qmconfig"))
 		case "GET /api2/json/nodes/pve-a/qemu/101/status/current":
-			writeAPIData(t, response, map[string]any{"status": "running", "qmpstatus": "paused", "vmid": 101, "name": "instance-vm"})
+			writeAPIData(t, response, map[string]any{"status": "running", "qmpstatus": "paused", "vmid": 101, "name": "instance-vm", "cpu": 0.125, "cpus": 2, "mem": 1048576, "maxmem": 536870912})
 		case "POST /api2/json/nodes/pve-a/qemu/101/status/start":
 			assertForm(t, request, map[string]string{})
 			writeAPIData(t, response, upidByType("qmstart"))
@@ -88,7 +88,7 @@ func TestMutationClientUsesOnlyAllowlistedMethodsPathsAndSafeFields(t *testing.T
 	if upid, err := client.ConfigureVM(ctx, ConfigureRequest{Node: "pve-a", VMID: 101, Digest: strings.Repeat("a", 40), Sockets: 1, Cores: 2, CPULimit: "1.5", MemoryMiB: 2048, Description: "LCOWN1:test", Tags: "labcentral_test", Networks: []NetworkBinding{binding}}); err != nil || upid.Type != "qmconfig" {
 		t.Fatalf("configure UPID = %#v, %v", upid, err)
 	}
-	if status, err := client.VMStatus(ctx, "pve-a", 101); err != nil || status.Status != "paused" {
+	if status, err := client.VMStatus(ctx, "pve-a", 101); err != nil || status.Status != "paused" || status.CPU == nil || *status.CPU != 0.125 || status.CPUs == nil || *status.CPUs != 2 || status.Memory == nil || *status.Memory != 1048576 || status.MaxMemory == nil || *status.MaxMemory != 536870912 {
 		t.Fatalf("status = %#v, %v", status, err)
 	}
 	for action, taskType := range map[string]string{"start": "qmstart", "stop": "qmshutdown", "pause": "qmpause", "resume": "qmresume"} {

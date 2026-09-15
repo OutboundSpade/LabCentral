@@ -114,3 +114,15 @@ type AccessRevoked struct {
 	Closed bool
 	Error  *ProviderIssue
 }
+
+// ProviderUsage is an optional read port; older providers may return nil usage.
+type ProviderUsage interface {
+	ReadUsage(context.Context, ProviderMutation) (*ResourceUsage, error)
+}
+type ResourceUsage struct {
+	SampledAt           time.Time `json:"sampledAt"`
+	CPUFraction         *float64  `json:"cpuFraction,omitempty"`
+	VirtualCPUs         *uint32   `json:"virtualCPUs,omitempty"`
+	MemoryUsedBytes     *uint64   `json:"memoryUsedBytes,omitempty"`
+	MemoryCapacityBytes *uint64   `json:"memoryCapacityBytes,omitempty"`
+}

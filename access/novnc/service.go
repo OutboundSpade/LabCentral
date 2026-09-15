@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -45,6 +46,7 @@ type Config struct {
 	WebSocketBasePath string
 	DialContext       func(context.Context, string, string) (net.Conn, error)
 	Now               func() time.Time
+	TailscaleProfile  *TailscaleProfile
 }
 
 type Service struct {
@@ -55,6 +57,7 @@ type Service struct {
 	basePath   string
 	dial       func(context.Context, string, string) (net.Conn, error)
 	now        func() time.Time
+	tailscale  *TailscaleProfile
 	mu         sync.Mutex
 	callbacks  *pluginruntime.AccessCallbacks
 	sessions   map[string]*session
@@ -102,7 +105,15 @@ func New(config Config) (*Service, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{origin: origin, basePath: basePath, dial: dial, now: now, sessions: make(map[string]*session)}, nil
+	var tailnet *TailscaleProfile
+	if config.TailscaleProfile != nil {
+		copy := *config.TailscaleProfile
+		if err := copy.validate(); err != nil {
+			return nil, err
+		}
+		tailnet = &copy
+	}
+	return &Service{origin: origin, basePath: basePath, dial: dial, now: now, tailscale: tailnet, sessions: make(map[string]*session)}, nil
 }
 
 func (service *Service) ConfigureCallbacks(callbacks pluginruntime.AccessCallbacks) error {
@@ -131,6 +142,7 @@ func (service *Service) Health(context.Context, *pluginv1.HealthRequest) (*plugi
 
 func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.CreateAccessRequest) (*pluginv1.CreateAccessResponse, error) {
 	fail := func(code, message string) (*pluginv1.CreateAccessResponse, error) {
+		slog.Warn("VNC access request rejected", "code", code)
 		return &pluginv1.CreateAccessResponse{Error: &pluginv1.StructuredError{Code: code, ErrorClass: "permanent", SafeMessage: message}}, nil
 	}
 	if request == nil || request.GetContext() == nil || !identifierPattern.MatchString(request.GetAccessSessionId()) ||
@@ -173,6 +185,7 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 	upstream, err := service.connectUpstream(ctx, endpoint)
 	endpoint.Password = ""
 	if err != nil {
+		slog.Warn("VNC upstream connection failed", "stage", upstreamFailureStage(err))
 		return fail("upstream_unavailable", "VNC upstream is unavailable")
 	}
 	handle, err := randomSecret(24)
@@ -196,6 +209,25 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 	service.mu.Unlock()
 	go service.expireSession(created)
 	return service.replayCreate(created), nil
+}
+
+// Log a bounded stage, never the underlying address, ticket or credential.
+func upstreamFailureStage(err error) string {
+	message := err.Error()
+	for _, stage := range []string{"tailnet identity", "tailnet peer", "upstream RFB"} {
+		if strings.HasPrefix(message, stage) {
+			return stage
+		}
+	}
+	var certErr *tls.CertificateVerificationError
+	if errors.As(err, &certErr) {
+		return "TLS verification"
+	}
+	var socketErr *net.OpError
+	if errors.As(err, &socketErr) {
+		return "socket"
+	}
+	return "transport"
 }
 
 func (service *Service) replayCreate(current *session) *pluginv1.CreateAccessResponse {
@@ -237,6 +269,21 @@ func (service *Service) RevokeAccess(_ context.Context, request *pluginv1.Revoke
 }
 
 func (service *Service) connectUpstream(ctx context.Context, endpoint accessendpoint.ProxmoxVNC) (net.Conn, error) {
+	if service.tailscale != nil {
+		connectContext, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		connection, err := service.tailscale.connect(connectContext, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		_ = connection.SetDeadline(time.Now().Add(8 * time.Second))
+		if err := authenticateUpstream(connection, endpoint.Password); err != nil {
+			_ = connection.Close()
+			return nil, err
+		}
+		_ = connection.SetDeadline(time.Time{})
+		return connection, nil
+	}
 	roots, err := x509.SystemCertPool()
 	if err != nil || roots == nil {
 		roots = x509.NewCertPool()
@@ -362,12 +409,12 @@ func (service *Service) expireSession(current *session) {
 }
 
 func (service *Service) bridge(connection *websocket.Conn, current *session, callbacks *pluginruntime.AccessCallbacks, initial *pluginv1.ExchangeAccessTokenResponse) {
-	expires := current.expires
-	if validUntil := initial.GetValidUntil().AsTime(); validUntil.Before(expires) {
-		expires = validUntil
-	}
-	ctx, cancel := context.WithDeadline(context.Background(), expires)
+	ctx, cancel := context.WithDeadline(context.Background(), current.expires)
 	defer cancel()
+	// Session lifetime is fixed; authorization deadlines move only after a
+	// successful core recheck. A stalled callback cannot extend this timer.
+	leaseTimer := time.AfterFunc(time.Until(initial.GetValidUntil().AsTime()), cancel)
+	defer leaseTimer.Stop()
 	downstream := websocket.NetConn(ctx, connection, websocket.MessageBinary)
 	if err := presentAuthorizedDownstream(downstream); err != nil {
 		_ = downstream.Close()
@@ -378,7 +425,9 @@ func (service *Service) bridge(connection *websocket.Conn, current *session, cal
 	go func() { _, _ = io.Copy(current.upstream, downstream); streamDone <- struct{}{} }()
 	go func() { _, _ = io.Copy(downstream, current.upstream); streamDone <- struct{}{} }()
 	authorizationLost := make(chan struct{}, 1)
-	go service.recheckLoop(ctx, current, callbacks, initial, authorizationLost)
+	go service.recheckLoop(ctx, current, callbacks, initial, authorizationLost, func(until time.Time) {
+		leaseTimer.Reset(time.Until(until))
+	})
 	select {
 	case <-streamDone:
 	case <-authorizationLost:
@@ -404,7 +453,7 @@ func (service *Service) bridge(connection *websocket.Conn, current *session, cal
 	service.mu.Unlock()
 }
 
-func (service *Service) recheckLoop(ctx context.Context, current *session, callbacks *pluginruntime.AccessCallbacks, initial *pluginv1.ExchangeAccessTokenResponse, lost chan<- struct{}) {
+func (service *Service) recheckLoop(ctx context.Context, current *session, callbacks *pluginruntime.AccessCallbacks, initial *pluginv1.ExchangeAccessTokenResponse, lost chan<- struct{}, renewed func(time.Time)) {
 	delay := initial.GetRecheckAfter().AsDuration()
 	if delay <= 0 || delay > 15*time.Second {
 		lost <- struct{}{}
@@ -452,6 +501,7 @@ func (service *Service) recheckLoop(ctx context.Context, current *session, callb
 		current.lease = decision.GetAuthorizationLease()
 		current.mu.Unlock()
 		lastSuccess = service.now().UTC()
+		renewed(decision.GetValidUntil().AsTime())
 	}
 }
 

@@ -166,6 +166,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	registerAuditAndEvents(api, service, security)
 	registerQuotas(api, service, security)
 	registerAccess(api, service, security)
+	registerOperations(api, service, security)
 
 	huma.Post(api, "/lab-validations", func(ctx context.Context, input *struct{ Body LabRequest }) (*struct{ Body ValidationBody }, error) {
 		if input.Body.Source == "" || input.Body.RevisionID != "" {

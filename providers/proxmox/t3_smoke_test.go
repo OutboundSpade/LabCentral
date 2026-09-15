@@ -103,7 +103,7 @@ func TestContractTESTPROXMOX025CredentialedSmokeRequiresExplicitTargetConfirmati
 			Context: t3Call(profile, "plan-network", profile.NetworkResourceID), Target: target,
 			CanonicalResourceJson: networkJSON, ProviderPlan: validation.GetProviderPlan(), OwnershipTokens: []string{"network-token"},
 		}
-		networkPlan, err := service.PlanResource(context.Background(), &pluginv1.PlanResourceRequest{Input: networkInput})
+		networkPlan, err := t3ReservedPlan(t, service, context.Background(), &pluginv1.PlanResourceRequest{Input: networkInput}, profile.ExpectedVMID, profile.ExpectedVLAN)
 		if err != nil || networkPlan.GetError() != nil || !claimSetEquals(networkPlan.GetProposedAllocations(), vlanClaimNamespace, profile.ExpectedVLAN) {
 			t.Fatalf("network plan = %#v, %v", networkPlan, err)
 		}
@@ -114,7 +114,7 @@ func TestContractTESTPROXMOX025CredentialedSmokeRequiresExplicitTargetConfirmati
 				LogicalResourceId: profile.NetworkResourceID, ProviderPlan: networkPlan.GetProviderPlan(), ProviderPlanDigest: networkPlan.GetProviderPlanDigest(),
 			}},
 		}
-		vmPlan, err := service.PlanResource(context.Background(), &pluginv1.PlanResourceRequest{Input: vmInput})
+		vmPlan, err := t3ReservedPlan(t, service, context.Background(), &pluginv1.PlanResourceRequest{Input: vmInput}, profile.ExpectedVMID, profile.ExpectedVLAN)
 		if err != nil || vmPlan.GetError() != nil || !claimSetEquals(vmPlan.GetProposedAllocations(), vmidClaimNamespace, profile.ExpectedVMID) {
 			t.Fatalf("VM plan = %#v, %v", vmPlan, err)
 		}
@@ -199,7 +199,7 @@ func TestCredentialedProxmoxT3Smoke(t *testing.T) {
 		Context: t3Call(profile, "plan-network", profile.NetworkResourceID), Target: target,
 		CanonicalResourceJson: networkJSON, ProviderPlan: validation.GetProviderPlan(), OwnershipTokens: []string{networkToken},
 	}
-	networkPlan, err := service.PlanResource(ctx, &pluginv1.PlanResourceRequest{Input: networkInput})
+	networkPlan, err := t3ReservedPlan(t, service, ctx, &pluginv1.PlanResourceRequest{Input: networkInput}, profile.ExpectedVMID, profile.ExpectedVLAN)
 	if err != nil || networkPlan.GetError() != nil {
 		t.Fatalf("T3 network plan failed: %v %#v", err, networkPlan.GetError())
 	}
@@ -239,7 +239,7 @@ func TestCredentialedProxmoxT3Smoke(t *testing.T) {
 			CommittedAllocations: cloneClaims(networkPlan.GetProposedAllocations()),
 		}},
 	}
-	vmPlan, err := service.PlanResource(ctx, &pluginv1.PlanResourceRequest{Input: vmPlanningInput})
+	vmPlan, err := t3ReservedPlan(t, service, ctx, &pluginv1.PlanResourceRequest{Input: vmPlanningInput}, profile.ExpectedVMID, profile.ExpectedVLAN)
 	if err != nil || vmPlan.GetError() != nil {
 		t.Fatalf("T3 VM plan failed: %v %#v", err, vmPlan.GetError())
 	}
@@ -613,4 +613,41 @@ func zeroBytesForT3(value []byte) {
 	for index := range value {
 		value[index] = 0
 	}
+}
+
+// t3ReservedPlan keeps qualification away from existing allocations without
+// changing the exact target configuration being qualified. Core admissions must
+// reserve these test claims for the run; expected-claim assertions still apply.
+func t3ReservedPlan(t *testing.T, service *Service, ctx context.Context, request *pluginv1.PlanResourceRequest, firstVMID, firstVLAN uint32) (*pluginv1.PlanResourceResponse, error) {
+	t.Helper()
+	var config TargetConfig
+	if err := decodeEnvelope(request.Input.Target.ConfigEnvelope, maximumConfigBytes, &config); err != nil {
+		t.Fatal(err)
+	}
+	excluded := cloneClaims(request.ExcludedAllocations)
+	seen := map[string]bool{}
+	for _, c := range excluded {
+		seen[c.Namespace+"/"+c.Value] = true
+	}
+	add := func(namespace string, value uint32) {
+		key := fmt.Sprint(value)
+		if !seen[namespace+"/"+key] {
+			excluded = append(excluded, &pluginv1.AllocationClaim{Namespace: namespace, Value: key})
+			seen[namespace+"/"+key] = true
+		}
+	}
+	for _, r := range config.VMIDRanges {
+		for v := r.Start; v < firstVMID && v <= r.End; v++ {
+			add(vmidClaimNamespace, v)
+		}
+	}
+	for _, n := range config.Networks {
+		for _, r := range n.VLANRanges {
+			for v := r.Start; v < firstVLAN && v <= r.End; v++ {
+				add(vlanClaimNamespace, v)
+			}
+		}
+	}
+	request.ExcludedAllocations = excluded
+	return service.PlanResource(ctx, request)
 }

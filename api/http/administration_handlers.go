@@ -18,6 +18,7 @@ func registerAdministration(api huma.API, security *requestSecurity) {
 	if security.options.Mode == AuthModeNone {
 		return
 	}
+	registerDirectory(api, security)
 	type userInput struct {
 		Body struct {
 			ID              string `json:"id" minLength:"1" maxLength:"128"`

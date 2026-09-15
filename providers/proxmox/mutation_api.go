@@ -65,9 +65,13 @@ type ConfigureRequest struct {
 }
 
 type VMStatus struct {
-	Status string
-	VMID   uint32
-	Name   string
+	CPU       *float64
+	CPUs      *uint32
+	Memory    *uint64
+	MaxMemory *uint64
+	Status    string
+	VMID      uint32
+	Name      string
 }
 
 type LifecycleRequest struct {
@@ -266,6 +270,10 @@ func (client *Client) VMStatus(ctx context.Context, node string, vmid uint32) (V
 		return VMStatus{}, fmt.Errorf("VM status identity is invalid")
 	}
 	raw, err := getAPI[struct {
+		CPU       *float64        `json:"cpu"`
+		CPUs      *uint32         `json:"cpus"`
+		Memory    *uint64         `json:"mem"`
+		MaxMemory *uint64         `json:"maxmem"`
 		Status    string          `json:"status"`
 		QMPStatus string          `json:"qmpstatus"`
 		VMID      json.RawMessage `json:"vmid"`
@@ -282,7 +290,7 @@ func (client *Client) VMStatus(ctx context.Context, node string, vmid uint32) (V
 	if status == "running" && raw.QMPStatus == "paused" {
 		status = "paused"
 	}
-	return VMStatus{Status: status, VMID: parsedVMID, Name: raw.Name}, nil
+	return VMStatus{Status: status, VMID: parsedVMID, Name: raw.Name, CPU: raw.CPU, CPUs: raw.CPUs, Memory: raw.Memory, MaxMemory: raw.MaxMemory}, nil
 }
 
 func (client *Client) LifecycleVM(ctx context.Context, request LifecycleRequest) (UPID, error) {

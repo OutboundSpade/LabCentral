@@ -54,6 +54,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/lab-instances/{id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get admin lab instances by ID usage */
+        get: operations["get-admin-lab-instances-by-id-usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get admin operations */
+        get: operations["get-admin-operations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-records": {
         parameters: {
             query?: never;
@@ -408,6 +442,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab-templates/{id}/revisions/{revisionId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get lab templates by ID revisions by revision ID content */
+        get: operations["get-lab-templates-by-id-revisions-by-revision-id-content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lab-validations": {
         parameters: {
             query?: never;
@@ -443,6 +494,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get memberships */
+        get: operations["get-memberships"];
+        put?: never;
+        /** Post memberships */
+        post: operations["post-memberships"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memberships/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put memberships by ID */
+        put: operations["put-memberships-by-id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/memberships/{id}/actions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post memberships by ID actions revoke */
+        post: operations["post-memberships-by-id-actions-revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations/{id}": {
         parameters: {
             query?: never;
@@ -454,6 +557,143 @@ export interface paths {
         get: operations["get-operations-by-id"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post organizations */
+        post: operations["post-organizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put organizations by ID */
+        put: operations["put-organizations-by-id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get projects */
+        get: operations["get-projects"];
+        put?: never;
+        /** Post projects */
+        post: operations["post-projects"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put projects by ID */
+        put: operations["put-projects-by-id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get projects by ID members */
+        get: operations["get-projects-by-id-members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/provider-target-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post provider target grants */
+        post: operations["post-provider-target-grants"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/provider-target-grants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put provider target grants by ID */
+        put: operations["put-provider-target-grants-by-id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/provider-target-grants/{id}/actions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post provider target grants by ID actions revoke */
+        post: operations["post-provider-target-grants-by-id-actions-revoke"];
         delete?: never;
         options?: never;
         head?: never;
@@ -529,6 +769,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/role-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post role assignments */
+        post: operations["post-role-assignments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/role-assignments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put role assignments by ID */
+        put: operations["put-role-assignments-by-id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/role-assignments/{id}/actions/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post role assignments by ID actions revoke */
+        post: operations["post-role-assignments-by-id-actions-revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/server-info": {
         parameters: {
             query?: never;
@@ -557,6 +848,109 @@ export interface paths {
         get: operations["get-session"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post teams */
+        post: operations["post-teams"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/teams/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put teams by ID */
+        put: operations["put-teams-by-id"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get users */
+        get: operations["get-users"];
+        put?: never;
+        /** Post users */
+        post: operations["post-users"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/actions/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post users by ID actions disable */
+        post: operations["post-users-by-id-actions-disable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/actions/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post users by ID actions enable */
+        post: operations["post-users-by-id-actions-enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/actions/issue-password-recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post users by ID actions issue password recovery */
+        post: operations["post-users-by-id-actions-issue-password-recovery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -974,6 +1368,16 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        InstanceUsage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/InstanceUsage.json
+             */
+            readonly $schema?: string;
+            instanceId: string;
+            items: components["schemas"]["VMUsage"][] | null;
+        };
         Issue: {
             code: string;
             fieldPath?: string;
@@ -1088,6 +1492,34 @@ export interface components {
             newPassword: string;
             token: string;
         };
+        MembershipPage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/MembershipPage.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["MembershipRecord"][] | null;
+            nextCursor?: string;
+        };
+        MembershipRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/MembershipRecord.json
+             */
+            readonly $schema?: string;
+            id: string;
+            organizationId: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+            teamId?: string;
+            userId: string;
+            /** Format: date-time */
+            validFrom?: string;
+            /** Format: date-time */
+            validUntil?: string;
+        };
         OperationDTO: {
             /**
              * Format: uri
@@ -1108,6 +1540,34 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        OperationsPageDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/OperationsPageDTO.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            failed: number;
+            items: components["schemas"]["OperationDTO"][] | null;
+            nextCursor?: string;
+            /** Format: int64 */
+            queued: number;
+            /** Format: int64 */
+            running: number;
+        };
+        OrganizationRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/OrganizationRecord.json
+             */
+            readonly $schema?: string;
+            id: string;
+            name: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+        };
         PlanResult: {
             /**
              * Format: uri
@@ -1120,6 +1580,46 @@ export interface components {
             providerTargetId: string;
             resources: components["schemas"]["ResourcePlan"][] | null;
             warnings: components["schemas"]["Issue"][] | null;
+        };
+        "Post-users-by-id-actions-issue-password-recoveryResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-users-by-id-actions-issue-password-recoveryResponse.json
+             */
+            readonly $schema?: string;
+            token: string;
+        };
+        ProjectChoiceDTO: {
+            allowedActions: string[] | null;
+            id: string;
+            name: string;
+            organizationId: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+        };
+        ProjectDirectoryDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ProjectDirectoryDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ProjectChoiceDTO"][] | null;
+            nextCursor?: string;
+        };
+        ProjectRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ProjectRecord.json
+             */
+            readonly $schema?: string;
+            id: string;
+            name: string;
+            organizationId: string;
+            /** Format: int64 */
+            resourceVersion?: number;
         };
         ProviderExample: {
             providerOverride?: unknown;
@@ -1230,6 +1730,18 @@ export interface components {
             resourceId: string;
             warnings?: components["schemas"]["Issue"][] | null;
         };
+        ResourceUsage: {
+            /** Format: double */
+            cpuFraction?: number;
+            /** Format: int64 */
+            memoryCapacityBytes?: number;
+            /** Format: int64 */
+            memoryUsedBytes?: number;
+            /** Format: date-time */
+            sampledAt: string;
+            /** Format: int32 */
+            virtualCPUs?: number;
+        };
         RevokeAccessInputBody: {
             /**
              * Format: uri
@@ -1238,6 +1750,26 @@ export interface components {
              */
             readonly $schema?: string;
             reason?: string;
+        };
+        RoleAssignmentRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/RoleAssignmentRecord.json
+             */
+            readonly $schema?: string;
+            id: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+            role: string;
+            scopeId: string;
+            scopeKind: string;
+            subjectId: string;
+            subjectKind: string;
+            /** Format: date-time */
+            validFrom?: string;
+            /** Format: date-time */
+            validUntil?: string;
         };
         ServerInfo: {
             /**
@@ -1266,6 +1798,60 @@ export interface components {
             displayName: string;
             roles: string[] | null;
             subjectId: string;
+        };
+        TargetGrantRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TargetGrantRecord.json
+             */
+            readonly $schema?: string;
+            id: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+            scopeId: string;
+            scopeKind: string;
+            targetId: string;
+            /** Format: date-time */
+            validFrom?: string;
+            /** Format: date-time */
+            validUntil?: string;
+        };
+        TeamRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TeamRecord.json
+             */
+            readonly $schema?: string;
+            id: string;
+            name: string;
+            organizationId: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+        };
+        TemplateContentDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TemplateContentDTO.json
+             */
+            readonly $schema?: string;
+            parameters: components["schemas"]["TemplateParameterDTO"][] | null;
+            source: string;
+        };
+        TemplateParameterDTO: {
+            default?: unknown;
+            description?: string;
+            enum?: unknown[] | null;
+            /** Format: double */
+            max?: number;
+            /** Format: double */
+            min?: number;
+            name: string;
+            pattern?: string;
+            required?: boolean;
+            type: string;
         };
         TemplateRevisionDTO: {
             /**
@@ -1299,6 +1885,53 @@ export interface components {
             readonly $schema?: string;
             description?: string;
             name: string;
+        };
+        UserDirectoryDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UserDirectoryDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["UserRecord"][] | null;
+            nextCursor?: string;
+        };
+        UserInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UserInputBody.json
+             */
+            readonly $schema?: string;
+            displayName: string;
+            externalSubject?: string;
+            id: string;
+            password?: string;
+            username: string;
+        };
+        UserRecord: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/UserRecord.json
+             */
+            readonly $schema?: string;
+            /** Format: date-time */
+            createdAt: string;
+            disabled: boolean;
+            displayName: string;
+            id: string;
+            /** Format: int64 */
+            resourceVersion?: number;
+            /** Format: date-time */
+            updatedAt: string;
+            username: string;
+        };
+        VMUsage: {
+            resourceId: string;
+            /** @enum {string} */
+            status: "available" | "unavailable";
+            usage?: components["schemas"]["ResourceUsage"];
         };
         ValidationBody: {
             /**
@@ -1419,6 +2052,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccessSessionDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-admin-lab-instances-by-id-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceUsage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-admin-operations": {
+        parameters: {
+            query?: {
+                projectId?: string;
+                filter?: "active" | "failed" | "all";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsPageDTO"];
                 };
             };
             /** @description Error */
@@ -1626,7 +2324,7 @@ export interface operations {
             303: {
                 headers: {
                     Location?: string;
-                    "Set-Cookie,omitempty"?: string;
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -1660,7 +2358,7 @@ export interface operations {
             303: {
                 headers: {
                     Location?: string;
-                    "Set-Cookie,omitempty"?: string;
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -2302,6 +3000,40 @@ export interface operations {
             };
         };
     };
+    "get-lab-templates-by-id-revisions-by-revision-id-content": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateContentDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "post-lab-validations": {
         parameters: {
             query?: never;
@@ -2413,6 +3145,147 @@ export interface operations {
             };
         };
     };
+    "get-memberships": {
+        parameters: {
+            query: {
+                after?: string;
+                limit?: number;
+                organizationId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-memberships-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-memberships-by-id-actions-revoke": {
+        parameters: {
+            query: {
+                organizationId: string;
+            };
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-operations-by-id": {
         parameters: {
             query?: never;
@@ -2431,6 +3304,323 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperationDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-organizations-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-projects": {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectDirectoryDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-projects-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-projects-by-id-members": {
+        parameters: {
+            query: {
+                after?: string;
+                limit?: number;
+                targetId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDirectoryDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-provider-target-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetGrantRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetGrantRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-provider-target-grants-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetGrantRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetGrantRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-provider-target-grants-by-id-actions-revoke": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetGrantRecord"];
                 };
             };
             /** @description Error */
@@ -2621,6 +3811,115 @@ export interface operations {
             };
         };
     };
+    "post-role-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleAssignmentRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-role-assignments-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleAssignmentRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-role-assignments-by-id-actions-revoke": {
+        parameters: {
+            query: {
+                scopeKind: string;
+                scopeId: string;
+            };
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-server-info": {
         parameters: {
             query?: never;
@@ -2666,6 +3965,243 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-teams-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamRecord"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-users": {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserDirectoryDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-users-by-id-actions-disable": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-users-by-id-actions-enable": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-users-by-id-actions-issue-password-recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Post-users-by-id-actions-issue-password-recoveryResponse"];
                 };
             };
             /** @description Error */

@@ -228,3 +228,34 @@ Run the isolation binding only after the qualification image starts `lab-proxmox
 The design-only Phase 0 exit is satisfied when examples validate against the executable schema, canonical vectors are stable, the plugin protocol passes compatibility checks, the fake-provider contract catalog covers failure windows, the threat model has owner/test mapping, and the verifier passes. The Phase 0B foundation additionally requires the implemented Go renderer, SQLite/PostgreSQL job suite, and fake-provider shared contract runner; those gates now pass. The trusted-laptop package additionally requires reproducible archive/checksum verification, SBOM/provenance presence, a toolchain-free runtime image, separate plugin execution, persistent state, and clean real-Engine lifecycle evidence. The Proxmox mutation design gate additionally requires closed typed schemas, complete generic-case mapping, no pre-gate mutation capability, and explicit T3 target/profile evidence. The disposable PVE target exercised target integration, least-privilege capability evidence, cleanup/orphan handling, and v1.0 state/journal upgrade readability. The single-operator production package requires ADR-0014 authorizer tests, immutable plugin launch, target status/refresh tests, deterministic release contents, service-unit verification, a deployment-specific signed qualification artifact before writes can open, packaged API create/restart/destroy, and independent post-destroy absence. Exact candidate `0.2.0-rc5` passed those gates on the disposable PVE 9.2.2 target; every new installation must repeat qualification against its own exact build and target.
 
 At least one test deliberately proves each destructive path refuses name-only or mismatched ownership. Secret-redaction tests seed canary values through request, job, plugin, error, event, audit, log, and trace paths and fail if any sink contains them.
+
+## Dark classroom interface and private testbed
+
+TASK-UI-001 uses production-export browser fixtures in Chromium, Firefox and
+WebKit for startup, student launch payloads, deep navigation, console controls,
+delete cancellation, polling outage recovery, role-specific pages, classroom
+batch ownership, admin screens and mobile overflow. API tests check filtered
+project/roster pages, revoked membership, scoped template content and embedded
+static routes. Blueprint source inspection and desktop/mobile visual review
+supplement these tests. These fixtures do not establish live OIDC or provider
+behavior. TASK-TESTBED-001 requires the separate live acceptance in the
+[classroom runbook](../operations/classroom-testbed.md).
+
+The live classroom run exposed digest prefix conversion at the core/plugin
+boundary and nested console routing issues. Regression checks now enforce raw
+hex wire digests, the explicit static console route, root-relative assets,
+same-origin relative/absolute launch URLs and foreign-origin rejection. The
+pinned tailnet transport rejects mismatched target/name/key/address, offline
+peers and identity-service failure; default TLS tests remain active. Real
+console keyboard input is validated on the private target. The 25-seat soak
+uses independent OIDC browser contexts with normal 30-minute console limits,
+individual reconnection at 24 minutes, and continuous lab/session observations.
+
+The live classroom soak exposed console closure at the initial authorization
+lease. Bridge regression tests now preserve RFB traffic through repeated lease
+renewals, close on denial or a stalled core, and enforce the fixed session
+expiry. Core callback tests require renewal to be scheduled before lease expiry.
+
+Access-store tests cover a caller clock ahead of the database, preservation of
+a shorter launch deadline and rejection of already-expired launches. The
+database TTL cap is checked without relaxing session expiry.

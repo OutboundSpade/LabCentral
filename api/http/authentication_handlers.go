@@ -152,7 +152,7 @@ func registerAuthentication(api huma.API, security *requestSecurity) {
 	type redirectOutput struct {
 		Status   int
 		Location string        `header:"Location"`
-		Cookies  []http.Cookie `header:"Set-Cookie,omitempty"`
+		Cookies  []http.Cookie `header:"Set-Cookie"`
 	}
 	huma.Register(api, huma.Operation{OperationID: "begin-oidc-login", Method: http.MethodGet, Path: "/auth/oidc/begin", DefaultStatus: http.StatusSeeOther},
 		func(ctx context.Context, input *oidcBeginInput) (*redirectOutput, error) {

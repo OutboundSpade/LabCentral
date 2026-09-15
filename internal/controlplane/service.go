@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/singleflight"
+	"sync"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
@@ -97,14 +99,19 @@ type RenderOptions struct {
 }
 
 type Service struct {
-	renderer    *render.Renderer
-	store       Store
-	artifacts   application.ArtifactStore
-	targets     *TargetRegistry
-	access      *AccessRegistry
-	authorizer  application.Authorizer
-	tokenHasher application.KeyedTokenHasher
-	ids         IDSource
+	operationsAuthorizer application.Authorizer
+	usageMu              sync.Mutex
+	usageReads           singleflight.Group
+	usageCache           map[string]cachedUsage
+	usageSlots           chan struct{}
+	renderer             *render.Renderer
+	store                Store
+	artifacts            application.ArtifactStore
+	targets              *TargetRegistry
+	access               *AccessRegistry
+	authorizer           application.Authorizer
+	tokenHasher          application.KeyedTokenHasher
+	ids                  IDSource
 }
 
 func NewService(renderer *render.Renderer, store Store, provider application.Provider, ids IDSource) (*Service, error) {

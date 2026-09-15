@@ -6,6 +6,7 @@ import (
 
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -23,7 +24,16 @@ func Schemas(ss []*wire.SchemaVersion) []app.ProviderSchema {
 	return out
 }
 func (a *Access) Create(ctx context.Context, r app.AccessCreate) (app.AccessCreated, error) {
-	v, err := a.Client.CreateAccess(ctx, &wire.CreateAccessRequest{Context: call(r.Call), AccessSessionId: r.SessionID, SubjectId: r.SubjectID, Method: r.Method, ExpiresAt: timestamppb.New(r.ExpiresAt), OpaqueConnectionData: r.Endpoint, EndpointSchema: schema(r.Schema), EndpointDigest: r.EndpointDigest, ProviderStateDigest: r.StateDigest, Audience: r.Audience})
+	endpointDigest, err := domain.ParseSHA256Digest(r.EndpointDigest)
+	if err != nil {
+		return app.AccessCreated{}, fmt.Errorf("invalid access endpoint digest")
+	}
+	stateDigest, err := domain.ParseSHA256Digest(r.StateDigest)
+	if err != nil {
+		return app.AccessCreated{}, fmt.Errorf("invalid access provider-state digest")
+	}
+	// Domain strings include the algorithm prefix; the plugin wire contract is raw hex.
+	v, err := a.Client.CreateAccess(ctx, &wire.CreateAccessRequest{Context: call(r.Call), AccessSessionId: r.SessionID, SubjectId: r.SubjectID, Method: r.Method, ExpiresAt: timestamppb.New(r.ExpiresAt), OpaqueConnectionData: r.Endpoint, EndpointSchema: schema(r.Schema), EndpointDigest: endpointDigest.Hex(), ProviderStateDigest: stateDigest.Hex(), Audience: r.Audience})
 	if err != nil {
 		return app.AccessCreated{}, err
 	}

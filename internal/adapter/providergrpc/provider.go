@@ -237,3 +237,25 @@ func (p *Provider) Available() bool { return p != nil && (p.Availability == nil 
 func NewLive(client wire.ProviderServiceClient, available func() bool) *Provider {
 	return &Provider{Client: client, Availability: available}
 }
+
+func (p *Provider) ReadUsage(ctx context.Context, r app.ProviderMutation) (*app.ResourceUsage, error) {
+	m, err := mutation(r)
+	if err != nil {
+		return nil, err
+	}
+	v, err := p.Client.ReadResource(ctx, &wire.ReadResourceRequest{Input: m})
+	if err != nil {
+		return nil, err
+	}
+	if v.GetResult() == nil || v.GetResult().GetError() != nil {
+		return nil, fmt.Errorf("resource measurement unavailable")
+	}
+	u := v.GetResult().GetUsage()
+	if u == nil {
+		return nil, nil
+	}
+	if u.GetSampledAt() == nil || !u.GetSampledAt().IsValid() {
+		return nil, fmt.Errorf("invalid measurement time")
+	}
+	return &app.ResourceUsage{SampledAt: u.GetSampledAt().AsTime(), CPUFraction: u.CpuFraction, VirtualCPUs: u.VirtualCpus, MemoryUsedBytes: u.MemoryUsedBytes, MemoryCapacityBytes: u.MemoryCapacityBytes}, nil
+}

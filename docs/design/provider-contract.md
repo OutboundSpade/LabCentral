@@ -93,3 +93,16 @@ The default constructor hard-closes mutation execution, while the only exported 
 The separate credentialed failure/recovery binding covers the other required T3 cases without adding a production fault-injection surface. Package-private wrappers substitute only declared read/failure boundaries; accepted clone/config/lifecycle/delete calls still use the real HTTPS client and exact target, and the harness records their counts. Exact-revision run `qualification.failure-20260903-r4` passed the matrix, including PVE-enforced stale-digest rejection, owned compensation and deliberate retained-leftover cleanup, response-loss recovery, restart from every journal checkpoint, and corrupt-version refusal. Its transcript is one signed-artifact input rather than enablement evidence by itself.
 
 `TEST-PROXMOX-028` adds a local read-only upgrade binding outside the provider protocol. With explicit sentinel, journal directory, target, and prior-build invocation IDs, it validates the checksummed closed journal and embedded provider-state envelopes using the current reader. It has no provider client or mutation path. Protected run `qualification.upgrade-20260903-r1` read Network and VM state plus a destroyed tombstone written by the earlier `99fb78f` candidate.
+
+## Optional live usage (TASK-OPS-001)
+
+ReadResource may include the additive ResourceResult.usage field. The typed
+ResourceUsage message has a required valid sample timestamp when present and
+optional CPU fraction, vCPU count and used/capacity memory bytes. Missing fields
+mean unavailable. CPU is normalized to configured VM capacity. Existing plugins
+omit the field and remain compatible; no provider-kind assumption grants support.
+Core rejects stale/future/invalid samples, bounds concurrent reads and caches
+for ten seconds. It forwards no opaque observation or provider state to clients
+and never persists the read result. Proxmox uses its existing VM.Audit status
+read after exact state/generation/ownership validation. This behavior-changing
+provider build requires fresh target qualification before deployment.

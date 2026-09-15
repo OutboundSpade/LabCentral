@@ -198,7 +198,7 @@ func TestCredentialedProxmoxT3FailureRecovery(t *testing.T) {
 
 	t.Run("TEST-PROXMOX-017 target claim exclusions remain unique", func(t *testing.T) {
 		fixture := newT3FailureFixture(t, ctx, baseProfile, "p017", config, target, configBytes, credentialBytes)
-		second, err := baseline.PlanResource(ctx, &pluginv1.PlanResourceRequest{Input: fixture.networkPlanningInput, ExcludedAllocations: cloneClaims(fixture.networkPlan.GetProposedAllocations())})
+		second, err := t3ReservedPlan(t, baseline, ctx, &pluginv1.PlanResourceRequest{Input: fixture.networkPlanningInput, ExcludedAllocations: cloneClaims(fixture.networkPlan.GetProposedAllocations())}, fixture.profile.ExpectedVMID, fixture.profile.ExpectedVLAN)
 		if err != nil || second.GetError() != nil || len(second.GetProposedAllocations()) != 1 || second.GetProposedAllocations()[0].GetNamespace() != vlanClaimNamespace || second.GetProposedAllocations()[0].GetValue() == fixture.networkPlan.GetProposedAllocations()[0].GetValue() {
 			t.Fatalf("excluded claim replan=%#v, %v", second, err)
 		}
@@ -588,7 +588,7 @@ func newT3FailureFixture(t *testing.T, ctx context.Context, base t3SmokeProfile,
 		t.Fatalf("failure fixture validation: %v %#v", err, validation.GetErrors())
 	}
 	networkPlanningInput := &pluginv1.ResourceMutationInput{Context: t3Call(profile, "plan-network", profile.NetworkResourceID), Target: target, CanonicalResourceJson: networkJSON, ProviderPlan: validation.GetProviderPlan(), OwnershipTokens: []string{randomT3Token(t)}}
-	networkPlan, err := service.PlanResource(ctx, &pluginv1.PlanResourceRequest{Input: networkPlanningInput})
+	networkPlan, err := t3ReservedPlan(t, service, ctx, &pluginv1.PlanResourceRequest{Input: networkPlanningInput}, profile.ExpectedVMID, profile.ExpectedVLAN)
 	if err != nil || networkPlan.GetError() != nil || !claimSetEquals(networkPlan.GetProposedAllocations(), vlanClaimNamespace, profile.ExpectedVLAN) {
 		t.Fatalf("failure fixture network plan: %v %#v", err, networkPlan)
 	}
@@ -610,7 +610,7 @@ func newT3FailureFixture(t *testing.T, ctx context.Context, base t3SmokeProfile,
 		ProviderPlan: validation.GetProviderPlan(), OwnershipTokens: []string{randomT3Token(t)},
 		Dependencies: []*pluginv1.ResourceDependency{{LogicalResourceId: profile.NetworkResourceID, ProviderPlan: networkPlan.GetProviderPlan(), ProviderPlanDigest: networkPlan.GetProviderPlanDigest(), ProviderState: networkState, CommittedAllocations: cloneClaims(networkPlan.GetProposedAllocations())}},
 	}
-	vmPlanResponse, err := service.PlanResource(ctx, &pluginv1.PlanResourceRequest{Input: vmPlanningInput})
+	vmPlanResponse, err := t3ReservedPlan(t, service, ctx, &pluginv1.PlanResourceRequest{Input: vmPlanningInput}, profile.ExpectedVMID, profile.ExpectedVLAN)
 	if err != nil || vmPlanResponse.GetError() != nil || !claimSetEquals(vmPlanResponse.GetProposedAllocations(), vmidClaimNamespace, profile.ExpectedVMID) {
 		t.Fatalf("failure fixture VM plan: %v %#v", err, vmPlanResponse)
 	}
