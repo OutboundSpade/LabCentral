@@ -6,6 +6,15 @@ LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
 quotas, lifetime and ownership; plugins translate infrastructure operations.
 
+## Current implementation
+
+`TASK-UI-006`, `TASK-EXAMPLES-001` and `TASK-SCHEDULING-001` simplify sidebar
+navigation and timed feedback, add readable catalogue names and teaching examples,
+and bound independent deployments per target under ADR-0021. Browser, Go race
+(including PostgreSQL), vet and design checks passed. Fresh exact-build PVE1
+qualification is in progress; live two-process VM clone overlap passed. Rollout
+and catalogue publication remain before these tasks can be marked complete.
+
 ## Latest completed work
 
 - `TASK-MAINT-001`: build output removed from Git and ignored; build prerequisites

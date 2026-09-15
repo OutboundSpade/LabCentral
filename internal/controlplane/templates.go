@@ -245,8 +245,8 @@ func (s *Service) OpenTemplateRevisionForProject(ctx context.Context, actor doma
 }
 
 func validateTemplateMetadata(name, description string) error {
-	if _, err := domain.NewName(name); err != nil {
-		return err
+	if !application.ValidTemplateName(name) {
+		return &ValidationError{Issues: []Issue{{Code: "template_name_invalid", Message: "Template name must contain 1–63 characters without surrounding whitespace or control characters"}}}
 	}
 	if !utf8.ValidString(description) || len(description) > maximumTemplateDescriptionBytes || strings.ContainsRune(description, '\x00') {
 		return fmt.Errorf("template description must be valid UTF-8 without NUL and at most %d bytes", maximumTemplateDescriptionBytes)

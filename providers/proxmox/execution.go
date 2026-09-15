@@ -355,7 +355,7 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 	if err != nil {
 		return executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
 	}
-	lease, err := journal.Acquire(ctx)
+	lease, err := journal.AcquireClaims(ctx, call.GetInvocationId(), fmt.Sprintf("proxmox.qemu.vmid:%d", state.VMID))
 	if err != nil {
 		return executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
 	}
@@ -606,7 +606,11 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 	if err != nil {
 		return nil, executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
 	}
-	lease, err := journal.Acquire(ctx)
+	claimLocks := make([]string, 0, len(input.GetCommittedAllocations()))
+	for _, claim := range input.GetCommittedAllocations() {
+		claimLocks = append(claimLocks, claim.GetNamespace()+":"+claim.GetValue())
+	}
+	lease, err := journal.AcquireClaims(ctx, call.GetInvocationId(), claimLocks...)
 	if err != nil {
 		return nil, executionFailure("journal_unavailable", "provider_unavailable", "Proxmox invocation journal is unavailable", true, resourceID)
 	}

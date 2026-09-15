@@ -1,13 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { afterNavigate } from "$app/navigation";
+  import { afterNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
   import {
     FlaskConical,
     Plus,
     BookOpen,
     LogOut,
-    ChevronRight,
     Search,
     RefreshCw,
     CircleAlert,
@@ -21,6 +20,7 @@
   import LabDetail from "./LabDetail.svelte";
   import LabList from "./LabList.svelte";
   import Operations from "./Operations.svelte";
+  import Notifications from "./Notifications.svelte";
   import Navigation from "./Navigation.svelte";
   import Workspaces from "./Workspaces.svelte";
   import Plugins from "./Plugins.svelte";
@@ -156,6 +156,9 @@
   afterNavigate(({ from }) => {
     if (!from) return;
     drawerOpen = false;
+    error = "";
+    notice = "";
+    activeOperation = undefined;
     void navigate(++navigationGeneration);
   });
   async function navigate(current: number) {
@@ -512,8 +515,9 @@
         },
       );
       activeOperation = response.operation;
-      notice = "Lab launch queued.";
       await refresh();
+      await goto("/");
+      notice = "Lab launch queued.";
     });
   }
   async function launchClassroom() {
@@ -746,35 +750,6 @@
       aria-label="Navigation"
     />
     <div class="drawer-content min-w-0">
-      <header
-        class="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-base-300 px-5 py-4 lg:px-10"
-      >
-        <div class="flex min-w-0 items-center gap-3">
-          <button
-            class="btn btn-square btn-ghost lg:hidden"
-            aria-label="Open navigation"
-            onclick={() => (drawerOpen = true)}><Menu size={20} /></button
-          >{#if globalView}<span class="text-sm text-base-content/70"
-              >Administration</span
-            >{:else}<span class="text-sm text-base-content/70">Workspace</span
-            ><ChevronRight size={14} class="text-base-content/50" /><label
-              class="sr-only"
-              for="project-choice">Project</label
-            ><select
-              id="project-choice"
-              class="select select-ghost max-w-52 font-medium"
-              bind:value={projectId}
-              onchange={() => void loadProject()}
-              disabled={loading}
-              >{#each projects as p}<option value={p.id}>{p.name}</option
-                >{/each}</select
-            >{/if}
-        </div>
-        <div class="flex items-center gap-2 text-sm">
-          <span class="hidden text-base-content/60 sm:inline">Signed in as</span
-          ><span class="font-medium">{session.displayName}</span>
-        </div>
-      </header>
       <main
         id="main-content"
         class="mx-auto max-w-7xl px-5 py-8 lg:px-10 lg:py-10"
@@ -789,6 +764,10 @@
               <p>{server.noAuthWarning}</p>
             </div>
           </div>{/if}
+        <button class="btn btn-square btn-ghost mb-4 lg:hidden" aria-label="Open navigation" onclick={() => (drawerOpen = true)}><Menu size={20} /></button>
+        {#if view === "launch" || view === "detail"}<nav aria-label="Breadcrumb" class="breadcrumbs mb-4 text-sm">
+          <ul><li><a href="/">My labs</a></li><li aria-current="page">{titles[view]}</li></ul>
+        </nav>{/if}
         <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 class="text-3xl font-semibold tracking-tight">
@@ -799,22 +778,7 @@
               ><Plus size={17} />Launch lab</a
             >{/if}
         </div>
-        {#if error}<div role="alert" class="alert alert-error alert-soft mb-6">
-            <CircleAlert size={18} /><span class="break-words">{error}</span
-            ><button
-              class="btn btn-sm btn-ghost"
-              aria-label="Dismiss error"
-              onclick={() => (error = "")}><X size={16} /></button
-            >
-          </div>{/if}
-        {#if notice}<div
-            role="status"
-            class="alert alert-success alert-soft mb-6"
-          >
-            <span>{notice}</span>{#if view === "launch"}<a class="link" href="/"
-                >View my labs</a
-              >{/if}
-          </div>{/if}
+        <Notifications bind:error bind:notice />
         {#if stale}<div
             role="status"
             class="alert alert-warning alert-soft mb-6"
@@ -1174,7 +1138,7 @@
                   class="input w-full"
                   bind:value={templateName}
                   required
-                  pattern={"[a-z][a-z0-9-]{0,62}"}
+                  maxlength="63"
                   placeholder="debian-starter"
                 /></label
               ><label class="grid gap-2 text-sm"
@@ -1262,11 +1226,17 @@
       <aside
         class="flex min-h-dvh w-60 flex-col border-r border-base-300 bg-base-200 p-4"
       >
-        <a href="/" class="mb-9 flex items-center gap-3 px-3 py-3"
+        <a href="/" class="mb-4 flex items-center gap-3 px-3 py-3"
           ><FlaskConical size={25} class="text-primary" /><span
             class="text-lg font-semibold tracking-tight">LabCentral</span
           ></a
         >
+        <label for="project-choice" class="mb-2 px-3 text-xs font-semibold text-base-content/60">Workspace</label>
+        <select id="project-choice" aria-label="Switch workspace" class="select mb-3 w-full" bind:value={projectId}
+          onchange={() => { drawerOpen = false; error = ""; notice = ""; activeOperation = undefined; void loadProject(); }} disabled={loading || !projects.length}>
+          {#if !projects.length}<option value="">No workspaces assigned</option>{/if}
+          {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
+        </select>
         <Navigation
           {view}
           {author}
@@ -1274,7 +1244,8 @@
           {administrator}
           authenticated={server?.authMode !== "none"}
         />
-        <div class="mt-auto px-3 pt-16">
+        <div class="mt-auto px-3 pt-10">
+          <p class="mb-3 break-words text-sm text-base-content/60">{session.displayName}</p>
           {#if server?.authMode !== "none"}<button
               class="btn btn-sm btn-ghost w-full justify-start"
               onclick={logout}

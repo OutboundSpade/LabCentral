@@ -19,10 +19,11 @@ const maximumTargetEnvelopeBytes = 8 << 20
 var providerKindPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{0,63}$`)
 
 type TargetPolicy struct {
-	TrustedLaptop      bool     `json:"trustedLaptop,omitempty"`
-	MinimumMinor       uint32   `json:"minimumMinor,omitempty"`
-	RequiredFeatures   []string `json:"requiredFeatures,omitempty"`
-	NativeCapabilities []string `json:"nativeCapabilities,omitempty"`
+	MaxConcurrentDeployments uint32   `json:"maxConcurrentDeployments,omitempty"`
+	TrustedLaptop            bool     `json:"trustedLaptop,omitempty"`
+	MinimumMinor             uint32   `json:"minimumMinor,omitempty"`
+	RequiredFeatures         []string `json:"requiredFeatures,omitempty"`
+	NativeCapabilities       []string `json:"nativeCapabilities,omitempty"`
 }
 
 type TargetBinding struct {
@@ -303,6 +304,9 @@ func cloneTargetPolicy(p TargetPolicy) TargetPolicy {
 	return p
 }
 func validateTargetPolicy(p TargetPolicy) error {
+	if p.MaxConcurrentDeployments > 16 {
+		return fmt.Errorf("maxConcurrentDeployments must be between 1 and 16")
+	}
 	if p.MinimumMinor > 1 {
 		return fmt.Errorf("unsupported target policy protocol")
 	}
@@ -319,4 +323,35 @@ func validateTargetPolicy(p TargetPolicy) error {
 		}
 	}
 	return nil
+}
+
+func (r *TargetRegistry) ExecutionLimits() []application.TargetExecutionLimit {
+	ids := r.AvailableIDs()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	limits := make([]application.TargetExecutionLimit, 0, len(ids))
+	for _, id := range ids {
+		n := r.bindings[id].policy.MaxConcurrentDeployments
+		if n == 0 {
+			n = 1
+		}
+		limits = append(limits, application.TargetExecutionLimit{TargetID: id, Maximum: n})
+	}
+	return limits
+}
+
+// ExecutionCapacity includes unavailable targets so recovery after startup can
+// use their configured capacity without restarting the control plane.
+func (r *TargetRegistry) ExecutionCapacity() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	count := 0
+	for _, binding := range r.bindings {
+		maximum := binding.policy.MaxConcurrentDeployments
+		if maximum == 0 {
+			maximum = 1
+		}
+		count += int(maximum)
+	}
+	return count
 }

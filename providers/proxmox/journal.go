@@ -3,6 +3,7 @@ package proxmox
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,14 +32,12 @@ type InvocationJournal struct {
 	mu        sync.Mutex
 }
 
-// InvocationLease holds the journal-wide mutation lock. A single conservative
-// lock deliberately serializes every Proxmox write using a target journal,
-// including calls from independently running provider processes. The kernel
-// releases the lease if a provider exits, after which the next process resumes
-// from the last durable journal checkpoint.
+// InvocationLease retains kernel-owned compatibility and exclusive claim locks
+// for the entire remote mutation. Legacy journal-wide leases remain exclusive.
 type InvocationLease struct {
 	journal *InvocationJournal
 	file    *os.File
+	locks   []*os.File
 }
 
 func OpenInvocationJournal(directory string) (*InvocationJournal, error) {
@@ -154,7 +154,10 @@ func (journal *InvocationJournal) Acquire(ctx context.Context) (*InvocationLease
 }
 
 func (journal *InvocationJournal) openLock() (*os.File, error) {
-	path := filepath.Join(journal.directory, journalLockName)
+	return journal.openNamedLock(journalLockName)
+}
+func (journal *InvocationJournal) openNamedLock(name string) (*os.File, error) {
+	path := filepath.Join(journal.directory, name)
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open invocation journal lock: %w", err)
@@ -246,6 +249,11 @@ func (lease *InvocationLease) Close() error {
 	if lease == nil || lease.file == nil {
 		return nil
 	}
+	for i := len(lease.locks) - 1; i >= 0; i-- {
+		_ = unix.Flock(int(lease.locks[i].Fd()), unix.LOCK_UN)
+		_ = lease.locks[i].Close()
+	}
+	lease.locks = nil
 	file := lease.file
 	lease.file = nil
 	unlockErr := unix.Flock(int(file.Fd()), unix.LOCK_UN)
@@ -413,4 +421,68 @@ func decodeClosedJSON(contents []byte, destination any) error {
 		return fmt.Errorf("JSON document must contain exactly one value")
 	}
 	return nil
+}
+
+// AcquireClaims permits independent work while protecting duplicate invocation
+// IDs and actual provider allocations across processes. The shared compatibility
+// lock excludes older providers and journal-wide maintenance.
+func (journal *InvocationJournal) AcquireClaims(ctx context.Context, invocation string, claims ...string) (*InvocationLease, error) {
+	if ctx == nil || !invocationIDPattern.MatchString(invocation) || len(claims) == 0 || len(claims) > 32 {
+		return nil, fmt.Errorf("invalid invocation claim locks")
+	}
+	file, err := journal.openLock()
+	if err != nil {
+		return nil, err
+	}
+	lease := &InvocationLease{journal: journal, file: file}
+	if err = waitJournalLock(ctx, file, unix.LOCK_SH); err != nil {
+		lease.Close()
+		return nil, err
+	}
+	keys := append([]string{"invocation:" + invocation}, claims...)
+	sort.Strings(keys)
+	previous := ""
+	for _, key := range keys {
+		if key == previous {
+			continue
+		}
+		previous = key
+		if key == "" || len(key) > 512 {
+			lease.Close()
+			return nil, fmt.Errorf("invalid claim lock identity")
+		}
+		digest := sha256.Sum256([]byte(key))
+		lock, err := journal.openNamedLock(fmt.Sprintf(".labcentral-claim-%x.lock", digest))
+		if err != nil {
+			lease.Close()
+			return nil, err
+		}
+		lease.locks = append(lease.locks, lock)
+		if err = waitJournalLock(ctx, lock, unix.LOCK_EX); err != nil {
+			lease.Close()
+			return nil, err
+		}
+	}
+	return lease, nil
+}
+func waitJournalLock(ctx context.Context, file *os.File, mode int) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := unix.Flock(int(file.Fd()), mode|unix.LOCK_NB)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+			return err
+		}
+		timer := time.NewTimer(journalLockRetry)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

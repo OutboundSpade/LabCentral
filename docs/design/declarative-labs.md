@@ -42,3 +42,10 @@ Core validates envelope/name/version, records a portability warning, preserves c
 ## Revision and instance identity
 
 A revision digest covers the verified bundle manifest and file digests. Instance canonical identity covers rendered portable spec, selected policy inputs, materialized non-secret parameter values, provider override bytes, and canonical format version—but not secret values or observed/provider state. SecretRef identity is included. Clones point to source instance/snapshot provenance and receive fresh resource IDs.
+
+## Authoring requirements
+
+The optional requirements block adds capability and isolation constraints; provider
+validation already checks resource kinds and fields. See the
+[author explanation and examples](../users/templates.md). Published revisions
+retain their immutable requirements. No automatic removal weakens an existing lab.

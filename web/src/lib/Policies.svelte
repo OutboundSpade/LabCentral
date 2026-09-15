@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notifications from "./Notifications.svelte";
   import { onMount } from "svelte";
   import { Server, Clock, CircleAlert } from "@lucide/svelte";
   import {
@@ -109,10 +110,7 @@
   }
 </script>
 
-{#if error}<div class="alert alert-error alert-soft mb-5" role="alert">
-    <CircleAlert size={18} /><span>{error}</span>
-  </div>{/if}
-{#if notice}<p class="mb-5 text-sm text-success" role="status">{notice}</p>{/if}
+<Notifications bind:error bind:notice />
 <form
   class="grid max-w-2xl gap-5 rounded-box border border-base-300 p-6"
   onsubmit={(e) => {

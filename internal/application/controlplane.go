@@ -624,7 +624,7 @@ type TargetStore interface {
 
 type ExecutionStore interface {
 	Claim(context.Context, string, time.Duration) (WorkClaim, error)
-	ClaimTargets(context.Context, string, time.Duration, []domain.ProviderTargetID) (WorkClaim, error)
+	ClaimTargets(context.Context, string, time.Duration, []TargetExecutionLimit) (WorkClaim, error)
 	Renew(context.Context, Fence, time.Duration) error
 	MarkInstancePhase(context.Context, Fence, domain.InstancePhase, string) error
 	PrepareInvocation(context.Context, PrepareInvocationRequest) (InvocationRecord, error)
@@ -641,7 +641,7 @@ type WorkerStore interface {
 	GetInstance(context.Context, domain.InstanceID) (InstanceRecord, error)
 	GetOperation(context.Context, domain.OperationID) (OperationRecord, error)
 	ListResources(context.Context, domain.InstanceID) ([]ResourceRecord, error)
-	ClaimTargets(context.Context, string, time.Duration, []domain.ProviderTargetID) (WorkClaim, error)
+	ClaimTargets(context.Context, string, time.Duration, []TargetExecutionLimit) (WorkClaim, error)
 	Renew(context.Context, Fence, time.Duration) error
 	MarkInstancePhase(context.Context, Fence, domain.InstancePhase, string) error
 	PrepareInvocation(context.Context, PrepareInvocationRequest) (InvocationRecord, error)
@@ -663,3 +663,9 @@ const (
 )
 
 const SystemExpirationActorID = domain.UserID("system.expiration")
+
+// TargetExecutionLimit bounds independent running lab operations across replicas.
+type TargetExecutionLimit struct {
+	TargetID domain.ProviderTargetID
+	Maximum  uint32
+}

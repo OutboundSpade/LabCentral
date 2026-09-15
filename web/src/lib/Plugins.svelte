@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notifications from "./Notifications.svelte";
   import { onMount } from "svelte";
   import { Plug, RefreshCw, ShieldCheck, Plus } from "@lucide/svelte";
   import {
@@ -145,10 +146,7 @@
     ><RefreshCw size={16} />Refresh list</button
   >
 </div>
-{#if error}<p class="alert alert-error alert-soft mb-5" role="alert">
-    {error}
-  </p>{/if}
-{#if notice}<p class="mb-5 text-sm text-success" role="status">{notice}</p>{/if}
+<Notifications bind:error bind:notice />
 <section>
   <h2 class="mb-4 flex items-center gap-2 text-lg font-semibold">
     <Plug size={20} />Provider environments

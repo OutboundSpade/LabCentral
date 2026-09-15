@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/application"
@@ -73,6 +74,26 @@ func NewWorkerWithTargets(store application.WorkerStore, targets *TargetRegistry
 }
 
 func (w *Worker) Run(ctx context.Context) error {
+	// Each target's durable admission limit remains authoritative across replicas.
+	count := w.targets.ExecutionCapacity()
+	if count < 1 {
+		count = 1
+	}
+	if count > 64 {
+		count = 64
+	}
+	var workers sync.WaitGroup
+	for i := 0; i < count; i++ {
+		worker := *w
+		worker.owner = fmt.Sprintf("%s.%d", w.owner, i)
+		workers.Add(1)
+		go func() { defer workers.Done(); worker.run(ctx) }()
+	}
+	workers.Wait()
+	return nil
+}
+
+func (w *Worker) run(ctx context.Context) {
 	ticker := time.NewTicker(w.pollInterval)
 	defer ticker.Stop()
 	for {
@@ -82,14 +103,14 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case <-ticker.C:
 		}
 	}
 }
 
 func (w *Worker) RunOnce(ctx context.Context) error {
-	claim, err := w.store.ClaimTargets(ctx, w.owner, w.leaseDuration, w.targets.AvailableIDs())
+	claim, err := w.store.ClaimTargets(ctx, w.owner, w.leaseDuration, w.targets.ExecutionLimits())
 	if err != nil {
 		return err
 	}
@@ -103,7 +124,10 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 	workContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	renewalErrors := make(chan error, 1)
-	go w.renewLease(workContext, fence, renewalErrors)
+	go func() {
+		w.renewLease(workContext, fence, renewalErrors)
+		cancel()
+	}()
 	started := time.Now()
 	err = w.process(workContext, fence, claim.Action, claim.Recovery, claim.Payload)
 	cancel()

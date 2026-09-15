@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notifications from "./Notifications.svelte";
   import { onMount } from "svelte";
   import { UserPlus, ShieldCheck, CircleAlert } from "@lucide/svelte";
   import { api, collection, cachedCollection, type Person, type Project } from "./api";
@@ -117,10 +118,7 @@
   }
 </script>
 
-{#if error}<div class="alert alert-error alert-soft mb-5" role="alert">
-    <CircleAlert size={18} /><span>{error}</span>
-  </div>{/if}
-{#if notice}<p class="mb-5 text-sm text-success" role="status">{notice}</p>{/if}
+<Notifications bind:error bind:notice />
 <div class="grid gap-6 xl:grid-cols-2">
   <form
     class="grid gap-4 rounded-box border border-base-300 p-6"

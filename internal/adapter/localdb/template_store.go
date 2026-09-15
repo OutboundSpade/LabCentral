@@ -439,8 +439,8 @@ func validateUpdateLabTemplate(request application.UpdateLabTemplateRequest) err
 }
 
 func validateLabTemplateMetadata(name, description string) error {
-	if _, err := domain.NewName(name); err != nil {
-		return fmt.Errorf("Lab Template name is invalid: %w", err)
+	if !application.ValidTemplateName(name) {
+		return fmt.Errorf("Lab Template name is invalid")
 	}
 	if !utf8.ValidString(description) || len(description) > maximumTemplateDescriptionBytes || strings.ContainsRune(description, '\x00') {
 		return fmt.Errorf("Lab Template description must be valid UTF-8 without NUL and at most %d bytes", maximumTemplateDescriptionBytes)

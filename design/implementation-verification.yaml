@@ -791,3 +791,23 @@ classroomQualificationRenewal20260915:
   limitations:
     - Renewal covers this exact private classroom target only; no independent human review or production approval is claimed.
     - Previous soak and qualification records remain historical; no new hour-long classroom soak claimed.
+
+classroomFlow20260915:
+  tasks: [TASK-UI-006, TASK-EXAMPLES-001, TASK-SCHEDULING-001]
+  localResult: pass
+  browserEngines: [Chromium, Firefox, WebKit]
+  checks:
+    - Go race suite with disposable PostgreSQL 18, including cross-replica target admission and expired-lease recovery
+    - Readable template create/rename/readback through HTTP and both stores
+    - Configured worker pool capacity and independent/conflicting/legacy provider locks
+    - Svelte check/build and all four browser workflows
+    - Notification dismissal/expiry, non-admin workspace switching and mobile drawer regression
+    - Go vet and Phase 0 schemas/protocol/design/link checks
+  evidenceDirectory: bin/navigation-flow-20260915
+  qualificationDirectory: bin/classroom-flow-20260915/qualification-run
+  liveCloneOverlap: passed_two_independent_provider_processes
+  rollout: pending_fresh_qualification
+  limitations:
+    - Resources inside one lab remain sequential in dependency order.
+    - Container examples are catalogue-only on PVE1; no Docker environment is provisioned.
+    - Private testbed evidence does not close production load or cross-node failover gates.

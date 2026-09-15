@@ -109,8 +109,11 @@ type filterClaimStore struct {
 	targets []domain.ProviderTargetID
 }
 
-func (s *filterClaimStore) ClaimTargets(_ context.Context, _ string, _ time.Duration, targets []domain.ProviderTargetID) (application.WorkClaim, error) {
-	s.targets = targets
+func (s *filterClaimStore) ClaimTargets(_ context.Context, _ string, _ time.Duration, targets []application.TargetExecutionLimit) (application.WorkClaim, error) {
+	s.targets = nil
+	for _, target := range targets {
+		s.targets = append(s.targets, target.TargetID)
+	}
 	return application.WorkClaim{}, application.ErrNoWork
 }
 func TestWorkerClaimsOnlyAvailableTargets(t *testing.T) {
@@ -134,4 +137,55 @@ func TestWorkerClaimsOnlyAvailableTargets(t *testing.T) {
 	if len(store.targets) != 2 {
 		t.Fatal("recovered target did not resume", store.targets)
 	}
+}
+
+func TestWorkerPoolIncludesConfiguredUnavailableCapacity(t *testing.T) {
+	registry, err := NewTargetRegistry([]TargetBinding{
+		{ID: "target.healthy", ProviderKind: "external", Provider: &availableProvider{up: true}, ProtocolMajor: 1, Policy: TargetPolicy{MaxConcurrentDeployments: 2}},
+		{ID: "target.recovering", ProviderKind: "external", Provider: &availableProvider{up: false}, ProtocolMajor: 1, Policy: TargetPolicy{MaxConcurrentDeployments: 3}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &blockingClaimStore{owners: make(chan string, 5)}
+	worker, err := NewWorkerWithTargets(store, registry, CryptoIDs{}, WorkerOptions{Owner: "worker.pool"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- worker.Run(ctx) }()
+	owners := map[string]bool{}
+	for i := 0; i < 5; i++ {
+		select {
+		case owner := <-store.owners:
+			owners[owner] = true
+		case <-ctx.Done():
+			t.Fatal("configured worker capacity unavailable")
+		}
+	}
+	if len(owners) != 5 {
+		t.Fatalf("workers reused lease owners: %v", owners)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker pool did not stop")
+	}
+}
+
+type blockingClaimStore struct {
+	application.WorkerStore
+	owners chan string
+}
+
+func (s *blockingClaimStore) ClaimTargets(ctx context.Context, owner string, _ time.Duration, _ []application.TargetExecutionLimit) (application.WorkClaim, error) {
+	s.owners <- owner
+	<-ctx.Done()
+	return application.WorkClaim{}, ctx.Err()
 }

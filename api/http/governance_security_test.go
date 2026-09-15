@@ -36,12 +36,12 @@ func TestAuthenticatedTemplateAPIScopesCRUDAndPublication(t *testing.T) {
 	author := fixture.client(t, "author", "an-author-production-password")
 
 	response := author.request(http.MethodPost, "/api/v1/lab-templates", map[string]any{
-		"projectId": "project.alpha", "name": "intro-lab", "description": "Initial classroom lab",
+		"projectId": "project.alpha", "name": "Intro lab — Linux", "description": "Initial classroom lab",
 	}, "", "template-create-alpha")
 	requireGovernanceStatus(t, response, http.StatusOK)
 	var template LabTemplateDTO
 	decodeGovernanceResponse(t, response, &template)
-	if template.ID == "" || template.ProjectID != "project.alpha" || template.Name != "intro-lab" || response.Header().Get("ETag") != `"1"` {
+	if template.ID == "" || template.ProjectID != "project.alpha" || template.Name != "Intro lab — Linux" || response.Header().Get("ETag") != `"1"` {
 		t.Fatalf("created Template = %#v ETag=%q", template, response.Header().Get("ETag"))
 	}
 
@@ -64,15 +64,15 @@ func TestAuthenticatedTemplateAPIScopesCRUDAndPublication(t *testing.T) {
 	}
 
 	response = author.request(http.MethodPut, "/api/v1/lab-templates/"+url.PathEscape(template.ID)+"?projectId=project.alpha", map[string]any{
-		"name": "intro-lab-v2", "description": "Updated classroom lab",
+		"name": "Intro lab — updated", "description": "Updated classroom lab",
 	}, `"1"`, "template-update-alpha")
 	requireGovernanceStatus(t, response, http.StatusOK)
 	decodeGovernanceResponse(t, response, &template)
-	if template.Name != "intro-lab-v2" || template.ResourceVersion != 2 || response.Header().Get("ETag") != `"2"` {
+	if template.Name != "Intro lab — updated" || template.ResourceVersion != 2 || response.Header().Get("ETag") != `"2"` {
 		t.Fatalf("updated Template = %#v ETag=%q", template, response.Header().Get("ETag"))
 	}
 	response = author.request(http.MethodPut, "/api/v1/lab-templates/"+url.PathEscape(template.ID)+"?projectId=project.alpha", map[string]any{
-		"name": "intro-lab-v2", "description": "Updated classroom lab",
+		"name": "Intro lab — updated", "description": "Updated classroom lab",
 	}, `"1"`, "template-update-alpha")
 	requireGovernanceStatus(t, response, http.StatusOK)
 	var replayedTemplate LabTemplateDTO

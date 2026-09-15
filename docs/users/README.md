@@ -6,14 +6,14 @@ link. For a local development instance, follow [local setup](local-setup.md).
 ## Sign in and choose a workspace
 
 Sign in using the configured account provider or local username and password.
-Use the **Workspace** selector at the top of the page to change projects. A
+Use the **Workspace** selector in the sidebar to change projects. A
 workspace is a project in the API; it holds templates, people, policies and labs.
 Only projects you can access appear. If none appear, ask an administrator to
 assign your membership and project role, then choose **Check for access**.
 
 ## Launch and use a lab
 
-1. Open **Launch lab**, choose a template revision and environment, and fill in
+1. In **My labs**, select **Launch lab**, choose a template revision and environment, and fill in
    the declared inputs. Only published revisions are available.
 2. Select **Launch lab**. Provisioning is asynchronous; **My labs** shows progress.
 3. Open the lab details for instructions and **Open console** when ready.
@@ -65,3 +65,5 @@ exact values and remain usable if a chart cannot load.
 Plugin executables are installed by the server operator using verified manifests
 and a restart. The UI manages provider discovery and access; it does not upload
 or execute plugins. See the [installation guide](../operations/plugin-installation.md).
+
+See [template examples and requirements](templates.md) for VM and container exercises.

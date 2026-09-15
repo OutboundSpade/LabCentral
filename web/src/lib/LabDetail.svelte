@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Server, Terminal } from "@lucide/svelte";
+  import { Server, Terminal } from "@lucide/svelte";
   import StatusBadge from "./StatusBadge.svelte";
   import type { Instance } from "./api";
   let {
@@ -25,7 +25,6 @@
   } = $props();
 </script>
 
-<a href="/" class="btn btn-sm btn-ghost mb-6"><ArrowLeft size={16} />My labs</a>
 {#if detail}<section class="rounded-box border border-base-300 bg-base-200 p-6">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <h2 class="text-xl font-semibold capitalize">

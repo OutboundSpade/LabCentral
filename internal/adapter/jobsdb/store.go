@@ -185,7 +185,7 @@ func (s *Store) Claim(ctx context.Context, leaseOwner string, leaseDuration time
 }
 
 func (s *Store) ClaimJob(ctx context.Context, leaseOwner string, leaseDuration time.Duration) (ClaimedJob, error) {
-	return s.claimJob(ctx, leaseOwner, leaseDuration, nil)
+	return s.claimJob(ctx, s.db, leaseOwner, leaseDuration, nil, false)
 }
 
 // ClaimJobForInstances restricts claiming without taking leases on unavailable targets.
@@ -196,9 +196,25 @@ func (s *Store) ClaimJobForInstances(ctx context.Context, owner string, duration
 	if len(instances) > 1024 {
 		return ClaimedJob{}, fmt.Errorf("instance claim filter exceeds limit")
 	}
-	return s.claimJob(ctx, owner, duration, instances)
+	return s.claimJob(ctx, s.db, owner, duration, instances, false)
 }
-func (s *Store) claimJob(ctx context.Context, leaseOwner string, leaseDuration time.Duration, instances []string) (ClaimedJob, error) {
+
+// ClaimJobForOperationsTx shares the caller's target admission transaction.
+func (s *Store) ClaimJobForOperationsTx(ctx context.Context, tx *sql.Tx, owner string, duration time.Duration, instances []string) (ClaimedJob, error) {
+	if tx == nil || len(instances) == 0 {
+		return ClaimedJob{}, ErrNoClaimableJob
+	}
+	if len(instances) > 1024 {
+		return ClaimedJob{}, fmt.Errorf("instance claim filter exceeds limit")
+	}
+	return s.claimJob(ctx, tx, owner, duration, instances, true)
+}
+
+type claimQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (s *Store) claimJob(ctx context.Context, queryer claimQueryer, leaseOwner string, leaseDuration time.Duration, instances []string, operations bool) (ClaimedJob, error) {
 	if leaseOwner == "" || leaseDuration <= 0 {
 		return ClaimedJob{}, fmt.Errorf("lease owner and positive duration are required")
 	}
@@ -206,7 +222,11 @@ func (s *Store) claimJob(ctx context.Context, leaseOwner string, leaseDuration t
 	filter := ""
 	filterArgs := make([]any, 0, len(instances))
 	if instances != nil {
-		filter = " AND instance_id IN (" + strings.TrimSuffix(strings.Repeat("?,", len(instances)), ",") + ") "
+		column := "instance_id"
+		if operations {
+			column = "operation_id"
+		}
+		filter = " AND " + column + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(instances)), ",") + ") "
 		for _, id := range instances {
 			filterArgs = append(filterArgs, id)
 		}
@@ -216,7 +236,7 @@ func (s *Store) claimJob(ctx context.Context, leaseOwner string, leaseDuration t
 		args := []any{CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning}
 		args = append(args, filterArgs...)
 		args = append(args, domain.OperationRunning, leaseOwner, leaseMicros)
-		row = s.db.QueryRowContext(ctx, s.bind(`WITH candidate AS (
+		row = queryer.QueryRowContext(ctx, s.bind(`WITH candidate AS (
 			SELECT id FROM labcentral_jobs
 			WHERE payload_version = ?
 			  AND available_at_us <= `+s.nowMicros()+`
@@ -236,7 +256,7 @@ func (s *Store) claimJob(ctx context.Context, leaseOwner string, leaseDuration t
 	} else {
 		args := []any{domain.OperationRunning, leaseOwner, leaseMicros, CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning}
 		args = append(args, filterArgs...)
-		row = s.db.QueryRowContext(ctx, s.bind(`UPDATE labcentral_jobs
+		row = queryer.QueryRowContext(ctx, s.bind(`UPDATE labcentral_jobs
 		SET state = ?, lease_owner = ?, lease_until_us = `+s.nowMicros()+` + ?,
 			fencing_token = fencing_token + 1, attempt = attempt + 1
 		WHERE id = (

@@ -241,3 +241,64 @@ func TestInvocationJournalAcceptsSourceBoundCloneTaskOnlyForApply(t *testing.T) 
 		t.Fatalf("destination-bound configuration task rejected: %v", err)
 	}
 }
+
+func TestInvocationClaimLocksAllowIndependentWorkAndFenceConflicts(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	first, err := OpenInvocationJournal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := OpenInvocationJournal(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := first.AcquireClaims(context.Background(), "invocation.one", "proxmox.qemu.vmid:101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	independent, err := second.AcquireClaims(context.Background(), "invocation.two", "proxmox.qemu.vmid:102")
+	if err != nil {
+		t.Fatal(err)
+	}
+	independent.Close()
+	for _, conflict := range []struct{ invocation, claim string }{{"invocation.three", "proxmox.qemu.vmid:101"}, {"invocation.one", "proxmox.qemu.vmid:103"}} {
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+		got, err := second.AcquireClaims(ctx, conflict.invocation, conflict.claim)
+		cancel()
+		if got != nil {
+			got.Close()
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("conflicting work acquired lock: %v", err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	_, err = second.Acquire(ctx)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("legacy exclusive lock overlapped: %v", err)
+	}
+	lease.Close()
+	legacy, err := first.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel = context.WithTimeout(context.Background(), 40*time.Millisecond)
+	_, err = second.AcquireClaims(ctx, "invocation.four", "proxmox.qemu.vmid:104")
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("claim bypassed legacy lock: %v", err)
+	}
+	legacy.Close()
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	retry, err := second.AcquireClaims(ctx, "invocation.one", "proxmox.qemu.vmid:101", "proxmox.qemu.vmid:103")
+	if err != nil {
+		t.Fatalf("cancelled acquisition leaked locks: %v", err)
+	}
+	retry.Close()
+}

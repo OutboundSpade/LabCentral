@@ -1529,37 +1529,81 @@ func (s *Store) Claim(ctx context.Context, owner string, duration time.Duration)
 	claim, err := s.jobs.ClaimJob(ctx, owner, duration)
 	return s.finishClaim(ctx, claim, err)
 }
-func (s *Store) ClaimTargets(ctx context.Context, owner string, duration time.Duration, targets []domain.ProviderTargetID) (application.WorkClaim, error) {
-	if len(targets) == 0 {
-		return application.WorkClaim{}, application.ErrNoWork
-	}
+func (s *Store) ClaimTargets(ctx context.Context, owner string, duration time.Duration, targets []application.TargetExecutionLimit) (application.WorkClaim, error) {
 	if len(targets) > 64 {
 		return application.WorkClaim{}, fmt.Errorf("target claim filter exceeds limit")
 	}
-	args := make([]any, 0, len(targets))
-	for _, id := range targets {
-		args = append(args, string(id))
+	for _, target := range targets {
+		if target.Maximum < 1 || target.Maximum > 16 {
+			return application.WorkClaim{}, fmt.Errorf("target deployment limit must be between 1 and 16")
+		}
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT DISTINCT instance.instance_id FROM labcentral_local_instances instance JOIN labcentral_jobs job ON job.instance_id=instance.instance_id WHERE job.payload_version = 1 AND job.available_at_us <= `+s.nowMicros()+` AND (job.state='queued' OR (job.state='running' AND job.lease_until_us <= `+s.nowMicros()+`)) AND instance.provider_target_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(targets)), ",")+`) ORDER BY instance.instance_id LIMIT 1024`), args...)
+	for _, target := range targets {
+		claim, err := s.claimTarget(ctx, owner, duration, target)
+		if errors.Is(err, jobsdb.ErrNoClaimableJob) {
+			continue
+		}
+		return s.finishClaim(ctx, claim, err)
+	}
+	return application.WorkClaim{}, application.ErrNoWork
+}
+
+func (s *Store) claimTarget(ctx context.Context, owner string, duration time.Duration, target application.TargetExecutionLimit) (jobsdb.ClaimedJob, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return application.WorkClaim{}, err
+		return jobsdb.ClaimedJob{}, err
+	}
+	defer tx.Rollback()
+	// SQLite has one process/connection. PostgreSQL serializes target admission
+	// even before discovery has persisted a target snapshot (legacy instances).
+	if s.dialect == jobsdb.DialectPostgreSQL {
+		key := sha256.Sum256([]byte("labcentral.target-admission:" + string(target.TargetID)))
+		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(binary.BigEndian.Uint64(key[:8]))); err != nil {
+			return jobsdb.ClaimedJob{}, err
+		}
+	}
+	var running uint32
+	if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_jobs job
+  JOIN labcentral_local_instances instance ON instance.instance_id=job.instance_id
+  WHERE instance.provider_target_id=? AND job.state='running'`), target.TargetID).Scan(&running); err != nil {
+		return jobsdb.ClaimedJob{}, err
+	}
+	// An expired lease still occupies capacity until recovered. Reclaiming it
+	// resumes the same deployment, even when the target is at its limit.
+	queued := ""
+	if running < target.Maximum {
+		queued = "job.state='queued' OR "
+	}
+	rows, err := tx.QueryContext(ctx, s.bind(`SELECT job.operation_id
+  FROM labcentral_local_instances instance JOIN labcentral_jobs job ON job.instance_id=instance.instance_id
+  WHERE instance.provider_target_id=? AND job.payload_version=1 AND job.available_at_us <= `+s.nowMicros()+`
+  AND (`+queued+`(job.state='running' AND job.lease_until_us <= `+s.nowMicros()+`))
+  ORDER BY job.available_at_us, job.id LIMIT 1024`), target.TargetID)
+	if err != nil {
+		return jobsdb.ClaimedJob{}, err
 	}
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return application.WorkClaim{}, err
+			return jobsdb.ClaimedJob{}, err
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return application.WorkClaim{}, err
+		return jobsdb.ClaimedJob{}, err
 	}
-	claim, err := s.jobs.ClaimJobForInstances(ctx, owner, duration, ids)
-	return s.finishClaim(ctx, claim, err)
+	claim, err := s.jobs.ClaimJobForOperationsTx(ctx, tx, owner, duration, ids)
+	if err != nil {
+		return jobsdb.ClaimedJob{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return jobsdb.ClaimedJob{}, err
+	}
+	return claim, nil
 }
 func (s *Store) finishClaim(ctx context.Context, claim jobsdb.ClaimedJob, err error) (application.WorkClaim, error) {
 	if errors.Is(err, jobsdb.ErrNoClaimableJob) {

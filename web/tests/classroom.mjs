@@ -62,7 +62,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await page.getByLabel('Workstation name',{exact:false}).fill('student-workstation');
   assert.equal(reads.filter(p=>p.startsWith('/lab-templates?')).length,1,`${name}: catalogue cached across route navigation`);
   assert.equal(reads.filter(p=>p.startsWith('/lab-templates/template.debian/revisions?')).length,1,`${name}: revisions reused by both metadata and launch reads`);
-  await page.getByRole('button',{name:'Launch lab',exact:true}).click();await page.getByRole('link',{name:'View my labs'}).click();
+  await page.getByRole('button',{name:'Launch lab',exact:true}).click();await page.getByRole('heading',{name:'My labs',exact:true}).waitFor();
   await page.getByRole('link',{name:'Debian starter',exact:true}).waitFor();
   slowNavigation=false;
   assert.deepEqual(await page.evaluate(()=>window.navigationFlashes),[],`${name}: navigation preserves shell under delayed requests`);
@@ -72,6 +72,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await page.goBack();await page.getByRole('heading',{name:'My labs',exact:true}).waitFor();
   await page.goForward();await page.getByRole('button',{name:'Open console'}).waitFor();
   assert.deepEqual(await page.evaluate(()=>window.navigationFlashes),[],`${name}: back/forward preserves shell`);
+  await page.getByRole('navigation',{name:'Breadcrumb',exact:true}).getByRole('link',{name:'My labs',exact:true}).click();
   await page.locator('a[href="/launch/"]').last().click();
   await page.locator('a[href="/"]').last().click();await page.getByRole('heading',{name:'My labs',exact:true}).waitFor();
   await page.getByRole('link',{name:'Open Debian starter',exact:true}).click();await page.getByRole('button',{name:'Open console'}).waitFor();

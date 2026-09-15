@@ -19,6 +19,7 @@ acceptedAdrs:
   - ADR-0018
   - ADR-0019
   - ADR-0020
+  - ADR-0021
 proposedAdrs: []
 supersededAdrs: [ADR-0011, ADR-0012, ADR-0014, ADR-0017]
 documents:
@@ -275,6 +276,9 @@ completedTasks:
   - TASK-PROD-002
   - TASK-PROD-003
 currentTasks:
+  - TASK-UI-006
+  - TASK-EXAMPLES-001
+  - TASK-SCHEDULING-001
   - TASK-PROD-004
   - TASK-PROD-005
 nextRecommendedTasks: []

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Notifications from "./Notifications.svelte";
   import { onMount } from "svelte";
   import { FolderOpen, Plus, Pencil, RefreshCw } from "@lucide/svelte";
   import { api, collection, cachedCollection, type Project } from "./api";
@@ -104,10 +105,7 @@
       })}><RefreshCw size={16} />Refresh</button
   >
 </div>
-{#if error}<p role="alert" class="alert alert-error alert-soft mb-5">
-    {error} Refresh before retrying a conflicting change.
-  </p>{/if}
-{#if notice}<p role="status" class="mb-5 text-sm text-success">{notice}</p>{/if}
+<Notifications bind:error bind:notice />
 <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
   <section class="min-w-0">
     <h2 class="mb-4 text-lg font-semibold">Your workspaces</h2>

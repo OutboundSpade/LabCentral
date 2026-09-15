@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-07
 - **Supersedes:** ADR-0017
-- **Superseded by:** ADR-0020 (delegated task scope only)
+- **Superseded by:** ADR-0020 (delegated task scope only); ADR-0021 (journal-wide execution serialization only)
 
 ## Decision
 
@@ -15,7 +15,7 @@ Missing or expired normal qualification never implies cleanup permission. Operat
 
 ## Execution topology
 
-Core replica count and target execution concurrency are separate facts. The Proxmox target journal retains one conservative mutation owner at a time. Its shared-volume deployment requires cross-node locking and failover qualification. Independent providers own their journals and state contracts; they do not inherit a universal RWX requirement. A future single-active target executor needs its own measured failover design; it is not necessary to install external providers now.
+Core replica count and target execution concurrency are separate facts. The original Proxmox target journal retained one conservative mutation owner at a time. ADR-0021 supersedes that serialization with bounded independent deployments and conflicting-claim locks. Its shared-volume deployment requires cross-node locking and failover qualification. Independent providers own their journals and state contracts; they do not inherit a universal RWX requirement. A future single-active target executor needs its own measured failover design; it is not necessary to install external providers now.
 
 ## Validation
 

@@ -54,6 +54,7 @@ const (
 )
 
 type config struct {
+	providerConcurrency          string
 	installationFile             string
 	listen                       string
 	observabilityListen          string
@@ -271,6 +272,9 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	}
 	if len(targetBindings) == 0 {
 		return fmt.Errorf("at least one provider target must be configured")
+	}
+	if err := configureProviderConcurrency(targetBindings, configuration.providerConcurrency); err != nil {
+		return err
 	}
 	targets, err := controlplane.NewTargetRegistry(targetBindings)
 	if err != nil {
@@ -612,6 +616,7 @@ func parseFlags() config {
 	executable, _ := os.Executable()
 	defaultPlugin := filepath.Join(filepath.Dir(executable), "lab-provider-docker")
 	var result config
+	flag.StringVar(&result.providerConcurrency, "provider-concurrency", "", "provider target deployment limits, e.g. proxmox=2,docker=4 (default 1, maximum 16)")
 	flag.StringVar(&result.installationFile, "installation", "", "versioned plugin installation configuration")
 	flag.StringVar(&result.listen, "listen", "127.0.0.1:8080", "HTTP listen address")
 	flag.StringVar(&result.observabilityListen, "observability-listen", "127.0.0.1:9090", "private operations listen address for /live, /ready, and /metrics")

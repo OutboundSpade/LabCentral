@@ -19,3 +19,9 @@ func ValidWorkspaceName(name string) bool {
 	}
 	return true
 }
+
+// ValidTemplateName validates human-readable catalogue names independently of
+// the stable template ID and the declarative Lab's resource names.
+func ValidTemplateName(name string) bool {
+	return ValidWorkspaceName(name) && utf8.RuneCountInString(name) <= 63
+}

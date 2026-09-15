@@ -17,3 +17,16 @@ func TestWorkspaceDisplayNames(t *testing.T) {
 		}
 	}
 }
+
+func TestTemplateDisplayNames(t *testing.T) {
+	for _, name := range []string{"Debian networking pair", "Réseau Linux", "Container HTTP (Docker required)"} {
+		if !ValidTemplateName(name) {
+			t.Errorf("rejected title %q", name)
+		}
+	}
+	for _, name := range []string{"", " trailing ", "bad\nname", strings.Repeat("a", 64)} {
+		if ValidTemplateName(name) {
+			t.Errorf("accepted title %q", name)
+		}
+	}
+}

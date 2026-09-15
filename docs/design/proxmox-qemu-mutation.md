@@ -128,3 +128,19 @@ provider, configuration and mutation inventory were unchanged. New signed
 evidence and bounded reviewer trust restore eligibility until 2026-09-21T18:51:05Z;
 renewing the existing API token alone does not authorize mutation. See the
 [classroom renewal record](../operations/classroom-testbed.md#current-qualification-renewal-task-testbed-004).
+
+
+## Independent deployment concurrency (ADR-0021)
+
+A provider invocation holds a shared journal compatibility lock plus exclusive
+locks for its invocation ID and committed VMID/VLAN allocations. Claim keys are
+sorted before acquisition. Lifecycle actions lock the same VMID namespace as
+apply/destroy. Legacy journal-wide writers acquire the compatibility lock
+exclusively, so old and new processes cannot bypass one another. Cancellation
+releases partial acquisitions; process exit releases kernel locks. Checkpoints
+remain atomic and checksummed. This permits independent labs to deploy together;
+it does not change dependency ordering or authorize shared-resource mutation.
+
+TASK-SCHEDULING-001 requires fresh exact-build T3 qualification and an observed
+live overlap before rollout. Production cross-node shared-journal validation
+remains open under TASK-PROD-004.

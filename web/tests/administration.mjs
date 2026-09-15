@@ -177,6 +177,11 @@ try {
         .getByRole("button", { name: "Create organization", exact: true })
         .click();
       await page.getByText("Organization saved.", { exact: true }).waitFor();
+      assert.equal(await page.locator("header").count(), 0, "no redundant top bar");
+      assert.equal(await page.getByRole("region", {name: "Notifications"}).evaluate(e => getComputedStyle(e).position), "fixed");
+      await page.mouse.move(0, 0);
+      await page.getByText("Organization saved.", {exact: true}).waitFor({state: "hidden", timeout: 7000});
+
       await page
         .getByLabel("Workspace name", { exact: true })
         .fill("Security basics");
@@ -214,6 +219,7 @@ try {
         .getByRole("button", { name: "Save organization", exact: true })
         .click();
       await page.getByText("Organization saved.", { exact: true }).waitFor();
+      await page.getByRole("button", {name: "Dismiss notification", exact: true}).click();
       await page
         .getByLabel("Workspace name", { exact: true })
         .fill("Unconfigured");
@@ -223,6 +229,8 @@ try {
       await page
         .getByRole("button", { name: "Rename Unconfigured", exact: true })
         .waitFor();
+      await page.mouse.move(0, 0);
+      await page.getByRole("region", {name: "Notifications"}).waitFor({state:"hidden",timeout:10000});
       await page.screenshot({
         path: new URL(`${engineName}-workspaces.png`, shots).pathname,
         fullPage: true,
@@ -281,7 +289,7 @@ try {
         0,
       );
       await page
-        .getByLabel("Project", { exact: true })
+        .getByLabel("Switch workspace", { exact: true })
         .selectOption(projects[1].id);
       await page
         .getByText("Classroom launches require instructor access", {
@@ -370,6 +378,18 @@ try {
           0,
         );
       }
+      await page.goto(origin + "/");
+      await page.getByRole("heading", {name:"My labs",exact:true}).waitFor();
+      assert.equal(await page.getByRole("navigation", {name:"Main navigation"}).getByRole("link", {name:"Launch lab",exact:true}).count(), 0);
+      await page.getByRole("button", {name:"Open navigation",exact:true}).click();
+      const switcher = page.getByRole("combobox", {name:"Switch workspace",exact:true});
+      await switcher.selectOption(projects[1].id);
+      assert.equal(await switcher.inputValue(), projects[1].id);
+      await page.getByRole("heading", {name:"My labs",exact:true}).waitFor();
+      assert.equal(await page.getByRole("link", {name:"Workspaces",exact:true}).count(), 0);
+      await page.getByRole("link", {name:"Launch lab",exact:true}).first().click();
+      await page.getByRole("navigation", {name:"Breadcrumb",exact:true}).getByRole("link", {name:"My labs",exact:true}).waitFor();
+      assert.equal(await page.getByRole("region", {name:"Notifications"}).count(), 0, "notifications cleared on navigation");
       assert.deepEqual(errors, []);
       console.log(
         `PASS ${engineName}: empty admin setup, organization/workspace create and rename, conflict, target refresh, grant/revoke, Classroom scope, denied admin routes and mobile`,

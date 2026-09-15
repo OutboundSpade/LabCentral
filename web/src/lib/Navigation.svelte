@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     LayoutDashboard,
-    Plus,
     BookOpen,
     Users,
     ShieldCheck,
@@ -29,7 +28,6 @@
       title: "LABS",
       items: [
         { view: "labs", href: "/", label: "My labs", icon: LayoutDashboard },
-        { view: "launch", href: "/launch/", label: "Launch lab", icon: Plus },
         {
           view: "classroom",
           href: "/classroom/",
@@ -104,7 +102,7 @@
         </li>{/if}
       {#each group.items as item}
         {@const active =
-          view === item.view || (view === "detail" && item.view === "labs")}
+          view === item.view || (["detail", "launch"].includes(view) && item.view === "labs")}
         <li>
           <a
             href={item.href}

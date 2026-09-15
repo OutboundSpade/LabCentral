@@ -155,3 +155,22 @@ The provider/access executables and then-expired qualification were retained.
 TASK-TESTBED-004 subsequently renewed the same private target after fresh T3
 checks, owner-delegated review and off-runtime signing. See the
 [current deployment record](../operations/classroom-testbed.md#current-deployment-workspace-administration-task-testbed-003).
+
+
+## Navigation and feedback (TASK-UI-006)
+
+My labs owns the launch action and lab details. Launch has no separate sidebar
+entry; both nested views use a My labs breadcrumb. Top-level destinations use
+one page heading. Every authorized role can switch workspace using the sidebar
+selector, which lists only accessible projects. Identity and sign-out also live
+in the sidebar; the desktop top bar is removed. Mobile retains a drawer button,
+and selecting a workspace closes the drawer.
+
+Transient success/error notifications float above document flow, can be dismissed,
+and expire after five/eight seconds. Hover or keyboard focus pauses expiry.
+Navigation and workspace changes clear them. Form-local validation remains next
+to the field or dialog. Accepted launches navigate back to My labs for progress.
+
+Catalogue template names are readable Unicode display text (1–63 characters),
+separate from stable template IDs and declarative resource names. Invalid names
+produce a validation response. Create, rename and persisted readback are tested.
