@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -56,12 +58,13 @@ func (resolver fixedSecretResolver) Resolve(context.Context, application.Authori
 
 type allocationProvider struct {
 	pluginv1.UnimplementedProviderServiceServer
-	mu            sync.Mutex
-	plans         []*pluginv1.PlanResourceRequest
-	mutations     []*pluginv1.ResourceMutationInput
-	credential    string
-	configuration string
-	support       pluginv1.Capability_Support
+	mu             sync.Mutex
+	plans          []*pluginv1.PlanResourceRequest
+	mutations      []*pluginv1.ResourceMutationInput
+	credential     string
+	configuration  string
+	support        pluginv1.Capability_Support
+	sharedVMClaims bool
 }
 
 func (provider *allocationProvider) DiscoverTarget(_ context.Context, request *pluginv1.DiscoverTargetRequest) (*pluginv1.DiscoverTargetResponse, error) {
@@ -88,6 +91,7 @@ func (provider *allocationProvider) ValidateLab(context.Context, *pluginv1.Valid
 func (provider *allocationProvider) PlanResource(_ context.Context, request *pluginv1.PlanResourceRequest) (*pluginv1.PlanResourceResponse, error) {
 	provider.mu.Lock()
 	provider.plans = append(provider.plans, proto.Clone(request).(*pluginv1.PlanResourceRequest))
+	sharedVMClaims := provider.sharedVMClaims
 	provider.mu.Unlock()
 	var resource struct {
 		ID string `json:"id"`
@@ -96,12 +100,20 @@ func (provider *allocationProvider) PlanResource(_ context.Context, request *plu
 		return nil, err
 	}
 	namespace := "test." + resource.ID
-	value := "100"
+	if sharedVMClaims && strings.HasPrefix(resource.ID, "vm.") {
+		namespace = "test.vm"
+	}
+	unavailable := map[string]bool{}
 	for _, excluded := range request.GetExcludedAllocations() {
-		if excluded.GetNamespace() == namespace && excluded.GetValue() == value {
-			value = "101"
+		if excluded.GetNamespace() == namespace {
+			unavailable[excluded.GetValue()] = true
 		}
 	}
+	candidate := 100
+	for unavailable[strconv.Itoa(candidate)] {
+		candidate++
+	}
+	value := strconv.Itoa(candidate)
 	plan := []byte(fmt.Sprintf(`{"allocation":%q,"resource":%q}`, value, resource.ID))
 	return &pluginv1.PlanResourceResponse{
 		ProviderPlan: plan, ProviderPlanDigest: directDigest(plan),
@@ -257,6 +269,51 @@ func runProviderTargetStoreConformance(t *testing.T, store *localdb.Store) {
 			t.Fatalf("destroy did not release absence-confirmed claim: %#v", claim)
 		}
 	}
+	server.mu.Lock()
+	server.sharedVMClaims = true
+	server.mu.Unlock()
+	multiSource := providerTargetLab + `      - name: peer
+        imageRef: labcentral/test@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        osFamily: linux
+        compute: {cpu: 1, memory: 1Gi, architecture: amd64}
+        interfaces: [{networkRef: networks.lab, ipv4: 10.20.0.11}]
+      - name: another
+        imageRef: labcentral/test@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        osFamily: linux
+        compute: {cpu: 1, memory: 1Gi, architecture: amd64}
+        interfaces: [{networkRef: networks.lab, ipv4: 10.20.0.12}]
+`
+	multi, err := service.CreateInstanceTarget(ctx, []byte(multiSource), false, "multi-resource-claims", targetID, nil)
+	if err != nil {
+		t.Fatalf("multi-VM admission: %v", err)
+	}
+	multiClaims, err := store.ListClaims(ctx, multi.InstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vmValues := map[string]bool{}
+	for _, claim := range multiClaims {
+		if claim.Key.Namespace == "test.vm" {
+			vmValues[claim.Key.Value] = true
+		}
+	}
+	if len(vmValues) != 3 || !vmValues["100"] || !vmValues["101"] || !vmValues["102"] {
+		t.Fatalf("VM claims collided inside one lab: %v", vmValues)
+	}
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	multiInstance, _, err := service.GetInstance(ctx, multi.InstanceID)
+	if err != nil || multiInstance.Phase != domain.InstanceReady {
+		t.Fatalf("multi-VM execution: %#v, %v", multiInstance, err)
+	}
+	if _, err := service.DestroyInstance(ctx, multi.InstanceID, "multi-resource-cleanup"); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.RunOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+
 	server.mu.Lock()
 	server.support = pluginv1.Capability_SUPPORT_UNSUPPORTED
 	server.mu.Unlock()

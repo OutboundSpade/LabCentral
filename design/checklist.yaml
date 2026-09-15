@@ -30,6 +30,7 @@ tasks:
     relatedDocuments: [docs/design/reconciliation-and-jobs.md, docs/design/proxmox-qemu-mutation.md]
     acceptanceCriteria:
       - Trace dependency ordering and mutation fencing, then implement configurable limits with conservative defaults.
+      - Exclude tentative claims already chosen for earlier resources so multi-VM labs reserve distinct allocations.
       - Preserve recovery, ownership and dependency safety under concurrent independent work and validate the exact deployed provider.
   - id: TASK-TESTBED-004
     title: Renew private classroom credential and exact-target qualification

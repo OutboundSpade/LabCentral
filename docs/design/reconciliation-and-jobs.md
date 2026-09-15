@@ -92,3 +92,10 @@ The CLI overrides matching provider policies. All replicas must use the same
 limits. The pool has a global ceiling of 64 workers per process; target admission
 is still enforced in the database. Limits include apply, cleanup and lifecycle
 operations so those actions cannot bypass capacity.
+
+While planning one lab, earlier resources’ tentative allocation claims join the
+exclusion set for each later resource. Otherwise two VMs can both propose the
+same still-unused VMID before the admission transaction runs. Exclusions are
+copied and deduplicated; a provider returning an excluded claim produces a
+validation error. SQLite/PostgreSQL regressions cover three VMs sharing an
+allocation namespace, successful execution and owned cleanup.

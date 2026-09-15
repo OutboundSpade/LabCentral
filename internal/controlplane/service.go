@@ -254,6 +254,7 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 		return PlanResult{}, nil, err
 	}
 	defer session.Close()
+	var plannedAllocations []application.AllocationKey
 	for _, resource := range graph.Resources {
 		plan := ResourcePlan{ResourceID: string(resource.ID()), Kind: string(resource.Kind()), Action: "ensure"}
 		if !providerManagedKind(resource.Kind()) {
@@ -278,7 +279,12 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 				PlanDigest: dependencyPlan.planDigest.Hex(), Allocations: protocolClaims(dependencyPlan.allocations),
 			})
 		}
-		excluded := exclusions[resource.ID()]
+		excluded := append([]application.AllocationKey(nil), exclusions[resource.ID()]...)
+		// Earlier resources have not reached the database yet. Exclude their
+		// tentative claims so one lab cannot propose the same VMID/VLAN twice.
+		for _, claim := range plannedAllocations {
+			excluded = appendUniqueClaim(excluded, claim)
+		}
 		planContext, cancel := context.WithTimeout(ctx, 10*time.Second)
 		response, callErr := session.Provider.Plan(planContext, application.ProviderMutation{
 			Call: application.ProviderCall{
@@ -313,6 +319,14 @@ func (s *Service) planCanonical(ctx context.Context, validation ValidationResult
 				return PlanResult{}, nil, fmt.Errorf("provider proposed invalid allocations for %s: %w", resource.ID(), err)
 			}
 		}
+		for _, allocation := range allocations {
+			for _, unavailable := range excluded {
+				if allocation == unavailable {
+					return PlanResult{}, nil, &ValidationError{Issues: []Issue{{Code: "provider_allocation_conflict", ResourceID: string(resource.ID()), Message: "Provider proposed an excluded allocation"}}}
+				}
+			}
+		}
+		plannedAllocations = append(plannedAllocations, allocations...)
 		providerPlans[resource.ID()] = plannedResource{plan: append([]byte(nil), response.Plan...), planDigest: planDigest, allocations: allocations}
 		for _, allocation := range allocations {
 			plan.ProposedAllocations = append(plan.ProposedAllocations, AllocationPreview{Namespace: allocation.Namespace, Value: allocation.Value})

@@ -800,6 +800,7 @@ classroomFlow20260915:
     - Go race suite with disposable PostgreSQL 18, including cross-replica target admission and expired-lease recovery
     - Readable template create/rename/readback through HTTP and both stores
     - Configured worker pool capacity and independent/conflicting/legacy provider locks
+    - Three-VM planning and execution with a shared allocation namespace on SQLite/PostgreSQL
     - Svelte check/build and all four browser workflows
     - Notification dismissal/expiry, non-admin workspace switching and mobile drawer regression
     - Go vet and Phase 0 schemas/protocol/design/link checks
