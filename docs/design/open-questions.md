@@ -46,3 +46,9 @@ ADR-0019 records the verified peer-pinned Tailscale console transport. The
 student workflow and independent cleanup have passed. TASK-TESTBED-001 is
 complete. No reviewer identity, deployment permission or VM-login input is
 pending; students enroll passkeys using their individual private links.
+
+On 2026-09-15 the owner chose catalogue-only container examples on PVE1.
+ADR-0021 records bounded independent deployments; the testbed limit is two.
+Within-lab parallel branches remain an implementation extension requiring
+multi-invocation recovery. No additional deployment or container-provisioning
+approval is pending. Production validation gates are unchanged.

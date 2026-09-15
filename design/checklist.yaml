@@ -3,7 +3,7 @@ lastUpdated: "2026-09-15"
 tasks:
   - id: TASK-UI-006
     title: Simplify lab navigation workspace switching and transient feedback
-    status: in_progress
+    status: complete
     dependencies: [TASK-TESTBED-004]
     relatedAdrs: [ADR-0009, ADR-0010]
     relatedDocuments: [docs/design/classroom-ui.md]
@@ -14,7 +14,7 @@ tasks:
       - Verify non-admin workspace switching, notification lifecycle and responsive navigation in browser tests and deploy to PVE1.
   - id: TASK-EXAMPLES-001
     title: Expand the private classroom catalogue and explain requirements
-    status: in_progress
+    status: complete
     dependencies: [TASK-UI-006]
     relatedAdrs: [ADR-0004, ADR-0015]
     relatedDocuments: [docs/design/declarative-labs.md, docs/operations/classroom-testbed.md]
@@ -24,7 +24,7 @@ tasks:
       - Explain inferred resource needs versus additional capability and isolation constraints without changing existing revision contracts.
   - id: TASK-SCHEDULING-001
     title: Add bounded provider deployment concurrency
-    status: in_progress
+    status: complete
     dependencies: [TASK-EXAMPLES-001]
     relatedAdrs: [ADR-0018, ADR-0021]
     relatedDocuments: [docs/design/reconciliation-and-jobs.md, docs/design/proxmox-qemu-mutation.md]

@@ -807,7 +807,19 @@ classroomFlow20260915:
   evidenceDirectory: bin/navigation-flow-20260915
   qualificationDirectory: bin/classroom-flow-20260915/qualification-run
   liveCloneOverlap: passed_two_independent_provider_processes
-  rollout: pending_fresh_qualification
+  rollout: complete
+  sourceCommit: 37a8acbeb2d81deffe83e82439ba1df298edabc9
+  finalCoreDeployedAt: "2026-09-15T19:38:07Z"
+  coreSHA256: 467e6060ae93bdbdcb41602491d309758c41896526cb2f5f3df6d6132651a241
+  providerSHA256: a01afe75ee2c60ee7cb977b90502323e3b87b127145988c012aaf69efcff3a62
+  providerSourceDigest: sha256:362a48fbfe7a49776e8e45e6b1f24dcfcaecb175aff87af08230a887f8145859
+  qualificationDigest: sha256:eaa358c2806e25831318f8d86aedf68b70fc073ff86f954f9efc5d4e23eb950b
+  qualificationValidUntil: "2026-09-21T19:31:31Z"
+  configuredTargetConcurrency: 2
+  publishedExamples: 4
+  preExistingLabRecordsUnchanged: 56
+  liveTwoVMLabsReadyThenDestroyed: 2
+  independentCleanupAndSessionRetirement: pass
   limitations:
     - Resources inside one lab remain sequential in dependency order.
     - Container examples are catalogue-only on PVE1; no Docker environment is provisioned.
