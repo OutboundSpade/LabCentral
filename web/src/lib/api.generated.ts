@@ -105,6 +105,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/provider-targets/{id}/deployment-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get admin provider targets by ID deployment settings */
+        get: operations["get-admin-provider-targets-by-id-deployment-settings"];
+        /** Put admin provider targets by ID deployment settings */
+        put: operations["put-admin-provider-targets-by-id-deployment-settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-records": {
         parameters: {
             query?: never;
@@ -263,6 +281,40 @@ export interface paths {
         };
         /** Get examples docker laptop */
         get: operations["get-examples-docker-laptop"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-authoring-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post lab authoring documents */
+        post: operations["post-lab-authoring-documents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-authoring-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List lab authoring schema */
+        get: operations["list-lab-authoring-schema"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1108,6 +1160,18 @@ export interface components {
             name: string;
             projectId: string;
         };
+        DeploymentSettings: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/DeploymentSettings.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            maxConcurrentDeployments: number;
+            /** Format: int64 */
+            resourceVersion: number;
+        };
         DestroyInputBody: {
             /**
              * Format: uri
@@ -1610,6 +1674,15 @@ export interface components {
             resources: components["schemas"]["ResourcePlan"][] | null;
             warnings: components["schemas"]["Issue"][] | null;
         };
+        "Post-lab-authoring-documentsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-lab-authoring-documentsRequest.json
+             */
+            readonly $schema?: string;
+            source: string;
+        };
         "Post-users-by-id-actions-issue-password-recoveryResponse": {
             /**
              * Format: uri
@@ -1694,6 +1767,16 @@ export interface components {
              */
             readonly $schema?: string;
             source: string;
+        };
+        "Put-admin-provider-targets-by-id-deployment-settingsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Put-admin-provider-targets-by-id-deployment-settingsRequest.json
+             */
+            readonly $schema?: string;
+            /** Format: int32 */
+            maxConcurrentDeployments: number;
         };
         QuotaLimitMutationBody: {
             /**
@@ -2207,6 +2290,76 @@ export interface operations {
             };
         };
     };
+    "get-admin-provider-targets-by-id-deployment-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentSettings"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-admin-provider-targets-by-id-deployment-settings": {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-Match"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Put-admin-provider-targets-by-id-deployment-settingsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeploymentSettings"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-audit-records": {
         parameters: {
             query?: {
@@ -2538,6 +2691,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Get-examples-docker-laptopResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-lab-authoring-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Post-lab-authoring-documentsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-lab-authoring-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Error */

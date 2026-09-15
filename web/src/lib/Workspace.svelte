@@ -17,6 +17,9 @@
     Play,
     FingerprintPattern,
   } from "@lucide/svelte";
+  import Modal from "./Modal.svelte";
+  import DocumentEditor from "./DocumentEditor.svelte";
+  import ProviderOptions from "./ProviderOptions.svelte";
   import LabDetail from "./LabDetail.svelte";
   import LabList from "./LabList.svelte";
   import Operations from "./Operations.svelte";
@@ -85,6 +88,9 @@
   let providerOverride = $state("");
   let roster = $state<Person[]>([]);
   let selectedOwners = $state<string[]>([]);
+  let classroomLaunch = $state(false);
+  let validationOpen = $state(false);
+  let ttlMinutes = $state<number | undefined>();
   let batch = $state<Batch>();
   let activeOperation = $state<Operation>();
   let search = $state("");
@@ -156,6 +162,8 @@
   afterNavigate(({ from }) => {
     if (!from) return;
     drawerOpen = false;
+    classroomLaunch = false;
+    validationOpen = false;
     error = "";
     notice = "";
     activeOperation = undefined;
@@ -493,6 +501,7 @@
       ...(revisionId ? { revisionId } : { source }),
       projectId,
       providerTargetId: targetId,
+      ...(ttlMinutes ? { ttlSeconds: Math.round(ttlMinutes * 60) } : {}),
       inputs,
       acknowledgeDockerIsolationRisk: acknowledge,
       ...(providerOverride.trim()
@@ -533,6 +542,7 @@
           })),
         }),
       });
+      classroomLaunch = false;
       notice = "Classroom launch accepted.";
       await refresh();
     });
@@ -764,10 +774,20 @@
               <p>{server.noAuthWarning}</p>
             </div>
           </div>{/if}
-        <button class="btn btn-square btn-ghost mb-4 lg:hidden" aria-label="Open navigation" onclick={() => (drawerOpen = true)}><Menu size={20} /></button>
-        {#if view === "launch" || view === "detail"}<nav aria-label="Breadcrumb" class="breadcrumbs mb-4 text-sm">
-          <ul><li><a href="/">My labs</a></li><li aria-current="page">{titles[view]}</li></ul>
-        </nav>{/if}
+        <button
+          class="btn btn-square btn-ghost mb-4 lg:hidden"
+          aria-label="Open navigation"
+          onclick={() => (drawerOpen = true)}><Menu size={20} /></button
+        >
+        {#if view === "launch" || view === "detail"}<nav
+            aria-label="Breadcrumb"
+            class="breadcrumbs mb-4 text-sm"
+          >
+            <ul>
+              <li><a href="/">My labs</a></li>
+              <li aria-current="page">{titles[view]}</li>
+            </ul>
+          </nav>{/if}
         <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 class="text-3xl font-semibold tracking-tight">
@@ -923,176 +943,267 @@
             onend={confirmEnd}
           />
         {:else if view === "launch" || view === "classroom"}
-          {#if !templates.length}<section
-              class="rounded-box border border-base-300 p-8"
+          {#snippet launchOptions()}
+            <form
+              onsubmit={(e) => {
+                e.preventDefault();
+                void (view === "classroom" ? launchClassroom() : launch());
+              }}
             >
-              <BookOpen size={28} class="mb-4" />
-              <h2 class="text-lg font-semibold">No published labs yet</h2>
-              <p class="mt-2 text-sm text-base-content/70">
-                Your instructor needs to publish a lab template for this
-                project.
-              </p>
-              {#if author}<a href="/templates/" class="btn mt-5"
-                  >Create a template</a
-                >{/if}
-            </section>
-          {:else}<div class="grid gap-7 xl:grid-cols-[minmax(0,1fr)_20rem]">
-              <section class="min-w-0 rounded-box border border-base-300 p-6">
-                <label class="grid gap-2 text-sm font-medium"
-                  >Lab template<select
-                    class="select w-full"
-                    bind:value={templateId}
-                    onchange={chooseTemplate}
-                    >{#each templates as t}<option value={t.id}>{t.name}</option
-                      >{/each}</select
-                  ></label
+              {#if !templates.length}<section
+                  class="rounded-box border border-base-300 p-8"
                 >
-                <p
-                  class="mt-4 whitespace-pre-wrap text-sm leading-6 text-base-content/70"
-                >
-                  {template?.description}
-                </p>
-                {#if templateId !== "builtin.local"}<label
-                    class="mt-5 grid gap-2 text-sm"
-                    >Revision<select
-                      class="select w-full"
-                      bind:value={revisionId}
-                      onchange={chooseRevision}
-                      >{#each revisions as r}<option value={r.id}
-                          >Revision {r.revisionNumber}</option
-                        >{/each}</select
-                    ></label
-                  >{/if}{#if !revisions.length && templateId !== "builtin.local"}<p
-                    class="mt-4 text-sm text-warning"
+                  <BookOpen size={28} class="mb-4" />
+                  <h2 class="text-lg font-semibold">No published labs yet</h2>
+                  <p class="mt-2 text-sm text-base-content/70">
+                    Your instructor needs to publish a lab template for this
+                    project.
+                  </p>
+                  {#if author}<a href="/templates/" class="btn mt-5"
+                      >Create a template</a
+                    >{/if}
+                </section>
+              {:else}<div class="grid gap-7 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                  <section
+                    class="min-w-0 rounded-box border border-base-300 p-6"
                   >
-                    This template has no published revision.
-                  </p>{/if}{#key revisionId}{#if content}<DeclaredInputs
-                      parameters={content.parameters ?? []}
-                      bind:values={inputs}
-                      bind:valid={inputsValid}
-                    />{/if}{/key}{#if targets.length > 1}<label
-                    class="mt-5 grid gap-2 text-sm"
-                    >Environment<select
-                      class="select w-full"
-                      bind:value={targetId}
-                      onchange={() => {
-                        acknowledge = false;
-                        if (view === "classroom") void action(loadRoster);
-                      }}
-                      >{#each targets as t}<option value={t.id}
-                          >{t.providerKind} · {t.id}</option
-                        >{/each}</select
-                    ></label
-                  >{/if}{#if docker}<label
-                    class="mt-5 flex items-start gap-3 text-sm"
-                    ><input
-                      class="checkbox checkbox-sm mt-1"
-                      type="checkbox"
-                      bind:checked={acknowledge}
-                    /><span
-                      >I understand this container environment is for trusted
-                      code and does not isolate hostile workloads.</span
-                    ></label
-                  >{/if}
-              </section>
-              <aside class="rounded-box bg-base-200 p-6">
-                <h2 class="font-semibold">Ready to launch</h2>
-                <p class="mt-3 text-sm leading-6 text-base-content/70">
-                  Labs expire automatically. Save your work before deleting
-                  them.
-                </p>
+                    <label class="grid gap-2 text-sm font-medium"
+                      >Lab template<select
+                        class="select w-full"
+                        bind:value={templateId}
+                        onchange={chooseTemplate}
+                        >{#each templates as t}<option value={t.id}
+                            >{t.name}</option
+                          >{/each}</select
+                      ></label
+                    >
+                    <p
+                      class="mt-4 whitespace-pre-wrap text-sm leading-6 text-base-content/70"
+                    >
+                      {template?.description}
+                    </p>
+                    {#if templateId !== "builtin.local"}<label
+                        class="mt-5 grid gap-2 text-sm"
+                        >Revision<select
+                          class="select w-full"
+                          bind:value={revisionId}
+                          onchange={chooseRevision}
+                          >{#each revisions as r}<option value={r.id}
+                              >Revision {r.revisionNumber}</option
+                            >{/each}</select
+                        ></label
+                      >{/if}{#if !revisions.length && templateId !== "builtin.local"}<p
+                        class="mt-4 text-sm text-warning"
+                      >
+                        This template has no published revision.
+                      </p>{/if}{#key revisionId}{#if content}<DeclaredInputs
+                          parameters={content.parameters ?? []}
+                          bind:values={inputs}
+                          bind:valid={inputsValid}
+                        />{/if}{/key}{#if targets.length > 1}<label
+                        class="mt-5 grid gap-2 text-sm"
+                        >Environment<select
+                          class="select w-full"
+                          bind:value={targetId}
+                          onchange={() => {
+                            acknowledge = false;
+                            providerOverride = "";
+                            if (view === "classroom")
+                              void action(async () => {
+                                await loadRoster(false);
+                                selectedOwners = selectedOwners.filter((id) =>
+                                  roster.some((person) => person.id === id),
+                                );
+                              });
+                          }}
+                          >{#each targets as t}<option value={t.id}
+                              >{t.providerKind} · {t.id}</option
+                            >{/each}</select
+                        ></label
+                      >{/if}{#if docker}<label
+                        class="mt-5 flex items-start gap-3 text-sm"
+                        ><input
+                          class="checkbox checkbox-sm mt-1"
+                          type="checkbox"
+                          bind:checked={acknowledge}
+                        /><span
+                          >I understand this container environment is for
+                          trusted code and does not isolate hostile workloads.</span
+                        ></label
+                      >{/if}
+                    <label class="mt-5 grid gap-2 text-sm"
+                      >Lab lifetime (minutes)<input
+                        class="input w-full"
+                        type="number"
+                        min="1"
+                        max="527040"
+                        step="1"
+                        bind:value={ttlMinutes}
+                        placeholder="Workspace default"
+                      /><span class="text-xs text-base-content/60"
+                        >Leave blank to use the workspace policy. Its maximum
+                        still applies.</span
+                      ></label
+                    >
+                    {#key targetId}<ProviderOptions
+                        {target}
+                        bind:source={providerOverride}
+                      />{/key}
+                  </section>
+                  <aside class="rounded-box bg-base-200 p-6">
+                    <h2 class="font-semibold">Ready to launch</h2>
+                    {#if view === "classroom"}<fieldset
+                        class="mt-4 max-h-64 space-y-3 overflow-y-auto"
+                      >
+                        <legend class="mb-2 text-sm font-medium"
+                          >Students ({selectedOwners.length} selected)</legend
+                        >{#each roster as person}<label
+                            class="flex items-center gap-2 text-sm"
+                            ><input
+                              type="checkbox"
+                              class="checkbox checkbox-sm"
+                              value={person.id}
+                              bind:group={selectedOwners}
+                              disabled={busy}
+                            />{person.displayName}</label
+                          >{/each}
+                      </fieldset>{/if}
+                    <p class="mt-3 text-sm leading-6 text-base-content/70">
+                      Labs expire automatically. Save your work before deleting
+                      them.
+                    </p>
 
-                {#if view === "launch"}<button
-                    class="btn btn-primary mt-7 w-full"
-                    disabled={busy ||
-                      (!revisionId && templateId !== "builtin.local") ||
-                      !content ||
-                      !inputsValid ||
-                      !targetId ||
-                      (docker && !acknowledge)}
-                    onclick={launch}
-                    ><Play size={16} />{busy
-                      ? "Launching…"
-                      : "Launch lab"}</button
-                  >{/if}
-              </aside>
-            </div>{/if}
-          {#if view === "classroom"}<section class="mt-8 min-w-0">
-              <div
-                class="mb-4 flex flex-wrap items-center justify-between gap-3"
-              >
-                <h2 class="text-lg font-semibold">Classroom members</h2>
-                <button
-                  class="btn btn-primary"
-                  disabled={busy ||
-                    !selectedOwners.length ||
-                    !revisionId ||
-                    !content ||
-                    !inputsValid ||
-                    (docker && !acknowledge)}
-                  onclick={launchClassroom}
-                  ><Play size={16} />Launch for {selectedOwners.length} selected</button
+                    <button
+                      type="submit"
+                      class="btn btn-primary mt-7 w-full"
+                      disabled={busy ||
+                        (!revisionId && templateId !== "builtin.local") ||
+                        !content ||
+                        !inputsValid ||
+                        !targetId ||
+                        (view === "classroom" && !selectedOwners.length) ||
+                        (docker && !acknowledge)}
+                      ><Play size={16} />{busy
+                        ? "Launching…"
+                        : view === "classroom"
+                          ? `Launch for ${selectedOwners.length} selected`
+                          : "Launch lab"}</button
+                    >
+                  </aside>
+                </div>{/if}
+            </form>
+          {/snippet}
+          {#if view === "launch"}{@render launchOptions()}{:else}<Modal
+              bind:open={classroomLaunch}
+              title="Launch classroom labs"
+              wide
+              >{@render launchOptions()}{#if error}<p
+                  role="alert"
+                  class="mt-4 text-sm text-error"
                 >
-              </div>
+                  {error}
+                </p>{/if}</Modal
+            >{/if}
+          {#if view === "classroom"}<section class="min-w-0">
               <div
-                class="max-w-full overflow-x-auto rounded-box border border-base-300"
+                class="mb-5 flex flex-wrap items-center justify-between gap-3"
               >
-                <table class="table table-sm">
+                <h2 class="text-lg font-semibold">Students & labs</h2>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 text-sm"
+                    ><input
+                      class="checkbox checkbox-sm"
+                      type="checkbox"
+                      bind:checked={showEnded}
+                    />Show ended labs</label
+                  ><button
+                    class="btn btn-primary"
+                    disabled={busy || !templates.length}
+                    onclick={() => (classroomLaunch = true)}
+                    ><Play size={16} />Launch labs</button
+                  >
+                </div>
+              </div>
+              <p class="mb-4 text-sm text-base-content/70">
+                Select students, then choose a template and launch options.
+              </p>
+              <div class="overflow-x-auto rounded-box border border-base-300">
+                <table class="table">
                   <thead
                     ><tr
-                      ><th>Select</th><th>Student</th><th>Labs</th><th
-                        >Progress</th
-                      ></tr
+                      ><th
+                        ><input
+                          type="checkbox"
+                          class="checkbox checkbox-sm"
+                          aria-label="Select all students"
+                          checked={roster.length > 0 &&
+                            selectedOwners.length === roster.length}
+                          onchange={(e) =>
+                            (selectedOwners = e.currentTarget.checked
+                              ? roster.map((p) => p.id)
+                              : [])}
+                        /></th
+                      ><th>Student</th><th>Labs</th></tr
                     ></thead
-                  ><tbody
-                    >{#each roster as person}<tr
+                  ><tbody>
+                    {#each [...roster.map( (p) => ({ id: p.id, name: p.displayName, username: p.username, eligible: true }) ), ...Array.from(new Set(instances
+                            .filter((i) => (showEnded || i.phase !== "destroyed") && !roster.some((p) => p.id === i.ownerId))
+                            .map((i) => i.ownerId))).map( (id) => ({ id, name: id, username: "Not eligible for this environment", eligible: false }) )] as person (person.id)}
+                      <tr
                         ><td
                           ><input
                             class="checkbox checkbox-sm"
                             type="checkbox"
                             value={person.id}
                             bind:group={selectedOwners}
-                            aria-label={`Select ${person.displayName}`}
+                            disabled={!person.eligible || busy}
+                            aria-label={`Select ${person.name}`}
                           /></td
                         ><td class="font-medium"
-                          >{person.displayName}
-                          <div class="mt-1 text-xs text-base-content/60">
+                          >{person.name}
+                          <p
+                            class="mt-1 text-xs font-normal text-base-content/60"
+                          >
                             {person.username}
-                          </div></td
-                        ><td
-                          >{instances.filter(
-                            (i) =>
-                              i.ownerId === person.id &&
-                              i.phase !== "destroyed",
-                          ).length}</td
-                        ><td
-                          >{#each instances.filter((i) => i.ownerId === person.id && i.phase !== "destroyed") as instance}<a
-                              href={`/lab/?id=${instance.id}`}
-                              class="mr-2 inline-flex"
-                              ><StatusBadge state={instance.phase} /></a
-                            >{/each}{#each batch?.items?.filter((i) => i.ownerId === person.id) ?? [] as item}<StatusBadge
-                              state={item.operation.state}
-                            />{/each}</td
-                        ></tr
-                      >{/each}</tbody
-                  >
+                          </p></td
+                        ><td>
+                          <div class="grid gap-3">
+                            {#each instances.filter((i) => i.ownerId === person.id && (showEnded || i.phase !== "destroyed")) as instance (instance.id)}<div
+                                class="flex flex-wrap items-center gap-3"
+                              >
+                                <a
+                                  class="link font-medium"
+                                  href={`/lab/?id=${instance.id}`}
+                                  >{labName(instance)}</a
+                                ><StatusBadge state={instance.phase} /><span
+                                  class="text-xs text-base-content/60"
+                                  >{expiry(instance)}</span
+                                >{#if instance.phase !== "destroyed"}<button
+                                    class="btn btn-xs btn-ghost ml-auto"
+                                    disabled={busy}
+                                    onclick={() => confirmEnd(instance)}
+                                    >End lab</button
+                                  >{/if}
+                              </div>{:else}<span
+                                class="text-sm text-base-content/60"
+                                >No active labs</span
+                              >{/each}
+                          </div>
+                          {#each batch?.items?.filter((i) => i.ownerId === person.id && i.operation.state === "failed") ?? [] as item}<p
+                              class="mt-2 text-sm text-error"
+                            >
+                              Launch failed. {item.operation.message}
+                            </p>{/each}
+                        </td></tr
+                      >
+                    {/each}
+                  </tbody>
                 </table>
               </div>
               {#if !roster.length}<p class="mt-4 text-sm text-base-content/70">
-                  No eligible students are assigned to this project and
+                  No eligible students are assigned to this workspace and
                   environment.
                 </p>{/if}
-            </section>
-            <section class="mt-8 min-w-0">
-              <h2 class="mb-4 text-lg font-semibold">Classroom labs</h2>
-              {#key projectId}<LabList
-                  instances={instances.filter((i) => i.phase !== "destroyed")}
-                  name={labName}
-                  owner={(i) =>
-                    roster.find((p) => p.id === i.ownerId)?.displayName ??
-                    i.ownerId}
-                  {refresh}
-                />{/key}
             </section>{/if}
         {:else if view === "templates"}
           <div class="grid gap-6 xl:grid-cols-[17rem_minmax(0,1fr)]">
@@ -1148,17 +1259,18 @@
                   maxlength="4096"
                   placeholder="What will students learn, and how should they get started?"
                 ></textarea></label
-              ><label class="grid gap-2 text-sm"
-                >Lab YAML<textarea
-                  class="textarea h-80 w-full font-mono text-xs leading-6"
-                  bind:value={source}
-                  spellcheck="false"
-                  required></textarea></label
               >
-              <details class="rounded-box border border-base-300 p-4 text-sm">
-                <summary class="cursor-pointer font-medium"
-                  >Validate with example values</summary
-                >
+              <DocumentEditor bind:source />
+              <button
+                type="button"
+                class="btn justify-self-start"
+                onclick={() => (validationOpen = true)}
+                >Validate with example values</button
+              >
+              <Modal
+                bind:open={validationOpen}
+                title="Validate with example values"
+              >
                 <p class="mt-3 text-base-content/70">
                   Values below are only used for validation. Define student
                   inputs in the YAML parameters.
@@ -1195,7 +1307,12 @@
                     (docker && !acknowledge)}
                   onclick={validateTemplate}>Validate template</button
                 >
-              </details>
+                {#if error}<p role="alert" class="mt-3 text-error">
+                    {error}
+                  </p>{/if}{#if notice}<p role="status" class="mt-3">
+                    {notice}
+                  </p>{/if}</Modal
+              >
               <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-base-content/70">
                   Published revisions are immutable.
@@ -1231,10 +1348,27 @@
             class="text-lg font-semibold tracking-tight">LabCentral</span
           ></a
         >
-        <label for="project-choice" class="mb-2 px-3 text-xs font-semibold text-base-content/60">Workspace</label>
-        <select id="project-choice" aria-label="Switch workspace" class="select mb-3 w-full" bind:value={projectId}
-          onchange={() => { drawerOpen = false; error = ""; notice = ""; activeOperation = undefined; void loadProject(); }} disabled={loading || !projects.length}>
-          {#if !projects.length}<option value="">No workspaces assigned</option>{/if}
+        <label
+          for="project-choice"
+          class="mb-2 px-3 text-xs font-semibold text-base-content/60"
+          >Workspace</label
+        >
+        <select
+          id="project-choice"
+          aria-label="Switch workspace"
+          class="select mb-3 w-full"
+          bind:value={projectId}
+          onchange={() => {
+            drawerOpen = false;
+            error = "";
+            notice = "";
+            activeOperation = undefined;
+            void loadProject();
+          }}
+          disabled={loading || !projects.length}
+        >
+          {#if !projects.length}<option value="">No workspaces assigned</option
+            >{/if}
           {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
         </select>
         <Navigation
@@ -1245,7 +1379,9 @@
           authenticated={server?.authMode !== "none"}
         />
         <div class="mt-auto px-3 pt-10">
-          <p class="mb-3 break-words text-sm text-base-content/60">{session.displayName}</p>
+          <p class="mb-3 break-words text-sm text-base-content/60">
+            {session.displayName}
+          </p>
           {#if server?.authMode !== "none"}<button
               class="btn btn-sm btn-ghost w-full justify-start"
               onclick={logout}

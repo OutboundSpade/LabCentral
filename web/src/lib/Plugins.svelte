@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Modal from "./Modal.svelte";
+  import TargetSettings from "./TargetSettings.svelte";
   import Notifications from "./Notifications.svelte";
   import { onMount } from "svelte";
   import { Plug, RefreshCw, ShieldCheck, Plus } from "@lucide/svelte";
@@ -28,6 +30,8 @@
     loaded = $state(false),
     error = $state(""),
     notice = $state("");
+  let settingsOpen = $state(false);
+  let selectedTarget = $state<ProviderTarget>();
   let revoking = $state<Grant>();
   let dialog = $state<HTMLDialogElement>();
   onMount(() => {
@@ -190,15 +194,13 @@
           onclick={() => run(() => refresh(target))}
           ><RefreshCw size={16} />Refresh {target.id}</button
         >
-        <details class="mt-4 text-sm">
-          <summary class="cursor-pointer">Protocol features</summary>
-          <ul class="mt-2 space-y-1 break-all text-base-content/70">
-            {#each target.features ?? [] as feature}<li>{feature}</li>{:else}<li
-              >
-                No optional features reported.
-              </li>{/each}
-          </ul>
-        </details>
+        <button
+          class="btn btn-sm ml-2"
+          onclick={() => {
+            selectedTarget = target;
+            settingsOpen = true;
+          }}>Settings & limits</button
+        >
       </article>{/each}
   </div>
   {#if loaded && !targets.length}<p class="py-6 text-base-content/70">
@@ -218,7 +220,8 @@
       }}
     >
       <label class="grid w-full gap-2 text-sm sm:w-64"
-        >Workspace<select aria-label="Workspace"
+        >Workspace<select
+          aria-label="Workspace"
           class="select w-full"
           bind:value={projectId}
           required
@@ -230,7 +233,8 @@
         ></label
       >
       <label class="grid w-full gap-2 text-sm sm:w-64"
-        >Environment<select aria-label="Environment"
+        >Environment<select
+          aria-label="Environment"
           class="select w-full"
           bind:value={targetId}
           required
@@ -290,9 +294,7 @@
   <summary class="cursor-pointer font-semibold"
     >Install or update a plugin</summary
   >
-  <ol
-    class="mt-4 space-y-2 pl-5 text-sm leading-6 text-base-content/70"
-  >
+  <ol class="mt-4 space-y-2 pl-5 text-sm leading-6 text-base-content/70">
     <li>Install the verified plugin executable and manifest on the server.</li>
     <li>
       Add its environments to the installation file and configure its isolated
@@ -337,3 +339,9 @@
     {#if error}<p role="alert" class="mt-3 text-error">{error}</p>{/if}
   </div>
 </dialog>
+
+<Modal bind:open={settingsOpen} title="Environment settings"
+  >{#if selectedTarget}{#key selectedTarget.id}<TargetSettings
+        target={selectedTarget}
+      />{/key}{/if}</Modal
+>

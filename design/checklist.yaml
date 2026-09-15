@@ -1,6 +1,19 @@
 formatVersion: 1
 lastUpdated: "2026-09-15"
 tasks:
+  - id: TASK-UI-007
+    title: Unify classroom launch management and expose provider operations controls
+    status: complete
+    dependencies: [TASK-SCHEDULING-001, TASK-UI-006]
+    relatedAdrs: [ADR-0010, ADR-0015, ADR-0019, ADR-0021]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/design/reconciliation-and-jobs.md]
+    acceptanceCriteria:
+      - Combine classroom participants and their labs, with modal launch options including declared inputs and lifetime.
+      - Expose durable concurrency controls and existing target VM quotas in Plugins, and discovered capacity plus reservations in Operations.
+      - Generate authoring and plugin override forms from bounded JSON Schema while retaining the canonical API and server validation.
+      - Replace transient toast styling and expandable operation details with clear notifications and dialogs.
+      - Automatically obtain fresh authorized console sessions on reload and bounded reconnect without reusing one-time tokens or bypassing revocation.
+      - Verify changed backend and browser paths, then deploy a core-only update to PVE1 while retaining valid provider qualification.
   - id: TASK-UI-006
     title: Simplify lab navigation workspace switching and transient feedback
     status: complete

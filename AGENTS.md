@@ -23,7 +23,18 @@ Before changing anything, search these sources for contradictions and stable IDs
 - Treat container isolation as insufficient for arbitrary hostile code unless a separately verified sandbox or VM boundary is selected.
 - Use typed structures and versioned schemas. Do not introduce generic portable `map[string]any` resources or executable templates.
 - Record primary sources and retrieval dates in `docs/references.md` when provider behavior affects a decision.
-- Add or update tests and contract fixtures with implementation changes.
+- Add or update tests and contract fixtures for changed behavior and meaningful regressions; avoid tests that merely mirror implementation.
+
+## Validation proportional to the change
+
+- During iteration, run the smallest checks that exercise the changed behavior. Reuse passing results while their code, dependencies, configuration and build inputs remain unchanged.
+- Docs-only changes need relevant syntax/link/consistency checks, not builds or runtime tests. UI changes need type/build checks and affected browser scenarios; run the cross-browser suite once for a settled shared-navigation/layout change. Backend changes need affected package tests; concurrency, persistence and authorization changes also need relevant race and database-parity tests.
+- Run broad integration checks once when the affected boundaries justify them. After a correction, rerun affected checks; repeat the broader suite only if the correction invalidates its earlier evidence. Preserve required CI/release gates.
+- Validate representative plans locally before live provisioning, including multiple resources sharing an allocation namespace. Catch planning/admission errors before staging deployment artifacts.
+- Settle and review implementation before the release build, upload and deployment. Reuse that exact artifact. After deployment, perform a focused health/feature smoke test and clean up only test-owned resources.
+- Retain hashes for artifact identity, transfer/reconstruction integrity, signed provider qualification and ownership/image contracts. Compute release artifact digests once and verify them at deployment boundaries; remeasure if bytes change. Do not repeatedly hash unrelated unchanged files or duplicate digest inventories in documents. Hashes identify bytes; tests establish behavior and signatures establish provenance.
+- Reuse unexpired provider qualification only while every bound fact still matches. Core/UI/docs changes alone do not require provider requalification. Changed provider identity, bound target facts or expired evidence still require the accepted qualification procedure; do not bypass runtime gates to save time.
+- Keep detailed logs and qualification evidence in ignored artifacts or CI. Summarize results and material limitations in the final response; do not create a repository narrative for every iteration.
 
 ## Changing accepted decisions
 
@@ -31,14 +42,14 @@ Never edit an accepted ADR to reverse its decision. Create a new ADR, link and m
 
 ## Documentation consistency
 
-The ADR is authoritative for a decision; schemas/protocol definitions are authoritative for machine contracts; design documents explain them; state files report progress. A change is incomplete if these disagree. Validate YAML, JSON, Proto, Mermaid, examples, links, and stable-ID references where tooling permits.
+The ADR is authoritative for a decision; schemas/protocol definitions are authoritative for machine contracts; design documents explain them; state files report progress. A change is incomplete if these disagree. Validate affected YAML, JSON, Proto, Mermaid, examples, links, and stable-ID references where tooling permits.
 
 ## End-of-session requirements
 
 Before ending a design or implementation session:
 
-1. Update affected design documents and ADRs.
-2. Update `PROJECT_STATE.md`, `design/state.yaml`, and `design/checklist.yaml`.
-3. Update `docs/design/open-questions.md` and source references as needed.
-4. Record completed work and the next concrete action.
-5. Confirm no accepted decision exists only in chat.
+1. Update user/developer documentation when behavior, setup or architecture changes; use an ADR only when the decision requires one.
+2. Update `PROJECT_STATE.md`, `design/state.yaml`, and `design/checklist.yaml` only when their reported status, task scope, next action or gates change. Batch these updates at task completion, not after every revision or deployment retry.
+3. Update open questions and source references only when their content changes. Do not append a historical entry merely because another session occurred.
+4. Keep one concise current deployment record with the information needed to operate or roll back. Keep intermediate builds, transcripts and repeated hash lists out of repository documentation; preserve existing useful evidence.
+5. Summarize completed work, relevant checks and remaining limitations in the final response. Confirm no accepted architectural decision exists only in chat.

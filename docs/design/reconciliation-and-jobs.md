@@ -35,6 +35,17 @@ the Proxmox provider's bounded five-minute task polling plus configuration,
 start, and guest-readiness confirmation without weakening fencing. Credential
 resolution is scoped to the same invocation with one minute of expiry margin.
 
+Target deployment limits follow [ADR-0021](../adr/0021-bounded-independent-deployments.md).
+`GET/PUT /admin/provider-targets/{id}/deployment-settings` exposes a durable 1–16
+override. The startup flag is the fallback until the first write (resource version
+zero). PUT requires `If-Match`, including `"0"` for the initial override, and records
+the administrator audit/event transactionally. Settings updates and claims share
+the PostgreSQL target admission lock. SQLite uses its existing single writer.
+Every replica reads the override during admission; reducing it leaves active and
+unknown work occupying slots and permits recovery. A bounded worker pool supports
+runtime increases without restarting. The existing target `vms` quota independently
+limits reservations across all projects; neither setting asserts physical capacity.
+
 ## Graph execution
 
 References and `dependsOn` form a DAG. Stable Kahn topological sorting produces a deterministic dependency order. The current worker executes each lab in that order, and destroys in reverse order. ADR-0021 permits independent lab operations to overlap up to an operator-configured target limit. Parallel branches inside a single lab remain future work: the existing recovery record tracks one unresolved invocation at a time.

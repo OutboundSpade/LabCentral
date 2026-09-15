@@ -75,7 +75,7 @@ func NewWorkerWithTargets(store application.WorkerStore, targets *TargetRegistry
 
 func (w *Worker) Run(ctx context.Context) error {
 	// Each target's durable admission limit remains authoritative across replicas.
-	count := w.targets.ExecutionCapacity()
+	count := w.targets.ExecutionCapacity() // Support durable limit increases without a restart.
 	if count < 1 {
 		count = 1
 	}

@@ -6,9 +6,37 @@ The static SvelteKit/DaisyUI interface uses a single charcoal theme, restrained
 purple emphasis, compact navigation and role-appropriate task views. Students
 discover authorized projects and published templates, launch labs, follow
 operations, open short-lived browser consoles and explicitly end ephemeral
-labs. Authoring contains YAML and typed parameters; infrastructure details
-remain administrative. Instructors see classroom rosters and batch progress.
+labs. Authoring supports schema-generated fields and YAML/JSON source. Instructors
+see students with their labs in one roster, with launch options in a dialog.
 The Huma API remains authoritative; navigation visibility grants no authority.
+
+`TASK-UI-007` uses a shared native dialog for launch options, target settings and
+operation details. Notifications are compact floating cards outside document flow;
+existing timed expiry, focus/hover pause and navigation dismissal remain.
+
+`GET /lab-authoring-schema` exposes the canonical Lab JSON Schema to authenticated
+clients. `POST /lab-authoring-documents` converts a bounded single YAML document
+using the existing strict parser; it does not validate, publish or execute a lab.
+Form projection supports local references, typed fields, arrays, optional objects,
+enums and the lab schema’s object compositions. Depth/reference budgets bound
+projection. Unsupported constructs retain a JSON editor and server validation
+remains authoritative. Provider options use discovered `override_json_schema`.
+Source comments are not retained after a form edit; values outside projected
+properties are preserved.
+
+Administrators configure target concurrency and VM quotas from Plugins or
+Operations. Capacity renders the versioned Proxmox discovery report and its time,
+including per-node CPU/memory and per-node storage without summing shared storage.
+It is observational, not a reservation. Target quota usage and limits remain
+separate and apply to any registered provider. Missing upstream capacity is not
+interpreted as unlimited or zero.
+
+On console reload or transport failure the client obtains the previous session’s
+resource identity through the authenticated API and creates a new authorized
+session with a fresh one-use token. It updates the URL and retires the old grant
+where possible. Retry is bounded to five attempts with backoff, cancellation on
+navigation, and no retries after revocation or authorization denial. Transport
+and session tokens remain out of URLs and persistent browser storage.
 
 Authentication follows the configured local or OIDC mode. The example OIDC
 provider is a separate OIDC provider installation with passkey enrollment, exact

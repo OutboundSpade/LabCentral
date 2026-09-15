@@ -385,6 +385,35 @@
         ],
         "type": "object"
       },
+      "DeploymentSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/DeploymentSettings.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "maxConcurrentDeployments": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resourceVersion": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxConcurrentDeployments",
+          "resourceVersion"
+        ],
+        "type": "object"
+      },
       "DestroyInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -1850,6 +1879,28 @@
         ],
         "type": "object"
       },
+      "Post-lab-authoring-documentsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Post-lab-authoring-documentsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 1048576,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "type": "object"
+      },
       "Post-users-by-id-actions-issue-password-recoveryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2097,6 +2148,30 @@
         },
         "required": [
           "source"
+        ],
+        "type": "object"
+      },
+      "Put-admin-provider-targets-by-id-deployment-settingsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Put-admin-provider-targets-by-id-deployment-settingsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "maxConcurrentDeployments": {
+            "format": "int32",
+            "maximum": 16,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxConcurrentDeployments"
         ],
         "type": "object"
       },
@@ -3348,6 +3423,111 @@
         "summary": "Get admin provider targets"
       }
     },
+    "/admin/provider-targets/{id}/deployment-settings": {
+      "get": {
+        "operationId": "get-admin-provider-targets-by-id-deployment-settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentSettings"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get admin provider targets by ID deployment settings"
+      },
+      "put": {
+        "operationId": "put-admin-provider-targets-by-id-deployment-settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Put-admin-provider-targets-by-id-deployment-settingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentSettings"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Put admin provider targets by ID deployment settings"
+      }
+    },
     "/audit-records": {
       "get": {
         "operationId": "get-audit-records",
@@ -4052,6 +4232,68 @@
           }
         },
         "summary": "Get examples docker laptop"
+      }
+    },
+    "/lab-authoring-documents": {
+      "post": {
+        "operationId": "post-lab-authoring-documents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Post-lab-authoring-documentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post lab authoring documents"
+      }
+    },
+    "/lab-authoring-schema": {
+      "get": {
+        "operationId": "list-lab-authoring-schema",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List lab authoring schema"
       }
     },
     "/lab-instance-batches": {

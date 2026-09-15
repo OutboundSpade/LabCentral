@@ -8,6 +8,12 @@ quotas, lifetime and ownership; plugins translate infrastructure operations.
 
 ## Latest completed work
 
+- `TASK-UI-007`: classroom students and their labs share one view; launch dialogs
+  include inputs, lifetime and plugin options. Template and override forms derive
+  from JSON Schema. Target settings persist provisioning concurrency and expose
+  existing VM quotas. Operations shows Proxmox capacity and modal progress.
+  Console reload/reconnect obtains fresh authorized sessions; compact toasts retain
+  automatic expiry and navigation dismissal.
 - `TASK-UI-006`: Launch lab is under My labs; nested views have consistent
   breadcrumbs. Every role can switch workspace in the sidebar. The desktop
   top bar is removed; floating notifications expire and clear on navigation.
@@ -29,14 +35,13 @@ No Docker environment was provisioned on PVE1.
 
 ## Current deployment
 
-The private PVE1 classroom runs **classroom-flow-20260915**, with final core
-from `37a8acbeb2d81deffe83e82439ba1df298edabc9` deployed at **2026-09-15T19:38:07Z**.
-Provider rollout and fresh qualification were installed at **2026-09-15T19:31:44Z**.
-The rollout retained rollback binaries and integrity-checked database snapshots.
-All 56 pre-existing lab records were unchanged. Both new VM exercises
-launched with overlapping jobs, reached ready with four VMs, and were destroyed;
-independent inventory confirmed cleanup. Temporary verification sessions were
-retired. The separate iad1 pilot remains ready.
+The private PVE1 classroom runs **classroom-controls-20260915**, deployed at
+**2026-09-15T21:09:36Z**. This core/UI update retains the existing qualified
+provider, access plugin, credentials and target configuration. A pre-deployment
+SQLite backup and prior binary support rollback. All 76 records in that snapshot
+were preserved; the temporary console verification lab was created and destroyed.
+Live console reload connected through a fresh session. The provisioning limit is
+persisted at two. No target VM quota was imposed by verification.
 
 Qualification is valid until **2026-09-21T19:31:31Z**; the existing scoped
 token expires **2026-09-22T18:40:20Z**. See the
@@ -45,14 +50,13 @@ evidence, catalogue and rollback details.
 
 ## Verification
 
-The full Go race suite passed with disposable PostgreSQL 18. Subsequent focused
-race tests cover the final planner fix on both stores. Vet, Svelte check/build,
-all four browser suites in Chromium/Firefox/WebKit, nine cache tests and
-schema/protocol/design/link checks passed. Fresh exact-build Proxmox lifecycle,
-recovery and isolation qualification passed. Two separate provider processes
-submitted clone tasks concurrently and both cleaned up successfully.
-See [verification](design/implementation-verification.yaml). Raw evidence remains
-in ignored `bin/navigation-flow-20260915/` and `bin/classroom-flow-20260915/`.
+Affected API, control-plane and database packages passed race tests with SQLite
+and disposable PostgreSQL 18. Vet, Svelte check/build, startup and affected browser
+suites in Chromium/Firefox/WebKit, cache/schema tests and design contracts passed.
+Live checks covered target settings, capacity discovery, classroom launch options,
+console reload, mobile layout and test-owned cleanup. Existing provider qualification
+was reused because its bound facts and executables were unchanged. Detailed logs
+remain in ignored `bin/classroom-controls-20260915/`.
 
 ## Next action and production gates
 

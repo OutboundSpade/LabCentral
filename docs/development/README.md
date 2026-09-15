@@ -24,6 +24,13 @@ fixtures **are** checked contracts and remain in Git.
 
 ## Useful checks
 
+Choose checks for the affected code; the commands below are a toolbox, not a
+checklist to rerun after every edit. Use focused tests during iteration and broad
+checks once the relevant change is settled. Concurrency and persistence changes
+need race/database coverage; shared UI changes need cross-browser coverage.
+Docs-only edits need relevant document checks. Preserve required CI/release gates.
+See [validation guidance](../../AGENTS.md#validation-proportional-to-the-change).
+
 ```sh
 # After web assets have been built:
 go test -race ./...
@@ -78,9 +85,11 @@ IDs and accepted decisions. An ADR is authoritative for a decision; schemas and
 protocol define machine contracts; design explains them; state reports progress.
 
 Use the [design reference](design-reference.md) to find a subject. Update affected
-design and task/state records with each change. Move long dated progress logs to
-[history](../history/) and keep current state short. Agent-specific requirements
-live in [AGENTS.md](../../AGENTS.md).
+design documents when their contracts or behavior change, and task/state records
+when their reported status changes. Batch status updates at task completion.
+Keep current state short; retain detailed run logs in ignored artifacts or CI
+instead of adding a document for each revision. Agent-specific requirements live
+in [AGENTS.md](../../AGENTS.md).
 
 ## Releases and testbeds
 

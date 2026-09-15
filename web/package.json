@@ -9,7 +9,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:browser": "node tests/startup.mjs && node tests/classroom.mjs && node tests/operations.mjs && node tests/administration.mjs",
     "generate:api": "cd .. && go run ./tools/openapi && cd web && openapi-typescript ../api/http/openapi.json -o src/lib/api.generated.ts",
-    "test:cache": "bun test tests/query.test.ts"
+    "test:cache": "bun test tests/query.test.ts tests/schema.test.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "3.0.10",

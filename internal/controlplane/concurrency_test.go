@@ -52,7 +52,19 @@ func testTargetAdmission(t *testing.T, stores []*localdb.Store, db *sql.DB) {
 			t.Fatal(err)
 		}
 	}
-	limits := []application.TargetExecutionLimit{{TargetID: controlplane.LocalDockerTarget, Maximum: 2}}
+	// Persisted target settings override the startup default on every replica.
+	settings, err := stores[0].PutDeploymentSettings(ctx, controlplane.LocalDockerTarget, application.DeploymentSettings{MaxConcurrentDeployments: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := stores[1].GetDeploymentSettings(ctx, controlplane.LocalDockerTarget)
+	if err != nil || loaded != settings {
+		t.Fatalf("replica settings: %+v %v", loaded, err)
+	}
+	if _, err := stores[1].PutDeploymentSettings(ctx, controlplane.LocalDockerTarget, application.DeploymentSettings{MaxConcurrentDeployments: 16}); !errors.Is(err, application.ErrVersionConflict) {
+		t.Fatalf("stale write: %v", err)
+	}
+	limits := []application.TargetExecutionLimit{{TargetID: controlplane.LocalDockerTarget, Maximum: 1}}
 	var mu sync.Mutex
 	var claims []application.WorkClaim
 	var wg sync.WaitGroup
@@ -98,7 +110,11 @@ func testTargetAdmission(t *testing.T, stores []*localdb.Store, db *sql.DB) {
 		t.Fatal("new work displaced expired operation")
 	}
 	// Reducing capacity does not strand recovery or permit new work.
-	limits[0].Maximum = 1
+	settings.MaxConcurrentDeployments = 1
+	if _, err := stores[1].PutDeploymentSettings(ctx, controlplane.LocalDockerTarget, settings); err != nil {
+		t.Fatal(err)
+	}
+	limits[0].Maximum = 16 // a stale local flag cannot bypass the stored limit.
 	recovered2, err := stores[0].ClaimTargets(ctx, "recovery-two", time.Minute, limits)
 	if err != nil {
 		t.Fatal(err)

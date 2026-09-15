@@ -162,6 +162,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 
 	registerTemplates(api, service, security)
+	registerAuthoring(api, service, security)
 	registerAuditAndEvents(api, service, security)
 	registerQuotas(api, service, security)
 	registerAccess(api, service, security)

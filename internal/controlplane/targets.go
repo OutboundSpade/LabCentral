@@ -340,18 +340,10 @@ func (r *TargetRegistry) ExecutionLimits() []application.TargetExecutionLimit {
 	return limits
 }
 
-// ExecutionCapacity includes unavailable targets so recovery after startup can
-// use their configured capacity without restarting the control plane.
+// ExecutionCapacity reserves workers for runtime limit changes and recovered
+// targets. Database admission decides how many may actually execute.
 func (r *TargetRegistry) ExecutionCapacity() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	count := 0
-	for _, binding := range r.bindings {
-		maximum := binding.policy.MaxConcurrentDeployments
-		if maximum == 0 {
-			maximum = 1
-		}
-		count += int(maximum)
-	}
-	return count
+	return len(r.bindings) * 16
 }

@@ -10,6 +10,8 @@
     type Project,
   } from "./api";
   import type { components } from "./api.generated";
+  import Modal from "./Modal.svelte";
+  import ProviderCapacity from "./ProviderCapacity.svelte";
   import Chart from "./Chart.svelte";
   import StatusBadge from "./StatusBadge.svelte";
   type Page = components["schemas"]["OperationsPageDTO"];
@@ -39,6 +41,12 @@
   let usageErrors = $state<Record<string, boolean>>({});
   let error = $state("");
   let busy = $state(false);
+  let progressOpen = $state(false);
+  let selectedOperation = $state<NonNullable<Page["items"]>[number]>();
+  const progress = $derived(
+    page?.items?.find((o) => o.id === selectedOperation?.id) ??
+      selectedOperation,
+  );
   let cursor = $state("");
   let vmPage = $state(0);
   let generation = 0,
@@ -249,6 +257,7 @@
     percent
   />
 </div>
+<ProviderCapacity />
 <section class="min-w-0">
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-lg font-semibold">Provisioning & cleanup</h2>
@@ -289,29 +298,14 @@
                   .length ?? 0} / {lab.resources?.length ?? 0}{:else}—{/if}</td
             >
             <td class="max-w-sm whitespace-normal"
-              ><details>
-                <summary class="cursor-pointer"
-                  >{operation.errorCode
-                    ? "View error"
-                    : "View progress"}</summary
-                >
-                <p class="my-2">{operation.message || "Waiting to start"}</p>
-                {#if operation.errorCode}<p class="text-error">
-                    {operation.errorCode}
-                  </p>{/if}
-                <p class="mb-2 text-xs text-base-content/70">
-                  Attempt {operation.attempt}
-                </p>
-                {#each lab?.resources ?? [] as resource}<div
-                    class="mb-1 flex items-center gap-2"
-                  >
-                    <span>{resource.id.split(".").slice(1).join(".")}</span
-                    ><StatusBadge
-                      state={resource.phase}
-                    />{#if resource.errorCode}<span>{resource.errorCode}</span
-                      >{/if}
-                  </div>{/each}
-              </details></td
+              ><button
+                class="btn btn-sm btn-ghost"
+                onclick={() => {
+                  selectedOperation = operation;
+                  progressOpen = true;
+                }}
+                >{operation.errorCode ? "View error" : "View progress"}</button
+              ></td
             >
             <td>{new Date(operation.createdAt).toLocaleString()}</td>
           </tr>{/each}</tbody
@@ -361,7 +355,8 @@
                 ><a
                   class="font-medium hover:underline"
                   href={`/lab/?id=${lab.id}`}>{name(lab)}</a
-                ><p class="text-xs text-base-content/60">{lab.id}</p>
+                >
+                <p class="text-xs text-base-content/60">{lab.id}</p>
                 <p class="text-xs text-base-content/70">
                   {resource.id.split(".").slice(1).join(".")}
                 </p></td
@@ -413,3 +408,30 @@
       >
     </div>{/if}
 </section>
+
+<Modal bind:open={progressOpen} title="Operation details"
+  >{#if progress}
+    <div class="flex items-center gap-3">
+      <StatusBadge state={progress.state} /><span class="text-sm"
+        >{progress.kind === "destroy" ? "Cleanup" : "Provisioning"} · Attempt {progress.attempt}</span
+      >
+    </div>
+    <p class="my-4 text-sm">{progress.message || "Waiting to start"}</p>
+    {#if progress.errorCode}<p class="mb-4 text-sm text-error">
+        {progress.errorCode}
+      </p>{/if}
+    <a class="link text-sm" href={`/lab/?id=${progress.instanceId}`}>Open lab</a
+    >
+    <ul class="mt-5 space-y-3">
+      {#each byID[progress.instanceId]?.resources ?? [] as resource}<li
+          class="flex flex-wrap items-center gap-3 text-sm"
+        >
+          <span>{resource.id}</span><StatusBadge
+            state={resource.phase}
+          />{#if resource.errorCode}<span class="text-error"
+              >{resource.errorCode}</span
+            >{/if}
+        </li>{/each}
+    </ul>
+  {/if}</Modal
+>

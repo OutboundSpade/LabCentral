@@ -203,6 +203,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 		return err
 	}
 
+	if err := s.applyMigration(ctx, "0013_target_deployment_settings", []string{"CREATE TABLE labcentral_target_deployment_settings (target_id TEXT PRIMARY KEY, maximum BIGINT NOT NULL CHECK (maximum BETWEEN 1 AND 16), resource_version BIGINT NOT NULL)"}); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 
@@ -1554,13 +1557,14 @@ func (s *Store) claimTarget(ctx context.Context, owner string, duration time.Dur
 		return jobsdb.ClaimedJob{}, err
 	}
 	defer tx.Rollback()
-	// SQLite has one process/connection. PostgreSQL serializes target admission
-	// even before discovery has persisted a target snapshot (legacy instances).
-	if s.dialect == jobsdb.DialectPostgreSQL {
-		key := sha256.Sum256([]byte("labcentral.target-admission:" + string(target.TargetID)))
-		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", int64(binary.BigEndian.Uint64(key[:8]))); err != nil {
-			return jobsdb.ClaimedJob{}, err
-		}
+	if err := s.lockTargetAdmissionTx(ctx, tx, target.TargetID); err != nil {
+		return jobsdb.ClaimedJob{}, err
+	}
+	var configured uint32
+	if err := tx.QueryRowContext(ctx, s.bind("SELECT maximum FROM labcentral_target_deployment_settings WHERE target_id=?"), target.TargetID).Scan(&configured); err == nil {
+		target.Maximum = configured
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return jobsdb.ClaimedJob{}, err
 	}
 	var running uint32
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_jobs job

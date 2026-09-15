@@ -139,7 +139,7 @@ func TestWorkerClaimsOnlyAvailableTargets(t *testing.T) {
 	}
 }
 
-func TestWorkerPoolIncludesConfiguredUnavailableCapacity(t *testing.T) {
+func TestWorkerPoolSupportsRuntimeLimitIncreases(t *testing.T) {
 	registry, err := NewTargetRegistry([]TargetBinding{
 		{ID: "target.healthy", ProviderKind: "external", Provider: &availableProvider{up: true}, ProtocolMajor: 1, Policy: TargetPolicy{MaxConcurrentDeployments: 2}},
 		{ID: "target.recovering", ProviderKind: "external", Provider: &availableProvider{up: false}, ProtocolMajor: 1, Policy: TargetPolicy{MaxConcurrentDeployments: 3}},
@@ -147,7 +147,7 @@ func TestWorkerPoolIncludesConfiguredUnavailableCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := &blockingClaimStore{owners: make(chan string, 5)}
+	store := &blockingClaimStore{owners: make(chan string, 32)}
 	worker, err := NewWorkerWithTargets(store, registry, CryptoIDs{}, WorkerOptions{Owner: "worker.pool"})
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestWorkerPoolIncludesConfiguredUnavailableCapacity(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- worker.Run(ctx) }()
 	owners := map[string]bool{}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 32; i++ {
 		select {
 		case owner := <-store.owners:
 			owners[owner] = true
@@ -165,7 +165,7 @@ func TestWorkerPoolIncludesConfiguredUnavailableCapacity(t *testing.T) {
 			t.Fatal("configured worker capacity unavailable")
 		}
 	}
-	if len(owners) != 5 {
+	if len(owners) != 32 {
 		t.Fatalf("workers reused lease owners: %v", owners)
 	}
 	cancel()

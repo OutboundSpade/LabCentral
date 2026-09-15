@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { X } from "@lucide/svelte";
+  import { X, CircleAlert, CircleCheck } from "@lucide/svelte";
   import { afterNavigate } from "$app/navigation";
   let { error = $bindable(""), notice = $bindable("") } = $props();
   let hovered = $state(false);
   let focused = $state(false);
   const paused = $derived(hovered || focused);
   $effect(() => {
-    if (!error && !notice) { hovered = false; focused = false; }
+    if (!error && !notice) {
+      hovered = false;
+      focused = false;
+    }
   });
   $effect(() => {
     if (!notice || paused) return;
@@ -19,26 +22,47 @@
     return () => clearTimeout(timer);
   });
   afterNavigate(({ from }) => {
-    if (from) { error = ""; notice = ""; }
+    if (from) {
+      error = "";
+      notice = "";
+    }
   });
 </script>
 
 {#if error || notice}
   <section
     aria-label="Notifications"
-    class="fixed right-4 top-4 z-50 grid w-[min(26rem,calc(100vw-2rem))] gap-3"
+    class="fixed right-4 bottom-4 z-50 grid w-[min(26rem,calc(100vw-2rem))] gap-3"
     onpointerenter={() => (hovered = true)}
     onpointerleave={() => (hovered = false)}
     onfocusin={() => (focused = true)}
     onfocusout={() => (focused = false)}
   >
-    {#if error}<div role="alert" class="alert alert-error shadow-lg">
-      <span class="min-w-0 break-words">{error}</span>
-      <button class="btn btn-sm btn-ghost btn-square" aria-label="Dismiss error" onclick={() => (error = "")}><X size={16} /></button>
-    </div>{/if}
-    {#if notice}<div role="status" class="alert alert-success shadow-lg">
-      <span class="min-w-0 break-words">{notice}</span>
-      <button class="btn btn-sm btn-ghost btn-square" aria-label="Dismiss notification" onclick={() => (notice = "")}><X size={16} /></button>
-    </div>{/if}
+    {#if error}<div
+        role="alert"
+        class="flex items-start gap-3 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xl"
+      >
+        <CircleAlert size={20} class="mt-0.5 shrink-0 text-error" /><span
+          class="min-w-0 flex-1 break-words leading-6">{error}</span
+        >
+        <button
+          class="btn btn-sm btn-ghost btn-square"
+          aria-label="Dismiss error"
+          onclick={() => (error = "")}><X size={16} /></button
+        >
+      </div>{/if}
+    {#if notice}<div
+        role="status"
+        class="flex items-start gap-3 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xl"
+      >
+        <CircleCheck size={20} class="mt-0.5 shrink-0 text-success" /><span
+          class="min-w-0 flex-1 break-words leading-6">{notice}</span
+        >
+        <button
+          class="btn btn-sm btn-ghost btn-square"
+          aria-label="Dismiss notification"
+          onclick={() => (notice = "")}><X size={16} /></button
+        >
+      </div>{/if}
   </section>
 {/if}

@@ -617,7 +617,14 @@ type AccessStore interface {
 	ExpireAccessSession(context.Context, domain.AccessSessionID, GovernanceRecordIDs) (AccessSessionRecord, bool, error)
 }
 
+type DeploymentSettings struct {
+	MaxConcurrentDeployments uint32                 `json:"maxConcurrentDeployments"`
+	ResourceVersion          domain.ResourceVersion `json:"resourceVersion"`
+}
+
 type TargetStore interface {
+	GetDeploymentSettings(context.Context, domain.ProviderTargetID) (DeploymentSettings, error)
+	PutDeploymentSettings(context.Context, domain.ProviderTargetID, DeploymentSettings) (DeploymentSettings, error)
 	SaveTargetSnapshot(context.Context, TargetSnapshot) error
 	GetTargetSnapshot(context.Context, domain.ProviderTargetID) (TargetSnapshot, error)
 }

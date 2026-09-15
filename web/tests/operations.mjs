@@ -4,7 +4,7 @@ import {createServer} from 'node:http';
 import {WebSocketServer} from 'ws';
 import {chromium,firefox,webkit} from 'playwright';
 const build=new URL('../build/',import.meta.url),shots=new URL(process.env.LABCENTRAL_SCREENSHOTS || '../../bin/classroom-ops-20260907/screenshots/',import.meta.url);await mkdir(shots,{recursive:true});
-let labs=[],deletes=[],fail=true,admin=false,usageDown=false,keys=[];
+let labs=[],deletes=[],fail=true,admin=false,usageDown=false,keys=[],renewals=0,revoked=false;
 const now=()=>new Date().toISOString();
 const lab=(id)=>({id:'instance.'+id,projectId:'project.class',revisionId:'revision.'+id,ownerKind:'user',ownerId:'user.student',phase:'ready',desiredLifecycle:'running',providerTargetId:'target.test',createdAt:now(),expiresAt:new Date(Date.now()+14400000).toISOString(),resources:[{id:'vm.workstation',kind:'VM',phase:'ready'}]});
 const operation={id:'operation.queued',instanceId:'instance.one',kind:'create',state:'queued',attempt:0,createdAt:now(),updatedAt:now()};
@@ -12,9 +12,16 @@ const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost'),path=url.pathname;const json=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data))};
  if(path.startsWith('/api/v1/')){
  const p=path.slice(7);let body='';for await(const c of req)body+=c;
+ if(p.startsWith('/access-sessions/') && req.method==='GET')return json({id:p.split('/')[2],instanceId:'instance.one',resourceId:'vm.workstation',method:'vnc',state:revoked?'revoked':'expired',resourceVersion:1,closureRequired:false});
+ if(p==='/access-sessions' && req.method==='POST'){renewals++;return json({session:{id:'access.renewed'+renewals},oneTimeToken:'test-console-'+renewals,launchUrl:'/access/access.renewed'+renewals},201);}
+ if(p.endsWith('/actions/revoke'))return json({state:'revoked'});
  if(p==='/server-info')return json({authMode:'oidc',defaultProviderTargetId:'target.test',uiFeatures:['browser-vnc']});
  if(p==='/session')return json({subjectId:'user.student',displayName:'Alex',roles:[admin?'platform-administrator':'participant']});
  if(p==='/projects')return json({items:[{id:'project.class',organizationId:'org.class',name:'Classroom',allowedActions:admin?['template.read','instance.batchCreate','quota.manage']:['template.read']}]});
+ if(p==='/admin/provider-targets')return json({items:[{id:'target.test',providerKind:'proxmox',discoveredAt:now(),discovery:{capacity_json:Buffer.from(JSON.stringify({formatVersion:1,nodes:[{name:'pve1',status:'online',maxCPU:16,cpuUsage:0.25,maxMemoryBytes:68719476736,usedMemoryBytes:34359738368}],storages:[{node:'pve1',id:'local',availableBytes:107374182400,usedBytes:107374182400,totalBytes:214748364800}]})).toString('base64')}}]});
+ if(p==='/quota-usage/target/target.test')return json({items:[{dimension:'vms',reserved:1,committed:2,retained:1,total:4}]});
+ if(p==='/quotas/target/target.test/vms')return json({limit:12,resourceVersion:1});
+ if(p.endsWith('/deployment-settings'))return json({maxConcurrentDeployments:2,resourceVersion:1});
  if(p==='/provider-targets')return json({items:[{id:'target.test',providerKind:'proxmox',status:'ready'}]});
  if(p==='/lab-templates')return json({items:['one','two'].map(id=>({id:'template.'+id,name:'Lab '+id,projectId:'project.class'}))});
  if(p.endsWith('/revisions'))return json({items:[{id:'revision.'+p.split('/')[2].split('.')[1]}]});
@@ -30,11 +37,11 @@ const server=createServer(async(req,res)=>{
  try{res.writeHead(200,{'Content-Type':name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});res.end(await readFile(file))}catch{res.end()}
 });
 const wss=new WebSocketServer({server});
-wss.on('connection',ws=>{
+wss.on('connection',(ws,request)=>{
  let stage=0;
  ws.on('message',raw=>{
  const b=Buffer.from(raw);
- if(stage===0){assert(JSON.parse(b).oneTimeToken==='test-console');ws.send('{"authorized":true}');setTimeout(()=>ws.send(Buffer.from('RFB 003.008\n')),20);stage++;return}
+ if(stage===0){const auth=JSON.parse(b);const id=decodeURIComponent(request.url.split('/').at(-2));assert.equal(auth.accessSessionId,id);const suffix=/^access\.renewed(\d+)$/.exec(id)?.[1];assert.equal(auth.oneTimeToken,suffix?'test-console-'+suffix:'test-console');ws.send('{"authorized":true}');setTimeout(()=>ws.send(Buffer.from('RFB 003.008\n')),20);stage++;return}
  if(stage===1){ws.send(Buffer.from([1,1]));stage++;return}
  if(stage===2){ws.send(Buffer.alloc(4));stage++;return}
  if(stage===3){const name=Buffer.from('Test workstation');const init=Buffer.alloc(24+name.length);init.writeUInt16BE(800,0);init.writeUInt16BE(600,2);init[4]=32;init[5]=24;init[7]=1;init.writeUInt16BE(255,8);init.writeUInt16BE(255,10);init.writeUInt16BE(255,12);init[14]=16;init[15]=8;init.writeUInt32BE(name.length,20);name.copy(init,24);ws.send(init);stage++;return}
@@ -43,8 +50,9 @@ wss.on('connection',ws=>{
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
 try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
+ if(process.env.LABCENTRAL_BROWSER && process.env.LABCENTRAL_BROWSER!==name)continue;
  const browser=await engine.launch();try{
- labs=[lab('one'),lab('two')];deletes=[];fail=true;admin=false;usageDown=false;keys=[];
+ labs=[lab('one'),lab('two')];deletes=[];fail=true;admin=false;usageDown=false;keys=[];renewals=0;revoked=false;
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(10000);
  await page.waitForLoadState("networkidle");await page.goto(origin);await page.getByRole('link',{name:'Lab one',exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'Operations',exact:true}).count(),0);
  await page.getByRole('checkbox',{name:'Select all active labs'}).check();await page.getByRole('button',{name:'Delete selected'}).click();await page.getByRole('heading',{name:'Delete 2 labs?'}).waitFor();await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(deletes.length,0);
@@ -53,12 +61,13 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  await page.getByRole('button',{name:'Delete selected'}).click();await page.getByRole('heading',{name:'Delete 1 labs?'}).waitFor();await page.getByRole('button',{name:'Delete labs and files'}).click();await page.getByRole('heading',{name:'Your next lab starts here'}).waitFor();assert.equal(deletes.at(-1).key,retryKey);assert.equal(deletes.filter(d=>d.id==='instance.one').length,1);
  await page.waitForLoadState("networkidle");await page.goto(origin+'/operations');await page.getByRole('heading',{name:'This view needs additional access'}).waitFor();
  labs=[lab('one'),lab('two')];admin=true;await page.waitForLoadState("networkidle");await page.goto(origin+'/operations');await page.getByRole('heading',{name:'VM usage',exact:true}).waitFor();await page.getByRole('cell',{name:/12\.5%/}).first().waitFor();await page.getByText('128 MiB / 512 MiB').first().waitFor();
+ await page.getByRole('heading',{name:'Environment capacity & limits'}).waitFor();await page.getByText('4 / 12',{exact:true}).waitFor();await page.getByText('Memory: 32.0 GiB / 64.0 GiB',{exact:true}).waitFor();
  await page.locator('.apexcharts-canvas').nth(2).waitFor();
  await page.getByText('View vm cpu data',{exact:true}).click();await page.getByRole('cell',{name:'12.5%',exact:true}).first().waitFor();
  await page.getByText('View vm memory data',{exact:true}).click();await page.getByRole('cell',{name:'25.0%',exact:true}).first().waitFor();
  await page.getByLabel('Operation filter').selectOption('failed');await page.getByText('View error',{exact:true}).click();await page.getByText('Environment could not be reached.').waitFor();
  if(name==='chromium')await page.screenshot({path:new URL('operations-desktop.png',shots).pathname,fullPage:true});
- usageDown=true;await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.getByText('Unavailable',{exact:true}).first().waitFor();assert.equal(await page.getByText('12.5%',{exact:false}).count(),0);
+ await page.getByRole('button',{name:'Close dialog',exact:true}).click();usageDown=true;await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.getByText('Unavailable',{exact:true}).first().waitFor();await page.waitForFunction(()=>!document.body.textContent.includes('12.5%'));
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(400);await page.screenshot({path:new URL(`${name}-operations-mobile.png`,shots).pathname,fullPage:true});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.setViewportSize({width:1440,height:1000});await page.waitForLoadState("networkidle");await page.goto(origin);await page.evaluate(()=>sessionStorage.setItem('labcentral.access-token.v1.access.controls','test-console'));await page.waitForLoadState("networkidle");await page.goto(origin+'/access/access.controls');await page.getByText('Connected',{exact:true}).waitFor();
  await page.getByLabel('Resize',{exact:true}).selectOption('actual');await page.getByLabel('Resize',{exact:true}).selectOption('remote');await page.getByLabel('Resize',{exact:true}).selectOption('fit');
@@ -66,6 +75,9 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  await page.getByLabel('View only').check();assert(await page.getByRole('button',{name:'Send key'}).isDisabled());await page.getByLabel('View only').uncheck();
  await page.getByRole('button',{name:'Full screen',exact:true}).click();await page.waitForTimeout(150);
  if(await page.getByRole('button',{name:'Exit full screen'}).isVisible())await page.getByRole('button',{name:'Exit full screen'}).click();else await page.getByText('Full screen is unavailable in this browser.').waitFor();
+ await page.reload();await page.getByText('Connected',{exact:true}).waitFor();assert.equal(renewals,1);assert(new URL(page.url()).pathname==='/access/access.renewed1');
+ for(const socket of wss.clients)socket.close();await page.waitForURL(origin+'/access/access.renewed2');await page.getByText('Connected',{exact:true}).waitFor();assert.equal(renewals,2);
+ revoked=true;for(const socket of wss.clients)socket.close();await page.getByText('Console access was revoked. Return to your lab.').waitFor();assert.equal(renewals,2);assert(await page.getByRole('button',{name:'Reconnect',exact:true}).isDisabled());
  if(name==='chromium')await page.screenshot({path:new URL('console-desktop.png',shots).pathname});await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
  console.log(`PASS ${name}: bulk cancel/partial failure/idempotent retry, admin usage/queue/errors/unavailable, real RFB special keys, resize/fullscreen/view-only and mobile`);
  }finally{await browser.close()}

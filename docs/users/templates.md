@@ -16,6 +16,21 @@ checks the environment’s current discovered capabilities and policy.
 Catalogue names can contain spaces and Unicode (up to 63 characters). The
 `metadata.name` inside Lab YAML still uses the declarative naming rules.
 
+## Form and source editing
+
+The template editor builds a form from the canonical Lab JSON Schema. Add nested
+resources and optional fields, including VM compute, interfaces and container
+settings. Source mode remains available for the complete YAML/JSON contract.
+Form edits preserve document values but serialize JSON (valid YAML); comments
+and YAML formatting are not retained. Unsupported schema combinations and freeform
+maps use JSON fields. The form is an editor, and server validation remains authoritative.
+
+Launch dialogs use declared template inputs and the selected provider’s advertised
+override schema. **Customize options** overrides template defaults; **Use template
+defaults** removes that override. A provider with no configurable options may
+advertise an empty schema. Installation/service configuration still belongs to
+the server operator.
+
 ## Do resources already describe the requirements?
 
 Usually, yes: VM resources require VM support, and an isolated network requires

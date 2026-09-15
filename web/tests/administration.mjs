@@ -9,7 +9,8 @@ const shots = new URL(
   import.meta.url,
 );
 await mkdir(shots, { recursive: true });
-let organizations, projects, grants, mutations, admin, conflict;
+let organizations, projects, grants, mutations, admin, conflict, deployment, vmQuota;
+const labSchema = JSON.parse(await readFile(new URL("../../schemas/lab-v1alpha1.schema.json",import.meta.url),"utf8"));
 const target = {
   id: "target.test",
   providerKind: "proxmox",
@@ -45,6 +46,16 @@ const server = createServer(async (req, res) => {
     const body = text ? JSON.parse(text) : {};
     if (req.method !== "GET")
       mutations.push({ path, body, headers: req.headers });
+    if (path === "/lab-authoring-schema") return json(labSchema);
+    if (path === "/lab-authoring-documents") return json(JSON.parse(body.source));
+    if (path.endsWith("/deployment-settings")) {
+      if (req.method === "PUT") { assert.equal(req.headers["if-match"],`"${deployment.resourceVersion}"`);deployment={...body,resourceVersion:deployment.resourceVersion+1}; }
+      return json(deployment);
+    }
+    if(path === "/quotas/target/target.test/vms") {
+      if(req.method === "PUT") {assert.equal(req.headers[vmQuota ? "if-match":"if-none-match"],vmQuota?`"${vmQuota.resourceVersion}"`:"*");vmQuota={...body,resourceVersion:(vmQuota?.resourceVersion ?? 0)+1};}
+      return vmQuota?json(vmQuota):json({detail:"Not configured"},404);
+    }
     if (path === "/server-info")
       return json({ authMode: "oidc", defaultProviderTargetId: target.id });
     if (path === "/session")
@@ -158,6 +169,7 @@ try {
     mutations = [];
     admin = true;
     conflict = false;
+    deployment={maxConcurrentDeployments:2,resourceVersion:0}; vmQuota=undefined;
     const browser = await engine.launch();
     try {
       const page = await browser.newPage({
@@ -257,6 +269,13 @@ try {
       await page
         .getByText("Environment discovery refreshed.", { exact: true })
         .waitFor();
+      await page.getByRole('button',{name:'Settings & limits'}).click();
+      await page.getByLabel('Concurrent deployments',{exact:true}).fill('4');
+      await page.getByRole('button',{name:'Save provisioning limit'}).click();
+      await page.getByText('Provisioning limit saved.',{exact:false}).waitFor();assert.equal(deployment.maxConcurrentDeployments,4);
+      await page.getByLabel('VM count limit',{exact:true}).fill('12');await page.getByRole('button',{name:'Save VM limit'}).click();await page.getByText('VM quota saved.',{exact:false}).waitFor();assert.equal(vmQuota.limit,12);
+      await page.keyboard.press('Escape');await page.getByRole('button',{name:'Settings & limits'}).click();assert.equal(await page.getByLabel('Concurrent deployments',{exact:true}).inputValue(),'4');
+      await page.getByRole('button',{name:'Close dialog'}).click();
       await page
         .getByRole("button", { name: "Grant access", exact: true })
         .click();
@@ -341,6 +360,13 @@ try {
         path: new URL(`${engineName}-plugins.png`, shots).pathname,
         fullPage: true,
       });
+      await page.goto(origin+'/templates/');await page.getByRole('button',{name:'Form',exact:true}).click();
+      await page.getByRole('group',{name:'metadata',exact:true}).getByRole('textbox',{name:'name *',exact:true}).fill('generated-lab');
+      await page.getByRole('button',{name:'Add vms',exact:true}).click();await page.getByRole('button',{name:'Add vms item',exact:true}).click();
+      const vm=page.getByRole('group',{name:'vms 1',exact:true});await vm.getByRole('textbox',{name:'name *',exact:true}).fill('workstation');await vm.getByRole('textbox',{name:'imageRef *',exact:true}).fill('example@sha256:test');await vm.getByRole('spinbutton',{name:'cpu *',exact:true}).fill('2');await vm.getByRole('textbox',{name:'memory *',exact:true}).fill('512Mi');
+      await page.getByRole('button',{name:'Source',exact:true}).click();const built=JSON.parse(await page.getByLabel('Lab YAML',{exact:true}).inputValue());assert.equal(built.metadata.name,'generated-lab');assert.equal(built.spec.resources.vms[0].compute.cpu,2);
+      await page.getByRole('button',{name:'Form',exact:true}).click();await page.getByRole('group',{name:'vms 1',exact:true}).waitFor();
+      await page.goto(origin+'/plugins/');
       await page.setViewportSize({ width: 390, height: 844 });
       await page.waitForTimeout(200);
       assert(
