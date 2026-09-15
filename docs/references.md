@@ -131,3 +131,7 @@ Navigation continuity reference (retrieved 2026-09-08):
 ## Operations charts (retrieved 2026-09-15)
 
 - [ApexCharts skill and lifecycle reference](https://github.com/apexcharts/apexcharts-skill/blob/main/SKILL.md): chart-specific series shapes, render/update/destroy lifecycle, missing values and per-type renderer imports. TASK-UI-005 uses a lazy bar renderer with keyboard support; this does not change provider measurement semantics.
+
+## Classroom credential renewal (retrieved 2026-09-15)
+
+- [Proxmox token management synopsis](https://github.com/proxmox/pve-docs/blob/master/generated/pveum.1-synopsis.adoc): token modification supports a Unix-epoch expiry and separate privileges. TASK-TESTBED-004 updates only the existing token's expiry; effective permissions are checked against the six accepted target scopes. Live API evidence confirms expired credentials returned HTTP 401 and renewed credentials permit authenticated readiness reads.

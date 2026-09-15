@@ -765,3 +765,29 @@ classroomAdministrationDeployment20260915:
     - Installed exact-target qualification expired 2026-09-13T20:36:44Z and was not renewed; no ordinary lab launches attempted.
     - Existing identity enrollment and the separate iad1 pilot preserved.
     - No provider requalification, production gate completion or signed production release claim.
+
+classroomQualificationRenewal20260915:
+  task: TASK-TESTBED-004
+  result: pass
+  verifiedAt: '2026-09-15'
+  installedAt: '2026-09-15T18:51:11Z'
+  evidenceDigest: sha256:c95720cc0508adfdb6d135bda0bb516236839682abad2682db194fdb1d5fa6a6
+  qualificationValidUntil: '2026-09-21T18:51:05Z'
+  tokenExpiresAt: '2026-09-22T18:40:20Z'
+  providerBinaryDigest: sha256:d5355ebd047c11c238d0ed5349d962a0246925899b37002f1be76c5182162d50
+  providerSourceDigest: sha256:46cd987314b7c79d816852216fd065bd87d274c2b7512be0f7af5ab16dd3c10e
+  configurationDigest: sha256:f5cc7ac9df457ba59b688795cd3390c5e4d19bb2ae1625703a921862d25037d1
+  inventoryDigest: sha256:f60230ee2c0e31b87809bab64756ede58705875c85a9e1dda77e88d365576b4e
+  verification:
+    - Expired runtime token returned HTTP 401; only its expiry was renewed and effective permissions exactly matched all six accepted scopes.
+    - Fresh exact-provider lifecycle smoke, failure/restart recovery and typed mTLS isolation passed using disjoint reserved claims.
+    - Intended connectivity succeeded 3/3; management and cross-instance connectivity succeeded 0/3 each.
+    - Independent inventory confirmed runner, qualification guests and disks absent; temporary relay, firewall rule and local probe PKI removed.
+    - Fresh owner-delegated evidence signed off-runtime, verified against exact bindings and installed with bounded reviewer trust and rollback files.
+    - Live browser target refresh returned HTTP 200 with native VM, VNC and lifecycle capabilities; no browser errors.
+    - All 50 user lab records, template configurations, onboarding links and deployed binaries preserved; six service checks passed.
+    - Temporary instructor core and OIDC provider sessions retired and rejection verified; separate iad1 readiness passed.
+  localEvidence: bin/classroom-renewal-20260915/
+  limitations:
+    - Renewal covers this exact private classroom target only; no independent human review or production approval is claimed.
+    - Previous soak and qualification records remain historical; no new hour-long classroom soak claimed.

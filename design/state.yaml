@@ -233,6 +233,7 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-TESTBED-004
   - TASK-TESTBED-003
   - TASK-UI-005
   - TASK-MAINT-001

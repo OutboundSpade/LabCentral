@@ -1,6 +1,17 @@
 formatVersion: 1
 lastUpdated: "2026-09-15"
 tasks:
+  - id: TASK-TESTBED-004
+    title: Renew private classroom credential and exact-target qualification
+    status: complete
+    dependencies: [TASK-TESTBED-003]
+    relatedAdrs: [ADR-0018, ADR-0020]
+    relatedDocuments: [docs/operations/classroom-testbed.md, docs/design/proxmox-qemu-mutation.md]
+    acceptanceCriteria:
+      - Diagnose target refresh failure and renew the existing privilege-separated classroom token without broadening ACLs.
+      - Run fresh exact-provider smoke, recovery and typed isolation checks on reserved claims and independently confirm cleanup.
+      - Review and sign fresh short-lived qualification under the owner's continuing private-testbed delegation, preserving earlier evidence.
+      - Install verified evidence and trust, verify live target refresh and preserve user labs, templates, onboarding and the iad1 pilot.
   - id: TASK-TESTBED-003
     title: Deploy workspace administration and operations charts to PVE1
     status: complete

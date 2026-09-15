@@ -16,6 +16,8 @@ quotas, lifetime and ownership; plugins translate infrastructure operations.
   Workspace names support readable Unicode display text; stable IDs are unchanged.
 - `TASK-TESTBED-003`: deployed `classroom-admin-20260915` to the private PVE1
   classroom; live administration, charts and both Classroom workspaces verified.
+- `TASK-TESTBED-004`: renewed the scoped classroom token and signed exact-target
+  qualification after fresh lifecycle, recovery, isolation and cleanup checks.
 - `TASK-PROD-004` and `TASK-PROD-005` remain separate production validation work.
 
 ## Implemented
@@ -43,8 +45,10 @@ existing lab records were unchanged, and the temporary instructor verification
 sessions were retired. See the [classroom record](docs/operations/classroom-testbed.md)
 and [separate pilot record](docs/operations/pve1-pilot.md).
 
-Installed qualification expired **2026-09-13 20:36:44 UTC**; the rollout did not
-renew it. Fresh exact-target qualification is required before ordinary lab launches.
+The subsequent TASK-TESTBED-004 renewal restored target refresh and native VM,
+VNC and lifecycle capabilities. Qualification is valid until **2026-09-21T18:51:05Z**;
+the existing privilege-separated token expires **2026-09-22 18:40:20 UTC**.
+All 50 user lab records were unchanged and all qualification guests were removed.
 
 Production still requires live target load/soak, shared-journal cross-node
 locking/failover/disaster recovery, publisher controls and the first signed release
@@ -64,6 +68,7 @@ in ignored `bin/maintenance-20260915/`; browser screenshots remain under `bin`.
 
 ## Next action
 
-Renew exact-target provider qualification before testing ordinary infrastructure
-writes. The requested core/UI rollout is complete. Continue production validation through
-`TASK-PROD-004` and `TASK-PROD-005`; this maintenance work does not close those gates.
+Renew the classroom qualification before **2026-09-21T18:51:05Z**, then renew the
+scoped token before its September 22 expiry. Continue production validation
+through `TASK-PROD-004` and `TASK-PROD-005`; private testbed renewal does not
+close those gates.

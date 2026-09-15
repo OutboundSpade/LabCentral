@@ -118,3 +118,13 @@ The three probe records are ordered and measured from a designated guest agent: 
 `TEST-PROXMOX-025` provides the first credentialed executor slice as a Go package test, keeping the mutation-opening constructor unavailable to production code. Its closed v1 profile names one exact target plus one expected disposable VMID/VLAN and approved aliases. Execution requires the exact destructive sentinel, three distinct absolute input files, and a separate target-ID confirmation. It performs real HTTPS discovery/preflight, one Network/VM plan and apply, stop/start/pause/resume, reverse ownership-checked cleanup, and provider absence confirmation. Default and partial activation make zero provider calls. Cleanup uses an independent bounded context. The separate isolation runner covers topology/probes, and the failure/recovery runner now covers every other required target-applicable T3 case using explicitly identified boundary faults and real accepted PVE calls. None emits a complete qualifying artifact by itself.
 
 For the owner-authorized private classroom testbed only, [ADR-0018](../adr/0018-owner-delegated-testbed-review.md) permits the implementation agent to execute, review and sign on the owner’s behalf from the protected operator workspace. This is delegated review, not independent human review. All exact-target technical evidence and runtime signature checks remain required. Other deployments retain the independent-review procedure.
+
+
+TASK-TESTBED-004 renewed the same private classroom target on 2026-09-15 under
+the owner's explicit request and continuing delegated testbed review. Fresh
+exact-build smoke, failure/recovery and typed isolation checks passed; all
+qualification guests and disks were independently confirmed absent. The
+provider, configuration and mutation inventory were unchanged. New signed
+evidence and bounded reviewer trust restore eligibility until 2026-09-21T18:51:05Z;
+renewing the existing API token alone does not authorize mutation. See the
+[classroom renewal record](../operations/classroom-testbed.md#current-qualification-renewal-task-testbed-004).
