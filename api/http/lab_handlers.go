@@ -82,18 +82,23 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		}{}
 		output.Body.Items = make([]ProviderTargetDTO, 0, len(targets))
 		for _, target := range targets {
-			item := ProviderTargetDTO{
-				ID: string(target.ID), ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
-				ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,
-				Features: append([]string(nil), target.Features...), Status: target.Status,
-			}
-			item.Example = providerExample(options, string(target.ID))
-			if len(target.DiscoveryJSON) > 0 {
-				item.Discovery = append(json.RawMessage(nil), target.DiscoveryJSON...)
-				discoveredAt, validUntil := target.DiscoveredAt, target.ValidUntil
-				item.DiscoveredAt, item.ValidUntil = &discoveredAt, &validUntil
-			}
+			item := providerTargetDTO(target, options)
 			output.Body.Items = append(output.Body.Items, item)
+		}
+		return output, nil
+	})
+
+	huma.Get(api, "/admin/provider-targets", func(ctx context.Context, _ *struct{}) (*struct{ Body ProviderTargetDirectoryDTO }, error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionProviderTargetGrant, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+			return nil, err
+		}
+		targets, err := service.ListProviderTargets(ctx)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		output := &struct{ Body ProviderTargetDirectoryDTO }{Body: ProviderTargetDirectoryDTO{Items: []ProviderTargetDTO{}}}
+		for _, target := range targets {
+			output.Body.Items = append(output.Body.Items, providerTargetDTO(target, options))
 		}
 		return output, nil
 	})
@@ -121,13 +126,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		}
 		for _, target := range targets {
 			if target.ID == id {
-				discoveredAt, validUntil := target.DiscoveredAt, target.ValidUntil
-				return &struct{ Body ProviderTargetDTO }{Body: ProviderTargetDTO{
-					ID: string(target.ID), ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
-					ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,
-					Features: target.Features, Status: target.Status, Discovery: append(json.RawMessage(nil), target.DiscoveryJSON...),
-					Example: providerExample(options, string(target.ID)), DiscoveredAt: &discoveredAt, ValidUntil: &validUntil,
-				}}, nil
+				return &struct{ Body ProviderTargetDTO }{Body: providerTargetDTO(target, options)}, nil
 			}
 		}
 		return nil, huma.Error404NotFound("Provider target was not found")
@@ -550,4 +549,23 @@ func instanceBatchDTO(ctx context.Context, service *controlplane.Service, source
 		})
 	}
 	return result, nil
+}
+
+type ProviderTargetDirectoryDTO struct {
+	Items []ProviderTargetDTO `json:"items"`
+}
+
+func providerTargetDTO(target controlplane.ProviderTargetStatus, options Options) ProviderTargetDTO {
+	item := ProviderTargetDTO{
+		ID: string(target.ID), ProviderKind: target.ProviderKind, ConfigFingerprint: target.ConfigFingerprint,
+		ProtocolMajor: target.ProtocolMajor, ProtocolMinor: target.ProtocolMinor,
+		Features: append([]string(nil), target.Features...), Status: target.Status,
+		Example: providerExample(options, string(target.ID)),
+	}
+	if len(target.DiscoveryJSON) > 0 {
+		item.Discovery = append(json.RawMessage(nil), target.DiscoveryJSON...)
+		discoveredAt, validUntil := target.DiscoveredAt, target.ValidUntil
+		item.DiscoveredAt, item.ValidUntil = &discoveredAt, &validUntil
+	}
+	return item
 }

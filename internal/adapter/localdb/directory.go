@@ -83,3 +83,45 @@ func (s *Store) ListDirectoryUsers(ctx context.Context, organization domain.Orga
 	}
 	return items, rows.Err()
 }
+
+func (s *Store) ListOrganizations(ctx context.Context, after string, limit uint32) ([]application.OrganizationRecord, error) {
+	if limit == 0 || limit > 200 {
+		return nil, fmt.Errorf("invalid directory limit")
+	}
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT organization_id, name, resource_version FROM labcentral_organizations WHERE organization_id > ? ORDER BY organization_id LIMIT ?`), after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]application.OrganizationRecord, 0)
+	for rows.Next() {
+		var item application.OrganizationRecord
+		if err := rows.Scan(&item.ID, &item.Name, &item.ResourceVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) ListTargetGrants(ctx context.Context, after string, limit uint32) ([]application.TargetGrantRecord, error) {
+	if limit == 0 || limit > 200 {
+		return nil, fmt.Errorf("invalid directory limit")
+	}
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version FROM labcentral_provider_target_grants WHERE grant_id > ? ORDER BY grant_id LIMIT ?`), after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]application.TargetGrantRecord, 0)
+	for rows.Next() {
+		var item application.TargetGrantRecord
+		var from, until int64
+		if err := rows.Scan(&item.ID, &item.TargetID, &item.ScopeKind, &item.ScopeID, &from, &until, &item.ResourceVersion); err != nil {
+			return nil, err
+		}
+		item.ValidFrom, item.ValidUntil = time.UnixMicro(from).UTC(), optionalTime(until)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

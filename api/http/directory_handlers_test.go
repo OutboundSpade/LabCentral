@@ -64,18 +64,42 @@ func TestDirectoryVisibilityPaginationAndAdministration(t *testing.T) {
 	if len(page.Items) != 0 || page.NextCursor != "" {
 		t.Fatalf("pagination did not end: %s", w.Body.String())
 	}
-	for _, path := range []string{"/admin/operations", "/admin/lab-instances/instance.hidden/usage", "/users", "/memberships?organizationId=org.class", "/projects/project.visible/members?targetId=target.docker"} {
+	for _, path := range []string{"/organizations", "/provider-target-grants", "/admin/provider-targets", "/admin/operations", "/admin/lab-instances/instance.hidden/usage", "/users", "/memberships?organizationId=org.class", "/projects/project.visible/members?targetId=target.docker"} {
 		w = get(path, student)
 		if w.Code != 403 {
 			t.Fatalf("student directory %s: %d %s", path, w.Code, w.Body.String())
 		}
 	}
 
-	for _, path := range []string{"/admin/operations?limit=201", "/admin/operations?cursor=bad", "/admin/operations?filter=unknown"} {
+	for _, path := range []string{"/organizations?limit=201", "/provider-target-grants?limit=201", "/admin/operations?limit=201", "/admin/operations?cursor=bad", "/admin/operations?filter=unknown"} {
 		w = get(path, admin)
 		if w.Code != 400 && w.Code != 422 {
 			t.Fatalf("invalid query accepted: %s %d", path, w.Code)
 		}
+	}
+
+	post("/organizations", `{"id":"org.empty","name":"No workspaces yet"}`)
+	post("/provider-target-grants", `{"id":"grant.class","targetId":"target.docker","scopeKind":"project","scopeId":"project.visible"}`)
+	post("/provider-target-grants", `{"id":"grant.empty","targetId":"target.docker","scopeKind":"organization","scopeId":"org.empty"}`)
+	for _, path := range []string{"/organizations", "/provider-target-grants"} {
+		w = get(path+"?limit=1", admin)
+		var first struct {
+			Items []struct {
+				ID string `json:"id"`
+			} `json:"items"`
+			NextCursor string `json:"nextCursor"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &first) != nil || len(first.Items) != 1 || first.NextCursor != first.Items[0].ID {
+			t.Fatalf("first admin page %s: %d %s", path, w.Code, w.Body.String())
+		}
+		w = get(path+"?after="+first.NextCursor, admin)
+		if w.Code != 200 || strings.Contains(w.Body.String(), `"id":"`+first.Items[0].ID+`"`) || !strings.Contains(w.Body.String(), "empty") {
+			t.Fatalf("next admin page %s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	w = get("/admin/provider-targets", admin)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"items":[]`) || strings.Contains(w.Body.String(), "credential") {
+		t.Fatalf("global target inventory: %d %s", w.Code, w.Body.String())
 	}
 	w = get("/users?limit=1", admin)
 	if w.Code != 200 || strings.Contains(w.Body.String(), "password") || strings.Contains(w.Body.String(), "externalSubject") {
@@ -93,7 +117,7 @@ func TestDirectoryVisibilityPaginationAndAdministration(t *testing.T) {
 
 func TestOpenAPIDocumentIncludesAuthenticatedDirectories(t *testing.T) {
 	document := OpenAPIDocument()
-	for _, path := range []string{"/users", "/projects", "/memberships", "/role-assignments", "/projects/{id}/members", "/lab-templates/{id}/revisions/{revisionId}/content"} {
+	for _, path := range []string{"/organizations", "/provider-target-grants", "/admin/provider-targets", "/users", "/projects", "/memberships", "/role-assignments", "/projects/{id}/members", "/lab-templates/{id}/revisions/{revisionId}/content"} {
 		if document.Paths[path] == nil {
 			t.Errorf("missing complete API contract %s", path)
 		}

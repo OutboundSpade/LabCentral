@@ -7,7 +7,7 @@
     "build": "vite build && bun run normalize-build",
     "normalize-build": "bun ../tools/normalize_web_build.mjs",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test:browser": "node tests/startup.mjs && node tests/classroom.mjs && node tests/operations.mjs",
+    "test:browser": "node tests/startup.mjs && node tests/classroom.mjs && node tests/operations.mjs && node tests/administration.mjs",
     "generate:api": "cd .. && go run ./tools/openapi && cd web && openapi-typescript ../api/http/openapi.json -o src/lib/api.generated.ts",
     "test:cache": "bun test tests/query.test.ts"
   },
@@ -33,9 +33,11 @@
     "@lucide/svelte": "^1.41.0",
     "@novnc/novnc": "1.7.0",
     "@tanstack/query-core": "5.102.8",
-    "@tanstack/svelte-query": "6.1.48"
+    "@tanstack/svelte-query": "6.1.48",
+    "apexcharts": "7.4.0"
   },
   "overrides": {
-    "cookie": "0.7.2"
+    "cookie": "0.7.2",
+    "js-yaml": "4.3.2"
   }
 }

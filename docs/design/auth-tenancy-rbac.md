@@ -39,3 +39,13 @@ Users, organizations, projects, teams, memberships, role assignments, and target
 Batch creation expands one request into independent instances owned by each user/team, with shared revision but fresh logical IDs/secrets. Participants cannot enumerate or access other teams’ instances. Instructors receive explicit project-scope operator rights. Snapshots/clones preserve access policy by rule, not by copying arbitrary ACL rows; a clone receives a new owner selection authorized at creation.
 
 The implemented batch API accepts exactly one immutable revision and 1–100 unique user/team owners. It allocates a durable batch ID plus fresh Instance, Operation, reservation, audit/event, provider invocation, and ownership identities for every item. The adapter orders owner-specific locks and atomically persists the batch, all child scheduling units, quota reservations, provider allocation claims, one batch audit/event/outbox envelope, and the idempotency binding. Any authorization, quota, allocation, or relational conflict rolls the complete batch back. Reading the batch reauthorizes every owner; participants have no batch-read path and continue to see only their own or active-team Instances through the ordinary filtered Instance API.
+
+## Workspace display and administration
+
+TASK-UI-005 exposes existing project/organization mutations in the UI and adds
+bounded administrative directories. Display names may contain spaces and Unicode
+(up to 128 characters, no control characters or surrounding whitespace). Names
+never establish identity or ownership. Scope IDs, role/target authorization and
+optimistic update preconditions are unchanged. Project creation does not implicitly
+create memberships, roles or target grants. A revoked target grant is renewed by
+updating the same identity tuple with its current resource version.

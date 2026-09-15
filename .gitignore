@@ -10,3 +10,7 @@
 !web/bun.lock
 
 __pycache__/
+
+# Generated UI and local runtime state
+/web/build/
+/labcentral-data/

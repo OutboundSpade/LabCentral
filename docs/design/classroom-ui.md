@@ -112,3 +112,37 @@ Fresh queries still revalidate these values. Delayed-request browser regressions
 assert DOM identity of the shell and absence of startup/workspace-skeleton
 flashes across navigation, rapid route changes and browser history. This fixes
 a rendering-lifecycle defect that request caching alone did not address.
+
+## Workspace administration and charts (TASK-UI-005)
+
+The persistent shell uses one route catalog and a separate navigation component.
+Lab details and administration have focused components. Global Workspaces, Plugins
+and Operations views do not require a selected project or load a project's
+catalogue merely to render administration. Workspaces and People are available
+in authenticated deployments; no-auth keeps its synthetic local workspace.
+
+Workspaces lists organizations and projects, including empty organizations,
+creates and renames them through existing versioned commands, and links to the
+selected project's limits. Organization/project names now accept bounded human
+readable display text; opaque IDs and scope bindings remain unchanged.
+
+Classroom is always discoverable. Missing batch authority produces an explanation
+of instructor and environment requirements, with an administrative link to target
+access. The server's evaluated project actions still gate batch forms and roster
+reads. Creating a workspace never grants roles or target access implicitly.
+
+Plugins lists registered provider environments globally, discovery validity and
+protocol features. It refreshes targets and grants/revokes project environment
+access. Expired/revoked grants renew their existing identity using If-Match.
+Revocation asks for confirmation of the exact scope and environment. Inherited
+organization grants remain visible. Operator-managed manifests, isolated services,
+restart-based installation and separate access-plugin configuration are unchanged.
+No upload, arbitrary executable launch or live installation mutation is introduced.
+
+Operations charts use durable queued/running/failed counts and current CPU/memory
+samples for the visible VM page. They make no historical-trend claim. Missing,
+failed, invalid-timestamp or stale samples remain unavailable. Active-lab counts
+include all workload kinds; VM pagination and measurements remain VM-specific.
+Tables provide exact accessible values. The bar renderer is loaded only when
+Operations mounts, updates in place, escapes untrusted chart labels and is destroyed
+on unmount. Project/filter changes discard old results before fetching the new scope.

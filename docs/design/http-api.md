@@ -56,3 +56,25 @@ credentials, provider state and upstream addresses. The /operations static
 shell is administrative navigation; server authorization remains authoritative.
 Bulk UI deletion uses the existing per-instance destroy endpoint and preserves
 independent idempotency keys and results through uncertain-response retries.
+
+## Administration discovery (TASK-UI-005)
+
+GET /organizations requires platform organization administration and returns
+bounded keyset pages, including organizations without projects. GET
+/provider-target-grants requires platform provider-target-grant authority and
+returns active, scheduled and ended grants with versions and validity. Both use
+DirectoryQuery (`after`, `limit` up to 200). GET /admin/provider-targets requires
+platform provider-target-grant authority and returns the registered target list
+without a selected project. It reuses the existing redacted target DTO; the
+project-scoped provider-targets endpoint retains its existing authorization.
+These additive reads use application repository ports and the existing SQL adapter.
+
+Organization/project display names accept 1–128 Unicode characters, no surrounding
+whitespace or control characters. This expands accepted names without changing
+stable IDs, persisted fields, existing slug names or scope relationships. Usernames
+and team names retain their existing validation. Existing update/revoke commands
+retain resource-version preconditions and append-only governance records.
+
+Static shells include /workspaces and /plugins. The generated OpenAPI and frontend
+DTOs include all new discovery endpoints. The plugin installation contract remains
+a protected operator file plus restart, as ADR-0015 specifies.

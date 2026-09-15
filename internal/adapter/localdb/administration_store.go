@@ -78,7 +78,7 @@ func (s *Store) recordScopeTx(ctx context.Context, tx *sql.Tx, kind application.
 }
 
 func (s *Store) CreateOrganization(ctx context.Context, record application.OrganizationRecord) (application.OrganizationRecord, error) {
-	if _, err := domain.NewOrganizationID(string(record.ID)); err != nil || !identityNamePattern.MatchString(record.Name) || record.ResourceVersion != 0 {
+	if _, err := domain.NewOrganizationID(string(record.ID)); err != nil || !application.ValidWorkspaceName(record.Name) || record.ResourceVersion != 0 {
 		return application.OrganizationRecord{}, fmt.Errorf("organization record is invalid")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -101,7 +101,7 @@ func (s *Store) CreateOrganization(ctx context.Context, record application.Organ
 }
 
 func (s *Store) UpdateOrganization(ctx context.Context, record application.OrganizationRecord, expected domain.ResourceVersion) (application.OrganizationRecord, error) {
-	if _, err := domain.NewOrganizationID(string(record.ID)); err != nil || !identityNamePattern.MatchString(record.Name) || expected == 0 {
+	if _, err := domain.NewOrganizationID(string(record.ID)); err != nil || !application.ValidWorkspaceName(record.Name) || expected == 0 {
 		return application.OrganizationRecord{}, fmt.Errorf("organization update is invalid")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -137,7 +137,7 @@ func (s *Store) organizationByID(ctx context.Context, id domain.OrganizationID) 
 }
 
 func (s *Store) CreateProject(ctx context.Context, record application.ProjectRecord) (application.ProjectRecord, error) {
-	if _, err := domain.NewProjectID(string(record.ID)); err != nil || !identityNamePattern.MatchString(record.Name) || record.ResourceVersion != 0 {
+	if _, err := domain.NewProjectID(string(record.ID)); err != nil || !application.ValidWorkspaceName(record.Name) || record.ResourceVersion != 0 {
 		return application.ProjectRecord{}, fmt.Errorf("project record is invalid")
 	}
 	if _, err := domain.NewOrganizationID(string(record.OrganizationID)); err != nil {
@@ -163,7 +163,7 @@ func (s *Store) CreateProject(ctx context.Context, record application.ProjectRec
 }
 
 func (s *Store) UpdateProject(ctx context.Context, record application.ProjectRecord, expected domain.ResourceVersion) (application.ProjectRecord, error) {
-	if _, err := domain.NewProjectID(string(record.ID)); err != nil || !identityNamePattern.MatchString(record.Name) || expected == 0 {
+	if _, err := domain.NewProjectID(string(record.ID)); err != nil || !application.ValidWorkspaceName(record.Name) || expected == 0 {
 		return application.ProjectRecord{}, fmt.Errorf("project update is invalid")
 	}
 	if _, err := domain.NewOrganizationID(string(record.OrganizationID)); err != nil {

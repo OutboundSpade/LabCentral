@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -139,5 +140,45 @@ func TestReleaseAssetPreservesCanonicalDirectoryLayout(t *testing.T) {
 	b, err := os.ReadFile(destination)
 	if err != nil || string(b) != "guide" {
 		t.Fatal("release guide was not copied", err)
+	}
+}
+
+func TestBuildWebReplacesIgnoredOutputAndStopsOnFailure(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.Mkdir("web", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("web/output", []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bun := filepath.Join(root, "bun-test")
+	script := `#!/bin/sh
+set -eu
+printf '%s:%s:%s\n' "$*" "$LABCENTRAL_WEB_VERSION" "$SOURCE_DATE_EPOCH" >> commands
+if [ "$*" = 'run build' ]; then
+ test "$LABCENTRAL_TEST_BUILD_FAIL" != 'yes'
+ printf '%s' 'rebuilt' > output
+fi
+`
+	if err := os.WriteFile(bun, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LABCENTRAL_TEST_BUILD_FAIL", "no")
+	cfg := config{bunBinary: bun, version: "test-release", epoch: 123}
+	if err := buildWeb(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	output, _ := os.ReadFile("web/output")
+	if string(output) != "rebuilt" {
+		t.Fatalf("stale assets retained: %s", output)
+	}
+	commands, _ := os.ReadFile("web/commands")
+	if string(commands) != "install --frozen-lockfile:test-release:123\nrun check:test-release:123\nrun build:test-release:123\n" {
+		t.Fatalf("build sequence: %s", commands)
+	}
+	t.Setenv("LABCENTRAL_TEST_BUILD_FAIL", "yes")
+	if err := buildWeb(context.Background(), cfg); err == nil {
+		t.Fatal("failed web build accepted")
 	}
 }

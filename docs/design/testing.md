@@ -259,3 +259,20 @@ expiry. Core callback tests require renewal to be scheduled before lease expiry.
 Access-store tests cover a caller clock ahead of the database, preservation of
 a shorter launch deadline and rejection of already-expired launches. The
 database TTL cap is checked without relaxing session expiry.
+
+## Source-only checkout and administration regression
+
+TASK-MAINT-001 removes generated web assets from Git. Build them with `make web`
+before direct Go builds/tests that import embedded assets; `make build`, `make test`
+and `make release` enforce this dependency. CI checks that build output is untracked
+while still requiring synchronized OpenAPI and generated frontend contracts.
+
+TASK-UI-005 adds backend directory authorization/pagination, display-name validation
+and static-route coverage. Browser fixtures cover empty-instance organization and
+workspace setup, renames and conflicts, target refresh, grant/revoke/renewal,
+Classroom scope changes, denied administration, chart values and mobile layouts.
+These are local fixture tests and do not constitute live provider qualification.
+
+The native release tool independently rebuilds the UI from the frozen lockfile,
+with the release version, before embedding binaries. Ignored local assets cannot
+be accepted as release inputs merely because the Git worktree is clean.

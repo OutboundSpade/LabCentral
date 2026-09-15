@@ -52,7 +52,10 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  const retryKey=deletes.find(d=>d.id==='instance.two').key;fail=false;
  await page.getByRole('button',{name:'Delete selected'}).click();await page.getByRole('heading',{name:'Delete 1 labs?'}).waitFor();await page.getByRole('button',{name:'Delete labs and files'}).click();await page.getByRole('heading',{name:'Your next lab starts here'}).waitFor();assert.equal(deletes.at(-1).key,retryKey);assert.equal(deletes.filter(d=>d.id==='instance.one').length,1);
  await page.waitForLoadState("networkidle");await page.goto(origin+'/operations');await page.getByRole('heading',{name:'This view needs additional access'}).waitFor();
- labs=[lab('one'),lab('two')];admin=true;await page.waitForLoadState("networkidle");await page.goto(origin+'/operations');await page.getByRole('heading',{name:'VM usage',exact:true}).waitFor();await page.getByText('12.5%',{exact:false}).first().waitFor();await page.getByText('128 MiB / 512 MiB').first().waitFor();
+ labs=[lab('one'),lab('two')];admin=true;await page.waitForLoadState("networkidle");await page.goto(origin+'/operations');await page.getByRole('heading',{name:'VM usage',exact:true}).waitFor();await page.getByRole('cell',{name:/12\.5%/}).first().waitFor();await page.getByText('128 MiB / 512 MiB').first().waitFor();
+ await page.locator('.apexcharts-canvas').nth(2).waitFor();
+ await page.getByText('View vm cpu data',{exact:true}).click();await page.getByRole('cell',{name:'12.5%',exact:true}).first().waitFor();
+ await page.getByText('View vm memory data',{exact:true}).click();await page.getByRole('cell',{name:'25.0%',exact:true}).first().waitFor();
  await page.getByLabel('Operation filter').selectOption('failed');await page.getByText('View error',{exact:true}).click();await page.getByText('Environment could not be reached.').waitFor();
  if(name==='chromium')await page.screenshot({path:new URL('operations-desktop.png',shots).pathname,fullPage:true});
  usageDown=true;await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.getByText('Unavailable',{exact:true}).first().waitFor();assert.equal(await page.getByText('12.5%',{exact:false}).count(),0);

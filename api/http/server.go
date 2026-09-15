@@ -70,7 +70,7 @@ func staticHandler(content fs.FS) http.Handler {
 			// SvelteKit exports these static route shells as <route>.html.
 			// Keep unknown URLs and API paths out of the SPA fallback.
 			switch clean {
-			case "launch", "templates", "classroom", "people", "settings", "lab", "operations":
+			case "launch", "templates", "classroom", "people", "settings", "lab", "operations", "workspaces", "plugins":
 				if _, err := fs.Stat(content, clean+".html"); err == nil {
 					clone := request.Clone(request.Context())
 					clone.URL.Path = "/" + clean + ".html"

@@ -41,6 +41,7 @@ type config struct {
 	goarch    string
 	epoch     int64
 	goBinary  string
+	bunBinary string
 }
 
 type sourceInfo struct {
@@ -83,6 +84,9 @@ func run(ctx context.Context, args []string) error {
 	}
 	if source.Dirty {
 		return errors.New("production release requires a clean Git worktree so source provenance matches the built binaries")
+	}
+	if err := buildWeb(ctx, cfg); err != nil {
+		return err
 	}
 	goVersion, err := commandOutput(ctx, cfg.goBinary, "version")
 	if err != nil {
@@ -348,6 +352,7 @@ func parseConfig(args []string) (config, error) {
 	flags.StringVar(&cfg.goos, "goos", runtime.GOOS, "target operating system")
 	flags.StringVar(&cfg.goarch, "goarch", runtime.GOARCH, "target architecture")
 	flags.StringVar(&cfg.goBinary, "go", "go", "Go command")
+	flags.StringVar(&cfg.bunBinary, "bun", "bun", "Bun command")
 	epochText := strings.TrimSpace(os.Getenv("SOURCE_DATE_EPOCH"))
 	flags.StringVar(&epochText, "source-date-epoch", epochText, "reproducible build timestamp")
 	if err := flags.Parse(args); err != nil {
@@ -417,6 +422,21 @@ func sanitizeRemote(remote string) string {
 		return remote[at+1:]
 	}
 	return remote
+}
+
+// Generated web output is intentionally ignored by Git. Always rebuild it from
+// the checked source and frozen lockfile before embedding release executables.
+func buildWeb(ctx context.Context, cfg config) error {
+	for _, args := range [][]string{{"install", "--frozen-lockfile"}, {"run", "check"}, {"run", "build"}} {
+		command := exec.CommandContext(ctx, cfg.bunBinary, args...)
+		command.Dir = "web"
+		command.Env = append(os.Environ(), "LABCENTRAL_WEB_VERSION="+cfg.version, "SOURCE_DATE_EPOCH="+strconv.FormatInt(cfg.epoch, 10))
+		output, err := command.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("build web assets (%s): %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
 }
 
 func buildBinary(ctx context.Context, cfg config, pkg, destination, ldflags string) error {

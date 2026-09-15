@@ -278,7 +278,7 @@ func (s *Store) UserByExternalIdentity(ctx context.Context, issuer, subject stri
 }
 
 func (s *Store) PutOrganization(ctx context.Context, record application.OrganizationRecord) error {
-	if _, err := domain.NewOrganizationID(string(record.ID)); err != nil || !identityNamePattern.MatchString(record.Name) {
+	if _, err := domain.NewOrganizationID(string(record.ID)); err != nil || !application.ValidWorkspaceName(record.Name) {
 		return fmt.Errorf("organization record is invalid")
 	}
 	_, err := s.db.ExecContext(ctx, s.bind(`INSERT INTO labcentral_organizations
@@ -289,7 +289,7 @@ func (s *Store) PutOrganization(ctx context.Context, record application.Organiza
 }
 
 func (s *Store) PutProject(ctx context.Context, record application.ProjectRecord) error {
-	if _, err := domain.NewProjectID(string(record.ID)); err != nil || !identityNamePattern.MatchString(record.Name) {
+	if _, err := domain.NewProjectID(string(record.ID)); err != nil || !application.ValidWorkspaceName(record.Name) {
 		return fmt.Errorf("project record is invalid")
 	}
 	if _, err := domain.NewOrganizationID(string(record.OrganizationID)); err != nil {

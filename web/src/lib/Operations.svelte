@@ -1,8 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { RefreshCw } from "@lucide/svelte";
-  import { api, collection, cached, cachedCollection, type Instance, type Project } from "./api";
+  import {
+    api,
+    collection,
+    cached,
+    cachedCollection,
+    type Instance,
+    type Project,
+  } from "./api";
   import type { components } from "./api.generated";
+  import Chart from "./Chart.svelte";
   import StatusBadge from "./StatusBadge.svelte";
   type Page = components["schemas"]["OperationsPageDTO"];
   type Usage = components["schemas"]["InstanceUsage"];
@@ -12,14 +20,22 @@
   }: { projects: Project[]; name: (i: Instance) => string } = $props();
   let project = $state("");
   let filter = $state("active");
-  let labs = $state<Instance[]>(cachedCollection<Instance>("/lab-instances") ?? []);
-  let page = $state<Page | undefined>(cached<Page>("/admin/operations?filter=active&limit=100"));
-  let usage = $state<Record<string, Usage>>(Object.fromEntries(
-    (cachedCollection<Instance>("/lab-instances") ?? []).flatMap(lab => {
-      const value = cached<Usage>(`/admin/lab-instances/${encodeURIComponent(lab.id)}/usage`);
-      return value ? [[lab.id, value]] : [];
-    }),
-  ));
+  let labs = $state<Instance[]>(
+    cachedCollection<Instance>("/lab-instances") ?? [],
+  );
+  let page = $state<Page | undefined>(
+    cached<Page>("/admin/operations?filter=active&limit=100"),
+  );
+  let usage = $state<Record<string, Usage>>(
+    Object.fromEntries(
+      (cachedCollection<Instance>("/lab-instances") ?? []).flatMap((lab) => {
+        const value = cached<Usage>(
+          `/admin/lab-instances/${encodeURIComponent(lab.id)}/usage`,
+        );
+        return value ? [[lab.id, value]] : [];
+      }),
+    ),
+  );
   let usageErrors = $state<Record<string, boolean>>({});
   let error = $state("");
   let busy = $state(false);
@@ -31,13 +47,55 @@
   let timer: ReturnType<typeof setTimeout>;
   let active = $derived(
     labs.filter(
-      (i) =>
-        (!project || i.projectId === project) &&
-        i.phase !== "destroyed" &&
-        i.resources?.some((r) => r.kind === "VM"),
+      (i) => (!project || i.projectId === project) && i.phase !== "destroyed",
     ),
   );
-  let visible = $derived(active.slice(vmPage * 25, vmPage * 25 + 25));
+  let vmLabs = $derived(
+    active.filter((i) => i.resources?.some((r) => r.kind === "VM")),
+  );
+  let visible = $derived(vmLabs.slice(vmPage * 25, vmPage * 25 + 25));
+  let clock = $state(Date.now());
+  let measurements = $derived(
+    visible.flatMap((lab) =>
+      (lab.resources ?? [])
+        .filter((r) => r.kind === "VM")
+        .map((resource) => ({
+          label: `${name(lab)} · ${lab.id.slice(-8)} / ${resource.id}`,
+          usage: measured(lab.id, resource.id),
+        })),
+    ),
+  );
+  let cpu = $derived([
+    {
+      name: "CPU",
+      data: measurements.map((m) => ({
+        x: m.label,
+        y: m.usage?.cpuFraction == null ? null : m.usage.cpuFraction * 100,
+      })),
+    },
+  ]);
+  let memorySeries = $derived([
+    {
+      name: "Memory",
+      data: measurements.map((m) => ({
+        x: m.label,
+        y:
+          m.usage?.memoryUsedBytes == null || !m.usage.memoryCapacityBytes
+            ? null
+            : (m.usage.memoryUsedBytes / m.usage.memoryCapacityBytes) * 100,
+      })),
+    },
+  ]);
+  let queue = $derived([
+    {
+      name: "Operations",
+      data: [
+        { x: "Queued", y: page?.queued ?? null },
+        { x: "In progress", y: page?.running ?? null },
+        { x: "Failed", y: page?.failed ?? null },
+      ],
+    },
+  ]);
   let byID = $derived(Object.fromEntries(labs.map((i) => [i.id, i])));
   onMount(() => {
     void refresh();
@@ -50,6 +108,7 @@
   async function refresh(forceUsage = false) {
     if (busy) return;
     busy = true;
+    clock = Date.now();
     clearTimeout(timer);
     const current = generation;
     try {
@@ -64,7 +123,7 @@
       labs = items;
       page = result;
       error = "";
-      if (vmPage * 25 >= active.length) vmPage = 0;
+      if (vmPage * 25 >= vmLabs.length) vmPage = 0;
       if (forceUsage || Date.now() - lastUsage > 10000) {
         lastUsage = Date.now();
         const pending = [...visible];
@@ -96,13 +155,18 @@
         error = cause instanceof Error ? cause.message : "Updates unavailable.";
     } finally {
       busy = false;
-      if (!disposed) timer = setTimeout(() => void refresh(), 5000);
+      if (!disposed)
+        timer = setTimeout(
+          () => void refresh(current !== generation),
+          current !== generation ? 0 : 5000,
+        );
     }
   }
   function reset() {
     generation++;
     cursor = "";
     vmPage = 0;
+    page = undefined;
     usage = {};
     usageErrors = {};
     lastUsage = 0;
@@ -114,7 +178,9 @@
       usageErrors[id] ||
       sample?.status !== "available" ||
       !sample.usage ||
-      Date.now() - new Date(sample.usage.sampledAt).getTime() > 30000
+      !Number.isFinite(new Date(sample.usage.sampledAt).getTime()) ||
+      (sample?.usage &&
+        clock - new Date(sample.usage.sampledAt).getTime() > 30000)
     )
       return undefined;
     return sample.usage;
@@ -163,6 +229,25 @@
     <div class="stat-title">Failed operations</div>
     <div class="stat-value text-2xl">{page?.failed ?? "—"}</div>
   </div>
+</div>
+<div class="mb-8 grid gap-5 xl:grid-cols-3">
+  <Chart
+    title="Operation status"
+    description="Current counts for the selected project scope."
+    series={queue}
+  />
+  <Chart
+    title="VM CPU"
+    description="Latest available samples for this page of VMs."
+    series={cpu}
+    percent
+  />
+  <Chart
+    title="VM memory"
+    description="Used memory as a share of VM capacity, including guest cache."
+    series={memorySeries}
+    percent
+  />
 </div>
 <section class="min-w-0">
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -276,7 +361,7 @@
                 ><a
                   class="font-medium hover:underline"
                   href={`/lab/?id=${lab.id}`}>{name(lab)}</a
-                >
+                ><p class="text-xs text-base-content/60">{lab.id}</p>
                 <p class="text-xs text-base-content/70">
                   {resource.id.split(".").slice(1).join(".")}
                 </p></td
@@ -302,12 +387,12 @@
       >
     </table>
   </div>
-  {#if !active.length}<p class="py-6 text-sm text-base-content/70">
+  {#if !vmLabs.length}<p class="py-6 text-sm text-base-content/70">
       No active VMs.
     </p>{:else}<p class="mt-3 text-xs text-base-content/70">
       Live host measurements. Memory includes guest cache.
     </p>{/if}
-  {#if active.length > 25}<div class="mt-4 flex items-center gap-3">
+  {#if vmLabs.length > 25}<div class="mt-4 flex items-center gap-3">
       <button
         class="btn btn-sm"
         disabled={busy || vmPage === 0}
@@ -316,11 +401,11 @@
           void refresh(true);
         }}>Previous</button
       ><span class="text-sm"
-        >{vmPage * 25 + 1}–{Math.min((vmPage + 1) * 25, active.length)} of {active.length}
+        >{vmPage * 25 + 1}–{Math.min((vmPage + 1) * 25, vmLabs.length)} of {vmLabs.length}
         labs</span
       ><button
         class="btn btn-sm"
-        disabled={busy || (vmPage + 1) * 25 >= active.length}
+        disabled={busy || (vmPage + 1) * 25 >= vmLabs.length}
         onclick={() => {
           vmPage++;
           void refresh(true);

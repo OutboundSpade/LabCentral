@@ -44,15 +44,15 @@ build-recovery:
 web:
 	cd web && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) install --frozen-lockfile && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) run check && LABCENTRAL_WEB_VERSION="$(WEB_VERSION)" $(BUN) run build
 
-test:
+test: web
 	$(GO) test ./...
-	cd web && $(BUN) run check && $(BUN) run build
+	cd web && $(BUN) run test:cache && $(BUN) run test:browser
 
 run: build
 	./bin/labd --auth-mode=none
 
 release:
-	$(GO) run ./tools/release -version "$(VERSION)" -goos "$(RELEASE_GOOS)" -goarch "$(RELEASE_GOARCH)"
+	$(GO) run ./tools/release -bun "$(BUN)" -version "$(VERSION)" -goos "$(RELEASE_GOOS)" -goarch "$(RELEASE_GOARCH)"
 
 image:
 	$(DOCKER) build --build-arg VERSION="$(VERSION)" --build-arg VCS_REF="$(VCS_REF)" --build-arg PROXMOX_SOURCE_TREE_DIGEST="$(PROXMOX_SOURCE_TREE_DIGEST)" --tag "$(IMAGE)" .

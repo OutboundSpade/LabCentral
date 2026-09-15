@@ -1,6 +1,28 @@
 formatVersion: 1
-lastUpdated: "2026-09-08"
+lastUpdated: "2026-09-15"
 tasks:
+  - id: TASK-MAINT-001
+    title: Separate generated builds and organize documentation by audience
+    status: complete
+    dependencies: [TASK-UI-004]
+    relatedAdrs: [ADR-0009, ADR-0015]
+    relatedDocuments: [README.md, docs/README.md, docs/development/README.md, docs/plugins/README.md, docs/users/README.md]
+    acceptanceCriteria:
+      - Remove tracked build output and ignore generated assets while preserving checked API and protocol contracts.
+      - Build assets before Go tests and release packaging in a fresh checkout.
+      - Provide clear user, plugin author, operator, contributor and agent entry points; keep current state concise and historical evidence linked.
+  - id: TASK-UI-005
+    title: Complete workspace administration and operations visibility
+    status: complete
+    dependencies: [TASK-MAINT-001]
+    relatedAdrs: [ADR-0009, ADR-0010, ADR-0015]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/design/http-api.md]
+    acceptanceCriteria:
+      - Provide workspace and organization creation and renaming, target discovery refresh and workspace target access using authorized typed APIs.
+      - Keep Classroom navigation discoverable across workspaces and explain missing role or target access without weakening authorization.
+      - Show charts from actual operation counts and current VM measurements with explicit missing data and measurement scope.
+      - Extract shared navigation and focused administration components; verify browser workflows, scope changes, empty states and responsive layouts.
+      - Pass backend, frontend and design checks and push the reviewed changes; preserve provider qualification and existing testbed labs.
   - id: TASK-UI-004
     title: Preserve workspace rendering across navigation
     status: complete

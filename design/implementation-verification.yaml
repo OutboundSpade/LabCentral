@@ -708,3 +708,34 @@ classroomInterfaceAndTestbed:
   - No scheduled backups, R2 destination or off-host recovery infrastructure for the owner-approved disposable testbed.
   - No claim of production release, recovery, failover or broader workload performance qualification.
   pending: []
+
+maintenanceAndWorkspaceAdministration20260915:
+  tasks: [TASK-MAINT-001, TASK-UI-005]
+  verifiedAt: '2026-09-15'
+  result: pass
+  scope: local_source_cleanup_documentation_and_workspace_administration
+  changes:
+    - Removed 99 tracked generated web files; build and runtime output remains ignored.
+    - Added audience-specific documentation and archived the September 8 project state.
+    - Added organization and target-grant directories and a platform-authorized target inventory using typed ports and shared DTO conversion.
+    - Added organization/workspace creation and renaming, target refresh and grant/revoke/renewal UI.
+    - Added consistent Classroom navigation, current operation/VM charts and isolated navigation/detail/admin components.
+    - Organization/project display names accept bounded readable Unicode text without changing stable IDs.
+    - Native release tooling rebuilds ignored UI output from the frozen lockfile before embedding binaries.
+    - Pinned transitive js-yaml to 4.3.2 after the dependency audit identified GHSA-2883-xcg3-v3hh.
+  verification:
+    - Full go test -race -count=1 ./... passed with disposable PostgreSQL 18, including SQLite/PostgreSQL directory and identity conformance.
+    - go vet ./... passed.
+    - Svelte check/build passed with no Svelte diagnostics; generated OpenAPI/TypeScript contracts remain synchronized.
+    - Nine cache tests and startup, classroom, operations and administration browser suites passed in Chromium, Firefox and WebKit.
+    - Browser cases cover empty setup, display-name forms, rename conflicts, grant revoke/cancel/renewal, Classroom scope switches, denied admin routes, chart values and missing measurements, consoles and mobile layout.
+    - Blueprint source and rendered inspection passed with no errors; two advisory primary-button color findings retained for the existing action hierarchy.
+    - Design, schema, protocol, example, stable-ID and documentation-link verification passed.
+    - OSV scan of the exact Bun lockfile passed after the js-yaml patch.
+    - A clean temporary source-only checkout, initially without web/build or bin, built a native 0.0.0-maint-check release; archive and contained SHA256SUMS verified and Git remained clean.
+  localEvidence: bin/maintenance-20260915/
+  exclusions:
+    - No PVE1 deployment, provider qualification renewal or live infrastructure mutation.
+    - Charts show current counts and visible-page samples, not persisted historical metrics.
+    - Plugin installation remains operator-managed and restart-based; the UI does not upload or hot-install executables.
+    - TASK-PROD-004 and TASK-PROD-005 remain open; no production qualification or signed release approval is claimed.

@@ -261,6 +261,8 @@ type Authorizer interface {
 // AuthRepository is the cohesive identity, tenancy, session, and RBAC port.
 // Password and session secrets reach it only as one-way encoded hashes.
 type AuthRepository interface {
+	ListOrganizations(context.Context, string, uint32) ([]OrganizationRecord, error)
+	ListTargetGrants(context.Context, string, uint32) ([]TargetGrantRecord, error)
 	ListProjects(context.Context, string, uint32) ([]ProjectRecord, error)
 	ListMemberships(context.Context, domain.OrganizationID, string, uint32) ([]MembershipRecord, error)
 	ListDirectoryUsers(context.Context, domain.OrganizationID, string, uint32, time.Time) ([]UserRecord, error)

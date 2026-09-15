@@ -1,68 +1,40 @@
 # LabCentral
 
-LabCentral is a Go control plane for declarative virtual labs, with cybersecurity classrooms as its primary production use case. It includes a typed core and renderer, durable SQLite/PostgreSQL operations, separate provider/access processes, a Huma/OpenAPI API, immutable artifacts/templates, classroom governance, and a static SvelteKit UI.
+Create isolated virtual labs from reusable templates. Students launch their own
+environments and open browser consoles; instructors launch classroom batches;
+administrators manage workspaces, people, provider access and limits.
 
-Infrastructure providers can be installed through versioned manifests and target configuration without rebuilding `labd`. Start with the [installation guide](docs/operations/plugin-installation.md) and [independent SDK fixture](examples/external-provider/README.md). Typed template inputs, per-plugin recovery and generated frontend API contracts follow ADR-0015 through ADR-0017.
+LabCentral runs as a Go control plane with a built-in web interface, SQLite or
+PostgreSQL, and separate infrastructure and access plugins. Docker supports
+trusted local development; Proxmox supports qualified VM environments.
 
-Proxmox ordinary writes require fresh signed qualification for the exact deployment and executable. Separately reviewed short-lived grants can authorize cleanup of one exact owned VM. Earlier testbed qualification does not qualify newly built binaries. Live load/soak, shared-journal failover/DR and the protected release ceremony remain open production gates; see the current project state.
+## Get started
 
-Start with [`PROJECT_STATE.md`](PROJECT_STATE.md), then follow [`AGENTS.md`](AGENTS.md). The architecture baseline is in [`docs/design/architecture.md`](docs/design/architecture.md), accepted decisions are in [`docs/adr/`](docs/adr/), and machine-readable progress is in [`design/state.yaml`](design/state.yaml) and [`design/checklist.yaml`](design/checklist.yaml).
+- **Use LabCentral:** [user guide](docs/users/README.md) and [local setup](docs/users/local-setup.md).
+- **Operate a deployment:** [operator guides](docs/operations/README.md).
+- **Build a plugin:** [plugin author guide](docs/plugins/README.md).
+- **Develop LabCentral:** [contributor guide](docs/development/README.md).
+- **Work as an agent:** [agent instructions](AGENTS.md), then [current state](PROJECT_STATE.md).
 
-The implementation-ready design includes three complete examples under [`examples/`](examples/), an executable Lab authoring schema and canonical fixtures under [`schemas/`](schemas/), an accepted plugin v1 descriptor baseline under [`api/plugin/v1/`](api/plugin/v1/), and machine-readable conformance catalogs under [`design/contracts/`](design/contracts/).
+See the [documentation index](docs/README.md) for contracts and design references.
 
-## Run the Docker laptop slice
+## Run locally
 
-Prerequisites are Go 1.27.1, Bun 1.3 or newer, and a local Docker Engine exposing API 1.44 or newer. Build both binaries, pin the provider executable checksum, and start the loopback-only server with:
+With the Go version in `go.mod`, Bun and Docker installed:
 
 ```sh
-make build
 make run
 ```
 
-Open <http://127.0.0.1:8080/>. LabCentral stores local state beneath `./labcentral-data`, launches `lab-provider-docker` as a separate process over a private Unix socket, and refuses a non-loopback no-auth listener unless the exact unsafe flag is supplied.
+Open [LabCentral](http://127.0.0.1:8080/). This builds the UI and binaries before
+starting a loopback-only, unauthenticated development instance. Use trusted images
+only: ordinary Docker containers do not isolate arbitrary hostile workloads.
+See [local setup](docs/users/local-setup.md) for prerequisites and Compose.
 
-Build a deterministic native archive for the host platform with:
+## Project status
 
-```sh
-make release VERSION=0.1.0
-sha256sum -c dist/labcentral-0.1.0-$(go env GOOS)-$(go env GOARCH).tar.gz.sha256
-```
-
-The archive includes `labd`, both official providers, the Proxmox qualification utility, provider checksums/manifests, the Proxmox source-tree binding, deployment assets, an archive-wide checksum file, a CycloneDX SBOM, and source/build provenance. Releases require a clean Git worktree so the embedded source binding describes the built provider. Set `SOURCE_DATE_EPOCH` to reproduce a prior build timestamp; otherwise the tool uses the current Git commit time. Provenance is descriptive metadata, not a signature or SLSA attestation.
-
-For the supported Linux Docker path, start the minimal image with Compose:
-
-```sh
-LABCENTRAL_VERSION=0.1.0 LABCENTRAL_VCS_REF=$(git rev-parse HEAD) docker compose up -d --build
-docker compose ps
-```
-
-Open <http://127.0.0.1:8080/>. `LABCENTRAL_PORT`, `DOCKER_SOCKET_PATH`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` select the loopback port, Engine socket, image, and persistent volume. Stop with `docker compose down`; add `--volumes` only when you intend to delete local LabCentral state.
-
-Example A intentionally requires a checked acknowledgement. Ordinary Docker containers are not a hostile-workload boundary, and its loopback-published web port currently uses a normal user-defined bridge. The requested denied-egress intent is therefore degraded and is not claimed as enforced. Use this slice only on a trusted development laptop with trusted images.
-
-Compose uses host networking so the no-auth listener remains host-loopback-only and `labd` can probe provider-published loopback ports. Host networking is native on Linux; Docker Desktop requires version 4.34 or newer with host networking enabled. The selected Docker socket is mounted read-only into the LabCentral container, but that mount flag does not restrict Docker Engine API operations: socket access is effectively host-root control and the image therefore runs as root. Never expose this configuration to untrusted users or mount the socket into lab guests.
-
-Run the design gate with Python 3, Bun, and Buf installed. Python dependencies are pinned in `tools/requirements-phase0.txt`:
-
-```sh
-python3 -m pip install -r tools/requirements-phase0.txt
-python3 tools/verify_phase0.py
-```
-
-Set `BUFBIN` or `BUN` to an explicit executable path when they are not on `PATH`. This verifies design contracts only; it does not contact providers or execute lab workloads.
-
-Verify the Go foundation and renderer with the toolchain declared by `go.mod`:
-
-```sh
-go test ./...
-go test -race ./...
-go vet ./...
-```
-
-The default suite also covers the local HTTP/control-plane/provider slice using in-process fakes; it does not contact the real Docker Engine. The filesystem adapter tests content measurement, atomic content-addressed commit, immutable permissions, and symlink refusal. Run the same eight job invariants against an isolated PostgreSQL database with:
-
-```sh
-LABCENTRAL_TEST_POSTGRES_DSN='postgres://user:password@127.0.0.1:5432/labcentral_test?sslmode=disable' \
-  go test -count=1 -run TestPostgreSQLJobConformance ./internal/adapter/jobsdb
-```
+Classroom workflows, authentication, persistence and plugin integration are
+implemented. Production load/soak, failover/recovery and release approval gates
+remain open. Exact-target Proxmox qualification is required for ordinary writes;
+a historical testbed result does not qualify another build. See
+[current state](PROJECT_STATE.md) and [compatibility](docs/compatibility.md).

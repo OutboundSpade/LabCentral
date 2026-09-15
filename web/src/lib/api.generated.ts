@@ -88,6 +88,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/provider-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get admin provider targets */
+        get: operations["get-admin-provider-targets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-records": {
         parameters: {
             query?: never;
@@ -570,7 +587,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get organizations */
+        get: operations["get-organizations"];
         put?: never;
         /** Post organizations */
         post: operations["post-organizations"];
@@ -656,7 +674,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get provider target grants */
+        get: operations["get-provider-target-grants"];
         put?: never;
         /** Post provider target grants */
         post: operations["post-provider-target-grants"];
@@ -1556,6 +1575,16 @@ export interface components {
             /** Format: int64 */
             running: number;
         };
+        OrganizationDirectoryDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/OrganizationDirectoryDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["OrganizationRecord"][] | null;
+            nextCursor?: string;
+        };
         OrganizationRecord: {
             /**
              * Format: uri
@@ -1647,6 +1676,15 @@ export interface components {
             status: string;
             /** Format: date-time */
             validUntil?: string;
+        };
+        ProviderTargetDirectoryDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ProviderTargetDirectoryDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ProviderTargetDTO"][] | null;
         };
         PublishRevisionInputBody: {
             /**
@@ -1798,6 +1836,16 @@ export interface components {
             displayName: string;
             roles: string[] | null;
             subjectId: string;
+        };
+        TargetGrantDirectoryDTO: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TargetGrantDirectoryDTO.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["TargetGrantRecord"][] | null;
+            nextCursor?: string;
         };
         TargetGrantRecord: {
             /**
@@ -2117,6 +2165,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperationsPageDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-admin-provider-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderTargetDirectoryDTO"];
                 };
             };
             /** @description Error */
@@ -3317,6 +3394,38 @@ export interface operations {
             };
         };
     };
+    "get-organizations": {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationDirectoryDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "post-organizations": {
         parameters: {
             query?: never;
@@ -3515,6 +3624,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserDirectoryDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-provider-target-grants": {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetGrantDirectoryDTO"];
                 };
             };
             /** @description Error */

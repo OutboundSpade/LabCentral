@@ -29,7 +29,45 @@ type UserDirectoryDTO struct {
 	NextCursor string                   `json:"nextCursor,omitempty"`
 }
 
+type OrganizationDirectoryDTO struct {
+	Items      []application.OrganizationRecord `json:"items"`
+	NextCursor string                           `json:"nextCursor,omitempty"`
+}
+type TargetGrantDirectoryDTO struct {
+	Items      []application.TargetGrantRecord `json:"items"`
+	NextCursor string                          `json:"nextCursor,omitempty"`
+}
+
 func registerDirectory(api huma.API, security *requestSecurity) {
+	huma.Get(api, "/organizations", func(ctx context.Context, input *DirectoryQuery) (*struct{ Body OrganizationDirectoryDTO }, error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionOrganizationManage, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+			return nil, err
+		}
+		items, err := security.options.Repository.ListOrganizations(ctx, input.After, input.Limit)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Organizations could not be loaded")
+		}
+		output := &struct{ Body OrganizationDirectoryDTO }{Body: OrganizationDirectoryDTO{Items: items}}
+		if len(items) == int(input.Limit) {
+			output.Body.NextCursor = string(items[len(items)-1].ID)
+		}
+		return output, nil
+	})
+	huma.Get(api, "/provider-target-grants", func(ctx context.Context, input *DirectoryQuery) (*struct{ Body TargetGrantDirectoryDTO }, error) {
+		if err := authorize(ctx, security, application.AuthorizationRequest{Action: application.ActionProviderTargetGrant, ScopeKind: application.ScopePlatform, ScopeID: "platform"}); err != nil {
+			return nil, err
+		}
+		items, err := security.options.Repository.ListTargetGrants(ctx, input.After, input.Limit)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Target access could not be loaded")
+		}
+		output := &struct{ Body TargetGrantDirectoryDTO }{Body: TargetGrantDirectoryDTO{Items: items}}
+		if len(items) == int(input.Limit) {
+			output.Body.NextCursor = items[len(items)-1].ID
+		}
+		return output, nil
+	})
+
 	type membershipQuery struct {
 		DirectoryQuery
 		OrganizationID string `query:"organizationId" required:"true" maxLength:"128"`

@@ -177,6 +177,29 @@ func runIdentityConformance(t *testing.T, store *Store) {
 		t.Fatal(err)
 	}
 
+	organizations, err := store.ListOrganizations(ctx, "", 1)
+	if err != nil || len(organizations) != 1 || organizations[0].ID != "org.alpha" || organizations[0].ResourceVersion == 0 {
+		t.Fatalf("organization directory: %#v %v", organizations, err)
+	}
+	organizations, err = store.ListOrganizations(ctx, "org.alpha", 1)
+	if err != nil || len(organizations) != 1 || organizations[0].ID != "org.beta" {
+		t.Fatalf("organization cursor: %#v %v", organizations, err)
+	}
+	grants, err := store.ListTargetGrants(ctx, "", 1)
+	if err != nil || len(grants) != 1 || grants[0].ID != "grant.alpha" || grants[0].ResourceVersion == 0 || !grants[0].ValidUntil.IsZero() {
+		t.Fatalf("grant directory: %#v %v", grants, err)
+	}
+	grants, err = store.ListTargetGrants(ctx, "grant.alpha", 200)
+	if err != nil || len(grants) != 0 {
+		t.Fatalf("grant cursor: %#v %v", grants, err)
+	}
+	if _, err := store.ListOrganizations(ctx, "", 201); err == nil {
+		t.Fatal("unbounded organization directory")
+	}
+	if _, err := store.ListTargetGrants(ctx, "", 0); err == nil {
+		t.Fatal("zero-limit grant directory")
+	}
+
 	evaluator, err := authorization.New(store)
 	if err != nil {
 		t.Fatal(err)

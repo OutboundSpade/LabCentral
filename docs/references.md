@@ -127,3 +127,7 @@ Console transport sources retrieved 2026-09-07:
 Navigation continuity reference (retrieved 2026-09-08):
 
 - [SvelteKit state management](https://svelte.dev/docs/kit/state-management) and [navigation hooks](https://svelte.dev/docs/kit/$app-navigation) — shared layouts preserve component state; afterNavigate handles client route changes. Confirmed against the installed SvelteKit 2.70.3 types and the built three-engine navigation fixture.
+
+## Operations charts (retrieved 2026-09-15)
+
+- [ApexCharts skill and lifecycle reference](https://github.com/apexcharts/apexcharts-skill/blob/main/SKILL.md): chart-specific series shapes, render/update/destroy lifecycle, missing values and per-type renderer imports. TASK-UI-005 uses a lazy bar renderer with keyboard support; this does not change provider measurement semantics.

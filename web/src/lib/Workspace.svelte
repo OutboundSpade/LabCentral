@@ -4,16 +4,10 @@
   import { page } from "$app/state";
   import {
     FlaskConical,
-    LayoutDashboard,
     Plus,
     BookOpen,
-    Users,
-    Settings,
     LogOut,
     ChevronRight,
-    ArrowLeft,
-    Terminal,
-    Clock,
     Search,
     RefreshCw,
     CircleAlert,
@@ -24,8 +18,13 @@
     Play,
     FingerprintPattern,
   } from "@lucide/svelte";
+  import LabDetail from "./LabDetail.svelte";
   import LabList from "./LabList.svelte";
   import Operations from "./Operations.svelte";
+  import Navigation from "./Navigation.svelte";
+  import Workspaces from "./Workspaces.svelte";
+  import Plugins from "./Plugins.svelte";
+  import { routeViews, titles, isGlobalView } from "./navigation";
   import StatusBadge from "./StatusBadge.svelte";
   import ParameterInputs from "./ParameterInputs.svelte";
   import DeclaredInputs from "./DeclaredInputs.svelte";
@@ -52,12 +51,11 @@
     type Batch,
   } from "./api";
 
-  const routeViews = {
-    "": "labs", launch: "launch", templates: "templates",
-    classroom: "classroom", people: "people", settings: "settings",
-    operations: "operations", lab: "detail",
-  } as const;
-  let view = $derived(routeViews[page.url.pathname.replace(/^\/|\/$/g, "") as keyof typeof routeViews] ?? "labs");
+  let view = $derived(
+    routeViews[
+      page.url.pathname.replace(/^\/|\/$/g, "") as keyof typeof routeViews
+    ] ?? "labs",
+  );
   let server = $state<ServerInfo>();
   let session = $state<Session>();
   let loading = $state(true);
@@ -99,16 +97,7 @@
   let generation = 0;
   let selection = 0;
   let refreshTimer: ReturnType<typeof setTimeout>;
-  const titles = {
-    labs: "My labs",
-    launch: "Launch a lab",
-    templates: "Templates",
-    classroom: "Classroom",
-    people: "People",
-    settings: "Settings",
-    detail: "Lab details",
-    operations: "Operations",
-  };
+  let globalView = $derived(isGlobalView(view));
   let project = $derived(projects.find((p) => p.id === projectId));
   let template = $derived(templates.find((t) => t.id === templateId));
   let administrator = $derived(
@@ -138,15 +127,20 @@
     ),
   );
   let allowed = $derived(
-    view === "templates"
-      ? !!author
-      : view === "classroom"
-        ? operator
-        : view === "people" || view === "operations"
-          ? administrator
-          : view === "settings"
-            ? manager
-            : true,
+    (view === "workspaces" || view === "people") && server?.authMode === "none"
+      ? false
+      : view === "templates"
+        ? !!author
+        : view === "classroom"
+          ? operator
+          : view === "people" ||
+              view === "workspaces" ||
+              view === "operations" ||
+              view === "plugins"
+            ? administrator
+            : view === "settings"
+              ? manager
+              : true,
   );
 
   onMount(() => {
@@ -169,7 +163,8 @@
     try {
       const next = await api<Session>("/session");
       if (disposed || current !== navigationGeneration) return;
-      const identityChanged = next.subjectId !== session?.subjectId ||
+      const identityChanged =
+        next.subjectId !== session?.subjectId ||
         JSON.stringify(next.roles) !== JSON.stringify(session?.roles);
       session = next;
       if (identityChanged) {
@@ -253,7 +248,12 @@
     );
     projectId =
       projects.find((p) => p.id === saved)?.id ?? projects[0]?.id ?? "";
-    if (projectId) await loadProject();
+    if (projectId && !globalView) await loadProject();
+  }
+  async function reloadProjects() {
+    projects = await collection<Project>("/projects", "after", { fresh: true });
+    if (!projects.some((p) => p.id === projectId))
+      projectId = projects[0]?.id ?? "";
   }
   async function login() {
     await action(async () => {
@@ -276,6 +276,10 @@
     });
   }
   async function loadProject(reset = true) {
+    if (globalView) {
+      clearTimeout(refreshTimer);
+      return;
+    }
     const current = ++generation;
     stale = false;
     selection++;
@@ -283,16 +287,16 @@
     if (reset) loading = true;
     error = "";
     if (reset) {
-    content = undefined;
-    templateId = "";
-    revisionId = "";
-    revisions = [];
-    selectedOwners = [];
-    batch = undefined;
-    activeOperation = undefined;
-    instances = [];
-    templates = [];
-    roster = [];
+      content = undefined;
+      templateId = "";
+      revisionId = "";
+      revisions = [];
+      selectedOwners = [];
+      batch = undefined;
+      activeOperation = undefined;
+      instances = [];
+      templates = [];
+      roster = [];
     }
     localStorage.setItem(
       `labcentral.selected-project.v1.${session?.subjectId}`,
@@ -330,20 +334,21 @@
             nextRevisionTemplates[r.id] = result.value.template;
       revisionTemplates = nextRevisionTemplates;
       instances = labs.filter((i) => i.projectId === projectId);
-      if (reset || !targets.some(t => t.id === targetId)) targetId =
-        targets.find((t) => t.id === server?.defaultProviderTargetId)?.id ??
-        targets[0]?.id ??
-        "";
+      if (reset || !targets.some((t) => t.id === targetId))
+        targetId =
+          targets.find((t) => t.id === server?.defaultProviderTargetId)?.id ??
+          targets[0]?.id ??
+          "";
       if (reset) {
-      source = targets.find((t) => t.id === targetId)?.example?.source ?? "";
-      providerOverride = targets.find((t) => t.id === targetId)?.example
-        ?.providerOverride
-        ? JSON.stringify(
-            targets.find((t) => t.id === targetId)?.example?.providerOverride,
-            null,
-            2,
-          )
-        : "";
+        source = targets.find((t) => t.id === targetId)?.example?.source ?? "";
+        providerOverride = targets.find((t) => t.id === targetId)?.example
+          ?.providerOverride
+          ? JSON.stringify(
+              targets.find((t) => t.id === targetId)?.example?.providerOverride,
+              null,
+              2,
+            )
+          : "";
       }
       if (
         !templates.length &&
@@ -368,7 +373,10 @@
           },
         ];
       }
-      if (!templateId && (view === "launch" || view === "classroom" || view === "templates")) {
+      if (
+        !templateId &&
+        (view === "launch" || view === "classroom" || view === "templates")
+      ) {
         templateId = templates[0]?.id ?? "";
         if (templateId) await chooseTemplate();
       }
@@ -402,7 +410,9 @@
   async function refresh(fresh = false) {
     const current = generation;
     try {
-      const labs = await collection<Instance>("/lab-instances", "cursor", { fresh });
+      const labs = await collection<Instance>("/lab-instances", "cursor", {
+        fresh,
+      });
       if (disposed || current !== generation) return;
       instances = labs.filter((i) => i.projectId === projectId);
       if (activeOperation && !terminal(activeOperation.state)) {
@@ -414,7 +424,9 @@
         activeOperation = updated;
       }
       if (batch) {
-        const updated = await api<Batch>(`/lab-instance-batches/${batch.id}`, { fresh });
+        const updated = await api<Batch>(`/lab-instance-batches/${batch.id}`, {
+          fresh,
+        });
         if (disposed || current !== generation) return;
         batch = updated;
       }
@@ -742,7 +754,7 @@
             class="btn btn-square btn-ghost lg:hidden"
             aria-label="Open navigation"
             onclick={() => (drawerOpen = true)}><Menu size={20} /></button
-          >{#if view === "operations"}<span class="text-sm text-base-content/70"
+          >{#if globalView}<span class="text-sm text-base-content/70"
               >Administration</span
             >{:else}<span class="text-sm text-base-content/70">Workspace</span
             ><ChevronRight size={14} class="text-base-content/50" /><label
@@ -808,7 +820,9 @@
             class="alert alert-warning alert-soft mb-6"
           >
             <span>Updates are paused. Showing the last known state.</span
-            ><button class="btn btn-sm" onclick={() => refresh(true)}>Retry</button>
+            ><button class="btn btn-sm" onclick={() => refresh(true)}
+              >Retry</button
+            >
           </div>{/if}
         {#if activeOperation}<div
             class="mb-6 flex flex-wrap items-center gap-3 rounded-box border border-base-300 p-4"
@@ -828,7 +842,7 @@
             <div class="skeleton h-48"></div>
             <div class="skeleton h-48"></div>
           </div>
-        {:else if !projectId && view !== "operations"}<section
+        {:else if !projectId && !globalView}<section
             class="rounded-box border border-base-300 p-8"
           >
             <BookOpen size={28} class="mb-4 text-base-content/60" />
@@ -849,10 +863,36 @@
               This view needs additional access
             </h2>
             <p class="mt-2 text-sm text-base-content/70">
-              Choose another project or return to your labs.
+              {view === "classroom"
+                ? "Classroom launches require instructor access and an environment granted to this workspace. Choose an enabled workspace or ask an administrator to configure access."
+                : "Choose another project or return to your labs."}
             </p>
-            <a href="/" class="btn mt-5">My labs</a>
+            <div class="mt-5 flex flex-wrap gap-3">
+              <a href="/" class="btn">My labs</a
+              >{#if administrator && view === "classroom"}<a
+                  href="/plugins/"
+                  class="btn">Configure environment access</a
+                >{/if}
+            </div>
           </section>
+        {:else if view === "workspaces"}
+          <Workspaces
+            {projects}
+            onchange={reloadProjects}
+            onselect={async (id) => {
+              projectId = id;
+              localStorage.setItem(
+                `labcentral.selected-project.v1.${session?.subjectId}`,
+                id,
+              );
+            }}
+          />
+        {:else if view === "plugins"}
+          <Plugins
+            {projects}
+            authMode={server?.authMode ?? ""}
+            onchange={reloadProjects}
+          />
         {:else if view === "labs"}
           <div class="mb-5 flex flex-wrap items-center justify-between gap-4">
             <label class="input w-full sm:w-80"
@@ -904,83 +944,20 @@
         {:else if view === "operations"}
           <Operations {projects} name={labName} />
         {:else if view === "detail"}
-          <a href="/" class="btn btn-sm btn-ghost mb-6"
-            ><ArrowLeft size={16} />My labs</a
-          >
-          {#if detail}<section
-              class="rounded-box border border-base-300 bg-base-200 p-6"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-4">
-                <h2 class="text-xl font-semibold capitalize">
-                  {labName(detail)}
-                </h2>
-                <StatusBadge state={detail.phase} />
-              </div>
-              <p class="mt-3 text-sm text-base-content/70">
-                Expires {expiry(detail)}. Files in this lab are deleted when it
-                ends.
-              </p>
-              {#if detail.revisionId && revisionTemplates[detail.revisionId]?.description}<section
-                  class="mt-6 rounded-box border border-base-300 p-5"
-                >
-                  <h3 class="font-semibold">Lab instructions</h3>
-                  <p
-                    class="mt-3 whitespace-pre-wrap text-sm leading-6 text-base-content/80"
-                  >
-                    {revisionTemplates[detail.revisionId].description}
-                  </p>
-                </section>{/if}{#if detail.errorMessage}<p
-                  role="alert"
-                  class="mt-4 text-error"
-                >
-                  {detail.errorMessage}
-                </p>{/if}
-              <div class="mt-6 divide-y divide-base-300">
-                {#each detail.resources?.filter((r) => administrator || r.kind === "VM" || r.kind === "Container") ?? [] as resource}<div
-                    class="flex flex-wrap items-center justify-between gap-4 py-4"
-                  >
-                    <div class="flex items-center gap-3">
-                      <Server size={19} />
-                      <div>
-                        <h3 class="font-medium">
-                          {resource.id.split(".").slice(-1)[0]}
-                        </h3>
-                        <p class="text-sm text-base-content/70">
-                          {resource.kind}
-                        </p>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                      <StatusBadge
-                        state={resource.phase}
-                      />{#if server?.uiFeatures?.includes("browser-vnc") && resource.kind === "VM" && resource.phase === "ready"}<button
-                          class="btn btn-primary"
-                          disabled={busy}
-                          onclick={() => openConsole(detail!, resource.id)}
-                          ><Terminal size={16} />Open console</button
-                        >{/if}
-                    </div>
-                  </div>{/each}
-              </div>
-              {#if !server?.uiFeatures?.includes("browser-vnc")}<p
-                  class="mt-4 text-sm text-base-content/70"
-                >
-                  Browser consoles are not available on this installation.
-                  Contact your instructor for access.
-                </p>{/if}
-
-              {#if !["destroying", "destroyed"].includes(detail.phase)}<div
-                  class="mt-8 border-t border-base-300 pt-5"
-                >
-                  <button
-                    class="btn btn-error btn-soft"
-                    disabled={busy}
-                    onclick={() => confirmEnd(detail!)}>End lab</button
-                  >
-                </div>{/if}
-            </section>{:else}<p class="text-base-content/70">
-              This lab is unavailable or you no longer have access.
-            </p>{/if}
+          <LabDetail
+            {detail}
+            name={detail ? labName(detail) : ""}
+            expires={detail ? expiry(detail) : ""}
+            instructions={detail?.revisionId
+              ? revisionTemplates[detail.revisionId]?.description
+              : undefined}
+            {administrator}
+            browserConsole={server?.uiFeatures?.includes("browser-vnc") ??
+              false}
+            {busy}
+            onopen={openConsole}
+            onend={confirmEnd}
+          />
         {:else if view === "launch" || view === "classroom"}
           {#if !templates.length}<section
               class="rounded-box border border-base-300 p-8"
@@ -1290,46 +1267,13 @@
             class="text-lg font-semibold tracking-tight">LabCentral</span
           ></a
         >
-        <nav aria-label="Main navigation">
-          <ul class="menu w-full gap-1">
-            <li>
-              <a
-                href="/"
-                class:menu-active={view === "labs" || view === "detail"}
-                aria-current={view === "labs" ? "page" : undefined}
-                ><LayoutDashboard size={18} />My labs</a
-              >
-            </li>
-            <li>
-              <a href="/launch/" class:menu-active={view === "launch"}
-                ><Plus size={18} />Launch lab</a
-              >
-            </li>
-            {#if author}<li class="menu-title mt-6 text-xs">TEACH & MANAGE</li>
-              <li>
-                <a href="/templates/" class:menu-active={view === "templates"}
-                  ><BookOpen size={18} />Templates</a
-                >
-              </li>{/if}{#if operator}<li>
-                <a href="/classroom/" class:menu-active={view === "classroom"}
-                  ><Users size={18} />Classroom</a
-                >
-              </li>{/if}{#if administrator}<li>
-                <a href="/people/" class:menu-active={view === "people"}
-                  ><ShieldCheck size={18} />People</a
-                >
-              </li>
-              <li>
-                <a href="/operations/" class:menu-active={view === "operations"}
-                  ><Server size={18} />Operations</a
-                >
-              </li>{/if}{#if manager}<li>
-                <a href="/settings/" class:menu-active={view === "settings"}
-                  ><Settings size={18} />Settings</a
-                >
-              </li>{/if}
-          </ul>
-        </nav>
+        <Navigation
+          {view}
+          {author}
+          {manager}
+          {administrator}
+          authenticated={server?.authMode !== "none"}
+        />
         <div class="mt-auto px-3 pt-16">
           {#if server?.authMode !== "none"}<button
               class="btn btn-sm btn-ghost w-full justify-start"
