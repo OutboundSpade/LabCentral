@@ -146,3 +146,11 @@ include all workload kinds; VM pagination and measurements remain VM-specific.
 Tables provide exact accessible values. The bar renderer is loaded only when
 Operations mounts, updates in place, escapes untrusted chart labels and is destroyed
 on unmount. Project/filter changes discard old results before fetching the new scope.
+
+
+TASK-TESTBED-003 deployed this core/UI to the private PVE1 classroom on
+2026-09-15. Live authenticated navigation, administration APIs, all three chart
+renderers, both workspace Classroom routes and retained-lab checks passed.
+The provider/access executables and expired qualification were retained; renewal
+remains required before ordinary lab launches. See the
+[current deployment record](../operations/classroom-testbed.md#current-deployment-workspace-administration-task-testbed-003).

@@ -739,3 +739,29 @@ maintenanceAndWorkspaceAdministration20260915:
     - Charts show current counts and visible-page samples, not persisted historical metrics.
     - Plugin installation remains operator-managed and restart-based; the UI does not upload or hot-install executables.
     - TASK-PROD-004 and TASK-PROD-005 remain open; no production qualification or signed release approval is claimed.
+
+classroomAdministrationDeployment20260915:
+  task: TASK-TESTBED-003
+  verifiedAt: '2026-09-15'
+  result: pass
+  sourceCommit: 9733c6af128136d813e0bda886a1c93e29e697dc
+  coreVersion: classroom-admin-20260915
+  coreSHA256: 59b4350299ce9f172bac6f79608c9d913b0debc3abc5be26c6d4147251cff022
+  deployedAt: '2026-09-15T18:34:09Z'
+  scope: private_vader_classroom_core_and_embedded_ui
+  verification:
+    - Exact-version Svelte check/build and embedded UI tests passed; binary records the clean source commit.
+    - Exact installed base and resulting core hashes verified before atomic replacement, with automatic readiness rollback and a retained previous executable.
+    - Integrity-checked root-only SQLite snapshot taken while core stopped; live SQLite integrity passed after deployment.
+    - Six services healthy; provider/access executable and core/OIDC provider configuration hashes unchanged.
+    - Authenticated Chromium verified Workspaces, Plugins, Classroom across both workspaces, mobile width and three rendered Operations charts.
+    - Organization, project, target-grant, provider inventory and operation directory APIs returned HTTP 200.
+    - All 50 existing lab IDs, phases and resource versions unchanged; no lab mutations, browser errors or failed browser requests.
+    - No active VMs at verification; CPU and memory charts showed unavailable measurements without inventing data.
+    - Temporary core and OIDC provider verification sessions retired and rejection verified.
+    - Running process digest and final readiness verified after browser checks.
+  localEvidence: bin/classroom-admin-20260915/
+  exclusions:
+    - Installed exact-target qualification expired 2026-09-13T20:36:44Z and was not renewed; no ordinary lab launches attempted.
+    - Existing identity enrollment and the separate iad1 pilot preserved.
+    - No provider requalification, production gate completion or signed production release claim.

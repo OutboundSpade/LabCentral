@@ -1,6 +1,17 @@
 formatVersion: 1
 lastUpdated: "2026-09-15"
 tasks:
+  - id: TASK-TESTBED-003
+    title: Deploy workspace administration and operations charts to PVE1
+    status: complete
+    dependencies: [TASK-UI-005]
+    relatedAdrs: [ADR-0009, ADR-0010, ADR-0015]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Deploy the verified core and embedded UI to the existing private classroom VM with exact binary checks and automatic readiness rollback.
+      - Preserve provider and access executables, qualification evidence, existing labs, identity configuration and the separate iad1 pilot.
+      - Verify live authenticated Workspaces, Plugins, Classroom and Operations pages and retire the temporary verification sessions.
+      - Record deployed source, binary digest, retained-lab checks and any existing qualification expiry without claiming renewal or production acceptance.
   - id: TASK-MAINT-001
     title: Separate generated builds and organize documentation by audience
     status: complete

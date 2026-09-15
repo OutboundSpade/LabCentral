@@ -14,6 +14,8 @@ quotas, lifetime and ownership; plugins translate infrastructure operations.
 - `TASK-UI-005`: workspace/organization administration, provider discovery and
   workspace target grants, consistent Classroom navigation, and operations charts.
   Workspace names support readable Unicode display text; stable IDs are unchanged.
+- `TASK-TESTBED-003`: deployed `classroom-admin-20260915` to the private PVE1
+  classroom; live administration, charts and both Classroom workspaces verified.
 - `TASK-PROD-004` and `TASK-PROD-005` remain separate production validation work.
 
 ## Implemented
@@ -33,14 +35,16 @@ remain authoritative; no accepted decision exists only in task conversation.
 
 ## Deployment and remaining gates
 
-The last recorded private PVE1 classroom core/UI deployment is
-`classroom-navigation-20260908`. Its qualified provider and access executables
-were retained. This session has not deployed a replacement or renewed qualification.
-The latest recorded qualification expired on September 13; verify the actual
-installed evidence before ordinary writes. Do not treat the old next-renewal date
-as future work that is still within validity. See the
-[classroom record](docs/operations/classroom-testbed.md) and
-[separate pilot record](docs/operations/pve1-pilot.md).
+The private PVE1 classroom runs `classroom-admin-20260915`, deployed from
+`9733c6af128136d813e0bda886a1c93e29e697dc` on September 15 at 18:34:09 UTC.
+The core/UI update retained provider/access executables and configuration, with
+an integrity-checked database snapshot and previous binary for rollback. All 50
+existing lab records were unchanged, and the temporary instructor verification
+sessions were retired. See the [classroom record](docs/operations/classroom-testbed.md)
+and [separate pilot record](docs/operations/pve1-pilot.md).
+
+Installed qualification expired **2026-09-13 20:36:44 UTC**; the rollout did not
+renew it. Fresh exact-target qualification is required before ordinary lab launches.
 
 Production still requires live target load/soak, shared-journal cross-node
 locking/failover/disaster recovery, publisher controls and the first signed release
@@ -60,7 +64,6 @@ in ignored `bin/maintenance-20260915/`; browser screenshots remain under `bin`.
 
 ## Next action
 
-For a live classroom rollout, deploy the verified core/UI with rollback and
-retained-lab checks. Renew exact-target provider qualification before testing
-ordinary infrastructure writes. Continue production validation through
+Renew exact-target provider qualification before testing ordinary infrastructure
+writes. The requested core/UI rollout is complete. Continue production validation through
 `TASK-PROD-004` and `TASK-PROD-005`; this maintenance work does not close those gates.
