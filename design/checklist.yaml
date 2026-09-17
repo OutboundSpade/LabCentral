@@ -59,7 +59,7 @@ tasks:
       - Execute fenced non-instance child jobs, deduplicate builds/imports, preserve atomic admission and include artifacts in recovery and GC.
   - id: TASK-EXT-008
     title: External proof and verified release
-    status: in_progress
+    status: complete
     dependencies: [TASK-EXT-004, TASK-EXT-005, TASK-EXT-007]
     relatedAdrs: [ADR-0023, ADR-0024, ADR-0025]
     relatedDocuments: [docs/design/extensions.md]
@@ -67,7 +67,7 @@ tasks:
       - Install independent lifecycle/access/source/builder/UI fixtures into unchanged core/UI artifacts and pass compatibility, isolation, database parity and browser gates against the exact release artifacts.
   - id: TASK-EXT-009
     title: Deploy the verified extension release on PVE1
-    status: proposed
+    status: in_progress
     dependencies: [TASK-EXT-008]
     relatedAdrs: [ADR-0018, ADR-0020, ADR-0023]
     relatedDocuments: [docs/operations/classroom-testbed.md]
