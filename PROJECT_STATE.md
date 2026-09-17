@@ -16,14 +16,14 @@ External fixtures exercise source recovery, concurrent build deduplication, imag
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
-## Current work
-
-`TASK-UI-010` adds administrator API client deletion, retains provider validation
-reasons in the UI, and moves site-bound operational records out of tracked source.
-SQLite/PostgreSQL authorization/race, backend, browser and contract checks pass;
-release verification and the authorized private rollout remain pending.
-
 ## Latest completed work
+
+- `TASK-UI-010`: administrators can permanently delete API clients with audited
+  revocation and confirmed UI actions. Validation displays specific provider
+  rejection reasons. Existing Proxmox support for one VM per container passed
+  live two-machine, network, console and cleanup checks. Docker-only templates
+  retain their distinct requirements. Host-bound records/scripts moved out of
+  tracked source; reusable guidance and synthetic deployment examples remain.
 
 - `TASK-UI-009`: Integrations groups Environments, Plugins and API clients;
   legacy provider/access services appear alongside installed contributions.
@@ -55,6 +55,15 @@ records outside this repository. See [private testbed guidance](docs/operations/
 No source-controlled example or prior result establishes current target qualification.
 
 ## Verification
+
+API client deletion passed the full Go suite, SQLite/PostgreSQL race and
+concurrency checks, API authorization, generated contracts, Svelte type/build,
+cache and three-browser regressions. Blueprint approved the rendered UI. Native
+firewall examples passed in a disposable namespace. The release reproduced
+identically and passed external device-flow fixtures; live client deletion,
+validation feedback and VM-backed container checks passed. Deployment evidence,
+rollback bindings and temporary resource/session cleanup records remain private.
+
 
 The integration administration update passed Blueprint (no issues/warnings),
 Svelte check/build, cache tests, affected backend/vet and race tests. All three
