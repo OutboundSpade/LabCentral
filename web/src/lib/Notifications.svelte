@@ -43,7 +43,8 @@
         class="flex items-start gap-3 rounded-xl border border-base-300 bg-base-100 p-4 text-sm shadow-xl"
       >
         <CircleAlert size={20} class="mt-0.5 shrink-0 text-error" /><span
-          class="min-w-0 flex-1 break-words leading-6">{error}</span
+          class="min-w-0 flex-1 whitespace-pre-line break-words leading-6"
+          >{error}</span
         >
         <button
           class="btn btn-sm btn-ghost btn-square"

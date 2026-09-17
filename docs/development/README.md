@@ -100,7 +100,7 @@ archive, checksums, manifests, provenance and SBOM in `dist`. See
 [release verification](../operations/release-verification.md). Build assets are
 release outputs, not source files.
 
-PVE1 is a disposable private testbed; consult the
+the private testbed is a disposable private testbed; consult the
 [classroom deployment record](../operations/classroom-testbed.md) before using it.
 Preserve user labs and exact provider qualification. Local tests or a core/UI
 update do not renew a provider's qualification or complete production gates.

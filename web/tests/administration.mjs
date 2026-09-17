@@ -9,7 +9,7 @@ const shots = new URL(
   import.meta.url,
 );
 await mkdir(shots, { recursive: true });
-let organizations, projects, grants, mutations, admin, conflict, deployment, vmQuota, clients, failClients;
+let organizations, projects, grants, mutations, admin, conflict, deployment, vmQuota, clients, failClients, failDelete;
 const labSchema = JSON.parse(await readFile(new URL("../../schemas/lab-v1alpha1.schema.json",import.meta.url),"utf8"));
 const target = {
   id: "target.test",
@@ -84,6 +84,7 @@ const server = createServer(async (req, res) => {
       if(failClients){failClients=false;return json({detail:"Client registry temporarily unavailable"},503);}
       return json({items:clients});
     }
+    if(path.startsWith("/admin/gateway-clients/") && req.method === "DELETE") {if(failDelete){failDelete=false;return json({detail:"Client deletion temporarily unavailable"},503)}const index=clients.findIndex(c=>path.endsWith(c.id));if(index>=0)clients.splice(index,1);return json({});}
     if(path.startsWith("/admin/gateway-clients/") && path.endsWith("/status")) {const client=clients.find(c=>path.includes(c.id));assert(client);client.disabled=body.disabled;return json({});}
     if (path === "/admin/provider-targets") return json({ items: [target] });
     if (path.endsWith("/actions/refresh")) return json(target);
@@ -178,7 +179,7 @@ try {
     projects = [];
     grants = [];
     mutations = [];
-    clients=[];failClients=true;
+    clients=[];failClients=true;failDelete=true;
     admin = true;
     conflict = false;
     deployment={maxConcurrentDeployments:2,resourceVersion:0}; vmQuota=undefined;
@@ -403,6 +404,20 @@ try {
       await page.getByRole("button",{name:"Enable Classroom gateway",exact:true}).click();await page.getByRole("button",{name:"Disable Classroom gateway",exact:true}).waitFor();assert.equal(clients[0].disabled,false);
       await page.setViewportSize({width:1440,height:1000});
       await page.screenshot({animations:"disabled",path:new URL(`${engineName}-clients.png`,shots).pathname,fullPage:true});
+      await page.getByRole("button",{name:"Delete Classroom gateway",exact:true}).click();
+      let deletion=page.getByRole("dialog",{name:"Delete API client?",exact:true});
+      await deletion.getByRole("button",{name:"Cancel",exact:true}).click();assert.equal(clients.length,1);
+      await page.setViewportSize({width:390,height:844});
+      await page.getByRole("button",{name:"Delete Classroom gateway",exact:true}).click();
+      await deletion.getByText("Audit history is retained.",{exact:false}).waitFor();
+      await page.screenshot({animations:"disabled",path:new URL(`${engineName}-delete-client-mobile.png`,shots).pathname,fullPage:true});
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+      await deletion.getByRole("button",{name:"Delete client",exact:true}).click();
+      await deletion.getByRole("alert").filter({hasText:"Client deletion temporarily unavailable"}).waitFor();assert.equal(clients.length,1);
+      await deletion.getByRole("button",{name:"Delete client",exact:true}).click();
+      await page.getByRole("heading",{name:"No API clients registered",exact:true}).waitFor();assert.equal(clients.length,0);
+      await page.reload();await page.getByRole("heading",{name:"No API clients registered",exact:true}).waitFor();
+      await page.setViewportSize({width:1440,height:1000});
       await page.getByRole("tab",{name:"Environments",exact:true}).focus();await page.keyboard.press("ArrowRight");
       await page.getByRole("heading",{name:"Installed plugins",exact:true}).waitFor();
       await page

@@ -13,7 +13,7 @@ Existing installation v1, plugin wire v1 and immutable template representations 
 
 ## Acceptance
 
-The external fixture suite must install provider, access, source, builder and browser packages after core/UI artifacts are built, then prove full lifecycle, recovery, scoped authority and cleanup without rebuilding those artifacts. Production integrations remain outside this work. The owner subsequently authorized deploying the verified release to PVE1 under TASK-EXT-009. State/checklist report implementation progress; this document describes the accepted target contract, not a claim that every extension is implemented.
+The external fixture suite must install provider, access, source, builder and browser packages after core/UI artifacts are built, then prove full lifecycle, recovery, scoped authority and cleanup without rebuilding those artifacts. Production integrations remain outside this work. The owner subsequently authorized deploying the verified release to the private testbed under TASK-EXT-009. State/checklist report implementation progress; this document describes the accepted target contract, not a claim that every extension is implemented.
 
 ## Implemented orchestration
 
@@ -53,7 +53,7 @@ Imports require administrator target-management authority in this first version.
 
 ### Gateway delegation
 
-Administrators register gateway clients and receive a secret once. `/device/authorization` and `/device/token` use RFC 8628 form bodies and client authentication. A five-minute request starts with a five-second polling interval; premature polling increases it. The signed-in browser reviews client identity, project, actions, templates, instances and targets at `/device`. Approval cannot choose a subject or modify the stored scope. Device codes and approved grants are single-use/revocable as appropriate, and only keyed hashes are stored.
+Administrators register API clients (gateway clients in the protocol) and receive a secret once. `DELETE /admin/gateway-clients/{id}` permanently removes the client, pending device requests and grants in one audited transaction. Retries are idempotent. Historical audit/event records and access-session grant bindings remain; sessions fail their next authorization check and use the existing durable closure path and bounded enforcement deadlines. Disabling is reversible; deletion requires a new registration to reconnect. `/device/authorization` and `/device/token` use RFC 8628 form bodies and client authentication. A five-minute request starts with a five-second polling interval; premature polling increases it. The signed-in browser reviews client identity, project, actions, templates, instances and targets at `/device`. Approval cannot choose a subject or modify the stored scope. Device codes and approved grants are single-use/revocable as appropriate, and only keyed hashes are stored.
 
 Grants last at most fifteen minutes without refresh. Gateway calls send the grant plus registered client identity and secret, and are confined to `/gateway/*` discovery, deployment, operation and access-session routes. Every call intersects approved scope with current user authority. Access sessions additionally bind to the grant and cannot outlive it. `/account` lists and revokes the user's grants; audit records carry both user and gateway identity. SSH enrollment/server and unattended service accounts remain outside this contract.
 

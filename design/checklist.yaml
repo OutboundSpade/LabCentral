@@ -1,6 +1,16 @@
 formatVersion: 1
 lastUpdated: "2026-09-17"
 tasks:
+  - id: TASK-UI-010
+    title: Delete API clients and clarify container deployment compatibility
+    status: in_progress
+    dependencies: [TASK-UI-009, TASK-CONTAINER-VM-001]
+    relatedAdrs: [ADR-0009, ADR-0022, ADR-0024]
+    relatedDocuments: [docs/design/extensions.md, docs/operations/container-vm-runtime.md]
+    acceptanceCriteria:
+      - Administrators can permanently delete API clients with confirmation, revoke associated authority and retain audit history; test authorization, races and database parity.
+      - Diagnose container validation against discovered target capabilities, correct regressions and verify the supported dedicated-VM path without weakening isolation or image approval.
+      - Keep host-specific deployment configuration and test evidence outside tracked source, retain portable operating guidance, validate and deploy the exact release.
   - id: TASK-UI-009
     title: Unify integration administration and correct API client registration
     status: complete
@@ -10,7 +20,7 @@ tasks:
     acceptanceCriteria:
       - Use Integrations with Environments, Plugins and API clients; expose legacy and installed plugin roles together without changing their process or authorization boundaries.
       - Provide responsive client registration, one-time credentials, explicit loading/errors and confirmed disable actions using existing authorized APIs.
-      - Pass Blueprint inspection, affected browser and backend checks; deploy the exact tested core/UI to PVE1 while preserving qualified plugins and existing labs, then push to main.
+      - Pass Blueprint inspection, affected browser and backend checks; deploy the exact tested core/UI to the private testbed while preserving qualified plugins and existing labs, then push to main.
   - id: TASK-EXT-001
     title: Contracts and compatibility
     status: complete
@@ -76,7 +86,7 @@ tasks:
     acceptanceCriteria:
       - Install independent lifecycle/access/source/builder/UI fixtures into unchanged core/UI artifacts and pass compatibility, isolation, database parity and browser gates against the exact release artifacts.
   - id: TASK-EXT-009
-    title: Deploy the verified extension release on PVE1
+    title: Deploy the verified extension release on the private testbed
     status: complete
     dependencies: [TASK-EXT-008]
     relatedAdrs: [ADR-0018, ADR-0020, ADR-0023]
@@ -103,7 +113,7 @@ tasks:
     acceptanceCriteria:
       - Seed plans with bounded occupied target claims, retain transactional uniqueness and bounded conflict retries, and cover more than eight labs on both databases.
   - id: TASK-CONTAINER-VM-001
-    title: Implement and qualify portable containers inside Proxmox VMs on PVE1
+    title: Implement and qualify portable containers inside Proxmox VMs on the private testbed
     status: complete
     dependencies: [TASK-ALLOC-002, TASK-UI-008]
     relatedAdrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0022]
@@ -112,7 +122,7 @@ tasks:
       - Implement a versioned shared guest runtime and a bounded Proxmox container-via-VM subset with explicit unsupported-feature errors.
       - Run pinned unprivileged OCI workloads inside dedicated owned VMs without guest management credentials or weakened network isolation.
       - Use short guest hostnames, preserve existing VM state compatibility, and qualify the changed provider and target before deployment.
-      - Publish runnable container-via-VM examples on PVE1, verify lifecycle, access and cleanup, and preserve existing user labs.
+      - Publish runnable container-via-VM examples on the private testbed, verify lifecycle, access and cleanup, and preserve existing user labs.
   - id: TASK-UI-007
     title: Unify classroom launch management and expose provider operations controls
     status: complete
@@ -125,7 +135,7 @@ tasks:
       - Generate authoring and plugin override forms from bounded JSON Schema while retaining the canonical API and server validation.
       - Replace transient toast styling and expandable operation details with clear notifications and dialogs.
       - Automatically obtain fresh authorized console sessions on reload and bounded reconnect without reusing one-time tokens or bypassing revocation.
-      - Verify changed backend and browser paths, then deploy a core-only update to PVE1 while retaining valid provider qualification.
+      - Verify changed backend and browser paths, then deploy a core-only update to the private testbed while retaining valid provider qualification.
   - id: TASK-UI-006
     title: Simplify lab navigation workspace switching and transient feedback
     status: complete
@@ -136,7 +146,7 @@ tasks:
       - Move lab launch under My labs and show consistent breadcrumbs only for nested views.
       - Put the authorized workspace selector and identity in the sidebar for every role, remove the desktop top bar and preserve mobile navigation.
       - Show dismissible timed notifications outside document flow and clear them on navigation and scope changes.
-      - Verify non-admin workspace switching, notification lifecycle and responsive navigation in browser tests and deploy to PVE1.
+      - Verify non-admin workspace switching, notification lifecycle and responsive navigation in browser tests and deploy to the private testbed.
   - id: TASK-EXAMPLES-001
     title: Expand the private classroom catalogue and explain requirements
     status: complete
@@ -144,7 +154,7 @@ tasks:
     relatedAdrs: [ADR-0004, ADR-0015]
     relatedDocuments: [docs/design/declarative-labs.md, docs/operations/classroom-testbed.md]
     acceptanceCriteria:
-      - Add validated single and multi-VM exercises and container examples to the PVE1 catalogue, with explicit provider compatibility.
+      - Add validated single and multi-VM exercises and container examples to the private testbed catalogue, with explicit provider compatibility.
       - Support readable catalogue titles independently of stable IDs and declarative resource names.
       - Explain inferred resource needs versus additional capability and isolation constraints without changing existing revision contracts.
   - id: TASK-SCHEDULING-001
@@ -167,16 +177,16 @@ tasks:
       - Diagnose target refresh failure and renew the existing privilege-separated classroom token without broadening ACLs.
       - Run fresh exact-provider smoke, recovery and typed isolation checks on reserved claims and independently confirm cleanup.
       - Review and sign fresh short-lived qualification under the owner's continuing private-testbed delegation, preserving earlier evidence.
-      - Install verified evidence and trust, verify live target refresh and preserve user labs, templates, onboarding and the iad1 pilot.
+      - Install verified evidence and trust, verify live target refresh and preserve user labs, templates, onboarding and the separate pilot.
   - id: TASK-TESTBED-003
-    title: Deploy workspace administration and operations charts to PVE1
+    title: Deploy workspace administration and operations charts to the private testbed
     status: complete
     dependencies: [TASK-UI-005]
     relatedAdrs: [ADR-0009, ADR-0010, ADR-0015]
     relatedDocuments: [docs/design/classroom-ui.md, docs/operations/classroom-testbed.md]
     acceptanceCriteria:
       - Deploy the verified core and embedded UI to the existing private classroom VM with exact binary checks and automatic readiness rollback.
-      - Preserve provider and access executables, qualification evidence, existing labs, identity configuration and the separate iad1 pilot.
+      - Preserve provider and access executables, qualification evidence, existing labs, identity configuration and the separate pilot.
       - Verify live authenticated Workspaces, Plugins, Classroom and Operations pages and retire the temporary verification sessions.
       - Record deployed source, binary digest, retained-lab checks and any existing qualification expiry without claiming renewal or production acceptance.
   - id: TASK-MAINT-001
@@ -250,7 +260,7 @@ tasks:
     relatedAdrs: [ADR-0018, ADR-0019, ADR-0020]
     relatedDocuments: [docs/operations/classroom-testbed.md]
     acceptanceCriteria:
-      - Deploy verified builds to the existing private classroom testbed while preserving user labs, enrollment links and the iad1 pilot.
+      - Deploy verified builds to the existing private classroom testbed while preserving user labs, enrollment links and the separate pilot.
       - Requalify any changed provider build against the exact target and retain historical acceptance evidence separately.
       - Verify real usage, console controls and bulk deletion on explicitly test-owned labs and record cleanup and current build evidence.
   - id: TASK-UI-001
@@ -265,7 +275,7 @@ tasks:
       - OIDC and local sign-in, responsive layouts, accessibility and browser startup pass Blueprint inspection and browser workflow tests.
       - Generated OpenAPI includes authenticated administration and typed frontend contracts remain synchronized.
   - id: TASK-TESTBED-001
-    title: Deploy the private ephemeral classroom testbed on PVE1 with OIDC provider
+    title: Deploy the private ephemeral classroom testbed on the private testbed with OIDC provider
     status: complete # Signed T3; 26 OIDC logins; 25-console hour soak; expiry/revocation; VM restart; student workflow and independent cleanup passed.
     dependencies: [TASK-UI-001]
     relatedAdrs: [ADR-0004, ADR-0008, ADR-0009, ADR-0015, ADR-0018, ADR-0019]
@@ -273,16 +283,16 @@ tasks:
     acceptanceCriteria:
       - Provision a separate Debian VM via the verified Proxmox API and expose authenticated HTTPS only over Tailscale.
       - Use a separate OIDC provider test instance, explicit classroom memberships, and a published ephemeral Debian starter with usable browser consoles.
-      - Preserve local control state across restart and use exact-target reviewed qualification; keep the iad1 pilot unchanged.
+      - Preserve local control state across restart and use exact-target reviewed qualification; keep the separate pilot unchanged.
       - Verify 25 concurrent labs and consoles, a one-hour soak, expiry, cleanup and restart recovery.
       - Omit scheduled backups and off-host recovery infrastructure for this disposable testbed; record reset and owned-resource reconciliation instructions.
       - Record actual evidence and outstanding operator inputs without claiming production qualification.
   - id: TASK-PILOT-001
-    title: Deploy the owner-requested PVE1 example over authenticated Tailscale HTTPS
+    title: Deploy the owner-requested the private testbed example over authenticated Tailscale HTTPS
     status: complete
     dependencies: [TASK-ARCH-002]
     relatedAdrs: [ADR-0004, ADR-0008, ADR-0009, ADR-0015, ADR-0017]
-    relatedDocuments: [docs/operations/pve1-pilot.md, docs/operations/proxmox-deployment.md]
+    relatedDocuments: [docs/operations/private-pilot.md, docs/operations/proxmox-deployment.md]
     acceptanceCriteria:
       - Use an unchanged qualified provider and exact target configuration for a bounded benign example; retain ordinary admission and ownership checks.
       - Verify authenticated HTTPS, durable service restart, successful instance creation, and independent Proxmox running/network observations.
@@ -295,7 +305,7 @@ tasks:
     status: in_progress
     dependencies: [TASK-PILOT-001]
     relatedAdrs: [ADR-0008, ADR-0009, ADR-0015, ADR-0017]
-    relatedDocuments: [docs/operations/pve1-pilot.md, docs/operations/proxmox-deployment.md, docs/operations/recovery.md]
+    relatedDocuments: [docs/operations/private-pilot.md, docs/operations/proxmox-deployment.md, docs/operations/recovery.md]
     acceptanceCriteria:
       - Move binaries and state out of the checkout and isolate core and provider identities, filesystem access, credentials, and network access.
       - Preserve the existing signed target configuration, provider identity, journal continuity, and instance ownership during migration.

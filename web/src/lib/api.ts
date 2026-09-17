@@ -74,7 +74,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       .catch(() => ({ detail: response.statusText }));
     throw new ApiError(
       response.status,
-      problem.detail ?? problem.title ?? `Request failed: ${response.status}`,
+      [
+        problem.detail ?? problem.title ?? `Request failed: ${response.status}`,
+        ...(Array.isArray(problem.errors)
+          ? problem.errors.slice(0, 8).flatMap((issue: unknown) => {
+              if (
+                !issue ||
+                typeof issue !== "object" ||
+                !("message" in issue) ||
+                typeof issue.message !== "string"
+              )
+                return [];
+              const location =
+                "location" in issue && typeof issue.location === "string"
+                  ? issue.location.slice(0, 256)
+                  : "";
+              return [
+                (location ? location + ": " : "") +
+                  issue.message.slice(0, 1024),
+              ];
+            })
+          : []),
+      ].join("\n"),
       problem.code,
     );
   }
@@ -206,10 +227,24 @@ export const mutationHeaders = () => ({
 });
 
 // Credential bytes never enter the query cache, session storage or frame bridge.
-export async function downloadAccessConfiguration(id: string, token: string, signal: AbortSignal): Promise<Blob> {
-  const init = { method: "POST", body: JSON.stringify({token}) };
-  const response = await fetch(`/api/v1/access-sessions/${encodeURIComponent(id)}/download`, { ...init, signal, credentials: "same-origin", cache: "no-store", headers: requestHeaders(init) });
-  if (!response.ok) throw new ApiError(response.status, "Credential download failed");
+export async function downloadAccessConfiguration(
+  id: string,
+  token: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const init = { method: "POST", body: JSON.stringify({ token }) };
+  const response = await fetch(
+    `/api/v1/access-sessions/${encodeURIComponent(id)}/download`,
+    {
+      ...init,
+      signal,
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: requestHeaders(init),
+    },
+  );
+  if (!response.ok)
+    throw new ApiError(response.status, "Credential download failed");
   const blob = await response.blob();
   if (blob.size > 65536) throw new Error("Credential response exceeds limit");
   return blob;

@@ -5223,6 +5223,38 @@
         "summary": "Post admin gateway clients"
       }
     },
+    "/admin/gateway-clients/{id}": {
+      "delete": {
+        "operationId": "delete-admin-gateway-clients-by-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete admin gateway clients by ID"
+      }
+    },
     "/admin/gateway-clients/{id}/status": {
       "post": {
         "operationId": "post-admin-gateway-clients-by-id-status",

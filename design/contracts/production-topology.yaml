@@ -38,5 +38,5 @@ cases:
   - id: TEST-PROD-TOPOLOGY-008
     title: Native services start behind fail-closed network policy and cannot traverse each other's private state
     binding: tools/verify_phase0.py#verify_native_topology
-    siteNetworkBinding: tools/provider-testenv/pve1-egress-check.py
+    siteNetworkBinding: tools/provider-testenv/native-egress-check.py
     expect: {defaultNetworkDeny: true, loopbackOnlyUntilOperatorAllowlist: true, providerJournalOwner: labcentral-proxmox, crossStateAccess: false, systemCallAllowlist: true}

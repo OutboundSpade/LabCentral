@@ -211,3 +211,21 @@ test("cached view seeds never leak a partial collection or previous identity", a
   clearRequestCache();
   expect(cachedCollection("/items")).toBeUndefined();
 });
+
+
+test("validation errors retain bounded field explanations without reflecting submitted values", async () => {
+  handler = async () => json({detail:"Lab validation failed",errors:[
+    {location:"requirements.isolationClass",message:"Proxmox QEMU requires virtualMachine isolation",value:"never-reflect-this"},
+    null, {message:123},
+  ]},422);
+  try { await api("/lab-validations",{method:"POST",body:"{}"});throw new Error("accepted invalid lab"); }
+  catch (error) { expect(error).toBeInstanceOf(ApiError);expect((error as Error).message).toContain("requirements.isolationClass: Proxmox QEMU requires virtualMachine isolation");expect((error as Error).message).not.toContain("never-reflect-this"); }
+});
+
+test("malformed and excessive validation details stay bounded", async () => {
+  handler = async () => json({detail:"Invalid input",errors:Array.from({length:30},()=>({location:"x".repeat(1000),message:"y".repeat(2000)}))},422);
+  await api("/lab-validations",{method:"POST",body:"{}"}).catch((error: ApiError) => {
+    expect(error.message.split("\n")).toHaveLength(9);
+    expect(error.message.length).toBeLessThan(11000);
+  });
+});

@@ -26,7 +26,8 @@ Reject expired/future grants, revoked signers, modified signatures, foreign reso
 For TASK-TESTBED-001 only, the owner explicitly authorized the implementation
 agent to perform the review and sign on the owner's behalf on 2026-09-07.
 The same operator may therefore prepare, execute, review and sign the evidence
-for `target.classroom-test` / `installation.classroom-test` on PVE1. This
+for the exact private testbed target and installation identified in protected
+operator records. This
 replaces the separate-person requirement for this disposable private testbed;
 it is not independent human review and must never be described as such.
 

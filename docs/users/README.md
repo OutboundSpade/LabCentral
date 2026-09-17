@@ -99,3 +99,8 @@ To end several classroom labs, select their lab checkboxes or **Select all activ
 Users approve application device codes at **Authorize an application** and inspect
 or revoke their access under **Your settings → Connected applications**. Existing
 `/plugins`, `/device` and `/account` bookmarks continue to work.
+
+API clients can be disabled temporarily or permanently deleted from
+**Integrations → API clients**. Deletion requires confirmation, invalidates the
+client credentials and approved access, and retains audit history. Register a new
+client to reconnect a deleted application.

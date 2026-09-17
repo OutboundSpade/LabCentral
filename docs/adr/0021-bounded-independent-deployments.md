@@ -32,7 +32,7 @@ Preserve exact-target qualification, ownership markers, allocation fencing,
 atomic checkpoints and separate provider identities. The changed provider must
 pass fresh T3 qualification and a live overlapping-deployment check before its
 private testbed rollout. This extends the owner's delegated review for the same
-PVE1 target; no independent human or production approval is claimed.
+the private testbed target; no independent human or production approval is claimed.
 
 Test SQLite/PostgreSQL admission, exhausted capacity, lease recovery, cancellation,
 independent versus conflicting provider locks and compatibility with old exclusive

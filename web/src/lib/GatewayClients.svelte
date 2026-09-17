@@ -7,6 +7,7 @@
     Copy,
     Check,
     Power,
+    Trash2,
     CircleAlert,
   } from "@lucide/svelte";
   import { api, mutationHeaders } from "./api";
@@ -22,6 +23,7 @@
     busy = $state(false);
   let registering = $state(false),
     confirming = $state(false),
+    deleting = $state(false),
     selected = $state<Client>();
   let created = $state<{ client: Client; clientSecret: string }>(),
     reveal = $state(false),
@@ -112,6 +114,33 @@
         if (confirming) formError = message;
         else error = message;
       }
+    } finally {
+      busy = false;
+    }
+  }
+  async function remove(client: Client) {
+    if (busy) return;
+    busy = true;
+    formError = "";
+    try {
+      await api(`/admin/gateway-clients/${encodeURIComponent(client.id)}`, {
+        method: "DELETE",
+        signal: abort.signal,
+        headers: mutationHeaders(),
+      });
+      if (abort.signal.aborted) return;
+      deleting = false;
+      clients = clients.filter((c) => c.id !== client.id);
+      if (created?.client.id === client.id) {
+        created = undefined;
+        reveal = false;
+        copied = "";
+      }
+      await refresh();
+    } catch (e) {
+      if (!abort.signal.aborted)
+        formError =
+          e instanceof Error ? e.message : "Could not delete API client.";
     } finally {
       busy = false;
     }
@@ -268,7 +297,7 @@
         class="divide-y divide-base-300 rounded-box border border-base-300"
       >
         {#each clients as client (client.id)}<li
-            class="flex min-w-0 flex-wrap items-center justify-between gap-4 p-5"
+            class="flex min-w-0 flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
           >
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-2">
@@ -281,24 +310,37 @@
                 {client.id}
               </p>
             </div>
-            <button
-              type="button"
-              class="btn btn-sm"
-              disabled={busy}
-              aria-label={(client.disabled ? "Enable " : "Disable ") +
-                client.name}
-              onclick={() => {
-                if (client.disabled) void changeStatus(client);
-                else {
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                class="btn btn-sm"
+                disabled={busy}
+                aria-label={(client.disabled ? "Enable " : "Disable ") +
+                  client.name}
+                onclick={() => {
+                  if (client.disabled) void changeStatus(client);
+                  else {
+                    selected = client;
+                    formError = "";
+                    confirming = true;
+                  }
+                }}
+                ><Power size={16} />{client.disabled
+                  ? "Enable"
+                  : "Disable"}</button
+              >
+              <button
+                type="button"
+                class="btn btn-sm btn-error btn-soft"
+                disabled={busy}
+                aria-label={"Delete " + client.name}
+                onclick={() => {
                   selected = client;
                   formError = "";
-                  confirming = true;
-                }
-              }}
-              ><Power size={16} />{client.disabled
-                ? "Enable"
-                : "Disable"}</button
-            >
+                  deleting = true;
+                }}><Trash2 size={16} />Delete</button
+              >
+            </div>
           </li>{/each}
       </ul>{/if}
   {/if}
@@ -364,6 +406,35 @@
       disabled={busy || !selected}
       onclick={() => selected && void changeStatus(selected)}
       >Disable client</button
+    >
+  </div>
+</Modal>
+
+<Modal bind:open={deleting} title="Delete API client?" closeDisabled={busy}>
+  <p class="break-words">
+    Permanently delete <strong>{selected?.name}</strong>? Its credentials,
+    pending approvals and access grants will no longer work. Existing sessions
+    close within their authorization deadline. Audit history is retained.
+  </p>
+  <p class="mt-3 text-sm text-base-content/70">
+    To connect this application again, register it as a new API client.
+  </p>
+  {#if formError}<p role="alert" class="mt-3 text-sm text-error">
+      {formError}
+    </p>{/if}
+  <div class="mt-6 flex flex-wrap justify-end gap-2">
+    <button
+      type="button"
+      class="btn btn-sm"
+      disabled={busy}
+      onclick={() => (deleting = false)}>Cancel</button
+    >
+    <button
+      type="button"
+      class="btn btn-sm btn-error"
+      disabled={busy || !selected}
+      onclick={() => selected && void remove(selected)}
+      >{busy ? "Deleting…" : "Delete client"}</button
     >
   </div>
 </Modal>

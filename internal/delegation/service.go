@@ -217,6 +217,14 @@ func (s *Service) DisableClient(ctx context.Context, id string, disabled bool, a
 	return s.Store.SetGatewayClientDisabled(ctx, id, disabled, actor, r)
 }
 
+func (s *Service) DeleteClient(ctx context.Context, id string, actor domain.UserID) error {
+	r, err := ids()
+	if err != nil {
+		return err
+	}
+	return s.Store.DeleteGatewayClient(ctx, id, actor, r)
+}
+
 func newID(prefix string) (string, error) {
 	b := make([]byte, 16)
 	if _, e := rand.Read(b); e != nil {

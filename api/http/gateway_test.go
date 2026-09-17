@@ -120,3 +120,49 @@ func TestGatewayDeviceFlowBindsBrowserSubjectClientAndCurrentAuthority(t *testin
 		t.Fatal("audit omitted gateway identity")
 	}
 }
+
+func TestGatewayClientDeletionRequiresAdministratorAndInvalidatesCredentials(t *testing.T) {
+	f := newGovernanceHTTPFixture(t)
+	admin := f.client(t, "admin", "a-production-length-password")
+	author := f.client(t, "author", "an-author-production-password")
+	created := admin.request("POST", "/api/v1/admin/gateway-clients", map[string]any{"name": "Disposable client"}, "", "")
+	requireGovernanceStatus(t, created, 200)
+	var client struct {
+		Client app.GatewayClient `json:"client"`
+		Secret string            `json:"clientSecret"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &client); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/admin/gateway-clients/" + client.Client.ID
+	requireGovernanceStatus(t, author.request("DELETE", path, nil, "", ""), 403)
+	requireGovernanceStatus(t, admin.request("DELETE", path, nil, "", ""), 204)
+	requireGovernanceStatus(t, admin.request("DELETE", path, nil, "", ""), 204)
+	listed := admin.request("GET", "/api/v1/admin/gateway-clients", nil, "", "")
+	requireGovernanceStatus(t, listed, 200)
+	if strings.Contains(listed.Body.String(), client.Client.ID) {
+		t.Fatal("deleted client remains listed")
+	}
+	req := secureRequest("POST", "/api/v1/device/authorization", []byte("client_id="+client.Client.ID+"&scope=%7B%7D"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(client.Client.ID, client.Secret)
+	out := httptest.NewRecorder()
+	f.server.Handler.ServeHTTP(out, req)
+	requireGovernanceStatus(t, out, 400)
+	if !strings.Contains(out.Body.String(), "invalid_client") {
+		t.Fatal("deleted client credentials accepted")
+	}
+	audit, err := f.database.ListAuditRecords(context.Background(), app.AuditRecordFilter{ActorID: "user.admin", Limit: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted := 0
+	for _, r := range audit.Records {
+		if r.Action == "gateway.client.deleted" && r.Actor.GatewayClientID == client.Client.ID {
+			deleted++
+		}
+	}
+	if deleted != 1 {
+		t.Fatalf("deletion audit records: %d", deleted)
+	}
+}

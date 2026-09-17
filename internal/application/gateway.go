@@ -52,6 +52,7 @@ type GatewayStore interface {
 	CreateGatewayClient(context.Context, GatewayClient, domain.UserID, GovernanceRecordIDs) error
 	ListGatewayClients(context.Context) ([]GatewayClient, error)
 	SetGatewayClientDisabled(context.Context, string, bool, domain.UserID, GovernanceRecordIDs) error
+	DeleteGatewayClient(context.Context, string, domain.UserID, GovernanceRecordIDs) error
 	GatewayClient(context.Context, string) (GatewayClient, error)
 	CreateGatewayDevice(context.Context, GatewayDevice) (GatewayDevice, error)
 	InspectGatewayDevice(context.Context, []KeyedTokenHash, domain.UserID) (GatewayDevice, error)

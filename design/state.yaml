@@ -39,7 +39,7 @@ documents:
     status: complete
   - path: docs/operations/classroom-testbed.md
     status: complete
-  - path: docs/operations/pve1-pilot.md
+  - path: docs/operations/private-pilot.md
     status: complete
   - path: docs/operations/plugin-installation.md
     status: complete
@@ -297,6 +297,7 @@ completedTasks:
   - TASK-EXT-009
   - TASK-UI-009
 currentTasks:
+  - TASK-UI-010
   - TASK-PROD-004
   - TASK-PROD-005
 nextRecommendedTasks: []

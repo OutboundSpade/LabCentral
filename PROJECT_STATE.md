@@ -12,16 +12,23 @@ quotas, lifetime and ownership; plugins translate infrastructure operations.
 
 External fixtures exercise source recovery, concurrent build deduplication, image approval, preparation and owned lifecycle against a prebuilt core/UI. Chromium, Firefox and WebKit exercise installed stream views, sandbox isolation and browser-approved gateway grants. SQLite/PostgreSQL race tests cover work fencing, shared cancellation, delegated access revocation and atomic prepared batch admission.
 
-`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: that exact release runs on PVE1. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all 102 pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, Git, Ansible, Dockerfile, AWS and Fedora CoreOS integrations remain outside this implementation. Existing production-validation gaps remain open.
+`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, Git, Ansible, Dockerfile, AWS and Fedora CoreOS integrations remain outside this implementation. Existing production-validation gaps remain open.
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
+
+## Current work
+
+`TASK-UI-010` adds administrator API client deletion, retains provider validation
+reasons in the UI, and moves site-bound operational records out of tracked source.
+SQLite/PostgreSQL authorization/race, backend, browser and contract checks pass;
+release verification and the authorized private rollout remain pending.
 
 ## Latest completed work
 
 - `TASK-UI-009`: Integrations groups Environments, Plugins and API clients;
   legacy provider/access services appear alongside installed contributions.
   Corrected registration, one-time credentials, error/retry and disable flows
-  passed Blueprint and three-browser checks and run on PVE1.
+  passed Blueprint and three-browser checks and run on the private testbed.
 
 - `TASK-UI-008`: Classroom and My labs share confirmed bulk cleanup, including
   per-lab failure recovery. The console's Machine selector obtains fresh authorized
@@ -30,7 +37,7 @@ See [extension contracts](docs/design/extensions.md) and [author examples](docs/
   eight-lab allocation ceiling while retaining transactional conflict protection.
 - `TASK-CONTAINER-VM-001`: qualified Proxmox targets support pinned, preloaded
   containers in dedicated VMs under [ADR-0022](docs/adr/0022-proxmox-container-vm-runtime.md).
-  Guests use short names. Two runnable examples are published on PVE1.
+  Guests use short names. Two runnable examples are published on the private testbed.
 - Earlier work unified classroom students/labs and launch options, added schema
   forms, workspace switching, plugin settings, capacity charts and console reconnect,
   removed tracked builds, and separated [docs by audience](docs/README.md).
@@ -41,19 +48,11 @@ The container subset uses one VM per container, approved offline images and a
 static private network. Mounts, secrets and published ports are not supported.
 See [runtime guidance](docs/operations/container-vm-runtime.md).
 
-## Current deployment
+## Deployment records
 
-The private PVE1 classroom runs **integrations-ui-20260917**, deployed at
-**2026-09-17T03:25:52Z** from the verified native build at commit `c32bc57`.
-All six services are healthy. All 103 pre-deployment lab records and API client
-registrations remain unchanged. The prior provider/access binaries, configuration,
-qualification and separate iad1 pilot were preserved. Provisioning concurrency
-remains two; no target VM quota was imposed.
-
-Qualification is valid until **2026-09-21T22:07:47Z**; the new pool-scoped,
-privilege-separated runtime token expires **2026-09-22T21:41:38Z**. See the
-[classroom record](docs/operations/classroom-testbed.md) for artifact bindings,
-rollback and catalogue details.
+Host-specific deployment details and evidence are maintained in protected operator
+records outside this repository. See [private testbed guidance](docs/operations/classroom-testbed.md).
+No source-controlled example or prior result establishes current target qualification.
 
 ## Verification
 
@@ -61,7 +60,7 @@ The integration administration update passed Blueprint (no issues/warnings),
 Svelte check/build, cache tests, affected backend/vet and race tests. All three
 browsers passed administration, responsive, extension isolation and device-flow
 scenarios. Its native archives reproduced identically; the packaged SDK/core
-passed source/build/import and browser fixtures. Authenticated PVE1 checks
+passed source/build/import and browser fixtures. Authenticated the private testbed checks
 confirmed inventory, forms, unchanged records, readiness and session cleanup.
 Evidence remains in ignored `bin/integrations-ui-20260917/`.
 
@@ -79,15 +78,13 @@ Two native archives reproduced identically. Independently compiled fixtures used
 only the extracted release SDK and left its core/UI unchanged while exercising
 source/build/import recovery, lifecycle, streams, credential replay/revocation and
 bounded traffic closure with core suspended. Prior-core migration/rollback was
-rehearsed before deployment. Live PVE1 checks and final database/cleanup/readiness
+rehearsed before deployment. Live the private testbed checks and final database/cleanup/readiness
 checks passed. Evidence remains in ignored `bin/extensions-20260917/`; earlier
 provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 
 ## Next action and production gates
 
-The extension implementation and authorized testbed rollout are complete. Renew
-qualification before **2026-09-21T22:07:47Z**, then the runtime token before
-September 22. Continue `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
+The extension implementation and authorized testbed rollout are complete. Continue `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
 Within-lab parallel branches need multi-invocation recovery before implementation.

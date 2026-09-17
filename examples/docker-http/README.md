@@ -1,8 +1,9 @@
 # Container HTTP server
 
 Requires a Docker environment that advertises native containers and host port
-publication. Catalogue-only on PVE1: its Proxmox environment cannot launch this
-example. No Docker environment is provisioned there.
+publication. For Proxmox VM isolation, use the
+[dedicated-VM example](../proxmox-containers/lab.yaml); host port publication
+is outside that runtime’s supported subset.
 
 This trusted teaching example starts Python’s HTTP server on an isolated internal
 network and publishes its port. Use the returned web URL from a host that can

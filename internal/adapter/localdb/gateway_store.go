@@ -76,6 +76,36 @@ func (s *Store) SetGatewayClientDisabled(ctx context.Context, id string, disable
 		return s.appendGatewayGovernance(ctx, tx, actor, id, id, "", ids, "gateway.client.updated")
 	})
 }
+
+// DeleteGatewayClient removes authentication material atomically. Access-session
+// grant bindings remain so their next authorization check fails closed and the
+// existing durable closure path revokes the adapter's traffic grant.
+func (s *Store) DeleteGatewayClient(ctx context.Context, id string, actor domain.UserID, ids app.GovernanceRecordIDs) error {
+	return s.workTx(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_gateway_clients SET disabled=1 WHERE client_id=?`), id)
+		if err != nil {
+			return err
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		} // Repeated deletion is safe after a lost response.
+		for _, query := range []string{
+			`DELETE FROM labcentral_gateway_devices WHERE client_id=?`,
+			`DELETE FROM labcentral_gateway_grants WHERE client_id=?`,
+			`DELETE FROM labcentral_gateway_clients WHERE client_id=?`,
+		} {
+			if _, err := tx.ExecContext(ctx, s.bind(query), id); err != nil {
+				return err
+			}
+		}
+		return s.appendGatewayGovernance(ctx, tx, actor, id, id, "", ids, "gateway.client.deleted")
+	})
+}
+
 func (s *Store) CreateGatewayDevice(ctx context.Context, d app.GatewayDevice) (out app.GatewayDevice, e error) {
 	scope, e := json.Marshal(d.Scope)
 	if e != nil || len(scope) > 32768 {

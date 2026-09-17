@@ -215,6 +215,22 @@ func registerGateway(api huma.API, service *controlplane.Service, s *requestSecu
 		}
 		return &struct{}{}, nil
 	})
+	huma.Delete(api, "/admin/gateway-clients/{id}", func(ctx context.Context, in *struct {
+		ID string `path:"id" maxLength:"128"`
+	}) (*struct{}, error) {
+		actor, err := authorizeActor(ctx, s, app.AuthorizationRequest{Action: app.ActionProviderTargetGrant, ScopeKind: app.ScopePlatform, ScopeID: "platform"})
+		if err != nil {
+			return nil, err
+		}
+		if s.gateway == nil {
+			return nil, huma.Error503ServiceUnavailable("Gateway unavailable")
+		}
+		if err := s.gateway.DeleteClient(ctx, in.ID, actor.user.ID); err != nil {
+			return nil, apiError(err)
+		}
+		return &struct{}{}, nil
+	})
+
 	browser := func(ctx context.Context) (principal, error) {
 		p, ok := requestPrincipal(ctx)
 		if !ok || p.bearer || p.session.ID == "" || s.gateway == nil {

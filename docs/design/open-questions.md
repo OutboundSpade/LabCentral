@@ -27,10 +27,10 @@ The provider-extension scope, substantial simplification, typed template semanti
 The owner selected Tailscale and approved the native state/UID migration on
 2026-09-05. Remaining site inputs (backup destination, off-host recovery-key
 custody, HTTPS enablement and release approval controls) are tracked in the
-[deployment record](../operations/pve1-pilot.md) under `TASK-PROD-005`.
+[deployment record](../operations/private-pilot.md) under `TASK-PROD-005`.
 That deployment preference does not waive the existing scale or failover gates.
 
-On 2026-09-07 the owner approved a separate private classroom testbed on PVE1,
+On 2026-09-07 the owner approved a separate private classroom testbed on the private testbed,
 OIDC provider as the example OIDC provider, and ephemeral labs with no scheduled
 backup or off-host recovery infrastructure. These choices are accepted in
 [classroom-ui.md](classroom-ui.md); they are not new open questions. Tailnet enrollment and instructor passkey enrollment are complete. Student
@@ -47,7 +47,7 @@ student workflow and independent cleanup have passed. TASK-TESTBED-001 is
 complete. No reviewer identity, deployment permission or VM-login input is
 pending; students enroll passkeys using their individual private links.
 
-On 2026-09-15 the owner chose catalogue-only container examples on PVE1.
+On 2026-09-15 the owner chose catalogue-only container examples on the private testbed.
 ADR-0021 records bounded independent deployments; the testbed limit is two.
 Within-lab parallel branches remain an implementation extension requiring
 multi-invocation recovery. No additional deployment or container-provisioning

@@ -20,7 +20,7 @@ const server=createServer(async(req,res)=>{
  if(p==='/server-info')return json({authMode:'oidc',defaultProviderTargetId:'target.test',uiFeatures:['browser-vnc']});
  if(p==='/session')return json({subjectId:'user.student',displayName:'Alex',roles:[admin?'platform-administrator':'participant']});
  if(p==='/projects')return json({items:[{id:'project.class',organizationId:'org.class',name:'Classroom',allowedActions:admin?['template.read','instance.batchCreate','quota.manage']:['template.read']}]});
- if(p==='/admin/provider-targets')return json({items:[{id:'target.test',providerKind:'proxmox',discoveredAt:now(),discovery:{capacity_json:Buffer.from(JSON.stringify({formatVersion:1,nodes:[{name:'pve1',status:'online',maxCPU:16,cpuUsage:0.25,maxMemoryBytes:68719476736,usedMemoryBytes:34359738368}],storages:[{node:'pve1',id:'local',availableBytes:107374182400,usedBytes:107374182400,totalBytes:214748364800}]})).toString('base64')}}]});
+ if(p==='/admin/provider-targets')return json({items:[{id:'target.test',providerKind:'proxmox',discoveredAt:now(),discovery:{capacity_json:Buffer.from(JSON.stringify({formatVersion:1,nodes:[{name:'example-node',status:'online',maxCPU:16,cpuUsage:0.25,maxMemoryBytes:68719476736,usedMemoryBytes:34359738368}],storages:[{node:'example-node',id:'local',availableBytes:107374182400,usedBytes:107374182400,totalBytes:214748364800}]})).toString('base64')}}]});
  if(p==='/quota-usage/target/target.test')return json({items:[{dimension:'vms',reserved:1,committed:2,retained:1,total:4}]});
  if(p==='/quotas/target/target.test/vms')return json({limit:12,resourceVersion:1});
  if(p.endsWith('/deployment-settings'))return json({maxConcurrentDeployments:2,resourceVersion:1});

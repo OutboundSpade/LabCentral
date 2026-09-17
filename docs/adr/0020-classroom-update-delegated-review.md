@@ -9,7 +9,7 @@
 
 The owner's existing explicit authorization to execute, review and sign on
 their behalf continues for TASK-TESTBED-002, the requested follow-up to
-TASK-TESTBED-001 on the same private PVE1 target. This permits the implementation
+TASK-TESTBED-001 on the same private testbed target. This permits the implementation
 agent to qualify the changed provider and review this UI/operations deployment.
 All ADR-0018 technical gates, exact build/configuration/inventory bindings,
 protected off-runtime signing, short validity, ownership checks and production

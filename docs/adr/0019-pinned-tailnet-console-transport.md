@@ -7,7 +7,7 @@
 
 ## Context
 
-TASK-TESTBED-001 uses owner-selected Tailscale access. Live PVE1 9.2.11
+TASK-TESTBED-001 uses owner-selected Tailscale access. A measured private PVE deployment
 returns plain RFB on its temporary VNC port; TLS-first negotiation fails.
 Its HTTPS WebSocket API also requires a management credential, which must
 not be passed to the access plugin. The existing TLS transport remains the

@@ -5,13 +5,19 @@
 | [Debian starter](../../examples/classroom-debian/lab.yaml) | Qualified Proxmox | One Linux workstation |
 | [Networking pair](../../examples/classroom-pair/README.md) | Qualified Proxmox | Two VMs, ping and neighbour discovery |
 | [Network isolation](../../examples/classroom-isolation/README.md) | Qualified Proxmox | Two VMs on separate networks without routing |
+| [Containers in dedicated VMs](../../examples/proxmox-containers/lab.yaml) | Qualified Proxmox container runtime | Web server and client, one VM each |
 | [HTTP container](../../examples/docker-http/README.md) | Docker | Python web server with a published port |
 | [SQLite web lab](../../examples/docker-laptop/lab.yaml) | Docker | Two containers and persistent database storage |
 
-The container examples are catalogue-only on PVE1. Choose a separately configured
-Docker environment to run them. Catalogue publication validates the document;
-it does not certify that the selected environment supports it. Launch validation
-checks the environment’s current discovered capabilities and policy.
+Docker examples require a Docker environment; they are not automatically translated
+into VM-backed containers. For Proxmox, start with the
+[container web/client example](../../examples/proxmox-containers/lab.yaml), which
+explicitly requests VM isolation and the supported private-network runtime.
+No separate runtime plugin is needed: the installed Proxmox provider owns this
+implementation, and the target must have an approved, qualified runtime profile.
+Catalogue publication validates the document; launch validation checks the chosen
+environment's current capabilities, approved images and policy. Validation errors
+identify the unsupported field or feature.
 
 Catalogue names can contain spaces and Unicode (up to 63 characters). The
 `metadata.name` inside Lab YAML still uses the declarative naming rules.

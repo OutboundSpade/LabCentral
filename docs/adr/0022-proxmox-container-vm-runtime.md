@@ -47,7 +47,7 @@ network are the isolation boundary; rootless containers provide defense in depth
 
 The provider binary, target profile, template, permissions and runtime are changed
 qualification inputs. Fresh T3 and real container start/restart/isolation/cleanup
-checks precede the delegated PVE1 rollout. This does not claim independent
+checks precede the delegated the private testbed rollout. This does not claim independent
 production qualification. Public plugin RPC messages remain unchanged.
 
 Qualification evidence v1.1 adds the exact runtime profile and a required transcript

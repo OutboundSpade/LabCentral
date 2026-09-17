@@ -10,7 +10,7 @@ import (
 )
 
 func TestTailscaleProfileRejectsUnpinnedPeer(t *testing.T) {
-	profile := TailscaleProfile{SchemaVersion: "labcentral.tailscale-vnc/v1", TargetID: "target.test", Hostname: "pve1.test.ts.net", Address: "100.100.100.1", NodeKey: "nodekey:" + strings.Repeat("a", 64)}
+	profile := TailscaleProfile{SchemaVersion: "labcentral.tailscale-vnc/v1", TargetID: "target.test", Hostname: "example-node.test.ts.net", Address: "100.100.100.1", NodeKey: "nodekey:" + strings.Repeat("a", 64)}
 	endpoint := accessendpoint.ProxmoxVNC{TargetID: profile.TargetID, Host: profile.Hostname, ServerName: profile.Hostname, Port: 5900}
 	var peer tailscalePeer
 	peer.Node.Name = profile.Hostname + "."
@@ -62,7 +62,7 @@ func TestTailscaleProfileRejectsUnpinnedPeer(t *testing.T) {
 }
 
 func TestTailscaleIdentityOutageDoesNotDialOrdinaryTransport(t *testing.T) {
-	p := TailscaleProfile{SchemaVersion: "labcentral.tailscale-vnc/v1", TargetID: "target.test", Hostname: "pve1.test.ts.net", Address: "100.100.100.1", NodeKey: "nodekey:" + strings.Repeat("a", 64)}
+	p := TailscaleProfile{SchemaVersion: "labcentral.tailscale-vnc/v1", TargetID: "target.test", Hostname: "example-node.test.ts.net", Address: "100.100.100.1", NodeKey: "nodekey:" + strings.Repeat("a", 64)}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if conn, err := p.connect(ctx, accessendpoint.ProxmoxVNC{}); err == nil || conn != nil {

@@ -108,16 +108,18 @@ func gatewayContract(t *testing.T, s *Store) {
 }
 
 func TestSQLiteGatewayRevocationClosesDelegatedAccess(t *testing.T) {
-	gatewayAccessContract(t, newSQLiteAccessContractStore(t))
+	for _, deletion := range []bool{false, true} {
+		t.Run(fmt.Sprint(deletion), func(t *testing.T) { gatewayAccessContract(t, newSQLiteAccessContractStore(t), deletion) })
+	}
 }
 func TestPostgreSQLGatewayRevocationClosesDelegatedAccess(t *testing.T) {
 	s := newPostgreSQLQuotaTestStore(t, "gateway_access")
 	if e := s.Migrate(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	gatewayAccessContract(t, s)
+	gatewayAccessContract(t, s, true)
 }
-func gatewayAccessContract(t *testing.T, s *Store) {
+func gatewayAccessContract(t *testing.T, s *Store, deletion bool) {
 	ctx := context.Background()
 	setupQuotaTestTenancy(t, s)
 	c := app.GatewayClient{ID: "gateway.access", Name: "Access gateway", SecretHash: accessTestHash("client")}
@@ -153,11 +155,79 @@ func gatewayAccessContract(t *testing.T, s *Store) {
 	if _, allowed, e := s.ExchangeAccessToken(ctx, app.AccessExchangeRequest{GovernanceRecordIDs: governanceIDs("ga-exchange"), ID: ready.ID, Identity: accessTestIdentity(), TokenHashes: []app.KeyedTokenHash{accessTestHash("ga-launch")}, NewLease: accessTestHash("ga-lease"), LeaseDuration: app.DefaultAccessLeaseDuration}); e != nil || !allowed {
 		t.Fatalf("exchange %v %v", allowed, e)
 	}
-	if e = s.RevokeGatewayGrant(ctx, grant.ID, "user.quota", governanceIDs("ga-revoke")); e != nil {
+	if deletion {
+		e = s.DeleteGatewayClient(ctx, c.ID, "user.quota", governanceIDs("ga-delete"))
+	} else {
+		e = s.RevokeGatewayGrant(ctx, grant.ID, "user.quota", governanceIDs("ga-revoke"))
+	}
+	if e != nil {
 		t.Fatal(e)
 	}
 	denied, allowed, e := s.RecheckAccessLease(ctx, app.AccessLeaseRecheckRequest{GovernanceRecordIDs: governanceIDs("ga-recheck"), ID: ready.ID, Identity: accessTestIdentity(), LeaseHashes: []app.KeyedTokenHash{accessTestHash("ga-lease")}, NewLease: accessTestHash("ga-new-lease"), LeaseDuration: app.DefaultAccessLeaseDuration})
 	if e != nil || allowed || !denied.ClosureRequired {
 		t.Fatalf("revoked gateway lease allowed=%v closure=%v err=%v", allowed, denied.ClosureRequired, e)
+	}
+}
+
+func TestSQLiteGatewayDeleteRacesIssuance(t *testing.T) {
+	gatewayDeletionContract(t, newSQLiteAccessContractStore(t))
+}
+func TestPostgreSQLGatewayDeleteRacesIssuance(t *testing.T) {
+	s := newPostgreSQLQuotaTestStore(t, "gateway_delete")
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	gatewayDeletionContract(t, s)
+}
+func gatewayDeletionContract(t *testing.T, s *Store) {
+	ctx := context.Background()
+	setupQuotaTestTenancy(t, s)
+	c := app.GatewayClient{ID: "gateway.delete", Name: "Delete", SecretHash: accessTestHash("delete")}
+	if err := s.CreateGatewayClient(ctx, c, "user.quota", governanceIDs("delete-create")); err != nil {
+		t.Fatal(err)
+	}
+	d := app.GatewayDevice{ID: "device.delete", ClientID: c.ID, Scope: app.GatewayScope{ProjectID: "project.alpha", Actions: []string{"templates.read"}}, DeviceHash: accessTestHash("delete-device"), UserCodeHash: accessTestHash("delete-code")}
+	if _, err := s.CreateGatewayDevice(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ApproveGatewayDevice(ctx, []app.KeyedTokenHash{d.UserCodeHash}, "user.quota", true, governanceIDs("delete-approve")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, "UPDATE labcentral_gateway_devices SET next_poll_us=0"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.PollGatewayDevice(ctx, c.ID, []app.KeyedTokenHash{d.DeviceHash}, app.GatewayGrant{ID: "grant.delete", TokenHash: accessTestHash("delete-grant")}, governanceIDs("delete-poll"))
+		if err != nil && !errors.Is(err, app.ErrGatewayExpired) {
+			t.Errorf("poll/delete race: %v", err)
+		}
+	}()
+	if err := s.DeleteGatewayClient(ctx, c.ID, "user.quota", governanceIDs("delete")); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	if err := s.DeleteGatewayClient(ctx, c.ID, "user.quota", governanceIDs("delete-replay")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GatewayClient(ctx, c.ID); !errors.Is(err, app.ErrGatewayInvalid) {
+		t.Fatal("deleted client authenticated", err)
+	}
+	if _, err := s.CreateGatewayDevice(ctx, d); !errors.Is(err, app.ErrGatewayInvalid) {
+		t.Fatal("deleted client issued a device request", err)
+	}
+	if _, err := s.AuthenticateGatewayGrant(ctx, c.ID, []app.KeyedTokenHash{accessTestHash("delete-grant")}); err == nil {
+		t.Fatal("grant survived deletion")
+	}
+	if err := s.ApproveGatewayDevice(ctx, []app.KeyedTokenHash{d.UserCodeHash}, "user.quota", true, governanceIDs("delete-late-approval")); err == nil {
+		t.Fatal("approval survived deletion")
+	}
+	for _, table := range []string{"labcentral_gateway_clients", "labcentral_gateway_devices", "labcentral_gateway_grants"} {
+		var count int
+		if err := s.db.QueryRowContext(ctx, s.bind("SELECT COUNT(*) FROM "+table+" WHERE client_id=?"), c.ID).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("credentials retained in %s: %d %v", table, count, err)
+		}
 	}
 }

@@ -43,11 +43,11 @@ provider is a separate OIDC provider installation with passkey enrollment, exact
 callback matching and authorization-code/PKCE. Test identities are pre-linked
 to explicit LabCentral memberships and roles; OIDC does not grant roles.
 
-PVE1 is exclusively a testbed. The separate control-plane VM is provisioned
+the private testbed is exclusively a testbed. The separate control-plane VM is provisioned
 through the Proxmox API and reached through Tailscale HTTPS, with no public
 ingress or Funnel. Core, provider and access identities and durable state are
 isolated. New target configuration and console permissions require reviewed
-exact-target qualification under ADR-0018. The existing iad1 pilot is preserved. Before qualification, the existing plugin
+exact-target qualification under ADR-0018. The existing separate pilot is preserved. Before qualification, the existing plugin
 installation contract may expose administration with a discovery-only provider
 and an independently scoped read-only credential. This does not admit VM
 creation or console access.
@@ -176,14 +176,9 @@ Operations mounts, updates in place, escapes untrusted chart labels and is destr
 on unmount. Project/filter changes discard old results before fetching the new scope.
 
 
-TASK-TESTBED-003 deployed this core/UI to the private PVE1 classroom on
-2026-09-15. Live authenticated navigation, administration APIs, all three chart
-renderers, both workspace Classroom routes and retained-lab checks passed.
-The provider/access executables and then-expired qualification were retained.
-TASK-TESTBED-004 subsequently renewed the same private target after fresh T3
-checks, owner-delegated review and off-runtime signing. See the
-[current deployment record](../operations/classroom-testbed.md#current-deployment-workspace-administration-task-testbed-003).
-
+Historical UI deployment and credential-renewal acceptance is recorded under
+TASK-TESTBED-003 and TASK-TESTBED-004. Site inventory, installed builds and
+qualification expiry belong in [private operator records](../operations/classroom-testbed.md).
 
 ## Navigation and feedback (TASK-UI-006)
 
@@ -226,3 +221,16 @@ User settings calls delegated grants **Connected applications**; device approval
 uses the same application terminology. Existing API paths and grant semantics
 remain compatible. Keyboard tabs, mobile layout, failure paths, and Blueprint's
 rendered/source inspection form the UI acceptance checks.
+
+## API client deletion and validation feedback (TASK-UI-010)
+
+Administrators can delete a client from Integrations → API clients after a named
+confirmation. Deletion is permanent; current grants, pending approvals and client
+credentials become unusable, existing streams close under the same authorization
+deadlines, and audit history remains. Disable/enable remains the reversible option.
+Failures keep the confirmation open for retry; no credentials are persisted by the UI.
+
+Validation notifications retain bounded API field explanations so unsupported
+isolation or runtime features are visible. Submitted values are not echoed.
+Docker templates and dedicated-VM container templates retain distinct semantics;
+see [template requirements](../users/templates.md).
