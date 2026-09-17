@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	httpapi "github.com/OutboundSpade/LabCentral/api/http"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/localsecret"
 	"github.com/OutboundSpade/LabCentral/internal/adapter/providergrpc"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
@@ -38,18 +39,19 @@ type installedTarget struct {
 	Policy         controlplane.TargetPolicy `json:"policy"`
 }
 
-func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent string) ([]controlplane.TargetBinding, []*pluginhost.Client, error) {
+func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent string) ([]controlplane.TargetBinding, []*pluginhost.Client, []registeredPlugin, error) {
 	install, err := readInstallation(cfg.installationFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var bindings []controlplane.TargetBinding
 	var clients []*pluginhost.Client
-	fail := func(err error) ([]controlplane.TargetBinding, []*pluginhost.Client, error) {
+	var inventory []registeredPlugin
+	fail := func(err error) ([]controlplane.TargetBinding, []*pluginhost.Client, []registeredPlugin, error) {
 		for _, c := range clients {
 			_ = c.Close()
 		}
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	seenPlugins := map[string]bool{}
 	seenTargets := map[string]bool{}
@@ -106,6 +108,11 @@ func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent strin
 		if client.Info.GetBuildDigest() != "sha256:"+m.SHA256 || client.Info.GetPluginVersion() != m.Version || client.SelectedProtocol.GetMajor() != m.ProtocolMajor || client.SelectedProtocol.GetMinor() < m.MinimumProtocolMinor || client.SelectedProtocol.GetMinor() > m.MaximumProtocolMinor {
 			return fail(fmt.Errorf("plugin handshake does not match installed manifest"))
 		}
+		targetIDs := make([]string, 0, len(entry.Targets))
+		for _, target := range entry.Targets {
+			targetIDs = append(targetIDs, target.ID)
+		}
+		inventory = append(inventory, registeredPlugin{Info: httpapi.ExtensionInventoryDTO{InstanceID: entry.InstanceID, PluginID: client.Info.GetPluginId(), Version: client.Info.GetPluginVersion(), Category: "provider", Kind: entry.Targets[0].Kind, TargetIDs: targetIDs, Permissions: entry.GrantedPermissions, ConfigurationSchema: m.ConfigurationSchema, ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor()}, Available: client.Available})
 		for _, target := range entry.Targets {
 			if !slices.Contains(client.Info.GetProviderKinds(), target.Kind) {
 				return fail(fmt.Errorf("plugin did not advertise configured target kind"))
@@ -140,5 +147,5 @@ func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent strin
 	if _, err := controlplane.NewTargetRegistry(bindings); err != nil {
 		return fail(err)
 	}
-	return bindings, clients, nil
+	return bindings, clients, inventory, nil
 }

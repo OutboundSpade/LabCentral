@@ -204,3 +204,25 @@ separate from stable template IDs and declarative resource names. Invalid names
 produce a validation response. Create, rename and persisted readback are tested.
 
 Classroom and My labs share confirmed bulk deletion, per-lab outcomes, four bounded requests and stable retry keys. Classroom offers selection beside each lab and all-active selection. The console has a ready-machine selector and a link back to that lab; switching creates a fresh authorized session and retires the old grant.
+
+
+## Integration administration (TASK-UI-009)
+
+The existing `/plugins` route is labelled **Integrations**, with URL-addressable
+Environments, Plugins and API clients tabs. Environments retain deployment limits,
+discovery and workspace grants. Plugins lists provider, console/network access,
+template source, image builder and UI roles together, including legacy CLI-managed
+services. Technical IDs/contracts and operator configuration stay in expandable
+details. This is presentation terminology; ADR-0023's process/credential isolation
+and versioned provider/access/source/builder/browser contracts remain unchanged.
+
+API clients are external applications requesting user-approved access through
+ADR-0024's gateway protocol; registration is not plugin installation or permission
+to act as a user. Registration uses a labelled dialog, then a one-time panel with
+client ID and masked/revealable/copyable secret. Secrets stay in component memory
+and disappear on dismissal/navigation. Loading errors are explicit, list refresh
+failure cannot discard returned credentials, and disable requires confirmation.
+User settings calls delegated grants **Connected applications**; device approval
+uses the same application terminology. Existing API paths and grant semantics
+remain compatible. Keyboard tabs, mobile layout, failure paths, and Blueprint's
+rendered/source inspection form the UI acceptance checks.

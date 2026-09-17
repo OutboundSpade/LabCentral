@@ -33,7 +33,11 @@ try {
   const browser=await engine.launch();
   try{
    const page=await browser.newPage();
-   await page.goto(origin+'/plugins');
+   await page.goto(origin+'/plugins?section=plugins');
+   await page.getByRole('tab',{name:'API clients',exact:true}).click();
+   await page.getByText('API clients require authenticated mode.',{exact:false}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'Register API client',exact:true}).count(),0);
+   await page.getByRole('tab',{name:'Plugins',exact:true}).click();
    const frame=page.frameLocator('iframe[title="Independent extension fixture"]');
    await frame.locator('#status').filter({hasText:'Connected: fixture.browser'}).waitFor({timeout:15000});
    assert.deepEqual(JSON.parse(await frame.locator('#isolation').innerText()),{cookieDenied:true,storageDenied:true,parentDenied:true});

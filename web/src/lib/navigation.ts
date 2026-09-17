@@ -25,10 +25,17 @@ export const titles: Record<View, string> = {
   operations: "Operations",
   detail: "Lab details",
   workspaces: "Workspaces",
-  plugins: "Plugins",
-  device: "Authorize gateway",
+  plugins: "Integrations",
+  device: "Authorize an application",
   account: "Your settings",
   extension: "Lab access",
 };
 export const isGlobalView = (view: View) =>
-  ["operations", "workspaces", "plugins", "device", "account", "extension"].includes(view);
+  [
+    "operations",
+    "workspaces",
+    "plugins",
+    "device",
+    "account",
+    "extension",
+  ].includes(view);

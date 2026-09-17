@@ -263,12 +263,14 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		providerExamples[string(proxmoxBinding.ID)] = example
 	}
 	var installedClients []*pluginhost.Client
+	var providerInventory []registeredPlugin
 	if configuration.installationFile != "" {
-		installed, clients, err := loadInstalledProviders(ctx, configuration, runtimeParent)
+		installed, clients, registered, err := loadInstalledProviders(ctx, configuration, runtimeParent)
 		if err != nil {
 			return err
 		}
 		installedClients = clients
+		providerInventory = registered
 		for _, client := range clients {
 			defer client.Close()
 		}
@@ -445,6 +447,17 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		return err
 	}
 	defer stopAssets()
+	if dockerPlugin != nil {
+		providerInventory = append(providerInventory, legacyPluginInventory(dockerPlugin, configuration.dockerPluginInstanceID, "provider", "docker", []string{string(controlplane.LocalDockerTarget)}))
+	}
+	if proxmoxPlugin != nil {
+		providerInventory = append(providerInventory, legacyPluginInventory(proxmoxPlugin, configuration.proxmoxPluginInstanceID, "provider", "proxmox", []string{configuration.proxmoxTargetID}))
+	}
+	if accessPlugin != nil {
+		providerInventory = append(providerInventory, legacyPluginInventory(accessPlugin, configuration.accessPluginInstanceID, "access", "browser-vnc", nil))
+	}
+	inventory = combinedPluginInventory(inventory, providerInventory)
+
 	apiServer, err := httpapi.New(control, dockerlaptop.LabYAML(), webassets.FS(), httpapi.Options{
 		BrowserExtensions: browserViews, ExtensionInventory: inventory, AssetOrigin: configuration.extensionAssetOrigin,
 		ServerVersion: version, NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples, Authentication: authenticationOptions,

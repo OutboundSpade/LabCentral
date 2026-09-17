@@ -16,6 +16,16 @@ External fixtures exercise source recovery, concurrent build deduplication, imag
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
+## Current interface work
+
+`TASK-UI-009` simplifies administration under Integrations → Environments, Plugins
+and API clients. It corrects client registration/error/credential presentation and
+includes legacy provider/access services in the installed plugin inventory.
+Blueprint passed with no issues or warnings; backend/race and three-browser
+checks passed. The authorized PVE1 core/UI rollout and publication to main
+remain pending. The extension contracts and isolation remain
+unchanged.
+
 ## Latest completed work
 
 - `TASK-UI-008`: Classroom and My labs share confirmed bulk cleanup, including

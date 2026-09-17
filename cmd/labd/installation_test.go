@@ -57,7 +57,7 @@ func TestExternalModuleInstallsTwoTargetsWithoutCoreRegistration(t *testing.T) {
 	write(path, install)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	bindings, clients, err := loadInstalledProviders(ctx, config{installationFile: path, authMode: "none"}, root)
+	bindings, clients, inventory, err := loadInstalledProviders(ctx, config{installationFile: path, authMode: "none"}, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,10 @@ func TestExternalModuleInstallsTwoTargetsWithoutCoreRegistration(t *testing.T) {
 			_ = c.Close()
 		}
 	}()
+
+	if len(inventory) != 1 || inventory[0].Info.InstanceID != "plugin.external" || len(inventory[0].Info.TargetIDs) != 2 || !inventory[0].Available() {
+		t.Fatalf("installed provider inventory: %+v", inventory)
+	}
 	registry, err := controlplane.NewTargetRegistry(bindings)
 	if err != nil || len(registry.IDs()) != 2 {
 		t.Fatal("two independent targets were not installed", err)

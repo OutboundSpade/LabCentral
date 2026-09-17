@@ -6,11 +6,13 @@
     title,
     children,
     wide = false,
+    closeDisabled = false,
   }: {
     open?: boolean;
     title: string;
     children: Snippet;
     wide?: boolean;
+    closeDisabled?: boolean;
   } = $props();
   let dialog = $state<HTMLDialogElement>();
   const id = $props.id();
@@ -25,6 +27,9 @@
   class="modal"
   aria-labelledby={id}
   onclose={() => (open = false)}
+  oncancel={(event) => {
+    if (closeDisabled) event.preventDefault();
+  }}
 >
   <div class:!max-w-4xl={wide} class="modal-box max-h-[90dvh]">
     <header class="mb-6 flex items-center justify-between gap-4">
@@ -33,6 +38,7 @@
         type="button"
         class="btn btn-sm btn-ghost btn-square"
         aria-label="Close dialog"
+        disabled={closeDisabled}
         onclick={() => (open = false)}><X size={18} /></button
       >
     </header>

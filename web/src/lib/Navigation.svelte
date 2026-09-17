@@ -79,7 +79,7 @@
             {
               view: "plugins",
               href: "/plugins/",
-              label: "Plugins",
+              label: "Integrations",
               icon: Plug,
             },
             {

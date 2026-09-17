@@ -53,12 +53,12 @@ and assign an appropriate role. Navigation visibility never grants permissions.
 | --- | --- |
 | Workspaces | Create and rename organizations and workspaces; open a workspace's settings |
 | People | Create accounts, enable/disable them and assign project roles |
-| Plugins | Inspect environments, configure deployment/VM limits, refresh discovery and manage workspace access |
+| Integrations | Manage environments and workspace access, inspect installed plugins, and register API clients |
 | Settings | Set the selected workspace's lab count limit and default lifetime |
 | Operations | Inspect capacity, quotas, queues, operation details and VM measurements |
 
 For a new classroom, create its organization/workspace, assign people, grant an
-environment in **Plugins**, configure limits and publish a template. A workspace
+environment in **Integrations → Environments**, configure limits and publish a template. A workspace
 alone does not grant its members infrastructure access.
 
 Operations charts show current queued/running/failed counts and the latest CPU
@@ -67,7 +67,7 @@ Missing or stale measurements show **Unavailable**, not zero. Active-lab counts
 include container labs; VM measurements cover VMs only. The data tables provide
 exact values and remain usable if a chart cannot load.
 
-**Plugins → Settings & limits** sets concurrent deployments (1–16) per environment.
+**Integrations → Environments → Settings & limits** sets concurrent deployments (1–16) per environment.
 The saved limit applies across control-plane replicas without a restart. Running
 operations keep their slots when a limit is reduced. Independent labs can run in
 parallel; resources within one lab still follow their dependency order sequentially.
@@ -88,3 +88,14 @@ or execute plugins. See the [installation guide](../operations/plugin-installati
 See [template examples and requirements](templates.md) for VM and container exercises.
 
 To end several classroom labs, select their lab checkboxes or **Select all active labs**, then **End selected labs**. The confirmation lists each lab and owner. Individual failures can be retried without repeating accepted deletions. For VM-isolated containers, see [using the runtime console](../operations/container-vm-runtime.md).
+
+
+**Integrations** separates three administrator tasks:
+
+- **Environments:** where labs run, discovery, deployment limits and workspace access.
+- **Plugins:** installed software and its role—provider, console/network access, template source, image builder or user interface. Proxmox and noVNC appear here alongside independently installed packages.
+- **API clients:** external applications, such as SSH gateways, that request temporary access approved by each user. Register a recognizable name and save both the client ID and one-time secret. Registration alone grants no user access. Disabling a client blocks its requests.
+
+Users approve application device codes at **Authorize an application** and inspect
+or revoke their access under **Your settings → Connected applications**. Existing
+`/plugins`, `/device` and `/account` bookmarks continue to work.
