@@ -131,8 +131,9 @@ with tempfile.TemporaryDirectory(prefix='labcentral-build-proof-') as temporary:
         assert closed and time.monotonic()-started<31;connection.close()
         api('/access-sessions/'+network_launch['session']['id']+'/actions/revoke',{},'fixture-revoke-'+network_launch['session']['id'],api('/access-sessions/'+network_launch['session']['id'])['resourceVersion'])
         for _ in range(120):
-            try:api('/admin/provider-targets/target.fixture/actions/refresh',{});break
+            try:api('/provider-targets/target.fixture/actions/refresh',{});break
             except RuntimeError:time.sleep(.2)
+        else:raise AssertionError('provider did not recover after core outage')
         api('/lab-instances/'+instance+'/actions/destroy',{},'fixture-destroy')
         for _ in range(100):
             detail=api('/lab-instances/'+instance)

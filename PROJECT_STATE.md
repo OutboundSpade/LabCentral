@@ -6,13 +6,13 @@ LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
 quotas, lifetime and ownership; plugins translate infrastructure operations.
 
-## Extension verification and PVE1 rollout
+## Independently installed extensions
 
 `TASK-EXT-001` through `TASK-EXT-007` implement the contracts and working orchestration under ADR-0023–ADR-0025. Independently installed provider, access, source, builder and browser contributions use explicit bindings and separate backend identities. Source publication, durable builds/imports/preparation, gateway device approval, isolated browser slots and descriptor-based workload/network access are implemented.
 
 External fixtures exercise source recovery, concurrent build deduplication, image approval, preparation and owned lifecycle against a prebuilt core/UI. Chromium, Firefox and WebKit exercise installed stream views, sandbox isolation and browser-approved gateway grants. SQLite/PostgreSQL race tests cover work fencing, shared cancellation, delegated access revocation and atomic prepared batch admission.
 
-`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is now deploying that exact release on PVE1, preserving existing labs, exact qualified provider/access binaries and the separate pilot. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, Git, Ansible, Dockerfile, AWS and Fedora CoreOS integrations remain outside this implementation. Existing production-validation gaps remain open.
+`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: that exact release runs on PVE1. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all 102 pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, Git, Ansible, Dockerfile, AWS and Fedora CoreOS integrations remain outside this implementation. Existing production-validation gaps remain open.
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
@@ -38,12 +38,13 @@ See [runtime guidance](docs/operations/container-vm-runtime.md).
 
 ## Current deployment
 
-The private PVE1 classroom runs **classroom-usability-20260915**. The provider,
-runtime profile and core/UI were deployed at **2026-09-15T22:08:29Z**; the final
-core access fix was deployed at **2026-09-15T22:22:23Z**. All six services are
-healthy. All 95 pre-deployment records remain; verification labs and
-allocation claims were cleaned up. The separate iad1 pilot remains ready.
-Provisioning concurrency remains two; no target VM quota was imposed.
+The private PVE1 classroom runs **extensions-20260917**, deployed at
+**2026-09-17T02:45:21Z** from the verified native build at commit `91c9ef0`.
+All six services are healthy. All 102 pre-deployment lab records remain unchanged;
+one temporary verification lab was provisioned, accessed and destroyed, with its
+allocation claims released. The prior provider/access binaries, configuration,
+qualification and separate iad1 pilot were preserved. Provisioning concurrency
+remains two; no target VM quota was imposed.
 
 Qualification is valid until **2026-09-21T22:07:47Z**; the new pool-scoped,
 privilege-separated runtime token expires **2026-09-22T21:41:38Z**. See the
@@ -52,19 +53,26 @@ rollback and catalogue details.
 
 ## Verification
 
-Affected provider/runtime, quota, allocation and access tests passed; database
-conformance covers SQLite and PostgreSQL 18, including more than eight labs and
-VM-backed container access. Go compilation, Svelte check/build, API contracts and
-affected Chromium/Firefox/WebKit browser tests passed. Exact-build T3 lifecycle,
-replay, recovery, container runtime and isolation checks passed before signing
-fresh qualification. Live checks verified both examples, console switching/reload,
-private container HTTP, short hostnames and Classroom bulk cleanup. Detailed
-artifacts remain in ignored `bin/classroom-usability-20260915/`.
+Normal Go and race suites passed with SQLite/PostgreSQL 18, including durable
+leases/fencing, concurrent deduplication, shared cancellation, delegated authority,
+prepared atomic batch admission and artifact retention/recovery. Architecture,
+schema, OpenAPI/Protobuf compatibility and canonical vectors passed. Svelte
+check/build, existing browser regressions and extension/gateway scenarios passed
+Chromium, Firefox and WebKit; vet and vulnerability gates passed. gRPC was updated
+to its patched release before the final native build.
+
+Two native archives reproduced identically. Independently compiled fixtures used
+only the extracted release SDK and left its core/UI unchanged while exercising
+source/build/import recovery, lifecycle, streams, credential replay/revocation and
+bounded traffic closure with core suspended. Prior-core migration/rollback was
+rehearsed before deployment. Live PVE1 checks and final database/cleanup/readiness
+checks passed. Evidence remains in ignored `bin/extensions-20260917/`; earlier
+provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 
 ## Next action and production gates
 
-Continue the extension tasks in dependency order and retain their open release
-gates. Separately, renew qualification before **2026-09-21T22:07:47Z**, then the runtime token before
+The extension implementation and authorized testbed rollout are complete. Renew
+qualification before **2026-09-21T22:07:47Z**, then the runtime token before
 September 22. Continue `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
