@@ -16,17 +16,12 @@ External fixtures exercise source recovery, concurrent build deduplication, imag
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
-## Current interface work
-
-`TASK-UI-009` simplifies administration under Integrations → Environments, Plugins
-and API clients. It corrects client registration/error/credential presentation and
-includes legacy provider/access services in the installed plugin inventory.
-Blueprint passed with no issues or warnings; backend/race and three-browser
-checks passed. The authorized PVE1 core/UI rollout and publication to main
-remain pending. The extension contracts and isolation remain
-unchanged.
-
 ## Latest completed work
+
+- `TASK-UI-009`: Integrations groups Environments, Plugins and API clients;
+  legacy provider/access services appear alongside installed contributions.
+  Corrected registration, one-time credentials, error/retry and disable flows
+  passed Blueprint and three-browser checks and run on PVE1.
 
 - `TASK-UI-008`: Classroom and My labs share confirmed bulk cleanup, including
   per-lab failure recovery. The console's Machine selector obtains fresh authorized
@@ -48,11 +43,10 @@ See [runtime guidance](docs/operations/container-vm-runtime.md).
 
 ## Current deployment
 
-The private PVE1 classroom runs **extensions-20260917**, deployed at
-**2026-09-17T02:45:21Z** from the verified native build at commit `91c9ef0`.
-All six services are healthy. All 102 pre-deployment lab records remain unchanged;
-one temporary verification lab was provisioned, accessed and destroyed, with its
-allocation claims released. The prior provider/access binaries, configuration,
+The private PVE1 classroom runs **integrations-ui-20260917**, deployed at
+**2026-09-17T03:25:52Z** from the verified native build at commit `c32bc57`.
+All six services are healthy. All 103 pre-deployment lab records and API client
+registrations remain unchanged. The prior provider/access binaries, configuration,
 qualification and separate iad1 pilot were preserved. Provisioning concurrency
 remains two; no target VM quota was imposed.
 
@@ -62,6 +56,16 @@ privilege-separated runtime token expires **2026-09-22T21:41:38Z**. See the
 rollback and catalogue details.
 
 ## Verification
+
+The integration administration update passed Blueprint (no issues/warnings),
+Svelte check/build, cache tests, affected backend/vet and race tests. All three
+browsers passed administration, responsive, extension isolation and device-flow
+scenarios. Its native archives reproduced identically; the packaged SDK/core
+passed source/build/import and browser fixtures. Authenticated PVE1 checks
+confirmed inventory, forms, unchanged records, readiness and session cleanup.
+Evidence remains in ignored `bin/integrations-ui-20260917/`.
+
+The preceding extension foundation release passed the following broader gates:
 
 Normal Go and race suites passed with SQLite/PostgreSQL 18, including durable
 leases/fencing, concurrent deduplication, shared cancellation, delegated authority,

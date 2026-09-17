@@ -12,7 +12,7 @@ for(const [name,engine] of Object.entries({chromium,firefox,webkit})){
   await frame.getByRole('button',{name:'Send fixture echo'}).click();
   await frame.locator('#output').filter({hasText:'fixture echo'}).waitFor();
   const session=new URL(page.url()).searchParams.get('session');assert(session);
-  await page.goto(`${base}/plugins`);
+  await page.goto(`${base}/plugins?section=plugins`);
   // Navigating away closes the host-owned socket; the frame holds no session token.
   await page.frameLocator('iframe[title="Independent extension fixture"]').locator('#status').filter({hasText:'Connected'}).waitFor();
   console.log(`PASS: ${name} installed access view uses a scoped stream and disconnects on navigation`);

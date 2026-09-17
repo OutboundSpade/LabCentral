@@ -295,8 +295,8 @@ completedTasks:
   - TASK-PROD-003
   - TASK-EXT-008
   - TASK-EXT-009
-currentTasks:
   - TASK-UI-009
+currentTasks:
   - TASK-PROD-004
   - TASK-PROD-005
 nextRecommendedTasks: []

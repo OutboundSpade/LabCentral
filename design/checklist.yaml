@@ -3,7 +3,7 @@ lastUpdated: "2026-09-17"
 tasks:
   - id: TASK-UI-009
     title: Unify integration administration and correct API client registration
-    status: in_progress
+    status: complete
     dependencies: [TASK-EXT-009]
     relatedAdrs: [ADR-0009, ADR-0023, ADR-0024]
     relatedDocuments: [docs/design/classroom-ui.md, docs/operations/classroom-testbed.md]
