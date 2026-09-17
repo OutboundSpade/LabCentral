@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"io"
 	"strings"
 	"unicode/utf8"
@@ -99,6 +100,9 @@ func (s *Service) ListLabTemplates(ctx context.Context, request LabTemplateListR
 }
 
 func (s *Service) PublishTemplateRevision(ctx context.Context, actor domain.UserID, templateID domain.TemplateID, source []byte, idempotencyKey string) (TemplateRevisionRecord, error) {
+	return s.publishTemplateRevision(ctx, actor, templateID, source, idempotencyKey, nil)
+}
+func (s *Service) publishTemplateRevision(ctx context.Context, actor domain.UserID, templateID domain.TemplateID, source []byte, idempotencyKey string, fence *application.Fence) (TemplateRevisionRecord, error) {
 	if s == nil || s.store == nil || s.artifacts == nil || s.renderer == nil || s.ids == nil {
 		return TemplateRevisionRecord{}, fmt.Errorf("template publication is unavailable")
 	}
@@ -123,7 +127,11 @@ func (s *Service) PublishTemplateRevision(ctx context.Context, actor domain.User
 	if err != nil {
 		return TemplateRevisionRecord{}, err
 	}
-	manifest := application.VerifiedManifest{Digest: bundleDigest, FileCount: 1, ByteCount: uint64(len(source))}
+	_, fileCount, err := labbundle.Source(source)
+	if err != nil {
+		return TemplateRevisionRecord{}, err
+	}
+	manifest := application.VerifiedManifest{Digest: bundleDigest, FileCount: fileCount, ByteCount: uint64(len(source))}
 	uploadID, err := s.artifacts.Stage(ctx, manifest)
 	if err != nil {
 		return TemplateRevisionRecord{}, fmt.Errorf("stage template bundle: %w", err)
@@ -147,10 +155,14 @@ func (s *Service) PublishTemplateRevision(ctx context.Context, actor domain.User
 	if err != nil {
 		return TemplateRevisionRecord{}, err
 	}
-	return s.store.PublishTemplateRevision(ctx, PublishTemplateRevisionRequest{
+	semantics, err := render.BundleRendererVersion(source)
+	if err != nil {
+		return TemplateRevisionRecord{}, err
+	}
+	return s.store.PublishTemplateRevision(ctx, PublishTemplateRevisionRequest{WorkFence: fence,
 		GovernanceRecordIDs: recordIDs, ID: domain.RevisionID(revisionID), TemplateID: templateID, BundleArtifact: artifact,
 		BundleDigest: bundleDigest, BundleSizeBytes: uint64(len(source)), AuthorAPIVersion: representation.AuthorVersion,
-		RendererVersion: render.RendererVersion, CanonicalVersion: render.TemplateFormatVersion,
+		RendererVersion: semantics, CanonicalVersion: render.TemplateFormatVersion,
 		CanonicalDigest: representation.Digest, RepresentationJSON: string(representation.JSON), PublishedBy: actor, IdempotencyKey: idempotencyKey,
 		RequestDigest: digestBytes("labcentral.http.publish-template-revision/v1", []byte(templateID), source),
 	})

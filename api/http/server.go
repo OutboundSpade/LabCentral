@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 
@@ -19,6 +20,9 @@ type Server struct {
 }
 
 type Options struct {
+	BrowserExtensions       []BrowserExtensionDTO
+	ExtensionInventory      func() []ExtensionInventoryDTO
+	AssetOrigin             string
 	ServerVersion           string
 	NoAuthWarning           string
 	DefaultProviderTargetID string
@@ -29,6 +33,12 @@ type Options struct {
 func New(service *controlplane.Service, exampleSource []byte, static fs.FS, options Options) (*Server, error) {
 	if service == nil || len(exampleSource) == 0 || static == nil {
 		return nil, fmt.Errorf("control-plane service, Example A, and static assets are required")
+	}
+	if options.AssetOrigin != "" {
+		origin, err := url.Parse(options.AssetOrigin)
+		if err != nil || origin.Host == "" || origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" || origin.String() != options.AssetOrigin || (origin.Scheme != "https" && !(options.Authentication.Mode == AuthModeNone && origin.Scheme == "http")) {
+			return nil, fmt.Errorf("invalid browser asset origin")
+		}
 	}
 	mux := http.NewServeMux()
 	security, err := newRequestSecurity(options.Authentication)
@@ -51,7 +61,15 @@ func New(service *controlplane.Service, exampleSource []byte, static fs.FS, opti
 	service.SetOperationsAuthorizer(options.Authentication.Authorizer)
 	register(api, service, exampleSource, options, security)
 	mux.Handle("/", staticHandler(static))
-	return &Server{Handler: securityHeaders(security.wrap(mux)), API: api}, nil
+	handler := securityHeaders(security.wrap(mux))
+	if options.AssetOrigin != "" {
+		next := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-src "+options.AssetOrigin+"; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+			next.ServeHTTP(w, r)
+		})
+	}
+	return &Server{Handler: handler, API: api}, nil
 }
 
 func staticHandler(content fs.FS) http.Handler {
@@ -70,7 +88,7 @@ func staticHandler(content fs.FS) http.Handler {
 			// SvelteKit exports these static route shells as <route>.html.
 			// Keep unknown URLs and API paths out of the SPA fallback.
 			switch clean {
-			case "launch", "templates", "classroom", "people", "settings", "lab", "operations", "workspaces", "plugins":
+			case "launch", "templates", "classroom", "people", "settings", "lab", "operations", "workspaces", "plugins", "device", "account", "extension":
 				if _, err := fs.Stat(content, clean+".html"); err == nil {
 					clone := request.Clone(request.Context())
 					clone.URL.Path = "/" + clean + ".html"
@@ -95,7 +113,9 @@ func staticHandler(content fs.FS) http.Handler {
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		if response.Header().Get("Content-Security-Policy") == "" {
+			response.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+		}
 		response.Header().Set("Referrer-Policy", "no-referrer")
 		response.Header().Set("X-Content-Type-Options", "nosniff")
 		response.Header().Set("X-Frame-Options", "DENY")

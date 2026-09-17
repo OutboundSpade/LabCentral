@@ -20,9 +20,11 @@ const server=createServer(async(req,res)=>{
    if(req.method==='GET')return json({detail:'Not configured'},404);
    return json({...JSON.parse(body),resourceVersion:1});
   }
+  if(p.endsWith('/topology'))return json({instanceId:lab.id,generation:1,resources:lab.resources.map(r=>({...r,interfaces:[],actions:[{method:'vnc',title:'Console',presentation:'graphical',targetKinds:['VM'],endpointSchemas:[],maximumOfflineSeconds:30}]}))});
   if(p==='/server-info')return json({authMode:'oidc',defaultProviderTargetId:'target.test',uiFeatures:['browser-vnc']});
   if(p==='/session'&&sessionDenied)return json({detail:'Sign in required'},401);
   if(p==='/session')return json({subjectId,displayName:'Alex Morgan',roles:[role]});
+ if(p.startsWith('/access-sessions/') && p.endsWith('/presentation'))return json({method:'vnc',presentation:'graphical',streamPath:'/access-proxy/v1/access/'+p.split('/')[2]+'/websocket'});
   if(p==='/access-sessions'&&req.method==='POST')return json({session:{id:'access.test'},oneTimeToken:'test-token',launchUrl:consoleLaunchKind==='relative'?'/access/access.test':consoleLaunchKind==='absolute'?origin+'/access/access.test':'https://foreign.example/access/access.test'},201);
   if(p==='/projects')return json({items:noProjects?[]:[{id:'project.class',name:'Linux fundamentals',organizationId:'org.class',allowedActions:role==='participant'?['template.read']:['template.read','template.create','instance.batchCreate','quota.manage','project.manage']}]});
   if(p==='/provider-targets')return json({items:[{id:'target.test',providerKind:'proxmox',status:'ready'}]});

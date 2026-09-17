@@ -82,8 +82,8 @@ type TargetSession struct {
 }
 
 func NewTargetRegistry(bindings []TargetBinding) (*TargetRegistry, error) {
-	if len(bindings) == 0 || len(bindings) > 64 {
-		return nil, fmt.Errorf("target registry must contain between 1 and 64 targets")
+	if len(bindings) > 64 {
+		return nil, fmt.Errorf("target registry must contain at most 64 targets")
 	}
 	registry := &TargetRegistry{bindings: make(map[domain.ProviderTargetID]targetBinding, len(bindings))}
 	for _, binding := range bindings {

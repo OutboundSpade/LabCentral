@@ -1,6 +1,80 @@
 formatVersion: 1
-lastUpdated: "2026-09-15"
+lastUpdated: "2026-09-17"
 tasks:
+  - id: TASK-EXT-001
+    title: Contracts and compatibility
+    status: complete
+    dependencies: [TASK-ARCH-001, TASK-ARCH-002, TASK-PROD-003]
+    relatedAdrs: [ADR-0023, ADR-0024, ADR-0025]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Record versioned extension installation, browser isolation, access/delegation and source/build contracts without changing legacy semantics.
+  - id: TASK-EXT-002
+    title: Unified installation and runtime
+    status: complete
+    dependencies: [TASK-EXT-001]
+    relatedAdrs: [ADR-0023]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Install provider, access, source, builder and browser contributions independently, preserving v1 installation and isolated process identities.
+  - id: TASK-EXT-003
+    title: Extensible access sessions
+    status: complete
+    dependencies: [TASK-EXT-002]
+    relatedAdrs: [ADR-0024]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Discover authorized workload/network actions, resolve compatible explicit adapters, deliver one-time credentials and enforce bounded closure with durable recovery.
+  - id: TASK-EXT-004
+    title: Browser extension host and topology API
+    status: complete
+    dependencies: [TASK-EXT-003]
+    relatedAdrs: [ADR-0023, ADR-0024]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Load immutable isolated UI contributions through a bounded host bridge and expose authorized resolved topology without rebuilding the UI.
+  - id: TASK-EXT-005
+    title: Browser-approved gateway delegation
+    status: complete
+    dependencies: [TASK-EXT-002, TASK-EXT-003]
+    relatedAdrs: [ADR-0024]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Implement scoped revocable device grants, current-authority rechecks and external client conformance.
+  - id: TASK-EXT-006
+    title: Bundles and template-source plugins
+    status: complete
+    dependencies: [TASK-EXT-002]
+    relatedAdrs: [ADR-0025]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Validate immutable multi-file bundles and execute authorized source resolution with invocation-scoped artifact transfer.
+  - id: TASK-EXT-007
+    title: Durable builds imports and deployment preparation
+    status: complete
+    dependencies: [TASK-EXT-006]
+    relatedAdrs: [ADR-0025]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Execute fenced non-instance child jobs, deduplicate builds/imports, preserve atomic admission and include artifacts in recovery and GC.
+  - id: TASK-EXT-008
+    title: External proof and verified release
+    status: in_progress
+    dependencies: [TASK-EXT-004, TASK-EXT-005, TASK-EXT-007]
+    relatedAdrs: [ADR-0023, ADR-0024, ADR-0025]
+    relatedDocuments: [docs/design/extensions.md]
+    acceptanceCriteria:
+      - Install independent lifecycle/access/source/builder/UI fixtures into unchanged core/UI artifacts and pass compatibility, isolation, database parity and browser gates against the exact release artifacts.
+  - id: TASK-EXT-009
+    title: Deploy the verified extension release on PVE1
+    status: proposed
+    dependencies: [TASK-EXT-008]
+    relatedAdrs: [ADR-0018, ADR-0020, ADR-0023]
+    relatedDocuments: [docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Deploy the exact verified core/UI artifact with a consistent pre-upgrade backup and a tested readiness rollback.
+      - Preserve existing labs, access configuration, enrollment and the separate pilot; retain qualified provider bytes unless separately requalified.
+      - Verify service health, authenticated extension administration and existing console behavior, then record the deployment and rollback paths.
   - id: TASK-UI-008
     title: Restore classroom bulk cleanup and switch machines within lab consoles
     status: complete

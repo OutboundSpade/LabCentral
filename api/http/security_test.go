@@ -560,7 +560,7 @@ func localAuthenticationFixture(t *testing.T, trusted []*net.IPNet) (*Server, *l
 	}
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
 	server, err := New(new(controlplane.Service), []byte("example"), static, Options{Authentication: AuthenticationOptions{
-		Mode: AuthModeLocal, Manager: manager, Repository: store, Authorizer: evaluator, PublicOrigin: "https://lab.example",
+		Mode: AuthModeLocal, Manager: manager, Repository: store, Authorizer: evaluator, TokenHasher: keyring, PublicOrigin: "https://lab.example",
 		SecureCookies: true, TrustedProxies: trusted,
 	}})
 	if err != nil {

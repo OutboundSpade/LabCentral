@@ -12,12 +12,14 @@ import (
 )
 
 func registerAccess(api huma.API, service *controlplane.Service, security *requestSecurity) {
+	registerTopology(api, service, security)
+	registerAccessDownload(api, service)
 	type createAccessInput struct {
 		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
 		Body           struct {
 			InstanceID      string `json:"instanceId" minLength:"1" maxLength:"128"`
 			ResourceID      string `json:"resourceId" minLength:"1" maxLength:"128"`
-			Method          string `json:"method" enum:"vnc,ssh"`
+			Method          string `json:"method" minLength:"1" maxLength:"64" pattern:"^[a-z][a-z0-9.-]*$"`
 			DurationSeconds uint32 `json:"durationSeconds,omitempty" minimum:"60" maximum:"3600" default:"1800"`
 		}
 	}
@@ -63,6 +65,17 @@ func registerAccess(api huma.API, service *controlplane.Service, security *reque
 	type accessInput struct {
 		ID string `path:"id" maxLength:"128"`
 	}
+	huma.Get(api, "/access-sessions/{id}/presentation", func(ctx context.Context, input *accessInput) (*struct {
+		Body controlplane.AccessPresentation
+	}, error) { actor, ok := requestPrincipal(ctx); if !ok {
+		return nil, huma.Error401Unauthorized("Authentication required")
+	}; id, err := domain.NewAccessSessionID(input.ID); if err != nil {
+		return nil, huma.Error404NotFound("Session not found")
+	}; result, err := service.AccessPresentation(ctx, actor.user.ID, id); if err != nil {
+		return nil, apiError(err)
+	}; return &struct {
+		Body controlplane.AccessPresentation
+	}{Body: result}, nil })
 	huma.Get(api, "/access-sessions/{id}", func(ctx context.Context, input *accessInput) (*versionedOutput[AccessSessionDTO], error) {
 		id, err := domain.NewAccessSessionID(input.ID)
 		if err != nil {

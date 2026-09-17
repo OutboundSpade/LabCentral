@@ -193,11 +193,13 @@
           },
         ).catch(() => {});
       }
+      const presentation = await api<{streamPath?:string}>(`/access-sessions/${encodeURIComponent(currentID)}/presentation`, {signal});
+      if (!presentation.streamPath?.startsWith("/" ) || presentation.streamPath.startsWith("//")) throw new Error("Console stream unavailable");
       const { default: ConsoleClient } = await import("@novnc/novnc");
       if (disposed || mine !== generation || !consoleTarget) return;
       const scheme = location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(
-        `${scheme}//${location.host}/access-proxy/v1/access/${encodeURIComponent(currentID)}/websocket`,
+        `${scheme}//${location.host}${presentation.streamPath}`,
         ["binary"],
       );
       consoleSocket = socket;

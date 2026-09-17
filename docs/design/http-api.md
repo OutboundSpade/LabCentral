@@ -78,3 +78,7 @@ retain resource-version preconditions and append-only governance records.
 Static shells include /workspaces and /plugins. The generated OpenAPI and frontend
 DTOs include all new discovery endpoints. The plugin installation contract remains
 a protected operator file plus restart, as ADR-0015 specifies.
+
+## Independent extension foundations
+
+The extension foundations add authenticated browser contribution discovery, administrator inventory, sanitized lab topology, access presentation/download, and bundle publication endpoints to Huma/OpenAPI. See [extensions](extensions.md) for their current boundaries; gateway and source/build orchestration APIs are not enabled.

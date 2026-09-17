@@ -3,6 +3,7 @@ package render
 import (
 	"context"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
@@ -19,7 +20,11 @@ func (r *Renderer) PrepareTemplate(ctx context.Context, source []byte) (Template
 	if err := ctx.Err(); err != nil {
 		return TemplateRepresentation{}, err
 	}
-	document, err := ParseYAML(source, r.limits.Parse)
+	entry, _, err := labbundle.Source(source)
+	if err != nil {
+		return TemplateRepresentation{}, err
+	}
+	document, err := ParseYAML(entry, r.limits.Parse)
 	if err != nil {
 		return TemplateRepresentation{}, err
 	}
@@ -56,8 +61,15 @@ func (r *Renderer) PrepareTemplate(ctx context.Context, source []byte) (Template
 // RendererVersion is a semantics identifier, not the product build version.
 // A future semantic change must retain this implementation for old revisions.
 func (r *Renderer) RenderVersion(ctx context.Context, version string, revision domain.RevisionContent, inputs domain.TypedInputs, policy domain.RenderPolicy) (domain.CanonicalLab, domain.RenderReport, error) {
-	if version != "" && version != RendererVersion {
+	if version != "" && version != RendererVersion && version != BuildRendererVersion {
 		return domain.CanonicalLab{}, domain.RenderReport{}, fmt.Errorf("unsupported renderer semantics %q", version)
 	}
-	return r.Render(ctx, revision, inputs, policy)
+	if version != BuildRendererVersion && len(policy.BuildImages) > 0 {
+		return domain.CanonicalLab{}, domain.RenderReport{}, fmt.Errorf("build resolution requires versioned semantics")
+	}
+	result, report, err := r.Render(ctx, revision, inputs, policy)
+	if version == BuildRendererVersion {
+		result.RendererVersion = version
+	}
+	return result, report, err
 }

@@ -13,6 +13,7 @@ const server=createServer(async(req,res)=>{
  if(path.startsWith('/api/v1/')){
  const p=path.slice(7);let body='';for await(const c of req)body+=c;
  if(p==='/lab-instances/instance.one' && req.method==='GET')return json({...lab('one'),resources:[...lab('one').resources,{id:'vm.peer',kind:'VM',phase:'ready'}]});
+ if(p.startsWith('/access-sessions/') && p.endsWith('/presentation'))return json({method:'vnc',presentation:'graphical',streamPath:'/access-proxy/v1/access/'+p.split('/')[2]+'/websocket'});
  if(p.startsWith('/access-sessions/') && req.method==='GET')return json({id:p.split('/')[2],instanceId:'instance.one',resourceId:selectedMachine,method:'vnc',state:revoked?'revoked':'expired',resourceVersion:1,closureRequired:false});
  if(p==='/access-sessions' && req.method==='POST'){renewals++;selectedMachine=JSON.parse(body).resourceId;return json({session:{id:'access.renewed'+renewals,resourceId:selectedMachine},oneTimeToken:'test-console-'+renewals,launchUrl:'/access/access.renewed'+renewals},201);}
  if(p.endsWith('/actions/revoke'))return json({state:'revoked'});

@@ -97,6 +97,7 @@ type TemplateRevision struct {
 }
 
 type Operation struct {
+	Subject         WorkSubject
 	ID              OperationID
 	InstanceID      InstanceID
 	State           OperationState

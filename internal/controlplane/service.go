@@ -94,11 +94,16 @@ func (e *ValidationError) Error() string {
 }
 
 type RenderOptions struct {
+	WorkFence       *application.Fence
+	ImageBindingIDs []string
+	BuildImages     []domain.ResolvedBuildImage
 	Inputs          domain.TypedInputs
 	RendererVersion string
 }
 
 type Service struct {
+	sources              map[string]SourceBinding
+	builders             map[string]BuilderBinding
 	operationsAuthorizer application.Authorizer
 	usageMu              sync.Mutex
 	usageReads           singleflight.Group
@@ -172,7 +177,7 @@ func (s *Service) ValidateTarget(ctx context.Context, source []byte, acknowledge
 	if len(options) == 1 {
 		option = options[0]
 	}
-	canonical, report, err := s.renderer.RenderVersion(ctx, option.RendererVersion, domain.RevisionContent{VerifiedBundle: source}, option.Inputs, domain.RenderPolicy{})
+	canonical, report, err := s.renderer.RenderVersion(ctx, option.RendererVersion, domain.RevisionContent{VerifiedBundle: source}, option.Inputs, domain.RenderPolicy{BuildImages: option.BuildImages})
 	if err != nil {
 		return ValidationResult{}, &ValidationError{Issues: []Issue{{Code: "render_failed", Message: err.Error()}}}
 	}
@@ -456,7 +461,11 @@ func (s *Service) createInstanceTargetFor(ctx context.Context, subjectID domain.
 				OwnershipToken: ownershipToken(targetID, instanceID, resource.ID()),
 			})
 		}
-		result, createErr := s.store.CreateInstance(ctx, CreateInstanceRequest{
+		option := RenderOptions{}
+		if len(options) == 1 {
+			option = options[0]
+		}
+		result, createErr := s.store.CreateInstance(ctx, CreateInstanceRequest{WorkFence: option.WorkFence, ImageBindingIDs: option.ImageBindingIDs,
 			InstanceID: instanceID, RevisionID: revisionID, ProjectID: projectID, OwnerKind: ownerKind, OwnerID: ownerID, CreatedBy: subjectID,
 			ProviderTargetID: targetID, ProviderOverrideJSON: validation.EffectiveOverride,
 			OperationID: operationID, CanonicalDigest: validation.Canonical.Digest,

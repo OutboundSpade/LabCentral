@@ -38,6 +38,11 @@ message PluginInfo {
   repeated ProtocolVersionRange supported_access_protocols = 11;
   repeated string supported_access_methods = 12;
   repeated SchemaVersion accepted_access_endpoint_schemas = 13;
+  repeated ProtocolVersionRange supported_source_protocols = 14;
+  repeated ProtocolVersionRange supported_builder_protocols = 15;
+  repeated string source_kinds = 16;
+  repeated string builder_kinds = 17;
+  repeated AccessDescriptor access_descriptors = 18;
 }
 
 message RegisterPluginRequest {
@@ -57,6 +62,8 @@ message RegisterPluginResponse {
   ProtocolVersion selected_access_protocol = 6;
   string access_callback_credential = 7;
   string access_audience = 8;
+  ProtocolVersion selected_source_protocol = 9;
+  ProtocolVersion selected_builder_protocol = 10;
 }
 
 message HeartbeatRequest {
@@ -512,6 +519,8 @@ service ProviderService {
 }
 
 service AccessService {
+  rpc DownloadAccess(DownloadAccessRequest) returns (DownloadAccessResponse);
+  rpc InspectAccess(InspectAccessRequest) returns (InspectAccessResponse);
   rpc CreateAccess(CreateAccessRequest) returns (CreateAccessResponse);
   rpc RevokeAccess(RevokeAccessRequest) returns (RevokeAccessResponse);
 }
@@ -520,4 +529,206 @@ service AccessAuthorizationService {
   rpc ExchangeAccessToken(ExchangeAccessTokenRequest) returns (ExchangeAccessTokenResponse);
   rpc RecheckAccessLease(RecheckAccessLeaseRequest) returns (RecheckAccessLeaseResponse);
   rpc EndAccessLease(EndAccessLeaseRequest) returns (EndAccessLeaseResponse);
+}
+
+// Presentation and enforcement are core-known semantics, not plugin-defined policy.
+message AccessDescriptor {
+  string method = 1;
+  string title = 2;
+  repeated string target_kinds = 3;
+  string presentation = 4;
+  repeated SchemaVersion endpoint_schemas = 5;
+  uint32 maximum_offline_seconds = 6;
+  string renderer = 7;
+}
+
+message DownloadAccessRequest {
+  CallContext context = 1;
+  string access_session_id = 2;
+  bytes opaque_access_state = 3;
+  string delivery_id = 4;
+  string one_time_token = 5;
+}
+message DownloadAccessResponse {
+  bytes content = 1;
+  string media_type = 2;
+  string filename = 3;
+  StructuredError error = 4;
+}
+message InspectAccessRequest {
+  CallContext context = 1;
+  string access_session_id = 2;
+  bytes opaque_access_state = 3;
+}
+message InspectAccessResponse {
+  string state = 1;
+  google.protobuf.Timestamp enforced_until = 2;
+  bool active_connections_closed = 3;
+  StructuredError error = 4;
+}
+
+message ArtifactHandle {
+  string digest = 1;
+  uint64 size = 2;
+  string media_type = 3;
+  string transfer_token = 4;
+}
+message ExtensionConfiguration {
+  SchemaVersion schema = 1;
+  bytes canonical_json = 2;
+}
+message SourceServiceResolveRequest {
+  CallContext context = 1;
+  string binding_id = 2;
+  string reference = 3;
+  ExtensionConfiguration configuration = 4;
+  bytes credential_envelope = 5;
+  ArtifactHandle output = 6;
+}
+message SourceServiceResolveResponse {
+  string resolved_identity = 1;
+  string provenance_digest = 2;
+  ArtifactHandle bundle = 3;
+  StructuredError error = 4;
+}
+message SourceServiceGetInvocationRequest {
+  CallContext context = 1;
+}
+message SourceServiceGetInvocationResponse {
+  string state = 1;
+  SourceServiceResolveResponse result = 2;
+}
+message SourceServiceCancelRequest {
+  CallContext context = 1;
+}
+message SourceServiceCancelResponse {
+  string outcome = 1;
+}
+service SourceService {
+  rpc Resolve(SourceServiceResolveRequest) returns (SourceServiceResolveResponse);
+  rpc GetInvocation(SourceServiceGetInvocationRequest) returns (SourceServiceGetInvocationResponse);
+  rpc Cancel(SourceServiceCancelRequest) returns (SourceServiceCancelResponse);
+}
+
+message BuildLimits {
+  uint32 timeout_seconds = 1;
+  uint32 cpu_millis = 2;
+  uint64 memory_bytes = 3;
+  uint64 maximum_input_bytes = 4;
+  uint64 maximum_output_bytes = 5;
+  repeated string allowed_egress = 6;
+}
+message BuildRecipe {
+  string digest = 1;
+  ExtensionConfiguration configuration = 2;
+  repeated ArtifactHandle inputs = 3;
+  repeated string base_image_digests = 4;
+  string architecture = 5;
+}
+message BuilderServiceValidateRequest {
+  BuildRecipe recipe = 1;
+  BuildLimits limits = 2;
+}
+message BuilderServiceValidateResponse {
+  repeated StructuredError errors = 1;
+}
+message BuilderServiceBuildRequest {
+  ExtensionConfiguration binding_configuration = 6;
+  CallContext context = 1;
+  string binding_id = 2;
+  BuildRecipe recipe = 3;
+  BuildLimits limits = 4;
+  ArtifactHandle output = 5;
+}
+message BuilderServiceBuildResponse {
+  string state = 1;
+  string safe_message = 2;
+  ArtifactHandle image = 3;
+  string provenance_digest = 4;
+  StructuredError error = 5;
+}
+message BuilderServiceGetInvocationRequest {
+  CallContext context = 1;
+}
+message BuilderServiceGetInvocationResponse {
+  BuilderServiceBuildResponse result = 1;
+}
+message BuilderServiceCancelRequest {
+  CallContext context = 1;
+}
+message BuilderServiceCancelResponse {
+  string outcome = 1;
+}
+service BuilderService {
+  rpc Validate(BuilderServiceValidateRequest) returns (BuilderServiceValidateResponse);
+  rpc Build(BuilderServiceBuildRequest) returns (stream BuilderServiceBuildResponse);
+  rpc GetInvocation(BuilderServiceGetInvocationRequest) returns (BuilderServiceGetInvocationResponse);
+  rpc Cancel(BuilderServiceCancelRequest) returns (BuilderServiceCancelResponse);
+}
+
+// Artifact transfer is scoped to the invocation and installed process. No URL or
+// shared filesystem path crosses this boundary. Receivers enforce digest/size.
+message ArtifactTransferServiceReadRequest {
+  CallContext context = 1;
+  ArtifactHandle artifact = 2;
+}
+message ArtifactTransferServiceReadResponse {
+  bytes chunk = 1;
+}
+message ArtifactTransferServiceWriteRequest {
+  CallContext context = 1;
+  ArtifactHandle artifact = 2;
+  bytes chunk = 3;
+}
+message ArtifactTransferServiceWriteResponse {
+  ArtifactHandle artifact = 1;
+}
+service ArtifactTransferService {
+  rpc Read(ArtifactTransferServiceReadRequest) returns (stream ArtifactTransferServiceReadResponse);
+  rpc Write(stream ArtifactTransferServiceWriteRequest) returns (ArtifactTransferServiceWriteResponse);
+}
+
+// Optional provider-owned image import. It does not grant image approval or
+// target qualification; old providers continue using inventory images.
+message ImageImportServiceImportRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  ArtifactHandle artifact = 3;
+  string architecture = 4;
+  string provenance_digest = 5;
+  bytes configuration_json = 6;
+}
+message TargetImageBinding {
+  string image_ref = 1;
+  string provider_image_id = 2;
+  string artifact_digest = 3;
+  string target_configuration_digest = 4;
+  string architecture = 5;
+  bytes opaque_binding = 6;
+}
+message ImageImportServiceImportResponse {
+  string state = 1;
+  TargetImageBinding binding = 2;
+  StructuredError error = 3;
+}
+message ImageImportServiceGetInvocationRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+}
+message ImageImportServiceGetInvocationResponse {
+  ImageImportServiceImportResponse result = 1;
+}
+message ImageImportServiceValidateBindingRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  TargetImageBinding binding = 3;
+}
+message ImageImportServiceValidateBindingResponse {
+  bool valid = 1;
+  StructuredError error = 2;
+}
+service ImageImportService {
+  rpc Import(ImageImportServiceImportRequest) returns (ImageImportServiceImportResponse);
+  rpc GetInvocation(ImageImportServiceGetInvocationRequest) returns (ImageImportServiceGetInvocationResponse);
+  rpc ValidateBinding(ImageImportServiceValidateBindingRequest) returns (ImageImportServiceValidateBindingResponse);
 }

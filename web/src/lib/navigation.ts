@@ -10,6 +10,9 @@ export const routeViews = {
   lab: "detail",
   workspaces: "workspaces",
   plugins: "plugins",
+  device: "device",
+  account: "account",
+  extension: "extension",
 } as const;
 export type View = (typeof routeViews)[keyof typeof routeViews];
 export const titles: Record<View, string> = {
@@ -23,6 +26,9 @@ export const titles: Record<View, string> = {
   detail: "Lab details",
   workspaces: "Workspaces",
   plugins: "Plugins",
+  device: "Authorize gateway",
+  account: "Your settings",
+  extension: "Lab access",
 };
 export const isGlobalView = (view: View) =>
-  ["operations", "workspaces", "plugins"].includes(view);
+  ["operations", "workspaces", "plugins", "device", "account", "extension"].includes(view);

@@ -140,3 +140,9 @@ Navigation continuity reference (retrieved 2026-09-08):
 
 - [Proxmox QEMU Agent API source](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu/Agent.pm): exec accepts a program/argument array, exec-status returns captured output; both require VM.GuestAgent.Unrestricted. ADR-0022 restricts its use to the fixed runtime entrypoint and exact pool.
 - [Podman run reference](https://docs.podman.io/en/latest/markdown/podman-run.1.html): offline pull policy, rootless execution, host network namespace, capability removal and no-new-privileges options inform the dedicated-VM runtime.
+
+## Extension browser isolation and device authorization (retrieved 2026-09-17)
+
+- [MDN iframe](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe): opaque-origin sandbox with scripts only, separate asset origin, and response CSP constrain browser contributions (ADR-0023).
+- [MDN postMessage](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage): validate sender window and message shape; use a fresh nonce and a transferred channel for the opaque-origin frame (ADR-0023).
+- [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628.html): browser approval, device/user codes, polling interval and slow-down responses inform gateway delegation (ADR-0024). LabCentral further restricts grants to current user authority and a 15-minute lifetime without refresh tokens.

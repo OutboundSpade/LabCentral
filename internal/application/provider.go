@@ -126,3 +126,22 @@ type ResourceUsage struct {
 	MemoryUsedBytes     *uint64   `json:"memoryUsedBytes,omitempty"`
 	MemoryCapacityBytes *uint64   `json:"memoryCapacityBytes,omitempty"`
 }
+
+// AccessDelivery is optional and negotiated independently of legacy access.
+type AccessDelivery interface {
+	Download(context.Context, AccessDownload) (AccessDownloaded, error)
+	Inspect(context.Context, AccessRevoke) (AccessInspection, error)
+}
+type AccessDownload struct {
+	AccessRevoke
+	DeliveryID, Token string
+}
+type AccessDownloaded struct {
+	Content             []byte
+	MediaType, Filename string
+}
+type AccessInspection struct {
+	State         string
+	EnforcedUntil time.Time
+	Closed        bool
+}

@@ -136,7 +136,7 @@ func (s *Service) CreateInstanceBatchRevisionTargetForLifetime(
 		payload, _ := json.Marshal(jobPayload{Version: jobPayloadVersion, Kind: OperationApply, InstanceID: instanceID})
 		childDigest := digestBytes("labcentral.internal.instance-batch-item/v1", []byte(requestDigest.Hex()), []byte(instanceID))
 		states = append(states, batchPlanState{
-			request: CreateInstanceRequest{
+			request: CreateInstanceRequest{WorkFence: option.WorkFence, ImageBindingIDs: option.ImageBindingIDs,
 				InstanceID: instanceID, RevisionID: revisionID, ProjectID: projectID,
 				OwnerKind: owner.Kind, OwnerID: owner.ID, CreatedBy: subjectID,
 				ProviderTargetID: targetID, ProviderOverrideJSON: validation.EffectiveOverride,

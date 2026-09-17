@@ -20,7 +20,7 @@ func Supervise(ctx context.Context, initial *Client, start func(context.Context)
 	ctx, cancel := context.WithCancel(ctx)
 	state := &supervisedState{current: initial, cancel: cancel, done: make(chan struct{}), start: start, info: proto.Clone(initial.Info).(*wire.PluginInfo), protocol: proto.Clone(initial.SelectedProtocol).(*wire.ProtocolVersion)}
 	proxy := &switchingConnection{state: state}
-	out := &Client{Provider: wire.NewProviderServiceClient(proxy), Access: wire.NewAccessServiceClient(proxy), Runtime: wire.NewPluginRuntimeServiceClient(proxy), Info: state.info, SelectedProtocol: state.protocol, supervised: state}
+	out := &Client{ImageImports: wire.NewImageImportServiceClient(proxy), Artifacts: wire.NewArtifactTransferServiceClient(proxy), Source: wire.NewSourceServiceClient(proxy), Builder: wire.NewBuilderServiceClient(proxy), Provider: wire.NewProviderServiceClient(proxy), Access: wire.NewAccessServiceClient(proxy), Runtime: wire.NewPluginRuntimeServiceClient(proxy), Info: state.info, SelectedProtocol: state.protocol, supervised: state}
 	go state.run(ctx)
 	return out
 }

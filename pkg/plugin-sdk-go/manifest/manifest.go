@@ -20,22 +20,26 @@ var identityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 const Version = "labcentral.io/plugin-manifest/v1"
 
 type Manifest struct {
-	APIVersion           string   `json:"apiVersion"`
-	ID                   string   `json:"id"`
-	Version              string   `json:"version"`
-	Executable           string   `json:"executable"`
-	SHA256               string   `json:"sha256"`
-	Categories           []string `json:"categories"`
-	ProviderKinds        []string `json:"providerKinds,omitempty"`
-	AccessKinds          []string `json:"accessKinds,omitempty"`
-	AccessMethods        []string `json:"accessMethods,omitempty"`
-	EndpointSchemas      []string `json:"endpointSchemas,omitempty"`
-	ProtocolMajor        uint32   `json:"protocolMajor"`
-	MinimumProtocolMinor uint32   `json:"minimumProtocolMinor"`
-	MaximumProtocolMinor uint32   `json:"maximumProtocolMinor"`
-	OperatingSystems     []string `json:"operatingSystems"`
-	Architectures        []string `json:"architectures"`
-	RequestedPermissions []string `json:"requestedPermissions"`
+	APIVersion           string          `json:"apiVersion"`
+	ID                   string          `json:"id"`
+	Version              string          `json:"version"`
+	Executable           string          `json:"executable"`
+	SHA256               string          `json:"sha256"`
+	Categories           []string        `json:"categories"`
+	SourceKinds          []string        `json:"sourceKinds,omitempty"`
+	BuilderKinds         []string        `json:"builderKinds,omitempty"`
+	ConfigurationSchema  json.RawMessage `json:"configurationSchema,omitempty"`
+	Browser              *BrowserPackage `json:"browser,omitempty"`
+	ProviderKinds        []string        `json:"providerKinds,omitempty"`
+	AccessKinds          []string        `json:"accessKinds,omitempty"`
+	AccessMethods        []string        `json:"accessMethods,omitempty"`
+	EndpointSchemas      []string        `json:"endpointSchemas,omitempty"`
+	ProtocolMajor        uint32          `json:"protocolMajor"`
+	MinimumProtocolMinor uint32          `json:"minimumProtocolMinor"`
+	MaximumProtocolMinor uint32          `json:"maximumProtocolMinor"`
+	OperatingSystems     []string        `json:"operatingSystems"`
+	Architectures        []string        `json:"architectures"`
+	RequestedPermissions []string        `json:"requestedPermissions"`
 }
 
 // Decode rejects duplicate keys, unknown fields, trailing values and deeply
@@ -167,11 +171,16 @@ func Load(root, path string, granted []string) (Manifest, string, error) {
 	if e = Decode(b, &m); e != nil {
 		return m, "", e
 	}
-	digest, e := hex.DecodeString(m.SHA256)
-	if e != nil || len(digest) != 32 || m.SHA256 != strings.ToLower(m.SHA256) || m.APIVersion != Version || !identityPattern.MatchString(m.ID) || !identityPattern.MatchString(m.Version) || m.ProtocolMajor != 1 || m.MinimumProtocolMinor > m.MaximumProtocolMinor || !slices.Contains(m.OperatingSystems, runtime.GOOS) || !slices.Contains(m.Architectures, runtime.GOARCH) {
+	browser := m.APIVersion == ExtensionVersion && len(m.Categories) == 1 && m.Categories[0] == "browser"
+	digestText := m.SHA256
+	if browser {
+		digestText = strings.Repeat("0", 64)
+	}
+	digest, e := hex.DecodeString(digestText)
+	if e != nil || len(digest) != 32 || m.SHA256 != strings.ToLower(m.SHA256) || (m.APIVersion != Version && m.APIVersion != ExtensionVersion) || !identityPattern.MatchString(m.ID) || !identityPattern.MatchString(m.Version) || m.ProtocolMajor != 1 || m.MinimumProtocolMinor > m.MaximumProtocolMinor || !slices.Contains(m.OperatingSystems, runtime.GOOS) || !slices.Contains(m.Architectures, runtime.GOARCH) {
 		return m, "", fmt.Errorf("plugin manifest identity or compatibility is invalid")
 	}
-	for _, list := range [][]string{m.Categories, m.ProviderKinds, m.AccessKinds, m.AccessMethods, m.EndpointSchemas, m.OperatingSystems, m.Architectures, granted} {
+	for _, list := range [][]string{m.Categories, m.SourceKinds, m.BuilderKinds, m.ProviderKinds, m.AccessKinds, m.AccessMethods, m.EndpointSchemas, m.OperatingSystems, m.Architectures, granted} {
 		if len(list) > 64 {
 			return m, "", fmt.Errorf("manifest list exceeds limit")
 		}
@@ -183,7 +192,7 @@ func Load(root, path string, granted []string) (Manifest, string, error) {
 			seen[v] = true
 		}
 	}
-	if m.Executable == "" || filepath.IsAbs(m.Executable) {
+	if !browser && (m.Executable == "" || filepath.IsAbs(m.Executable)) {
 		return m, "", fmt.Errorf("manifest executable must be relative")
 	}
 	if len(m.RequestedPermissions) > 64 || len(granted) > 64 {
@@ -195,6 +204,17 @@ func Load(root, path string, granted []string) (Manifest, string, error) {
 			return m, "", fmt.Errorf("plugin requests an invalid or ungranted permission")
 		}
 		seen[permission] = true
+	}
+	if m.APIVersion == Version && (len(m.SourceKinds) > 0 || len(m.BuilderKinds) > 0 || m.Browser != nil || len(m.ConfigurationSchema) > 0) {
+		return m, "", fmt.Errorf("new contributions require manifest v2")
+	}
+	if m.APIVersion == ExtensionVersion {
+		if err := validateExtension(m); err != nil {
+			return m, "", err
+		}
+	}
+	if browser {
+		return m, "", nil
 	}
 	executable, e := Within(root, filepath.Join(filepath.Dir(path), m.Executable))
 	if e != nil {

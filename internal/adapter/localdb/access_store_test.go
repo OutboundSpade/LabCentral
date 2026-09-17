@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -53,14 +52,14 @@ func TestPostgreSQLContainerVMAccessSessionConformance(t *testing.T) {
 	runAccessSessionConformance(t, store, true)
 }
 
-func TestProcessContainerCannotOpenVMAccessSession(t *testing.T) {
+func TestReadyProcessContainerCanOpenAuthorizedAccessSession(t *testing.T) {
 	store := newSQLiteAccessContractStore(t)
 	setupQuotaTestTenancy(t, store)
 	instance, digest := createReadyAccessTestInstance(t, store, "instance.container")
 	setAccessTestContainer(t, store, instance.ID, `{"spec":{"isolation":"process","realizationPreference":["native"]}}`)
 	_, err := store.BeginAccessSession(context.Background(), accessBeginTestRequest(instance, digest, "access.container", "container"))
-	if !errors.Is(err, application.ErrAuthorityChanged) {
-		t.Fatalf("process container access: %v", err)
+	if err != nil {
+		t.Fatalf("authorized process container access: %v", err)
 	}
 }
 
@@ -507,5 +506,64 @@ func assertAccessGovernanceRedacted(t *testing.T, store *Store, canaries ...stri
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSQLiteOneTimeCredentialClaim(t *testing.T) {
+	runCredentialClaim(t, newSQLiteAccessContractStore(t))
+}
+func TestPostgreSQLOneTimeCredentialClaim(t *testing.T) {
+	s := newPostgreSQLQuotaTestStore(t, "credential_delivery")
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	runCredentialClaim(t, s)
+}
+func runCredentialClaim(t *testing.T, store *Store) {
+	ctx := context.Background()
+	setupQuotaTestTenancy(t, store)
+	instance, digest := createReadyAccessTestInstance(t, store, "instance.download")
+	if _, err := store.db.ExecContext(ctx, store.bind("UPDATE labcentral_local_resources SET kind=? WHERE instance_id=?"), domain.ResourceNetwork, instance.ID); err != nil {
+		t.Fatal(err)
+	}
+	begin := accessBeginTestRequest(instance, digest, "access.network", "download")
+	begin.Method = "fixture.network"
+	begin.RecoverUncertainIssuance = true
+	pending, err := store.BeginAccessSession(ctx, begin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pending.ClosureRequired {
+		t.Fatal("uncertain issuance recovery was not persisted")
+	}
+	token := accessTestHash("download-token")
+	ready := finalizeAccessTestSession(t, store, pending, digest, token, "download")
+	if _, err := store.ClaimAccessDelivery(ctx, ready.ID, "user.other", []application.KeyedTokenHash{token}, governanceIDs("wrong-subject")); err == nil {
+		t.Fatal("cross-subject download permitted")
+	}
+	start := make(chan struct{})
+	results := make(chan error, 8)
+	for n := range 8 {
+		go func(n int) {
+			<-start
+			_, err := store.ClaimAccessDelivery(ctx, ready.ID, ready.SubjectID, []application.KeyedTokenHash{token}, governanceIDs(fmt.Sprintf("delivery-%d", n)))
+			results <- err
+		}(n)
+	}
+	close(start)
+	winners := 0
+	for range 8 {
+		if <-results == nil {
+			winners++
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("delivery winners=%d", winners)
+	}
+	// Claiming delivery cannot itself authorize traffic: only the adapter's
+	// authenticated callback may exchange the launch credential for a lease.
+	after, err := store.GetAccessSession(ctx, ready.ID)
+	if err != nil || after.State != domain.AccessSessionReady || !after.LeaseExpiresAt.IsZero() {
+		t.Fatalf("delivery activated traffic: %#v %v", after, err)
 	}
 }

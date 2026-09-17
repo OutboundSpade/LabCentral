@@ -54,6 +54,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/access-sessions/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post access sessions by ID download */
+        post: operations["post-access-sessions-by-id-download"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-sessions/{id}/presentation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get access sessions by ID presentation */
+        get: operations["get-access-sessions-by-id-presentation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get admin extensions */
+        get: operations["get-admin-extensions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/gateway-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get admin gateway clients */
+        get: operations["get-admin-gateway-clients"];
+        put?: never;
+        /** Post admin gateway clients */
+        post: operations["post-admin-gateway-clients"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/gateway-clients/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post admin gateway clients by ID status */
+        post: operations["post-admin-gateway-clients-by-id-status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/lab-instances/{id}/usage": {
         parameters: {
             query?: never;
@@ -255,6 +341,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post builds */
+        post: operations["post-builds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deployment-preparations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post deployment preparations */
+        post: operations["post-deployment-preparations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post device approve */
+        post: operations["post-device-approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device/authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["request-device-authorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post device inspect */
+        post: operations["post-device-inspect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["poll-device-token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -283,6 +469,210 @@ export interface paths {
         get: operations["get-examples-docker-laptop"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/extension-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get extension operations */
+        get: operations["get-extension-operations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/extension-operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get extension operations by ID */
+        get: operations["get-extension-operations-by-id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/extension-operations/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post extension operations by ID cancel */
+        post: operations["post-extension-operations-by-id-cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/extensions/browser": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get extensions browser */
+        get: operations["get-extensions-browser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/access-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post gateway access sessions */
+        post: operations["post-gateway-access-sessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/deployments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post gateway deployments */
+        post: operations["post-gateway-deployments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get gateway operations by ID */
+        get: operations["get-gateway-operations-by-id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get gateway templates */
+        get: operations["get-gateway-templates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/templates/{id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get gateway templates by ID revisions */
+        get: operations["get-gateway-templates-by-id-revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/image-bindings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get image bindings by ID */
+        get: operations["get-image-bindings-by-id"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/image-bindings/{id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post image bindings by ID policy */
+        post: operations["post-image-bindings-by-id-policy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/image-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post image imports */
+        post: operations["post-image-imports"];
         delete?: never;
         options?: never;
         head?: never;
@@ -423,6 +813,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab-instances/{id}/topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get lab instances by ID topology */
+        get: operations["get-lab-instances-by-id-topology"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lab-plans": {
         parameters: {
             query?: never;
@@ -470,6 +877,23 @@ export interface paths {
         /** Put lab templates by ID */
         put: operations["put-lab-templates-by-id"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-templates/{id}/bundle-revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post lab templates by ID bundle revisions */
+        post: operations["post-lab-templates-by-id-bundle-revisions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -925,6 +1349,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/session/gateway-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get session gateway grants */
+        get: operations["get-session-gateway-grants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session/gateway-grants/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post session gateway grants by ID revoke */
+        post: operations["post-session-gateway-grants-by-id-revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/source-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get source bindings */
+        get: operations["get-source-bindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/source-resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post source resolutions */
+        post: operations["post-source-resolutions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/teams": {
         parameters: {
             query?: never;
@@ -1041,6 +1533,35 @@ export interface components {
             readonly $schema?: string;
             operation: components["schemas"]["OperationDTO"];
         };
+        AccessDescriptor: {
+            endpointSchemas: components["schemas"]["AccessEndpointSchema"][] | null;
+            /** Format: int32 */
+            maximumOfflineSeconds: number;
+            method: string;
+            presentation: string;
+            renderer?: string;
+            targetKinds: string[] | null;
+            title: string;
+        };
+        AccessEndpointSchema: {
+            /** Format: int32 */
+            major: number;
+            /** Format: int32 */
+            minor: number;
+            name: string;
+        };
+        AccessPresentation: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/AccessPresentation.json
+             */
+            readonly $schema?: string;
+            method: string;
+            presentation: string;
+            renderer?: string;
+            streamPath?: string;
+        };
         AccessSessionDTO: {
             /**
              * Format: uri
@@ -1102,6 +1623,90 @@ export interface components {
             token: string;
             tokenType: string;
         };
+        BrowserExtensionDTO: {
+            id: string;
+            permissions: string[] | null;
+            pluginInstance: string;
+            slot: string;
+            title: string;
+            url: string;
+        };
+        BrowserExtensionListBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/BrowserExtensionListBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["BrowserExtensionDTO"][] | null;
+        };
+        BuildInput: {
+            name: string;
+            value: string;
+        };
+        BuildInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/BuildInputBody.json
+             */
+            readonly $schema?: string;
+            projectId: string;
+            recipeId: string;
+            revisionId: string;
+        };
+        BuildLimits: {
+            /** Format: int32 */
+            cpuCount: number;
+            egress: string[] | null;
+            /** Format: int64 */
+            inputBytes: number;
+            /** Format: int64 */
+            memoryBytes: number;
+            /** Format: int64 */
+            outputBytes: number;
+            /** Format: int32 */
+            timeoutSeconds: number;
+        };
+        BuildRecipe: {
+            architecture: string;
+            baseImageDigests: string[] | null;
+            builder: string;
+            configurationJSON: string;
+            context: string[] | null;
+            id: string;
+            inputs?: components["schemas"]["BuildInput"][] | null;
+            schema: string;
+        };
+        BuildWork: {
+            contextArtifact: string;
+            contextDigest: string;
+            /** Format: int64 */
+            contextSize: number;
+            limits: components["schemas"]["BuildLimits"];
+            recipe: components["schemas"]["BuildRecipe"];
+            recipeDigest: string;
+            revisionId: string;
+        };
+        ClientOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ClientOutputBody.json
+             */
+            readonly $schema?: string;
+            client: components["schemas"]["GatewayClient"];
+            clientSecret: string;
+        };
+        CodeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/CodeInputBody.json
+             */
+            readonly $schema?: string;
+            userCode: string;
+        };
         Cookie: {
             Domain: string;
             /** Format: date-time */
@@ -1134,8 +1739,7 @@ export interface components {
              */
             durationSeconds: number;
             instanceId: string;
-            /** @enum {string} */
-            method: "vnc" | "ssh";
+            method: string;
             resourceId: string;
         };
         CreateAccessOutputBody: {
@@ -1179,6 +1783,40 @@ export interface components {
              * @example /api/v1/schemas/DestroyInputBody.json
              */
             readonly $schema?: string;
+        };
+        DeviceResponseBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/DeviceResponseBody.json
+             */
+            readonly $schema?: string;
+            device_code?: string;
+            error?: string;
+            /** Format: int64 */
+            expires_in?: number;
+            /** Format: int64 */
+            interval?: number;
+            user_code?: string;
+            verification_uri?: string;
+        };
+        DeviceTokenBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/DeviceTokenBody.json
+             */
+            readonly $schema?: string;
+            access_token?: string;
+            error?: string;
+            /** Format: int64 */
+            expires_in?: number;
+            token_type?: string;
+        };
+        EnumValue: {
+            /** Format: int64 */
+            Integer: number | null;
+            String: string | null;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -1254,6 +1892,137 @@ export interface components {
             /** Format: int64 */
             ttlSeconds: number;
         };
+        ExtensionBindingDTO: {
+            hasCredentials: boolean;
+            id: string;
+            projectIds: string[] | null;
+        };
+        ExtensionInventoryDTO: {
+            available: boolean;
+            bindings: components["schemas"]["ExtensionBindingDTO"][] | null;
+            category: string;
+            configurationSchema?: unknown;
+            instanceId: string;
+            kind?: string;
+            methods: string[] | null;
+            permissions: string[] | null;
+            pluginId: string;
+            /** Format: int32 */
+            protocolMajor: number;
+            /** Format: int32 */
+            protocolMinor: number;
+            targetIds: string[] | null;
+            version: string;
+        };
+        ExtensionInventoryListBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ExtensionInventoryListBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ExtensionInventoryDTO"][] | null;
+        };
+        ExtensionWork: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ExtensionWork.json
+             */
+            readonly $schema?: string;
+            actorId: string;
+            cancelRequested: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            failureCode?: string;
+            id: string;
+            invocationId: string;
+            projectId: string;
+            request: components["schemas"]["ExtensionWorkRequest"];
+            result?: unknown;
+            state: string;
+        };
+        ExtensionWorkListBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ExtensionWorkListBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ExtensionWork"][] | null;
+        };
+        ExtensionWorkRequest: {
+            bindingId: string;
+            build?: components["schemas"]["BuildWork"];
+            configurationDigest: string;
+            dedupKey?: string;
+            import?: components["schemas"]["ImportWork"];
+            kind: string;
+            pluginDigest: string;
+            pluginInstance: string;
+            preparation?: components["schemas"]["PreparationWork"];
+            reference?: string;
+            templateId?: string;
+            /** Format: int32 */
+            version: number;
+        };
+        GatewayAccessOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/GatewayAccessOutputBody.json
+             */
+            readonly $schema?: string;
+            oneTimeToken: string;
+            presentation: components["schemas"]["AccessPresentation"];
+            session: components["schemas"]["AccessSessionDTO"];
+        };
+        GatewayClient: {
+            disabled: boolean;
+            id: string;
+            name: string;
+        };
+        GatewayDevice: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/GatewayDevice.json
+             */
+            readonly $schema?: string;
+            clientId: string;
+            clientName: string;
+            /** Format: date-time */
+            expiresAt: string;
+            id: string;
+            scope: components["schemas"]["GatewayScope"];
+            state: string;
+        };
+        GatewayGrant: {
+            clientId: string;
+            clientName: string;
+            /** Format: date-time */
+            expiresAt: string;
+            id: string;
+            revoked: boolean;
+            scope: components["schemas"]["GatewayScope"];
+            subjectId: string;
+        };
+        GatewayScope: {
+            actions: string[] | null;
+            instanceIds: string[] | null;
+            projectId: string;
+            targetIds: string[] | null;
+            templateIds: string[] | null;
+        };
+        "Get-admin-gateway-clientsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Get-admin-gateway-clientsResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["GatewayClient"][] | null;
+        };
         "Get-audit-recordsResponse": {
             /**
              * Format: uri
@@ -1282,6 +2051,24 @@ export interface components {
              */
             readonly $schema?: string;
             source: string;
+        };
+        "Get-gateway-templates-by-id-revisionsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Get-gateway-templates-by-id-revisionsResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["TemplateRevisionDTO"][] | null;
+        };
+        "Get-gateway-templatesResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Get-gateway-templatesResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["LabTemplateDTO"][] | null;
         };
         "Get-lab-instancesResponse": {
             /**
@@ -1331,6 +2118,68 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["QuotaUsageDTO"][] | null;
             scope: components["schemas"]["QuotaScope"];
+        };
+        "Get-session-gateway-grantsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Get-session-gateway-grantsResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["GatewayGrant"][] | null;
+        };
+        "Get-source-bindingsResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Get-source-bindingsResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["SourceBindingView"][] | null;
+        };
+        ImageBinding: {
+            architecture: string;
+            artifactDigest: string;
+            imageRef: string;
+            providerImageId: string;
+            targetConfigurationDigest: string;
+        };
+        ImagePolicyInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ImagePolicyInputBody.json
+             */
+            readonly $schema?: string;
+            approved: boolean;
+            projectId: string;
+            retired: boolean;
+        };
+        ImportInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ImportInputBody.json
+             */
+            readonly $schema?: string;
+            buildId: string;
+            projectId: string;
+            targetId: string;
+        };
+        ImportWork: {
+            architecture: string;
+            buildId: string;
+            targetFingerprint: string;
+            targetId: string;
+        };
+        InputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/InputBody.json
+             */
+            readonly $schema?: string;
+            token: string;
         };
         InputValue: {
             boolean?: boolean;
@@ -1450,6 +2299,15 @@ export interface components {
             resourceVersion: number;
             /** Format: date-time */
             updatedAt: string;
+        };
+        InstanceLifetimeRequest: {
+            persistent?: boolean;
+            /** Format: int64 */
+            ttlSeconds?: number;
+        };
+        InstanceOwner: {
+            ID: string;
+            Kind: string;
         };
         InstanceUsage: {
             /**
@@ -1674,6 +2532,45 @@ export interface components {
             resources: components["schemas"]["ResourcePlan"][] | null;
             warnings: components["schemas"]["Issue"][] | null;
         };
+        "Post-admin-gateway-clients-by-id-statusRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-admin-gateway-clients-by-id-statusRequest.json
+             */
+            readonly $schema?: string;
+            disabled: boolean;
+        };
+        "Post-admin-gateway-clientsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-admin-gateway-clientsRequest.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
+        "Post-device-approveRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-device-approveRequest.json
+             */
+            readonly $schema?: string;
+            approve: boolean;
+            userCode: string;
+        };
+        "Post-gateway-access-sessionsRequest": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-gateway-access-sessionsRequest.json
+             */
+            readonly $schema?: string;
+            instanceId: string;
+            method: string;
+            resourceId: string;
+        };
         "Post-lab-authoring-documentsRequest": {
             /**
              * Format: uri
@@ -1691,6 +2588,24 @@ export interface components {
              */
             readonly $schema?: string;
             token: string;
+        };
+        PreparationWork: {
+            acknowledged: boolean;
+            inputs: components["schemas"]["TypedInput"][] | null;
+            lifetime: components["schemas"]["InstanceLifetimeRequest"];
+            owners?: components["schemas"]["InstanceOwner"][] | null;
+            revisionId: string;
+            targetId: string;
+        };
+        PrepareInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PrepareInputBody.json
+             */
+            readonly $schema?: string;
+            preparation: components["schemas"]["PreparationWork"];
+            projectId: string;
         };
         ProjectChoiceDTO: {
             allowedActions: string[] | null;
@@ -1759,6 +2674,15 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["ProviderTargetDTO"][] | null;
         };
+        PublishBundleInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PublishBundleInputBody.json
+             */
+            readonly $schema?: string;
+            archive: string;
+        };
         PublishRevisionInputBody: {
             /**
              * Format: uri
@@ -1826,6 +2750,7 @@ export interface components {
             updatedAt: string;
         };
         RecordActor: {
+            gatewayClientId?: string;
             id?: string;
             kind: string;
         };
@@ -1837,6 +2762,18 @@ export interface components {
         RecordScope: {
             organizationId?: string;
             projectId?: string;
+        };
+        ResolveInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ResolveInputBody.json
+             */
+            readonly $schema?: string;
+            binding: string;
+            projectId: string;
+            reference: string;
+            templateId: string;
         };
         ResourceDTO: {
             errorCode?: string;
@@ -1894,6 +2831,11 @@ export interface components {
             /** Format: date-time */
             validUntil?: string;
         };
+        SecretRef: {
+            Key: string;
+            Name: string;
+            Source: string;
+        };
         ServerInfo: {
             /**
              * Format: uri
@@ -1921,6 +2863,26 @@ export interface components {
             displayName: string;
             roles: string[] | null;
             subjectId: string;
+        };
+        SourceBindingView: {
+            available: boolean;
+            binding: string;
+        };
+        StoredImageBinding: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/StoredImageBinding.json
+             */
+            readonly $schema?: string;
+            approved: boolean;
+            binding: components["schemas"]["ImageBinding"];
+            id: string;
+            importOperationId: string;
+            projectId: string;
+            providerDigest: string;
+            retired: boolean;
+            targetId: string;
         };
         TargetGrantDirectoryDTO: {
             /**
@@ -2008,6 +2970,44 @@ export interface components {
             /** Format: int64 */
             revisionNumber: number;
             templateId: string;
+        };
+        Topology: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Topology.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            generation: number;
+            instanceId: string;
+            resources: components["schemas"]["TopologyResource"][] | null;
+        };
+        TopologyAttachment: {
+            ipv4?: string;
+            ipv6?: string;
+            mac?: string;
+            networkRef: string;
+        };
+        TopologyResource: {
+            actions: components["schemas"]["AccessDescriptor"][] | null;
+            id: string;
+            interfaces: components["schemas"]["TopologyAttachment"][] | null;
+            kind: string;
+            phase: string;
+        };
+        TypedInput: {
+            Boolean: boolean;
+            Enum: components["schemas"]["EnumValue"];
+            /** Format: int64 */
+            Integer: number;
+            Kind: string;
+            Name: string;
+            /** Format: double */
+            Number: number;
+            SecretRef: components["schemas"]["SecretRef"];
+            String: string;
+            StringList: string[] | null;
         };
         UpdateTemplateInputBody: {
             /**
@@ -2186,6 +3186,201 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AccessSessionDTO"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-access-sessions-by-id-download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    "Content-Disposition"?: string;
+                    "Content-Type"?: string;
+                    "Referrer-Policy"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-access-sessions-by-id-presentation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessPresentation"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-admin-extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionInventoryListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-admin-gateway-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-admin-gateway-clientsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-admin-gateway-clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Post-admin-gateway-clientsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-admin-gateway-clients-by-id-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Post-admin-gateway-clients-by-id-statusRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {
@@ -2635,6 +3830,226 @@ export interface operations {
             };
         };
     };
+    "post-builds": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuildInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-deployment-preparations": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepareInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-device-approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Post-device-approveRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "request-device-authorization": {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "Content-Type"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+                "application/x-www-form-urlencoded": {
+                    client_id?: string;
+                    scope?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    Pragma?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceResponseBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-device-inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayDevice"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "poll-device-token": {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string;
+                "Content-Type"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+                "application/x-www-form-urlencoded": {
+                    client_id?: string;
+                    device_code?: string;
+                    grant_type?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    Pragma?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceTokenBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-events": {
         parameters: {
             query?: {
@@ -2693,6 +4108,397 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Get-examples-docker-laptopResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-extension-operations": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWorkListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-extension-operations-by-id": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-extension-operations-by-id-cancel": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-extensions-browser": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserExtensionListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-gateway-access-sessions": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Post-gateway-access-sessionsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayAccessOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-gateway-deployments": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-gateway-operations-by-id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-gateway-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-gateway-templatesResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-gateway-templates-by-id-revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-gateway-templates-by-id-revisionsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-image-bindings-by-id": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredImageBinding"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-image-bindings-by-id-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagePolicyInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredImageBinding"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-image-imports": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
                 };
             };
             /** @description Error */
@@ -3009,6 +4815,37 @@ export interface operations {
             };
         };
     };
+    "get-lab-instances-by-id-topology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Topology"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "post-lab-plans": {
         parameters: {
             query?: never;
@@ -3173,6 +5010,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LabTemplateDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-lab-templates-by-id-bundle-revisions": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishBundleInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateRevisionDTO"];
                 };
             };
             /** @description Error */
@@ -4323,6 +6199,131 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-session-gateway-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-session-gateway-grantsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-session-gateway-grants-by-id-revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-source-bindings": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-source-bindingsResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-source-resolutions": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
                 };
             };
             /** @description Error */

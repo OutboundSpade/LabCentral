@@ -413,7 +413,7 @@ func newGovernanceHTTPFixture(t *testing.T) *governanceHTTPFixture {
 	server, err := New(service, []byte("example"), static, Options{
 		DefaultProviderTargetID: string(controlplane.LocalDockerTarget),
 		Authentication: AuthenticationOptions{
-			Mode: AuthModeLocal, Manager: manager, Repository: database, Authorizer: evaluator,
+			Mode: AuthModeLocal, Manager: manager, Repository: database, Authorizer: evaluator, TokenHasher: keyring,
 			PublicOrigin: "https://lab.example", SecureCookies: true,
 		},
 	})

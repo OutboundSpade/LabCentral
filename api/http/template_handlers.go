@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"math"
 	"time"
 
@@ -209,6 +210,32 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		return &struct{ Body TemplateRevisionDTO }{Body: templateRevisionDTO(revision)}, nil
 	})
 
+	type publishBundleInput struct {
+		ID             string `path:"id" maxLength:"128"`
+		ProjectID      string `query:"projectId" required:"true" maxLength:"128"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		Body           struct {
+			Archive []byte `json:"archive"`
+		}
+	}
+	huma.Post(api, "/lab-templates/{id}/bundle-revisions", func(ctx context.Context, input *publishBundleInput) (*struct{ Body TemplateRevisionDTO }, error) {
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRevisionPublish)
+		if err != nil {
+			return nil, err
+		}
+		actor, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication required")
+		}
+		if !labbundle.Archive(input.Body.Archive) {
+			return nil, huma.Error400BadRequest("Expected gzip tar bundle")
+		}
+		revision, err := service.PublishTemplateRevision(ctx, actor.user.ID, template.ID, input.Body.Archive, input.IdempotencyKey)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &struct{ Body TemplateRevisionDTO }{Body: templateRevisionDTO(revision)}, nil
+	})
 	type revisionInput struct {
 		ID         string `path:"id" maxLength:"128"`
 		RevisionID string `path:"revisionId" maxLength:"128"`
@@ -226,6 +253,10 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		actor, _ := requestPrincipal(ctx)
 		revision, source, err := service.OpenTemplateRevisionForProject(ctx, actor.user.ID, template.ProjectID, id)
 		if err != nil || revision.TemplateID != template.ID {
+			return nil, huma.Error404NotFound("Revision content is unavailable")
+		}
+		source, _, err = labbundle.Source(source)
+		if err != nil {
 			return nil, huma.Error404NotFound("Revision content is unavailable")
 		}
 		var representation struct {

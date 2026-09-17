@@ -56,3 +56,36 @@ func (a *Access) Revoke(ctx context.Context, r app.AccessRevoke) (app.AccessRevo
 	}
 	return app.AccessRevoked{Closed: v.GetActiveConnectionsClosed(), Error: issue(v.GetError())}, nil
 }
+
+func AccessDescriptors(values []*wire.AccessDescriptor) []domain.AccessDescriptor {
+	result := make([]domain.AccessDescriptor, 0, len(values))
+	for _, v := range values {
+		schemas := make([]domain.AccessEndpointSchema, 0, len(v.GetEndpointSchemas()))
+		for _, schema := range v.GetEndpointSchemas() {
+			schemas = append(schemas, domain.AccessEndpointSchema{Name: schema.GetName(), Major: schema.GetMajor(), Minor: schema.GetMinor()})
+		}
+		result = append(result, domain.AccessDescriptor{EndpointSchemas: schemas, Method: v.GetMethod(), Title: v.GetTitle(), TargetKinds: append([]string(nil), v.GetTargetKinds()...), Presentation: v.GetPresentation(), MaximumOfflineSeconds: v.GetMaximumOfflineSeconds(), Renderer: v.GetRenderer()})
+	}
+	return result
+}
+
+func (a *Access) Download(ctx context.Context, r app.AccessDownload) (app.AccessDownloaded, error) {
+	v, err := a.Client.DownloadAccess(ctx, &wire.DownloadAccessRequest{Context: call(r.Call), AccessSessionId: r.SessionID, OpaqueAccessState: r.State, DeliveryId: r.DeliveryID, OneTimeToken: r.Token})
+	if err != nil {
+		return app.AccessDownloaded{}, err
+	}
+	if v == nil || v.GetError() != nil {
+		return app.AccessDownloaded{}, fmt.Errorf("access delivery failed")
+	}
+	return app.AccessDownloaded{Content: v.GetContent(), MediaType: v.GetMediaType(), Filename: v.GetFilename()}, nil
+}
+func (a *Access) Inspect(ctx context.Context, r app.AccessRevoke) (app.AccessInspection, error) {
+	v, err := a.Client.InspectAccess(ctx, &wire.InspectAccessRequest{Context: call(r.Call), AccessSessionId: r.SessionID, OpaqueAccessState: r.State})
+	if err != nil {
+		return app.AccessInspection{}, err
+	}
+	if v == nil || v.GetError() != nil || v.GetEnforcedUntil() == nil || !v.GetEnforcedUntil().IsValid() {
+		return app.AccessInspection{}, fmt.Errorf("invalid access enforcement status")
+	}
+	return app.AccessInspection{State: v.GetState(), EnforcedUntil: v.GetEnforcedUntil().AsTime(), Closed: v.GetActiveConnectionsClosed()}, nil
+}

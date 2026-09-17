@@ -147,6 +147,7 @@ type TemplateRevisionPage struct {
 }
 
 type PublishTemplateRevisionRequest struct {
+	WorkFence          *Fence
 	RepresentationJSON string
 	GovernanceRecordIDs
 	ID               domain.RevisionID
@@ -249,6 +250,8 @@ type ResourceSeed struct {
 }
 
 type CreateInstanceRequest struct {
+	WorkFence            *Fence
+	ImageBindingIDs      []string
 	InstanceID           domain.InstanceID
 	RevisionID           domain.RevisionID
 	ProjectID            domain.ProjectID
@@ -350,6 +353,8 @@ type AccessSessionRecord struct {
 }
 
 type BeginAccessSessionRequest struct {
+	GatewayGrantID           string
+	RecoverUncertainIssuance bool
 	GovernanceRecordIDs
 	ID                   domain.AccessSessionID
 	SubjectID            domain.UserID

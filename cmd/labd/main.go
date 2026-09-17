@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -54,6 +56,8 @@ const (
 )
 
 type config struct {
+	extensionAssetOrigin         string
+	extensionAssetListen         string
 	providerConcurrency          string
 	installationFile             string
 	listen                       string
@@ -270,9 +274,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		}
 		targetBindings = append(targetBindings, installed...)
 	}
-	if len(targetBindings) == 0 {
-		return fmt.Errorf("at least one provider target must be configured")
-	}
+
 	if err := configureProviderConcurrency(targetBindings, configuration.providerConcurrency); err != nil {
 		return err
 	}
@@ -280,7 +282,10 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err != nil {
 		return fmt.Errorf("construct provider target registry: %w", err)
 	}
-	defaultTargetID := string(targetBindings[0].ID)
+	defaultTargetID := ""
+	if len(targetBindings) > 0 {
+		defaultTargetID = string(targetBindings[0].ID)
+	}
 	if dockerPlugin != nil {
 		defaultTargetID = string(controlplane.LocalDockerTarget)
 	}
@@ -294,9 +299,30 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err != nil {
 		return err
 	}
+	if configuration.authMode == "none" {
+		authenticationOptions.Authorizer, err = authorization.NewLocal(store, targets.IDs()...)
+		if err != nil {
+			return err
+		}
+	}
+	control.SetOperationsAuthorizer(authenticationOptions.Authorizer)
 	if err := control.SetArtifactStore(artifacts); err != nil {
 		return err
 	}
+	extensions, err := loadInstalledExtensions(ctx, configuration, runtimeParent, control)
+	if err != nil {
+		return err
+	}
+	for _, client := range extensions.Clients {
+		defer client.Close()
+	}
+	if err := configureBuilderExtensions(control, extensions); err != nil {
+		return err
+	}
+	if err := configureSourceExtensions(control, extensions); err != nil {
+		return err
+	}
+	accessBindings := extensions.Access
 	var accessPlugin *pluginhost.Client
 	if pluginEnabled(configuration.accessPlugin, configuration.accessPluginRuntimeDir) {
 		pluginConfig := pluginhost.Config{
@@ -331,12 +357,16 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 			return pluginhost.Launch(restartContext, accessStartConfig)
 		})
 		defer accessPlugin.Close()
-		accessRegistry, err := controlplane.NewAccessRegistry([]controlplane.AccessBinding{{
-			PluginID: accessPlugin.Info.GetPluginId(), PluginVersion: accessPlugin.Info.GetPluginVersion(), PluginInstance: configuration.accessPluginInstanceID,
+		accessBindings = append(accessBindings, controlplane.AccessBinding{
+			StreamBasePath: "/access-proxy",
+			PluginID:       accessPlugin.Info.GetPluginId(), PluginVersion: accessPlugin.Info.GetPluginVersion(), PluginInstance: configuration.accessPluginInstanceID,
 			AccessKind: "browser-vnc", Audience: configuration.publicOrigin, Access: providergrpc.NewAccess(accessPlugin.Access),
 			ProtocolMajor: accessPlugin.SelectedProtocol.GetMajor(), ProtocolMinor: accessPlugin.SelectedProtocol.GetMinor(),
 			Features: accessPlugin.Info.GetFeatures(), Methods: accessPlugin.Info.GetSupportedAccessMethods(), EndpointSchemas: providergrpc.Schemas(accessPlugin.Info.GetAcceptedAccessEndpointSchemas()),
-		}})
+		})
+	}
+	if len(accessBindings) > 0 {
+		accessRegistry, err := controlplane.NewAccessRegistry(accessBindings)
 		if err != nil {
 			return fmt.Errorf("construct access plugin registry: %w", err)
 		}
@@ -407,8 +437,16 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	defer cancelWorker()
 	workerDone := make(chan error, 1)
 	go func() { workerDone <- worker.Run(workerContext) }()
+	go control.RunBuildWork(workerContext, configuration.replicaID+"-build", func(err error) { logger.Error("build operation requires recovery") })
+	go control.RunSourceWork(workerContext, configuration.replicaID+"-source", func(err error) { logger.Error("source operation requires recovery") })
 
+	browserViews, inventory, stopAssets, err := startExtensionAssets(ctx, configuration, extensions)
+	if err != nil {
+		return err
+	}
+	defer stopAssets()
 	apiServer, err := httpapi.New(control, dockerlaptop.LabYAML(), webassets.FS(), httpapi.Options{
+		BrowserExtensions: browserViews, ExtensionInventory: inventory, AssetOrigin: configuration.extensionAssetOrigin,
 		ServerVersion: version, NoAuthWarning: warning, DefaultProviderTargetID: defaultTargetID, ProviderExamples: providerExamples, Authentication: authenticationOptions,
 	})
 	if err != nil {
@@ -417,6 +455,11 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	handler := apiServer.Handler
 	if accessPlugin != nil {
 		handler = withAccessProxy(handler, configuration.accessProxyListen)
+	}
+	for _, backend := range extensions.Backends {
+		if backend.Entry.StreamEndpoint != "" {
+			handler = withExtensionStreamProxy(handler, backend.Entry)
+		}
 	}
 	handler = telemetry.InstrumentHTTP(handler)
 	server := &http.Server{
@@ -653,6 +696,8 @@ func parseFlags() config {
 	flag.StringVar(&result.accessPluginInstanceID, "access-plugin-instance-id", "plugin.local-novnc", "configured access plugin instance identity")
 	flag.StringVar(&result.accessProxyListen, "access-proxy-listen", "127.0.0.1:8091", "private loopback address for the access plugin HTTP bridge")
 	flag.StringVar(&result.authMode, "auth-mode", "", "required authentication mode: none, local, or oidc")
+	flag.StringVar(&result.extensionAssetOrigin, "extension-asset-origin", "", "separate public origin for verified browser extension assets")
+	flag.StringVar(&result.extensionAssetListen, "extension-asset-listen", "127.0.0.1:8082", "loopback asset listener behind the asset-origin HTTPS proxy")
 	flag.StringVar(&result.publicOrigin, "public-origin", "", "exact public HTTPS origin, for example https://labs.example.edu")
 	flag.StringVar(&result.tlsCertificateFile, "tls-certificate-file", "", "protected PEM certificate chain for direct HTTPS")
 	flag.StringVar(&result.tlsKeyFile, "tls-key-file", "", "owner-only PEM private key for direct HTTPS")
@@ -864,7 +909,20 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 		return httpapi.AuthenticationOptions{}, err
 	}
 	if configuration.authMode == httpapi.AuthModeNone {
-		return httpapi.AuthenticationOptions{Mode: httpapi.AuthModeNone}, nil
+		evaluator, err := authorization.NewLocal(store)
+		if err != nil {
+			return httpapi.AuthenticationOptions{}, err
+		}
+		material := make([]byte, 32)
+		if _, err = rand.Read(material); err != nil {
+			return httpapi.AuthenticationOptions{}, err
+		}
+		keyring, err := authentication.ParseKeyring([]byte(`{"schemaVersion":"labcentral.session-keys/v1","currentKeyId":"development","keys":[{"id":"development","material":"` + base64.RawURLEncoding.EncodeToString(material) + `"}]}`))
+		clear(material)
+		if err != nil {
+			return httpapi.AuthenticationOptions{}, err
+		}
+		return httpapi.AuthenticationOptions{Mode: httpapi.AuthModeNone, Authorizer: evaluator, TokenHasher: keyring}, nil
 	}
 	keyringBytes, err := readConfiguredSecretFile(configuration, configuration.sessionKeyringFile, 64<<10)
 	if err != nil {

@@ -28,7 +28,9 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			UIFeatures: uiFeatures(service),
 		}}, nil
 	})
+	registerExtensions(api, security, options)
 	registerAuthentication(api, security)
+	registerGateway(api, service, security)
 	registerAdministration(api, security)
 
 	type providerTargetsInput struct {
@@ -162,6 +164,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	})
 
 	registerTemplates(api, service, security)
+	registerSourceOperations(api, service, security)
 	registerAuthoring(api, service, security)
 	registerAuditAndEvents(api, service, security)
 	registerQuotas(api, service, security)

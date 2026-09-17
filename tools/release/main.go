@@ -309,6 +309,28 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 	}
+	// Ship the independently usable SDK/protocol surface and author examples.
+	for _, directory := range []string{"pkg/plugin-sdk-go", "pkg/plugin-sdk-browser", "pkg/labbundle", "api/plugin", "examples/external-source", "examples/external-builder", "examples/external-lifecycle-provider", "examples/external-access", "examples/external-browser", "examples/external-gateway"} {
+		if err := filepath.WalkDir(directory, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if !entry.Type().IsRegular() {
+				return fmt.Errorf("nonregular SDK file")
+			}
+			return copyReleaseFile(path, filepath.Join(root, path))
+		}); err != nil {
+			return err
+		}
+	}
+	for _, path := range []string{"go.mod", "go.sum", "docs/plugins/README.md", "docs/plugins/extensions.md", "docs/design/extensions.md", "docs/operations/container-vm-runtime.md", "design/contracts/extension-package.schema.json", "design/contracts/extension-manifest.schema.json", "design/contracts/extension-installation.schema.json"} {
+		if err := copyReleaseFile(path, filepath.Join(root, path)); err != nil {
+			return err
+		}
+	}
 	files, err := inventory(root)
 	if err != nil {
 		return err

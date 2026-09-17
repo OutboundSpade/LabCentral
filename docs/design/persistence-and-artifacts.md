@@ -61,3 +61,7 @@ requires every replica/plugin to stop; online backup is not claimed. The
 operator procedure is [`../operations/recovery.md`](../operations/recovery.md).
 
 Migrations are numbered and monotonic. Multi-replica rollouts use expand → dual-read/write if needed → backfill → contract after the compatibility window. Destructive schema changes and irreversible provider-state migrations require backup/restore rehearsal and ADR.
+
+## Independent extension foundations
+
+The additive gzip-tar bundle publication path retains the complete verified archive in the artifact store and renders its verified entrypoint. Existing single-document artifacts remain unchanged. See [extensions](extensions.md) for limits and compatibility. Durable source/build/import/preparation records and their GC references remain pending under ADR-0025.

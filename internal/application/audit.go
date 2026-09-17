@@ -130,8 +130,9 @@ type RecordScope struct {
 }
 
 type RecordActor struct {
-	Kind RecordActorKind `json:"kind"`
-	ID   string          `json:"id,omitempty"`
+	GatewayClientID string          `json:"gatewayClientId,omitempty"`
+	Kind            RecordActorKind `json:"kind"`
+	ID              string          `json:"id,omitempty"`
 }
 
 type recordActorContextKey struct{}
@@ -533,6 +534,14 @@ func validateRecordEnvelope(scope RecordScope, actor RecordActor, aggregateType,
 }
 
 func validateRecordActor(actor RecordActor) error {
+	if actor.GatewayClientID != "" {
+		if actor.Kind != RecordActorUser {
+			return fmt.Errorf("gateway actor requires a user")
+		}
+		if err := validateRecordID("gateway client ID", actor.GatewayClientID); err != nil {
+			return err
+		}
+	}
 	switch actor.Kind {
 	case RecordActorUser:
 		if _, err := domain.NewUserID(actor.ID); err != nil {

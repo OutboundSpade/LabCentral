@@ -1,4 +1,9 @@
 <script lang="ts">
+ import ExtensionAccessView from "./ExtensionAccessView.svelte";
+ import DeviceAuthorization from "./DeviceAuthorization.svelte";
+ import GatewayGrants from "./GatewayGrants.svelte";
+ import BuildControls from "./BuildControls.svelte";
+ import SourceControls from "./SourceControls.svelte";
   import { onMount } from "svelte";
   import { afterNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
@@ -937,7 +942,7 @@
         {:else if view === "operations"}
           <Operations {projects} name={labName} />
         {:else if view === "detail"}
-          <LabDetail
+          {#key projectId}<LabDetail
             {detail}
             name={detail ? labName(detail) : ""}
             expires={detail ? expiry(detail) : ""}
@@ -950,7 +955,7 @@
             {busy}
             onopen={openConsole}
             onend={confirmEnd}
-          />
+          />{/key}
         {:else if view === "launch" || view === "classroom"}
           {#snippet launchOptions()}
             <form
@@ -1248,6 +1253,8 @@
                 </p>{/if}
             </section>{/if}
         {:else if view === "templates"}
+ {#key `${projectId}/${templateId}`}<SourceControls {projectId} {templateId} onpublished={()=>void chooseTemplate()} />{/key}
+ {#key `${projectId}/${revisionId}`}<BuildControls {projectId} {revisionId} />{/key}
           <div class="grid gap-6 xl:grid-cols-[17rem_minmax(0,1fr)]">
             <aside>
               <button
@@ -1365,7 +1372,10 @@
               </div>
             </form>
           </div>
-        {:else if view === "people"}{#key projectId}<People
+        {:else if view === "extension"}{#key page.url.searchParams.get("session")}<ExtensionAccessView sessionId={page.url.searchParams.get("session")??""} />{/key}
+ {:else if view === "device"}<DeviceAuthorization />
+ {:else if view === "account"}<GatewayGrants />
+ {:else if view === "people"}{#key projectId}<People
               {project}
               authMode={server?.authMode ?? ""}
             />{/key}
@@ -1424,7 +1434,7 @@
           <p class="mb-3 break-words text-sm text-base-content/60">
             {session.displayName}
           </p>
-          {#if server?.authMode !== "none"}<button
+          {#if server?.authMode !== "none"}<a href="/account" class="btn btn-sm btn-ghost mb-2 w-full justify-start">Your settings</a><button
               class="btn btn-sm btn-ghost w-full justify-start"
               onclick={logout}
               disabled={busy}><LogOut size={16} />Sign out</button

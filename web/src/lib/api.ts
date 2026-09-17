@@ -101,6 +101,8 @@ export async function api<T>(
     method === "GET" &&
     !authentication &&
     !path.startsWith("/access-sessions") &&
+    !path.startsWith("/session/") &&
+    !path.startsWith("/device/") &&
     !init.headers &&
     !init.signal;
   try {
@@ -202,3 +204,13 @@ export async function collection<T>(
 export const mutationHeaders = () => ({
   "Idempotency-Key": crypto.randomUUID(),
 });
+
+// Credential bytes never enter the query cache, session storage or frame bridge.
+export async function downloadAccessConfiguration(id: string, token: string, signal: AbortSignal): Promise<Blob> {
+  const init = { method: "POST", body: JSON.stringify({token}) };
+  const response = await fetch(`/api/v1/access-sessions/${encodeURIComponent(id)}/download`, { ...init, signal, credentials: "same-origin", cache: "no-store", headers: requestHeaders(init) });
+  if (!response.ok) throw new ApiError(response.status, "Credential download failed");
+  const blob = await response.blob();
+  if (blob.size > 65536) throw new Error("Credential response exceeds limit");
+  return blob;
+}

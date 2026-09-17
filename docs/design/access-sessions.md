@@ -100,3 +100,7 @@ If the application clock is slightly ahead (including SQLite millisecond
 rounding), finalization shortens the requested launch deadline to that bound.
 It never extends the caller deadline or fixed session lifetime; expired launch
 requests still fail. This avoids intermittent rejection at the TTL boundary.
+
+## Independent extension foundations
+
+ADR-0024 adds namespaced descriptors, workload/network targets and one-time credential delivery without introducing plugin-defined authorization classes. See the [extension contract](extensions.md) for adapter resolution, enforcement/recovery features and remaining conformance gates. Legacy ssh/vnc records keep their existing meaning.

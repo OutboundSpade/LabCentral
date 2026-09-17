@@ -47,6 +47,8 @@ web:
 test: web
 	$(GO) test ./...
 	cd web && $(BUN) run test:cache && $(BUN) run test:browser
+	$(GO) build -trimpath -o bin/extension-foundations/labd ./cmd/labd
+	cd web && $(BUN) run test:extensions
 
 run: build
 	./bin/labd --auth-mode=none

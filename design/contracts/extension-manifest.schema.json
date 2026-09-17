@@ -1,0 +1,404 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.labcentral.local/extension-manifest.schema.json",
+  "title": "LabCentral extension contribution v2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "labcentral.io/plugin-manifest/v2"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "executable": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64})?$"
+    },
+    "protocolMajor": {
+      "const": 1
+    },
+    "minimumProtocolMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "default": 0
+    },
+    "maximumProtocolMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "default": 0
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "provider",
+          "access",
+          "source",
+          "builder",
+          "browser"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true
+    },
+    "providerKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "accessKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "accessMethods": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "endpointSchemas": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "operatingSystems": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "architectures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "requestedPermissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "maxItems": 64,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "sourceKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true
+    },
+    "builderKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      },
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true
+    },
+    "configurationSchema": {
+      "type": "object"
+    },
+    "browser": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "const": "labcentral.browser/v1"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "path",
+              "sha256"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "contributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "slot": {
+                "enum": [
+                  "lab-panel",
+                  "resource-action",
+                  "access-view",
+                  "plugin-settings"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "entrypoint": {
+                "type": "string",
+                "minLength": 1
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "context.read",
+                    "topology.read",
+                    "status.read",
+                    "access.create",
+                    "access.stream",
+                    "navigation.lab"
+                  ]
+                },
+                "minItems": 0,
+                "maxItems": 64,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "id",
+              "slot",
+              "title",
+              "entrypoint",
+              "permissions"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "apiVersion",
+        "assets",
+        "contributions"
+      ]
+    }
+  },
+  "required": [
+    "apiVersion",
+    "id",
+    "version",
+    "categories",
+    "protocolMajor",
+    "operatingSystems",
+    "architectures"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "categories": {
+            "const": [
+              "provider"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "providerKinds",
+          "executable",
+          "sha256"
+        ],
+        "properties": {
+          "providerKinds": {
+            "minItems": 1
+          },
+          "executable": {
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "categories": {
+            "const": [
+              "access"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "accessKinds",
+          "accessMethods",
+          "endpointSchemas",
+          "executable",
+          "sha256"
+        ],
+        "properties": {
+          "accessKinds": {
+            "minItems": 1
+          },
+          "accessMethods": {
+            "minItems": 1
+          },
+          "endpointSchemas": {
+            "minItems": 1
+          },
+          "executable": {
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "categories": {
+            "const": [
+              "source"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sourceKinds",
+          "executable",
+          "sha256"
+        ],
+        "properties": {
+          "sourceKinds": {
+            "minItems": 1
+          },
+          "executable": {
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "categories": {
+            "const": [
+              "builder"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "builderKinds",
+          "executable",
+          "sha256"
+        ],
+        "properties": {
+          "builderKinds": {
+            "minItems": 1
+          },
+          "executable": {
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "categories": {
+            "const": [
+              "browser"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "browser"
+        ],
+        "properties": {
+          "executable": {
+            "const": ""
+          }
+        }
+      }
+    }
+  ]
+}

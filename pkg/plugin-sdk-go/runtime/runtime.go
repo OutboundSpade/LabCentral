@@ -19,10 +19,14 @@ import (
 )
 
 type Services struct {
+	ImageImports             pluginv1.ImageImportServiceServer
+	Artifacts                pluginv1.ArtifactTransferServiceServer
 	Info                     *pluginv1.PluginInfo
 	Runtime                  pluginv1.PluginRuntimeServiceServer
 	Provider                 pluginv1.ProviderServiceServer
 	Access                   pluginv1.AccessServiceServer
+	Source                   pluginv1.SourceServiceServer
+	Builder                  pluginv1.BuilderServiceServer
 	ConfigureAccessCallbacks func(AccessCallbacks) error
 }
 
@@ -80,6 +84,21 @@ func Serve(ctx context.Context, services Services) error {
 	}
 	if services.Access != nil {
 		pluginv1.RegisterAccessServiceServer(server, services.Access)
+	}
+	if services.Source != nil {
+		pluginv1.RegisterSourceServiceServer(server, services.Source)
+	}
+	if services.Builder != nil {
+		pluginv1.RegisterBuilderServiceServer(server, services.Builder)
+	}
+	if services.ImageImports != nil {
+		if services.Provider == nil {
+			return fmt.Errorf("image imports require a provider identity")
+		}
+		pluginv1.RegisterImageImportServiceServer(server, services.ImageImports)
+	}
+	if services.Artifacts != nil {
+		pluginv1.RegisterArtifactTransferServiceServer(server, services.Artifacts)
 	}
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Serve(listener) }()
@@ -270,8 +289,24 @@ func validateServices(services Services) error {
 		return fmt.Errorf("plugin info and runtime service are required")
 	}
 	provider, access := services.Provider != nil, services.Access != nil
-	if provider == access {
-		return fmt.Errorf("exactly one provider or access service is required")
+	count := 0
+	for _, present := range []bool{provider, access, services.Source != nil, services.Builder != nil} {
+		if present {
+			count++
+		}
+	}
+	if count != 1 || len(services.Info.GetCategories()) != 1 {
+		return fmt.Errorf("exactly one backend service/category is required")
+	}
+	if services.Source != nil || services.Builder != nil {
+		category := "source"
+		if services.Builder != nil {
+			category = "builder"
+		}
+		if services.Info.GetCategories()[0] != category || services.ConfigureAccessCallbacks != nil {
+			return fmt.Errorf("invalid extension service metadata")
+		}
+		return nil
 	}
 	if provider {
 		if !contains(services.Info.GetCategories(), "provider") || services.ConfigureAccessCallbacks != nil {
@@ -286,6 +321,12 @@ func validateServices(services Services) error {
 }
 
 func selectedProtocol(info *pluginv1.PluginInfo, response *pluginv1.RegisterPluginResponse) (*pluginv1.ProtocolVersion, []*pluginv1.ProtocolVersionRange) {
+	if contains(info.GetCategories(), "source") {
+		return response.GetSelectedSourceProtocol(), info.GetSupportedSourceProtocols()
+	}
+	if contains(info.GetCategories(), "builder") {
+		return response.GetSelectedBuilderProtocol(), info.GetSupportedBuilderProtocols()
+	}
 	if contains(info.GetCategories(), "access") {
 		return response.GetSelectedAccessProtocol(), info.GetSupportedAccessProtocols()
 	}

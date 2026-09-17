@@ -1,10 +1,20 @@
 # LabCentral project state
 
-**Updated:** 2026-09-15
+**Updated:** 2026-09-17
 
 LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
 quotas, lifetime and ownership; plugins translate infrastructure operations.
+
+## Extension verification and PVE1 rollout
+
+`TASK-EXT-001` through `TASK-EXT-007` implement the contracts and working orchestration under ADR-0023–ADR-0025. Independently installed provider, access, source, builder and browser contributions use explicit bindings and separate backend identities. Source publication, durable builds/imports/preparation, gateway device approval, isolated browser slots and descriptor-based workload/network access are implemented.
+
+External fixtures exercise source recovery, concurrent build deduplication, image approval, preparation and owned lifecycle against a prebuilt core/UI. Chromium, Firefox and WebKit exercise installed stream views, sandbox isolation and browser-approved gateway grants. SQLite/PostgreSQL race tests cover work fencing, shared cancellation, delegated access revocation and atomic prepared batch admission.
+
+`TASK-EXT-008` remains in progress until all release gates and the exact release artifact's independent-installation proof pass. `TASK-EXT-009` records the owner's subsequent authorization to deploy that release on PVE1, preserving existing labs, exact qualified provider/access binaries and the separate pilot. No extension rollout has occurred yet. Production Fly, WireGuard, SSH, Git, Ansible, Dockerfile, AWS and Fedora CoreOS integrations remain outside this implementation. Existing production-validation gaps remain open.
+
+See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
 ## Latest completed work
 
@@ -53,7 +63,8 @@ artifacts remain in ignored `bin/classroom-usability-20260915/`.
 
 ## Next action and production gates
 
-Renew qualification before **2026-09-21T22:07:47Z**, then the runtime token before
+Continue the extension tasks in dependency order and retain their open release
+gates. Separately, renew qualification before **2026-09-21T22:07:47Z**, then the runtime token before
 September 22. Continue `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.

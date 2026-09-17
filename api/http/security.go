@@ -13,6 +13,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/authentication"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
+	"github.com/OutboundSpade/LabCentral/internal/delegation"
 )
 
 const (
@@ -39,6 +40,7 @@ type AuthenticationOptions struct {
 }
 
 type principal struct {
+	gateway *application.GatewayGrant
 	user    application.UserRecord
 	session application.SessionRecord
 	bearer  bool
@@ -48,6 +50,7 @@ type principalContextKey struct{}
 type clientAddressContextKey struct{}
 
 type requestSecurity struct {
+	gateway      *delegation.Service
 	options      AuthenticationOptions
 	publicOrigin *url.URL
 }
@@ -69,6 +72,9 @@ func newRequestSecurity(options AuthenticationOptions) (*requestSecurity, error)
 	parsed, err := url.Parse(options.PublicOrigin)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.String() != options.PublicOrigin {
 		return nil, errors.New("authenticated HTTP mode requires an exact HTTPS public origin")
+	}
+	if store, ok := options.Repository.(application.GatewayStore); ok && options.TokenHasher != nil {
+		security.gateway = &delegation.Service{Store: store, Hasher: options.TokenHasher}
 	}
 	security.publicOrigin = parsed
 	return security, nil
@@ -102,6 +108,15 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 			return
 		}
 		request = request.WithContext(context.WithValue(request.Context(), clientAddressContextKey{}, clientAddress))
+		if gatewayDevicePath(request.URL.Path) {
+			response.Header().Set("Cache-Control", "no-store")
+			if request.Method != http.MethodPost || request.Header.Get("Cookie") != "" || request.URL.RawQuery != "" {
+				writeProblem(response, http.StatusBadRequest, "invalid_request", "Invalid device request")
+				return
+			}
+			next.ServeHTTP(response, request)
+			return
+		}
 		public := publicAuthenticationPath(request.URL.Path)
 		mutating := request.Method != http.MethodGet && request.Method != http.MethodHead && request.Method != http.MethodOptions
 		bearerToken, bearerSupplied, bearerErr := requestBearerToken(request)
@@ -124,6 +139,34 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 				return
 			}
 			writeProblem(response, http.StatusUnauthorized, "authentication_required", "Authentication is required.")
+			return
+		}
+		if strings.HasPrefix(bearerToken, "lcg_") {
+			if s.gateway == nil || !strings.HasPrefix(request.URL.Path, "/api/v1/gateway/") {
+				writeProblem(response, http.StatusForbidden, "gateway_scope_denied", "Gateway grant cannot access this API")
+				return
+			}
+			grant, e := s.gateway.Authenticate(request.Context(), request.Header.Get("X-Gateway-Client"), request.Header.Get("X-Gateway-Secret"), bearerToken)
+			if e != nil {
+				writeProblem(response, http.StatusUnauthorized, "authentication_required", "Gateway grant rejected")
+				return
+			}
+			user, e := s.options.Repository.UserByID(request.Context(), grant.SubjectID)
+			if e != nil || user.Disabled {
+				writeProblem(response, http.StatusUnauthorized, "authentication_required", "Gateway subject unavailable")
+				return
+			}
+			ctx, e := application.WithRecordActor(request.Context(), application.RecordActor{Kind: application.RecordActorUser, ID: string(user.ID), GatewayClientID: grant.ClientID})
+			if e != nil {
+				writeProblem(response, http.StatusInternalServerError, "actor_context_invalid", "Actor unavailable")
+				return
+			}
+			response.Header().Set("Cache-Control", "no-store")
+			next.ServeHTTP(response, request.WithContext(context.WithValue(ctx, principalContextKey{}, principal{user: user, bearer: true, gateway: &grant})))
+			return
+		}
+		if strings.HasPrefix(request.URL.Path, "/api/v1/gateway/") {
+			writeProblem(response, http.StatusForbidden, "gateway_grant_required", "This API requires a gateway grant")
 			return
 		}
 		var credentials authentication.SessionCredentials
@@ -322,4 +365,8 @@ func writeProblem(response http.ResponseWriter, status int, code, detail string)
 	_ = json.NewEncoder(response).Encode(map[string]any{
 		"type": "about:blank", "title": http.StatusText(status), "status": status, "code": code, "detail": detail,
 	})
+}
+
+func gatewayDevicePath(path string) bool {
+	return path == "/api/v1/device/authorization" || path == "/api/v1/device/token"
 }

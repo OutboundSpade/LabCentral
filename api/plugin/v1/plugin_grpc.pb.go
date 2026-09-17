@@ -833,14 +833,18 @@ var ProviderService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AccessService_CreateAccess_FullMethodName = "/labcentral.plugin.v1.AccessService/CreateAccess"
-	AccessService_RevokeAccess_FullMethodName = "/labcentral.plugin.v1.AccessService/RevokeAccess"
+	AccessService_DownloadAccess_FullMethodName = "/labcentral.plugin.v1.AccessService/DownloadAccess"
+	AccessService_InspectAccess_FullMethodName  = "/labcentral.plugin.v1.AccessService/InspectAccess"
+	AccessService_CreateAccess_FullMethodName   = "/labcentral.plugin.v1.AccessService/CreateAccess"
+	AccessService_RevokeAccess_FullMethodName   = "/labcentral.plugin.v1.AccessService/RevokeAccess"
 )
 
 // AccessServiceClient is the client API for AccessService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AccessServiceClient interface {
+	DownloadAccess(ctx context.Context, in *DownloadAccessRequest, opts ...grpc.CallOption) (*DownloadAccessResponse, error)
+	InspectAccess(ctx context.Context, in *InspectAccessRequest, opts ...grpc.CallOption) (*InspectAccessResponse, error)
 	CreateAccess(ctx context.Context, in *CreateAccessRequest, opts ...grpc.CallOption) (*CreateAccessResponse, error)
 	RevokeAccess(ctx context.Context, in *RevokeAccessRequest, opts ...grpc.CallOption) (*RevokeAccessResponse, error)
 }
@@ -851,6 +855,26 @@ type accessServiceClient struct {
 
 func NewAccessServiceClient(cc grpc.ClientConnInterface) AccessServiceClient {
 	return &accessServiceClient{cc}
+}
+
+func (c *accessServiceClient) DownloadAccess(ctx context.Context, in *DownloadAccessRequest, opts ...grpc.CallOption) (*DownloadAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DownloadAccessResponse)
+	err := c.cc.Invoke(ctx, AccessService_DownloadAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *accessServiceClient) InspectAccess(ctx context.Context, in *InspectAccessRequest, opts ...grpc.CallOption) (*InspectAccessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InspectAccessResponse)
+	err := c.cc.Invoke(ctx, AccessService_InspectAccess_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *accessServiceClient) CreateAccess(ctx context.Context, in *CreateAccessRequest, opts ...grpc.CallOption) (*CreateAccessResponse, error) {
@@ -877,6 +901,8 @@ func (c *accessServiceClient) RevokeAccess(ctx context.Context, in *RevokeAccess
 // All implementations must embed UnimplementedAccessServiceServer
 // for forward compatibility.
 type AccessServiceServer interface {
+	DownloadAccess(context.Context, *DownloadAccessRequest) (*DownloadAccessResponse, error)
+	InspectAccess(context.Context, *InspectAccessRequest) (*InspectAccessResponse, error)
 	CreateAccess(context.Context, *CreateAccessRequest) (*CreateAccessResponse, error)
 	RevokeAccess(context.Context, *RevokeAccessRequest) (*RevokeAccessResponse, error)
 	mustEmbedUnimplementedAccessServiceServer()
@@ -889,6 +915,12 @@ type AccessServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAccessServiceServer struct{}
 
+func (UnimplementedAccessServiceServer) DownloadAccess(context.Context, *DownloadAccessRequest) (*DownloadAccessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DownloadAccess not implemented")
+}
+func (UnimplementedAccessServiceServer) InspectAccess(context.Context, *InspectAccessRequest) (*InspectAccessResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InspectAccess not implemented")
+}
 func (UnimplementedAccessServiceServer) CreateAccess(context.Context, *CreateAccessRequest) (*CreateAccessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateAccess not implemented")
 }
@@ -914,6 +946,42 @@ func RegisterAccessServiceServer(s grpc.ServiceRegistrar, srv AccessServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&AccessService_ServiceDesc, srv)
+}
+
+func _AccessService_DownloadAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DownloadAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessServiceServer).DownloadAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessService_DownloadAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessServiceServer).DownloadAccess(ctx, req.(*DownloadAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AccessService_InspectAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InspectAccessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AccessServiceServer).InspectAccess(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AccessService_InspectAccess_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AccessServiceServer).InspectAccess(ctx, req.(*InspectAccessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _AccessService_CreateAccess_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -959,6 +1027,14 @@ var AccessService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "labcentral.plugin.v1.AccessService",
 	HandlerType: (*AccessServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "DownloadAccess",
+			Handler:    _AccessService_DownloadAccess_Handler,
+		},
+		{
+			MethodName: "InspectAccess",
+			Handler:    _AccessService_InspectAccess_Handler,
+		},
 		{
 			MethodName: "CreateAccess",
 			Handler:    _AccessService_CreateAccess_Handler,
@@ -1145,6 +1221,719 @@ var AccessAuthorizationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EndAccessLease",
 			Handler:    _AccessAuthorizationService_EndAccessLease_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "plugin/v1/plugin.proto",
+}
+
+const (
+	SourceService_Resolve_FullMethodName       = "/labcentral.plugin.v1.SourceService/Resolve"
+	SourceService_GetInvocation_FullMethodName = "/labcentral.plugin.v1.SourceService/GetInvocation"
+	SourceService_Cancel_FullMethodName        = "/labcentral.plugin.v1.SourceService/Cancel"
+)
+
+// SourceServiceClient is the client API for SourceService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type SourceServiceClient interface {
+	Resolve(ctx context.Context, in *SourceServiceResolveRequest, opts ...grpc.CallOption) (*SourceServiceResolveResponse, error)
+	GetInvocation(ctx context.Context, in *SourceServiceGetInvocationRequest, opts ...grpc.CallOption) (*SourceServiceGetInvocationResponse, error)
+	Cancel(ctx context.Context, in *SourceServiceCancelRequest, opts ...grpc.CallOption) (*SourceServiceCancelResponse, error)
+}
+
+type sourceServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSourceServiceClient(cc grpc.ClientConnInterface) SourceServiceClient {
+	return &sourceServiceClient{cc}
+}
+
+func (c *sourceServiceClient) Resolve(ctx context.Context, in *SourceServiceResolveRequest, opts ...grpc.CallOption) (*SourceServiceResolveResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SourceServiceResolveResponse)
+	err := c.cc.Invoke(ctx, SourceService_Resolve_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sourceServiceClient) GetInvocation(ctx context.Context, in *SourceServiceGetInvocationRequest, opts ...grpc.CallOption) (*SourceServiceGetInvocationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SourceServiceGetInvocationResponse)
+	err := c.cc.Invoke(ctx, SourceService_GetInvocation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sourceServiceClient) Cancel(ctx context.Context, in *SourceServiceCancelRequest, opts ...grpc.CallOption) (*SourceServiceCancelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SourceServiceCancelResponse)
+	err := c.cc.Invoke(ctx, SourceService_Cancel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SourceServiceServer is the server API for SourceService service.
+// All implementations must embed UnimplementedSourceServiceServer
+// for forward compatibility.
+type SourceServiceServer interface {
+	Resolve(context.Context, *SourceServiceResolveRequest) (*SourceServiceResolveResponse, error)
+	GetInvocation(context.Context, *SourceServiceGetInvocationRequest) (*SourceServiceGetInvocationResponse, error)
+	Cancel(context.Context, *SourceServiceCancelRequest) (*SourceServiceCancelResponse, error)
+	mustEmbedUnimplementedSourceServiceServer()
+}
+
+// UnimplementedSourceServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSourceServiceServer struct{}
+
+func (UnimplementedSourceServiceServer) Resolve(context.Context, *SourceServiceResolveRequest) (*SourceServiceResolveResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Resolve not implemented")
+}
+func (UnimplementedSourceServiceServer) GetInvocation(context.Context, *SourceServiceGetInvocationRequest) (*SourceServiceGetInvocationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInvocation not implemented")
+}
+func (UnimplementedSourceServiceServer) Cancel(context.Context, *SourceServiceCancelRequest) (*SourceServiceCancelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Cancel not implemented")
+}
+func (UnimplementedSourceServiceServer) mustEmbedUnimplementedSourceServiceServer() {}
+func (UnimplementedSourceServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeSourceServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SourceServiceServer will
+// result in compilation errors.
+type UnsafeSourceServiceServer interface {
+	mustEmbedUnimplementedSourceServiceServer()
+}
+
+func RegisterSourceServiceServer(s grpc.ServiceRegistrar, srv SourceServiceServer) {
+	// If the following call pancis, it indicates UnimplementedSourceServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&SourceService_ServiceDesc, srv)
+}
+
+func _SourceService_Resolve_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SourceServiceResolveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceServiceServer).Resolve(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceService_Resolve_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceServiceServer).Resolve(ctx, req.(*SourceServiceResolveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SourceService_GetInvocation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SourceServiceGetInvocationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceServiceServer).GetInvocation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceService_GetInvocation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceServiceServer).GetInvocation(ctx, req.(*SourceServiceGetInvocationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SourceService_Cancel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SourceServiceCancelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceServiceServer).Cancel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceService_Cancel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceServiceServer).Cancel(ctx, req.(*SourceServiceCancelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SourceService_ServiceDesc is the grpc.ServiceDesc for SourceService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SourceService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "labcentral.plugin.v1.SourceService",
+	HandlerType: (*SourceServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Resolve",
+			Handler:    _SourceService_Resolve_Handler,
+		},
+		{
+			MethodName: "GetInvocation",
+			Handler:    _SourceService_GetInvocation_Handler,
+		},
+		{
+			MethodName: "Cancel",
+			Handler:    _SourceService_Cancel_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "plugin/v1/plugin.proto",
+}
+
+const (
+	BuilderService_Validate_FullMethodName      = "/labcentral.plugin.v1.BuilderService/Validate"
+	BuilderService_Build_FullMethodName         = "/labcentral.plugin.v1.BuilderService/Build"
+	BuilderService_GetInvocation_FullMethodName = "/labcentral.plugin.v1.BuilderService/GetInvocation"
+	BuilderService_Cancel_FullMethodName        = "/labcentral.plugin.v1.BuilderService/Cancel"
+)
+
+// BuilderServiceClient is the client API for BuilderService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type BuilderServiceClient interface {
+	Validate(ctx context.Context, in *BuilderServiceValidateRequest, opts ...grpc.CallOption) (*BuilderServiceValidateResponse, error)
+	Build(ctx context.Context, in *BuilderServiceBuildRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BuilderServiceBuildResponse], error)
+	GetInvocation(ctx context.Context, in *BuilderServiceGetInvocationRequest, opts ...grpc.CallOption) (*BuilderServiceGetInvocationResponse, error)
+	Cancel(ctx context.Context, in *BuilderServiceCancelRequest, opts ...grpc.CallOption) (*BuilderServiceCancelResponse, error)
+}
+
+type builderServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewBuilderServiceClient(cc grpc.ClientConnInterface) BuilderServiceClient {
+	return &builderServiceClient{cc}
+}
+
+func (c *builderServiceClient) Validate(ctx context.Context, in *BuilderServiceValidateRequest, opts ...grpc.CallOption) (*BuilderServiceValidateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuilderServiceValidateResponse)
+	err := c.cc.Invoke(ctx, BuilderService_Validate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *builderServiceClient) Build(ctx context.Context, in *BuilderServiceBuildRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BuilderServiceBuildResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BuilderService_ServiceDesc.Streams[0], BuilderService_Build_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[BuilderServiceBuildRequest, BuilderServiceBuildResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BuilderService_BuildClient = grpc.ServerStreamingClient[BuilderServiceBuildResponse]
+
+func (c *builderServiceClient) GetInvocation(ctx context.Context, in *BuilderServiceGetInvocationRequest, opts ...grpc.CallOption) (*BuilderServiceGetInvocationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuilderServiceGetInvocationResponse)
+	err := c.cc.Invoke(ctx, BuilderService_GetInvocation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *builderServiceClient) Cancel(ctx context.Context, in *BuilderServiceCancelRequest, opts ...grpc.CallOption) (*BuilderServiceCancelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuilderServiceCancelResponse)
+	err := c.cc.Invoke(ctx, BuilderService_Cancel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// BuilderServiceServer is the server API for BuilderService service.
+// All implementations must embed UnimplementedBuilderServiceServer
+// for forward compatibility.
+type BuilderServiceServer interface {
+	Validate(context.Context, *BuilderServiceValidateRequest) (*BuilderServiceValidateResponse, error)
+	Build(*BuilderServiceBuildRequest, grpc.ServerStreamingServer[BuilderServiceBuildResponse]) error
+	GetInvocation(context.Context, *BuilderServiceGetInvocationRequest) (*BuilderServiceGetInvocationResponse, error)
+	Cancel(context.Context, *BuilderServiceCancelRequest) (*BuilderServiceCancelResponse, error)
+	mustEmbedUnimplementedBuilderServiceServer()
+}
+
+// UnimplementedBuilderServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedBuilderServiceServer struct{}
+
+func (UnimplementedBuilderServiceServer) Validate(context.Context, *BuilderServiceValidateRequest) (*BuilderServiceValidateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Validate not implemented")
+}
+func (UnimplementedBuilderServiceServer) Build(*BuilderServiceBuildRequest, grpc.ServerStreamingServer[BuilderServiceBuildResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Build not implemented")
+}
+func (UnimplementedBuilderServiceServer) GetInvocation(context.Context, *BuilderServiceGetInvocationRequest) (*BuilderServiceGetInvocationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInvocation not implemented")
+}
+func (UnimplementedBuilderServiceServer) Cancel(context.Context, *BuilderServiceCancelRequest) (*BuilderServiceCancelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Cancel not implemented")
+}
+func (UnimplementedBuilderServiceServer) mustEmbedUnimplementedBuilderServiceServer() {}
+func (UnimplementedBuilderServiceServer) testEmbeddedByValue()                        {}
+
+// UnsafeBuilderServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to BuilderServiceServer will
+// result in compilation errors.
+type UnsafeBuilderServiceServer interface {
+	mustEmbedUnimplementedBuilderServiceServer()
+}
+
+func RegisterBuilderServiceServer(s grpc.ServiceRegistrar, srv BuilderServiceServer) {
+	// If the following call pancis, it indicates UnimplementedBuilderServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&BuilderService_ServiceDesc, srv)
+}
+
+func _BuilderService_Validate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BuilderServiceValidateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BuilderServiceServer).Validate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BuilderService_Validate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BuilderServiceServer).Validate(ctx, req.(*BuilderServiceValidateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BuilderService_Build_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(BuilderServiceBuildRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BuilderServiceServer).Build(m, &grpc.GenericServerStream[BuilderServiceBuildRequest, BuilderServiceBuildResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BuilderService_BuildServer = grpc.ServerStreamingServer[BuilderServiceBuildResponse]
+
+func _BuilderService_GetInvocation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BuilderServiceGetInvocationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BuilderServiceServer).GetInvocation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BuilderService_GetInvocation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BuilderServiceServer).GetInvocation(ctx, req.(*BuilderServiceGetInvocationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BuilderService_Cancel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BuilderServiceCancelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BuilderServiceServer).Cancel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BuilderService_Cancel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BuilderServiceServer).Cancel(ctx, req.(*BuilderServiceCancelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// BuilderService_ServiceDesc is the grpc.ServiceDesc for BuilderService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var BuilderService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "labcentral.plugin.v1.BuilderService",
+	HandlerType: (*BuilderServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Validate",
+			Handler:    _BuilderService_Validate_Handler,
+		},
+		{
+			MethodName: "GetInvocation",
+			Handler:    _BuilderService_GetInvocation_Handler,
+		},
+		{
+			MethodName: "Cancel",
+			Handler:    _BuilderService_Cancel_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Build",
+			Handler:       _BuilderService_Build_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "plugin/v1/plugin.proto",
+}
+
+const (
+	ArtifactTransferService_Read_FullMethodName  = "/labcentral.plugin.v1.ArtifactTransferService/Read"
+	ArtifactTransferService_Write_FullMethodName = "/labcentral.plugin.v1.ArtifactTransferService/Write"
+)
+
+// ArtifactTransferServiceClient is the client API for ArtifactTransferService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ArtifactTransferServiceClient interface {
+	Read(ctx context.Context, in *ArtifactTransferServiceReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArtifactTransferServiceReadResponse], error)
+	Write(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse], error)
+}
+
+type artifactTransferServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewArtifactTransferServiceClient(cc grpc.ClientConnInterface) ArtifactTransferServiceClient {
+	return &artifactTransferServiceClient{cc}
+}
+
+func (c *artifactTransferServiceClient) Read(ctx context.Context, in *ArtifactTransferServiceReadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArtifactTransferServiceReadResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ArtifactTransferService_ServiceDesc.Streams[0], ArtifactTransferService_Read_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ArtifactTransferServiceReadRequest, ArtifactTransferServiceReadResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ArtifactTransferService_ReadClient = grpc.ServerStreamingClient[ArtifactTransferServiceReadResponse]
+
+func (c *artifactTransferServiceClient) Write(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ArtifactTransferService_ServiceDesc.Streams[1], ArtifactTransferService_Write_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ArtifactTransferService_WriteClient = grpc.ClientStreamingClient[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse]
+
+// ArtifactTransferServiceServer is the server API for ArtifactTransferService service.
+// All implementations must embed UnimplementedArtifactTransferServiceServer
+// for forward compatibility.
+type ArtifactTransferServiceServer interface {
+	Read(*ArtifactTransferServiceReadRequest, grpc.ServerStreamingServer[ArtifactTransferServiceReadResponse]) error
+	Write(grpc.ClientStreamingServer[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse]) error
+	mustEmbedUnimplementedArtifactTransferServiceServer()
+}
+
+// UnimplementedArtifactTransferServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedArtifactTransferServiceServer struct{}
+
+func (UnimplementedArtifactTransferServiceServer) Read(*ArtifactTransferServiceReadRequest, grpc.ServerStreamingServer[ArtifactTransferServiceReadResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Read not implemented")
+}
+func (UnimplementedArtifactTransferServiceServer) Write(grpc.ClientStreamingServer[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Write not implemented")
+}
+func (UnimplementedArtifactTransferServiceServer) mustEmbedUnimplementedArtifactTransferServiceServer() {
+}
+func (UnimplementedArtifactTransferServiceServer) testEmbeddedByValue() {}
+
+// UnsafeArtifactTransferServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ArtifactTransferServiceServer will
+// result in compilation errors.
+type UnsafeArtifactTransferServiceServer interface {
+	mustEmbedUnimplementedArtifactTransferServiceServer()
+}
+
+func RegisterArtifactTransferServiceServer(s grpc.ServiceRegistrar, srv ArtifactTransferServiceServer) {
+	// If the following call pancis, it indicates UnimplementedArtifactTransferServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ArtifactTransferService_ServiceDesc, srv)
+}
+
+func _ArtifactTransferService_Read_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ArtifactTransferServiceReadRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ArtifactTransferServiceServer).Read(m, &grpc.GenericServerStream[ArtifactTransferServiceReadRequest, ArtifactTransferServiceReadResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ArtifactTransferService_ReadServer = grpc.ServerStreamingServer[ArtifactTransferServiceReadResponse]
+
+func _ArtifactTransferService_Write_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ArtifactTransferServiceServer).Write(&grpc.GenericServerStream[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ArtifactTransferService_WriteServer = grpc.ClientStreamingServer[ArtifactTransferServiceWriteRequest, ArtifactTransferServiceWriteResponse]
+
+// ArtifactTransferService_ServiceDesc is the grpc.ServiceDesc for ArtifactTransferService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ArtifactTransferService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "labcentral.plugin.v1.ArtifactTransferService",
+	HandlerType: (*ArtifactTransferServiceServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Read",
+			Handler:       _ArtifactTransferService_Read_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Write",
+			Handler:       _ArtifactTransferService_Write_Handler,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "plugin/v1/plugin.proto",
+}
+
+const (
+	ImageImportService_Import_FullMethodName          = "/labcentral.plugin.v1.ImageImportService/Import"
+	ImageImportService_GetInvocation_FullMethodName   = "/labcentral.plugin.v1.ImageImportService/GetInvocation"
+	ImageImportService_ValidateBinding_FullMethodName = "/labcentral.plugin.v1.ImageImportService/ValidateBinding"
+)
+
+// ImageImportServiceClient is the client API for ImageImportService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ImageImportServiceClient interface {
+	Import(ctx context.Context, in *ImageImportServiceImportRequest, opts ...grpc.CallOption) (*ImageImportServiceImportResponse, error)
+	GetInvocation(ctx context.Context, in *ImageImportServiceGetInvocationRequest, opts ...grpc.CallOption) (*ImageImportServiceGetInvocationResponse, error)
+	ValidateBinding(ctx context.Context, in *ImageImportServiceValidateBindingRequest, opts ...grpc.CallOption) (*ImageImportServiceValidateBindingResponse, error)
+}
+
+type imageImportServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewImageImportServiceClient(cc grpc.ClientConnInterface) ImageImportServiceClient {
+	return &imageImportServiceClient{cc}
+}
+
+func (c *imageImportServiceClient) Import(ctx context.Context, in *ImageImportServiceImportRequest, opts ...grpc.CallOption) (*ImageImportServiceImportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImageImportServiceImportResponse)
+	err := c.cc.Invoke(ctx, ImageImportService_Import_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imageImportServiceClient) GetInvocation(ctx context.Context, in *ImageImportServiceGetInvocationRequest, opts ...grpc.CallOption) (*ImageImportServiceGetInvocationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImageImportServiceGetInvocationResponse)
+	err := c.cc.Invoke(ctx, ImageImportService_GetInvocation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imageImportServiceClient) ValidateBinding(ctx context.Context, in *ImageImportServiceValidateBindingRequest, opts ...grpc.CallOption) (*ImageImportServiceValidateBindingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImageImportServiceValidateBindingResponse)
+	err := c.cc.Invoke(ctx, ImageImportService_ValidateBinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ImageImportServiceServer is the server API for ImageImportService service.
+// All implementations must embed UnimplementedImageImportServiceServer
+// for forward compatibility.
+type ImageImportServiceServer interface {
+	Import(context.Context, *ImageImportServiceImportRequest) (*ImageImportServiceImportResponse, error)
+	GetInvocation(context.Context, *ImageImportServiceGetInvocationRequest) (*ImageImportServiceGetInvocationResponse, error)
+	ValidateBinding(context.Context, *ImageImportServiceValidateBindingRequest) (*ImageImportServiceValidateBindingResponse, error)
+	mustEmbedUnimplementedImageImportServiceServer()
+}
+
+// UnimplementedImageImportServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedImageImportServiceServer struct{}
+
+func (UnimplementedImageImportServiceServer) Import(context.Context, *ImageImportServiceImportRequest) (*ImageImportServiceImportResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Import not implemented")
+}
+func (UnimplementedImageImportServiceServer) GetInvocation(context.Context, *ImageImportServiceGetInvocationRequest) (*ImageImportServiceGetInvocationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetInvocation not implemented")
+}
+func (UnimplementedImageImportServiceServer) ValidateBinding(context.Context, *ImageImportServiceValidateBindingRequest) (*ImageImportServiceValidateBindingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateBinding not implemented")
+}
+func (UnimplementedImageImportServiceServer) mustEmbedUnimplementedImageImportServiceServer() {}
+func (UnimplementedImageImportServiceServer) testEmbeddedByValue()                            {}
+
+// UnsafeImageImportServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ImageImportServiceServer will
+// result in compilation errors.
+type UnsafeImageImportServiceServer interface {
+	mustEmbedUnimplementedImageImportServiceServer()
+}
+
+func RegisterImageImportServiceServer(s grpc.ServiceRegistrar, srv ImageImportServiceServer) {
+	// If the following call pancis, it indicates UnimplementedImageImportServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ImageImportService_ServiceDesc, srv)
+}
+
+func _ImageImportService_Import_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImageImportServiceImportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageImportServiceServer).Import(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageImportService_Import_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageImportServiceServer).Import(ctx, req.(*ImageImportServiceImportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ImageImportService_GetInvocation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImageImportServiceGetInvocationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageImportServiceServer).GetInvocation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageImportService_GetInvocation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageImportServiceServer).GetInvocation(ctx, req.(*ImageImportServiceGetInvocationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ImageImportService_ValidateBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImageImportServiceValidateBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageImportServiceServer).ValidateBinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageImportService_ValidateBinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageImportServiceServer).ValidateBinding(ctx, req.(*ImageImportServiceValidateBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ImageImportService_ServiceDesc is the grpc.ServiceDesc for ImageImportService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ImageImportService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "labcentral.plugin.v1.ImageImportService",
+	HandlerType: (*ImageImportServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Import",
+			Handler:    _ImageImportService_Import_Handler,
+		},
+		{
+			MethodName: "GetInvocation",
+			Handler:    _ImageImportService_GetInvocation_Handler,
+		},
+		{
+			MethodName: "ValidateBinding",
+			Handler:    _ImageImportService_ValidateBinding_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

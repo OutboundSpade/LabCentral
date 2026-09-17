@@ -1,4 +1,5 @@
 <script lang="ts">
+ import InstalledExtensions from "./InstalledExtensions.svelte";
   import Modal from "./Modal.svelte";
   import TargetSettings from "./TargetSettings.svelte";
   import Notifications from "./Notifications.svelte";
@@ -345,3 +346,5 @@
         target={selectedTarget}
       />{/key}{/if}</Modal
 >
+
+<InstalledExtensions />

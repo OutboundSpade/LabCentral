@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-04
 - **Supersedes:** ADR-0011 (application repository shape only)
-- **Superseded by:** None
+- **Superseded by:** ADR-0023 (installation category scope only; other decisions remain accepted)
 
 ## Context
 

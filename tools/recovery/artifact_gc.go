@@ -22,6 +22,7 @@ var artifactReferenceSchemaMigrations = []string{
 	"0002_local_vertical_slice",
 	"0002_provider_allocation_claims",
 	"0003_local_provider_target_binding",
+	"0003_typed_work_subjects",
 	"0004_identity_tenancy_rbac",
 	"0005_authentication_hardening",
 	"0006_authority_lifecycle",
@@ -31,6 +32,10 @@ var artifactReferenceSchemaMigrations = []string{
 	"0010_classroom_instance_batches",
 	"0011_controlled_access_sessions",
 	"0012_template_representations",
+	"0013_target_deployment_settings",
+	"0014_extensible_access",
+	"0015_extension_work",
+	"0016_gateway_delegation", "0017_build_orchestration",
 }
 
 type artifactGCConfig struct {
@@ -192,7 +197,7 @@ func readCommittedArtifactReferences(ctx context.Context, database *sql.DB) ([]d
 			return nil, fmt.Errorf("database migration set is not the exact artifact-reference schema")
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT bundle_artifact_ref FROM labcentral_template_revisions ORDER BY bundle_artifact_ref`)
+	rows, err := tx.QueryContext(ctx, `SELECT bundle_artifact_ref FROM labcentral_template_revisions UNION SELECT artifact_ref FROM labcentral_extension_artifact_refs ORDER BY 1`)
 	if err != nil {
 		return nil, fmt.Errorf("read committed artifact references")
 	}

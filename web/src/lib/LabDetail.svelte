@@ -1,4 +1,6 @@
 <script lang="ts">
+ import ResourceAccess from "./ResourceAccess.svelte";
+ import ExtensionPanels from "./ExtensionPanels.svelte";
   import { Server, Terminal } from "@lucide/svelte";
   import StatusBadge from "./StatusBadge.svelte";
   import type { Instance } from "./api";
@@ -51,7 +53,7 @@
         {detail.errorMessage}
       </p>{/if}
     <div class="mt-6 divide-y divide-base-300">
-      {#each detail.resources?.filter((r) => administrator || r.kind === "VM" || r.kind === "Container") ?? [] as resource}<div
+      {#each detail.resources?.filter((r) => administrator || r.kind === "VM" || r.kind === "Container" || r.kind === "Network") ?? [] as resource}<div
           class="flex flex-wrap items-center justify-between gap-4 py-4"
         >
           <div class="flex items-center gap-3">
@@ -68,12 +70,7 @@
           <div class="flex items-center gap-3">
             <StatusBadge
               state={resource.phase}
-            />{#if browserConsole && (resource.kind === "VM" || resource.virtualMachine) && resource.phase === "ready"}<button
-                class="btn btn-primary"
-                disabled={busy}
-                onclick={() => onopen(detail!, resource.id)}
-                ><Terminal size={16} />Open console</button
-              >{/if}
+            />{#key `${detail.id}/${resource.id}`}<ResourceAccess instanceId={detail.id} resourceId={resource.id} {busy} />{/key}
           </div>
         </div>{/each}
     </div>
@@ -82,6 +79,7 @@
         instructor for access.
       </p>{/if}
 
+    <ExtensionPanels instanceId={detail.id} />
     {#if !["destroying", "destroyed"].includes(detail.phase)}<div
         class="mt-8 border-t border-base-300 pt-5"
       >

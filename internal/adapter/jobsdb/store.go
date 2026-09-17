@@ -170,7 +170,7 @@ func (s *Store) EnqueueVersioned(ctx context.Context, operation domain.Operation
 
 func (s *Store) Get(ctx context.Context, operationID domain.OperationID) (domain.Operation, error) {
 	row := s.db.QueryRowContext(ctx, s.bind(`SELECT operation_id, instance_id, state, desired_generation,
-		fencing_token, lease_until_us, attempt, recovery_required, payload
+		fencing_token, lease_until_us, attempt, recovery_required, payload, subject_kind, subject_id
 		FROM labcentral_jobs WHERE operation_id = ?`), operationID)
 	operation, _, _, err := scanOperation(row)
 	return operation, err
@@ -214,19 +214,26 @@ type claimQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-func (s *Store) claimJob(ctx context.Context, queryer claimQueryer, leaseOwner string, leaseDuration time.Duration, instances []string, operations bool) (ClaimedJob, error) {
+func (s *Store) claimJob(ctx context.Context, queryer claimQueryer, leaseOwner string, leaseDuration time.Duration, instances []string, operations bool, kinds ...domain.WorkSubjectKind) (ClaimedJob, error) {
 	if leaseOwner == "" || leaseDuration <= 0 {
 		return ClaimedJob{}, fmt.Errorf("lease owner and positive duration are required")
 	}
 	leaseMicros := leaseDuration.Microseconds()
-	filter := ""
+	kind := domain.WorkInstance
+	if len(kinds) > 0 {
+		kind = kinds[0]
+	}
+	if err := (domain.WorkSubject{Kind: kind, ID: "validate"}).Validate(); err != nil {
+		return ClaimedJob{}, err
+	}
+	filter := " AND subject_kind = '" + string(kind) + "' "
 	filterArgs := make([]any, 0, len(instances))
 	if instances != nil {
 		column := "instance_id"
 		if operations {
 			column = "operation_id"
 		}
-		filter = " AND " + column + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(instances)), ",") + ") "
+		filter += " AND " + column + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(instances)), ",") + ") "
 		for _, id := range instances {
 			filterArgs = append(filterArgs, id)
 		}
@@ -251,7 +258,7 @@ func (s *Store) claimJob(ctx context.Context, queryer claimQueryer, leaseOwner s
 		FROM candidate
 		WHERE job.id = candidate.id
 		RETURNING job.operation_id, job.instance_id, job.state, job.desired_generation,
-			job.fencing_token, job.lease_until_us, job.attempt, job.recovery_required, job.payload`),
+			job.fencing_token, job.lease_until_us, job.attempt, job.recovery_required, job.payload, job.subject_kind, job.subject_id`),
 			args...)
 	} else {
 		args := []any{domain.OperationRunning, leaseOwner, leaseMicros, CurrentPayloadVersion, domain.OperationQueued, domain.OperationRunning}
@@ -268,7 +275,7 @@ func (s *Store) claimJob(ctx context.Context, queryer claimQueryer, leaseOwner s
 			LIMIT 1
 		)
 		RETURNING operation_id, instance_id, state, desired_generation,
-			fencing_token, lease_until_us, attempt, recovery_required, payload`),
+			fencing_token, lease_until_us, attempt, recovery_required, payload, subject_kind, subject_id`),
 			args...)
 	}
 	operation, recoveryRequired, payload, err := scanOperation(row)
@@ -290,17 +297,21 @@ type rowScanner interface {
 }
 
 func scanOperation(row rowScanner) (domain.Operation, bool, []byte, error) {
-	var operationID, instanceID, state string
+	var operationID, instanceID, state, subjectKind, subjectID string
 	var generation, fencingToken, leaseUntil, attempt int64
 	var recoveryRequired int
 	var payload []byte
-	if err := row.Scan(&operationID, &instanceID, &state, &generation, &fencingToken, &leaseUntil, &attempt, &recoveryRequired, &payload); err != nil {
+	if err := row.Scan(&operationID, &instanceID, &state, &generation, &fencingToken, &leaseUntil, &attempt, &recoveryRequired, &payload, &subjectKind, &subjectID); err != nil {
 		return domain.Operation{}, false, nil, err
 	}
 	if generation < 0 || fencingToken < 0 || attempt < 0 {
 		return domain.Operation{}, false, nil, fmt.Errorf("operation row contains negative monotonic values")
 	}
+	if subjectID == "" && subjectKind == string(domain.WorkInstance) {
+		subjectID = instanceID
+	}
 	return domain.Operation{
+		Subject:        domain.WorkSubject{Kind: domain.WorkSubjectKind(subjectKind), ID: subjectID},
 		ID:             domain.OperationID(operationID),
 		InstanceID:     domain.InstanceID(instanceID),
 		State:          domain.OperationState(state),

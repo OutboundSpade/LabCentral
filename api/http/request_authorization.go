@@ -181,6 +181,9 @@ func authorizationError(err error, hideExistence bool) error {
 }
 
 func apiError(err error) error {
+	if errors.Is(err, authorization.ErrDenied) {
+		return huma.Error403Forbidden("Current authority does not permit this operation")
+	}
 	var validation *controlplane.ValidationError
 	if errors.As(err, &validation) {
 		details := make([]error, 0, len(validation.Issues))

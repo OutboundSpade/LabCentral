@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
 phase: phase_3_production_topology_in_progress
-lastUpdated: "2026-09-15"
+lastUpdated: "2026-09-17"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -21,6 +21,9 @@ acceptedAdrs:
   - ADR-0020
   - ADR-0021
   - ADR-0022
+  - ADR-0023
+  - ADR-0024
+  - ADR-0025
 proposedAdrs: []
 supersededAdrs: [ADR-0011, ADR-0012, ADR-0014, ADR-0017]
 documents:
@@ -235,6 +238,13 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-EXT-001
+  - TASK-EXT-002
+  - TASK-EXT-003
+  - TASK-EXT-004
+  - TASK-EXT-005
+  - TASK-EXT-006
+  - TASK-EXT-007
   - TASK-UI-008
   - TASK-ALLOC-002
   - TASK-CONTAINER-VM-001
@@ -284,6 +294,7 @@ completedTasks:
   - TASK-PROD-002
   - TASK-PROD-003
 currentTasks:
+  - TASK-EXT-008
   - TASK-PROD-004
   - TASK-PROD-005
-nextRecommendedTasks: []
+nextRecommendedTasks: [TASK-EXT-009]

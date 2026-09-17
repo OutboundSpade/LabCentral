@@ -13,7 +13,10 @@ import (
 )
 
 type Provider struct {
+	BuildDigest  string
 	Client       wire.ProviderServiceClient
+	Artifacts    wire.ArtifactTransferServiceClient
+	ImageImports wire.ImageImportServiceClient
 	Availability func() bool
 }
 
@@ -259,3 +262,5 @@ func (p *Provider) ReadUsage(ctx context.Context, r app.ProviderMutation) (*app.
 	}
 	return &app.ResourceUsage{SampledAt: u.GetSampledAt().AsTime(), CPUFraction: u.CpuFraction, VirtualCPUs: u.VirtualCpus, MemoryUsedBytes: u.MemoryUsedBytes, MemoryCapacityBytes: u.MemoryCapacityBytes}, nil
 }
+
+func (p *Provider) ExtensionIdentity() string { return p.BuildDigest }

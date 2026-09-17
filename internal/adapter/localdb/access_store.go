@@ -134,6 +134,16 @@ func (s *Store) beginAccessSession(ctx context.Context, request application.Begi
 		duration = application.DefaultAccessSessionDuration
 	}
 	expiresAt := now.Add(duration)
+	if request.GatewayGrantID != "" {
+		var grantExpiry int64
+		if err := tx.QueryRowContext(ctx, s.bind(`SELECT g.expires_at_us FROM labcentral_gateway_grants g JOIN labcentral_gateway_clients c ON c.client_id=g.client_id WHERE g.grant_id=? AND g.subject_id=? AND g.revoked=0 AND c.disabled=0 AND g.expires_at_us>`+s.nowMicros()), request.GatewayGrantID, request.SubjectID).Scan(&grantExpiry); err != nil {
+			return application.AccessSessionRecord{}, application.ErrAuthorityChanged
+		}
+		if bound := time.UnixMicro(grantExpiry); expiresAt.After(bound) {
+			expiresAt = bound
+		}
+	}
+
 	maximum := now.Add(application.MaximumAccessSessionDuration)
 	if !instance.ExpiresAt.IsZero() && instance.ExpiresAt.Before(maximum) {
 		maximum = instance.ExpiresAt
@@ -152,17 +162,22 @@ func (s *Store) beginAccessSession(ctx context.Context, request application.Begi
 	err = tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_access_sessions
 		(access_session_id, subject_id, organization_id, project_id, instance_id, resource_id, method, target_id,
 		 access_plugin_id, access_plugin_version, access_plugin_instance_id, access_kind, audience,
-		 provider_state_digest, resource_generation, state, expires_at_us, resource_version, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 1, `+s.nowMicros()+`, `+s.nowMicros()+`)
+		 provider_state_digest, resource_generation, state, expires_at_us, closure_required, resource_version, created_at_us, updated_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 1, `+s.nowMicros()+`, `+s.nowMicros()+`)
 		RETURNING created_at_us, updated_at_us`), request.ID, request.SubjectID, organizationID, instance.ProjectID,
 		request.InstanceID, request.ResourceID, request.Method, instance.ProviderTargetID, request.AccessPluginID,
 		request.AccessPluginVersion, request.AccessPluginInstance, request.AccessKind, request.Audience,
-		request.ProviderStateDigest.Hex(), request.ResourceGeneration, expiresAt.UnixMicro()).Scan(&createdAt, &updatedAt)
+		request.ProviderStateDigest.Hex(), request.ResourceGeneration, expiresAt.UnixMicro(), quotaBoolean(request.RecoverUncertainIssuance)).Scan(&createdAt, &updatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return application.AccessSessionRecord{}, application.ErrAlreadyExists
 		}
 		return application.AccessSessionRecord{}, fmt.Errorf("persist pending access session: %w", err)
+	}
+	if request.GatewayGrantID != "" {
+		if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_gateway_access_sessions(access_session_id,grant_id) VALUES(?,?)`), request.ID, request.GatewayGrantID); err != nil {
+			return application.AccessSessionRecord{}, err
+		}
 	}
 	record := application.AccessSessionRecord{
 		ID: request.ID, SubjectID: request.SubjectID, OrganizationID: organizationID, ProjectID: instance.ProjectID,
@@ -170,7 +185,7 @@ func (s *Store) beginAccessSession(ctx context.Context, request application.Begi
 		AccessPluginID: request.AccessPluginID, AccessPluginVersion: request.AccessPluginVersion,
 		AccessPluginInstance: request.AccessPluginInstance, AccessKind: request.AccessKind, Audience: request.Audience,
 		ProviderStateDigest: request.ProviderStateDigest, ResourceGeneration: request.ResourceGeneration,
-		State: domain.AccessSessionPending, ExpiresAt: expiresAt, ResourceVersion: 1,
+		ClosureRequired: request.RecoverUncertainIssuance, State: domain.AccessSessionPending, ExpiresAt: expiresAt, ResourceVersion: 1,
 		CreatedAt: time.UnixMicro(createdAt).UTC(), UpdatedAt: time.UnixMicro(updatedAt).UTC(),
 	}
 	if err := s.appendAccessGovernanceTx(ctx, tx, record, request.GovernanceRecordIDs, "access.session.create", "access-session.pending", application.AuditAccepted, ""); err != nil {
@@ -556,7 +571,8 @@ func (s *Store) ListAccessSessionsForReconciliation(ctx context.Context, limit u
 		return nil, fmt.Errorf("access reconciliation limit must be 1-1000")
 	}
 	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT access_session_id FROM labcentral_access_sessions
-		WHERE closure_required = 1 OR
+		WHERE (closure_required = 1 AND state <> 'pending') OR
+ (state = 'pending' AND closure_required = 1 AND created_at_us <= `+s.nowMicros()+` - 30000000) OR
 			(state IN ('pending', 'ready', 'active') AND expires_at_us <= `+s.nowMicros()+`) OR
 			(state = 'ready' AND launch_expires_at_us > 0 AND launch_expires_at_us <= `+s.nowMicros()+`)
 		ORDER BY updated_at_us, access_session_id LIMIT ?`), limit)
@@ -609,7 +625,7 @@ func (s *Store) ExpireAccessSession(ctx context.Context, id domain.AccessSession
 		if err != nil {
 			return current, err
 		}
-		due := !current.ExpiresAt.After(now)
+		due := !current.ExpiresAt.After(now) || (current.State == domain.AccessSessionPending && current.ClosureRequired && !current.CreatedAt.Add(30*time.Second).After(now))
 		if current.State == domain.AccessSessionReady && !current.LaunchExpiresAt.IsZero() && !current.LaunchExpiresAt.After(now) {
 			due = true
 		}
@@ -708,6 +724,21 @@ func accessCallbackMatches(record application.AccessSessionRecord, identity appl
 }
 
 func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, record application.AccessSessionRecord, now time.Time) (bool, error) {
+	var bound string
+	err := tx.QueryRowContext(ctx, s.bind(`SELECT grant_id FROM labcentral_gateway_access_sessions WHERE access_session_id=?`), record.ID).Scan(&bound)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if bound != "" {
+		var valid int
+		if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_gateway_grants g JOIN labcentral_gateway_clients c ON c.client_id=g.client_id WHERE g.grant_id=? AND g.subject_id=? AND g.revoked=0 AND c.disabled=0 AND g.expires_at_us>?`), bound, record.SubjectID, now.UnixMicro()).Scan(&valid); err != nil {
+			return false, err
+		}
+		if valid != 1 {
+			return false, nil
+		}
+	}
+
 	instance, digest, err := s.loadAccessResourceTx(ctx, tx, record.InstanceID, record.ResourceID, true)
 	if errors.Is(err, application.ErrAuthorityChanged) || errors.Is(err, application.ErrNotFound) {
 		return false, nil
@@ -779,7 +810,7 @@ func validateBeginAccessSession(request application.BeginAccessSessionRequest) e
 	if _, err := domain.NewLogicalResourceID(string(request.ResourceID)); err != nil {
 		return err
 	}
-	if request.Method != "vnc" && request.Method != "ssh" {
+	if !domain.ValidAccessMethod(request.Method) {
 		return fmt.Errorf("unsupported access method")
 	}
 	for _, value := range []string{request.AccessPluginID, request.AccessPluginVersion, request.AccessPluginInstance, request.AccessKind, request.Audience} {
@@ -853,7 +884,7 @@ func (s *Store) loadAccessResourceTx(ctx context.Context, tx *sql.Tx, instanceID
 		return application.InstanceRecord{}, "", err
 	}
 	resource := application.ResourceRecord{Kind: domain.ResourceKind(kind), CanonicalJSON: canonicalJSON}
-	if !resource.UsesVirtualMachine() || (phase != string(domain.ResourceReady) && phase != string(domain.ResourcePaused)) || len(providerState) == 0 {
+	if (resource.Kind != domain.ResourceVM && resource.Kind != domain.ResourceContainer && resource.Kind != domain.ResourceNetwork) || (phase != string(domain.ResourceReady) && phase != string(domain.ResourcePaused)) || len(providerState) == 0 {
 		return application.InstanceRecord{}, "", application.ErrAuthorityChanged
 	}
 	state := &pluginv1.ProviderState{}

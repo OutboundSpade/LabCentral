@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 const maximumAccessEnvelopeBytes = 64 << 10
 
 type AccessSessionCommand struct {
+	GatewayGrantID string
 	SubjectID      domain.UserID
 	InstanceID     domain.InstanceID
 	ResourceID     domain.LogicalResourceID
@@ -49,9 +51,8 @@ func (s *Service) CreateAccessSession(ctx context.Context, command AccessSession
 	if command.Duration < 0 || command.Duration > MaximumAccessSessionDuration || len(command.IdempotencyKey) == 0 || len(command.IdempotencyKey) > 256 {
 		return AccessSessionLaunch{}, fmt.Errorf("access session request is invalid")
 	}
-	binding, err := s.access.Select(command.Method)
-	if err != nil {
-		return AccessSessionLaunch{}, err
+	if !domain.ValidAccessMethod(command.Method) {
+		return AccessSessionLaunch{}, ErrAccessUnsupported
 	}
 	access, err := s.authorizer.AuthorizeInstance(ctx, command.SubjectID, application.ActionAccessSessionCreate, command.InstanceID)
 	if err != nil {
@@ -78,30 +79,7 @@ func (s *Service) CreateAccessSession(ctx context.Context, command AccessSession
 		return AccessSessionLaunch{}, fmt.Errorf("resource provider state is unavailable")
 	}
 	providerDigest, _ := domain.ParseSHA256Digest(hex.EncodeToString(stateDigestBytes))
-	requestDigest := digestBytes("labcentral.access-session.create/v1", []byte(command.SubjectID), []byte(command.InstanceID),
-		[]byte(command.ResourceID), []byte(command.Method), []byte(command.Duration.String()), []byte(binding.PluginInstance))
-	sessionIDValue, err := s.ids.New("access")
-	if err != nil {
-		return AccessSessionLaunch{}, err
-	}
-	recordIDs, err := s.newGovernanceRecordIDs()
-	if err != nil {
-		return AccessSessionLaunch{}, err
-	}
-	pending, err := s.store.BeginAccessSession(ctx, BeginAccessSessionRequest{
-		GovernanceRecordIDs: recordIDs, ID: domain.AccessSessionID(sessionIDValue), SubjectID: command.SubjectID,
-		InstanceID: command.InstanceID, ResourceID: command.ResourceID, Method: command.Method,
-		AccessPluginID: binding.PluginID, AccessPluginVersion: binding.PluginVersion,
-		AccessPluginInstance: binding.PluginInstance, AccessKind: binding.AccessKind, Audience: binding.Audience,
-		ProviderStateDigest: providerDigest, ResourceGeneration: instance.Generation, RequestedDuration: command.Duration,
-		IdempotencyKey: command.IdempotencyKey, RequestDigest: requestDigest,
-	})
-	if err != nil {
-		return AccessSessionLaunch{}, err
-	}
-	if pending.State == domain.AccessSessionRevoked || pending.State == domain.AccessSessionExpired || pending.State == domain.AccessSessionFailed || pending.State == domain.AccessSessionActive {
-		return AccessSessionLaunch{}, fmt.Errorf("access session cannot issue new launch material")
-	}
+	pending := AccessSessionRecord{SubjectID: command.SubjectID, InstanceID: command.InstanceID, ResourceID: command.ResourceID, TargetID: instance.ProviderTargetID, Method: command.Method, ResourceGeneration: instance.Generation}
 
 	invocationValue, err := s.ids.New("invocation")
 	if err != nil {
@@ -131,12 +109,45 @@ func (s *Service) CreateAccessSession(ctx context.Context, command AccessSession
 	endpointBytes := discovered.Opaque
 	defer clear(endpointBytes)
 	endpointDigest, err := validateDiscoveredAccessEndpoint(discovered, pending, providerDigest, endpointBytes)
-	if err != nil || !s.access.Accepts(binding, discovered.Schema) {
+	if err != nil {
 		return AccessSessionLaunch{}, s.failAccessSession(ctx, pending, "protocol_invalid", fmt.Errorf("provider access endpoint is incompatible"))
 	}
 	if _, err := s.authorizer.AuthorizeInstance(ctx, command.SubjectID, application.ActionAccessSessionCreate, command.InstanceID); err != nil {
 		return AccessSessionLaunch{}, s.failAccessSession(ctx, pending, "authorization_denied", err)
 	}
+	binding, err := s.access.Resolve(command.Method, string(instance.ProviderTargetID), string(resource.Kind), discovered.Schema)
+	if err != nil {
+		return AccessSessionLaunch{}, err
+	}
+	requestDigest := digestBytes("labcentral.access-session.create/v1", []byte(command.SubjectID), []byte(command.InstanceID),
+		[]byte(command.ResourceID), []byte(command.Method), []byte(command.Duration.String()), []byte(binding.PluginInstance))
+	sessionIDValue, err := s.ids.New("access")
+	if err != nil {
+		return AccessSessionLaunch{}, err
+	}
+	recordIDs, err := s.newGovernanceRecordIDs()
+	if err != nil {
+		return AccessSessionLaunch{}, err
+	}
+	if command.GatewayGrantID != "" {
+		requestDigest = digestBytes("labcentral.delegated-access/v1", []byte(requestDigest), []byte(command.GatewayGrantID))
+	}
+	pending, err = s.store.BeginAccessSession(ctx, BeginAccessSessionRequest{GatewayGrantID: command.GatewayGrantID,
+		RecoverUncertainIssuance: slices.Contains(binding.Features, "access-issuance-recovery-v1"),
+		GovernanceRecordIDs:      recordIDs, ID: domain.AccessSessionID(sessionIDValue), SubjectID: command.SubjectID,
+		InstanceID: command.InstanceID, ResourceID: command.ResourceID, Method: command.Method,
+		AccessPluginID: binding.PluginID, AccessPluginVersion: binding.PluginVersion,
+		AccessPluginInstance: binding.PluginInstance, AccessKind: binding.AccessKind, Audience: binding.Audience,
+		ProviderStateDigest: providerDigest, ResourceGeneration: instance.Generation, RequestedDuration: command.Duration,
+		IdempotencyKey: command.IdempotencyKey, RequestDigest: requestDigest,
+	})
+	if err != nil {
+		return AccessSessionLaunch{}, err
+	}
+	if pending.State == domain.AccessSessionRevoked || pending.State == domain.AccessSessionExpired || pending.State == domain.AccessSessionFailed || pending.State == domain.AccessSessionActive {
+		return AccessSessionLaunch{}, fmt.Errorf("access session cannot issue new launch material")
+	}
+
 	expiresAt := earliestAccessExpiry(pending.ExpiresAt, discovered.ValidUntil)
 	createContext, cancelCreate := context.WithTimeout(ctx, 12*time.Second)
 	created, err := binding.Access.Create(createContext, application.AccessCreate{
@@ -362,6 +373,9 @@ func (s *Service) RunAccessReconciliation(ctx context.Context, limit uint32) (Ac
 }
 
 func (s *Service) failAccessSession(ctx context.Context, pending AccessSessionRecord, reason string, result error) error {
+	if pending.ID == "" {
+		return result
+	}
 	ids, idErr := s.newGovernanceRecordIDs()
 	if idErr != nil {
 		return result
@@ -388,7 +402,7 @@ func (s *Service) failCreatedAccessSession(ctx context.Context, pending AccessSe
 
 func accessResource(resources []ResourceRecord, id domain.LogicalResourceID) (ResourceRecord, error) {
 	for _, resource := range resources {
-		if resource.ID == id && resource.UsesVirtualMachine() && (resource.Phase == domain.ResourceReady || resource.Phase == domain.ResourcePaused) {
+		if resource.ID == id && (resource.Kind == domain.ResourceVM || resource.Kind == domain.ResourceContainer || resource.Kind == domain.ResourceNetwork) && (resource.Phase == domain.ResourceReady || resource.Phase == domain.ResourcePaused) {
 			return resource, nil
 		}
 	}

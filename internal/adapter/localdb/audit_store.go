@@ -161,6 +161,9 @@ func (s *Store) appendAuditRecord(ctx context.Context, appendRecord application.
 }
 
 func (s *Store) appendAuditRecordTx(ctx context.Context, tx *sql.Tx, appendRecord application.AppendAuditRecord) (application.AuditRecord, error) {
+	if actor, ok := application.RecordActorFromContext(ctx); ok && actor.ID == appendRecord.Actor.ID && actor.Kind == appendRecord.Actor.Kind && appendRecord.Actor.GatewayClientID == "" {
+		appendRecord.Actor.GatewayClientID = actor.GatewayClientID
+	}
 	if err := application.ValidateAppendAuditRecord(appendRecord); err != nil {
 		return application.AuditRecord{}, err
 	}
@@ -171,12 +174,12 @@ func (s *Store) appendAuditRecordTx(ctx context.Context, tx *sql.Tx, appendRecor
 	var occurredAt int64
 	err = tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_audit_records
 		(audit_id, stream_position, schema_version, category, action, outcome,
-		 organization_id, project_id, actor_kind, actor_id, aggregate_type, aggregate_id,
+		 organization_id, project_id, actor_kind, actor_id, gateway_client_id, aggregate_type, aggregate_id,
 		 correlation_id, causation_id, operation_id, payload_json, occurred_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
 		RETURNING occurred_at_us`),
 		appendRecord.ID, position, appendRecord.SchemaVersion, appendRecord.Category, appendRecord.Action, appendRecord.Outcome,
-		appendRecord.Scope.OrganizationID, appendRecord.Scope.ProjectID, appendRecord.Actor.Kind, appendRecord.Actor.ID,
+		appendRecord.Scope.OrganizationID, appendRecord.Scope.ProjectID, appendRecord.Actor.Kind, appendRecord.Actor.ID, appendRecord.Actor.GatewayClientID,
 		appendRecord.AggregateType, appendRecord.AggregateID, appendRecord.Links.CorrelationID,
 		appendRecord.Links.CausationID, appendRecord.Links.OperationID, appendRecord.RedactedPayload.Bytes(),
 	).Scan(&occurredAt)
@@ -259,6 +262,9 @@ func (s *Store) appendEventRecord(ctx context.Context, appendRecord application.
 }
 
 func (s *Store) appendEventRecordTx(ctx context.Context, tx *sql.Tx, appendRecord application.AppendEventRecord) (application.EventRecord, error) {
+	if actor, ok := application.RecordActorFromContext(ctx); ok && actor.ID == appendRecord.Actor.ID && actor.Kind == appendRecord.Actor.Kind && appendRecord.Actor.GatewayClientID == "" {
+		appendRecord.Actor.GatewayClientID = actor.GatewayClientID
+	}
 	if err := application.ValidateAppendEventRecord(appendRecord); err != nil {
 		return application.EventRecord{}, err
 	}
@@ -273,13 +279,13 @@ func (s *Store) appendEventRecordTx(ctx context.Context, tx *sql.Tx, appendRecor
 	var occurredAt int64
 	err = tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_events
 		(event_id, stream_position, schema_version, event_type, organization_id, project_id,
-		 actor_kind, actor_id, aggregate_type, aggregate_id, aggregate_sequence,
+		 actor_kind, actor_id, gateway_client_id, aggregate_type, aggregate_id, aggregate_sequence,
 		 correlation_id, causation_id, operation_id, payload_json, occurred_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)
 		RETURNING occurred_at_us`),
 		appendRecord.ID, position, appendRecord.SchemaVersion, appendRecord.Type,
 		appendRecord.Scope.OrganizationID, appendRecord.Scope.ProjectID, appendRecord.Actor.Kind,
-		appendRecord.Actor.ID, appendRecord.AggregateType, appendRecord.AggregateID, sequence,
+		appendRecord.Actor.ID, appendRecord.Actor.GatewayClientID, appendRecord.AggregateType, appendRecord.AggregateID, sequence,
 		appendRecord.Links.CorrelationID, appendRecord.Links.CausationID,
 		appendRecord.Links.OperationID, appendRecord.SafePayload.Bytes(),
 	).Scan(&occurredAt)
@@ -345,12 +351,12 @@ func (s *Store) GetEventRecord(ctx context.Context, id string) (application.Even
 }
 
 const auditRecordSelect = `SELECT audit_id, stream_position, schema_version, category, action, outcome,
-	organization_id, project_id, actor_kind, actor_id, aggregate_type, aggregate_id,
+	organization_id, project_id, actor_kind, actor_id, gateway_client_id, aggregate_type, aggregate_id,
 	correlation_id, causation_id, operation_id, payload_json, occurred_at_us
 	FROM labcentral_audit_records`
 
 const eventRecordSelect = `SELECT event_id, stream_position, schema_version, event_type,
-	organization_id, project_id, actor_kind, actor_id, aggregate_type, aggregate_id, aggregate_sequence,
+	organization_id, project_id, actor_kind, actor_id, gateway_client_id, aggregate_type, aggregate_id, aggregate_sequence,
 	correlation_id, causation_id, operation_id, payload_json, occurred_at_us
 	FROM labcentral_events`
 
@@ -467,7 +473,7 @@ func scanAuditRecord(row scanner) (application.AuditRecord, error) {
 	)
 	err := row.Scan(&record.ID, &streamPosition, &record.SchemaVersion, &record.Category,
 		&record.Action, &record.Outcome, &organizationID, &projectID, &record.Actor.Kind,
-		&record.Actor.ID, &record.AggregateType, &record.AggregateID, &record.Links.CorrelationID,
+		&record.Actor.ID, &record.Actor.GatewayClientID, &record.AggregateType, &record.AggregateID, &record.Links.CorrelationID,
 		&record.Links.CausationID, &operationID, &payload, &occurredAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -501,7 +507,7 @@ func scanEventRecord(row scanner) (application.EventRecord, error) {
 		payload                                       []byte
 	)
 	err := row.Scan(&record.ID, &streamPosition, &record.SchemaVersion, &record.Type,
-		&organizationID, &projectID, &record.Actor.Kind, &record.Actor.ID,
+		&organizationID, &projectID, &record.Actor.Kind, &record.Actor.ID, &record.Actor.GatewayClientID,
 		&record.AggregateType, &record.AggregateID, &aggregateSequence,
 		&record.Links.CorrelationID, &record.Links.CausationID, &operationID, &payload, &occurredAt)
 	if err != nil {

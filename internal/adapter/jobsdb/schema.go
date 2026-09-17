@@ -36,6 +36,13 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, tx, allocationMigrationID, s.allocationMigrationStatements()); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, tx, "0003_typed_work_subjects", []string{
+		"ALTER TABLE labcentral_jobs ADD COLUMN subject_kind TEXT NOT NULL DEFAULT 'instance' CHECK (subject_kind IN ('instance','source','build','image-import','preparation'))",
+		"ALTER TABLE labcentral_jobs ADD COLUMN subject_id TEXT NOT NULL DEFAULT ''",
+		"CREATE INDEX labcentral_jobs_subject_idx ON labcentral_jobs(subject_kind, subject_id, state)",
+	}); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit jobs migrations: %w", err)
 	}

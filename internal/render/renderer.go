@@ -3,6 +3,7 @@ package render
 import (
 	"context"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"math"
 	"net/netip"
 	"regexp"
@@ -82,7 +83,11 @@ func (r *Renderer) Render(
 	if err := ctx.Err(); err != nil {
 		return domain.CanonicalLab{}, domain.RenderReport{}, renderError(StageParse, "render_canceled", "", "render was canceled", err)
 	}
-	document, err := ParseYAML(revision.VerifiedBundle, limits.Parse)
+	entry, _, err := labbundle.Source(revision.VerifiedBundle)
+	if err != nil {
+		return domain.CanonicalLab{}, domain.RenderReport{}, err
+	}
+	document, err := ParseYAML(entry, limits.Parse)
 	if err != nil {
 		return domain.CanonicalLab{}, domain.RenderReport{}, err
 	}
@@ -94,6 +99,9 @@ func (r *Renderer) Render(
 		return domain.CanonicalLab{}, domain.RenderReport{}, err
 	}
 	if err := validateProviderOverrides(authorLab.Spec.ProviderOverrides); err != nil {
+		return domain.CanonicalLab{}, domain.RenderReport{}, err
+	}
+	if err := resolveBuildImages(&authorLab, policy.BuildImages); err != nil {
 		return domain.CanonicalLab{}, domain.RenderReport{}, err
 	}
 	inputs, err := resolveInputs(authorLab.Spec.Parameters, provided)

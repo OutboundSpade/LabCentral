@@ -57,7 +57,13 @@ func (v EnumValue) Value() (any, error) {
 
 type TypedInputs []TypedInput
 
+type ResolvedBuildImage struct {
+	RecipeID string
+	ImageRef ImageRef
+}
+
 type RenderPolicy struct {
+	BuildImages       []ResolvedBuildImage
 	MaxBundleBytes    uint64
 	MaxResources      uint32
 	MaxCanonicalBytes uint64

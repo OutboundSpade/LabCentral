@@ -60,3 +60,22 @@ the registered targets and grant workspace access in **Plugins** after startup.
 Do not infer installation support from a provider kind name. Targets are explicit
 bindings, and each target discovers its own capabilities. Follow
 [compatibility](../compatibility.md) when changing schemas or readable state.
+
+## Independent extension foundations
+
+The [extension contracts](../design/extensions.md) describe v2 packages and
+separate provider, access, source, builder and browser identities. A multi-category
+package contains separate contribution manifests and backend processes; it never
+combines their credentials. The public [browser SDK](../../pkg/plugin-sdk-browser/index.js)
+is framework-independent. The [external browser fixture](../../examples/external-browser/README.md)
+is packaged after building core/UI and exercises the real isolated host.
+
+Source and builder services have separate negotiation, durable orchestration and invocation-scoped artifact transfer. Access credential adapters must negotiate
+all three delivery/inspection/recovery features, enforce expiry during core
+failure, and revoke by session ID when an issuance response is uncertain. The external fixture suite exercises network closure, stream rendering, source recovery, builds and imports against a prebuilt core/UI artifact.
+Provider-owned VM-backed container implementations continue using the
+[guest runtime contract](../operations/container-vm-runtime.md); no runtime-driver
+plugin category is introduced.
+
+
+See [extension author examples](extensions.md) for recipe metadata, bindings, optional provider imports and the independent fixture commands. Use only public SDK/protocol surfaces in separately built packages. Never import `internal/` packages or depend on the core database/filesystem. Browser dependencies must be packaged with immutable assets, and backend credentials remain category-specific.

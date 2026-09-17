@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Supersedes:** None
-- **Superseded by:** None
+- **Superseded by:** ADR-0023 (browser contribution scope only; other decisions remain accepted)
 
 ## Context and constraints
 

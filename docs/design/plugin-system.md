@@ -2,7 +2,7 @@
 
 ## Categories and scope
 
-v1 activates provider and access plugins. Future guest provisioners, image resolvers/importers, policy modules, audit sinks, and event sinks are deliberate extension points but not v1 plugin APIs. Plugins do not add portable top-level kinds.
+The original v1 activates provider and access plugins. ADR-0023 through ADR-0025 add independently negotiated source, builder and browser contributions and optional provider image import. Policy modules, audit sinks and event sinks remain future work. Plugins do not add portable top-level kinds.
 
 ## Startup and handshake
 
@@ -67,3 +67,7 @@ The launcher now supports independently configured Docker and Proxmox children p
 The native release packages all official runtime executables beside `labd`, adjacent SHA-256 files, and versioned Docker/Proxmox/access inventory manifests containing identity, protocol range, target OS/architecture, digest, and requested permissions. The production Proxmox assets run core, provider, and access as distinct systemd users, project credentials privately with `LoadCredential=`, and give each plugin its own IPC group shared only with core. Official CLI profiles continue to consume adjacent checksums. ADR-0015 adds explicit manifest installation through `--installation`; see the [installation contract](../operations/plugin-installation.md). Automatic publisher-signature policy and unreviewed-code sandbox provisioning remain future work.
 
 ADR-0017 permits a separately signed, exact-owned-VM cleanup grant while normal qualification is unavailable; all other write paths retain normal qualification. See [cleanup authority](../operations/plugin-installation.md#explicit-proxmox-cleanup-authority).
+
+## Independent extension foundations
+
+ADR-0023 extends explicit installation to independently configured access, source, builder and browser contributions. The [extension contract](extensions.md) describes v2 package/installation formats and the current implementation boundary; v1 installation remains supported.

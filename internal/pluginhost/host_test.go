@@ -31,6 +31,24 @@ func TestMain(m *testing.M) {
 		if os.Getenv(inheritedEnvironmentCanary) != "" {
 			os.Exit(9)
 		}
+		if id := os.Getenv(launch.ConfiguredPluginID); id == "fixture.source" || id == "fixture.builder" {
+			kind := strings.TrimPrefix(id, "fixture.")
+			info := &pluginv1.PluginInfo{PluginId: id, PluginVersion: "1", BuildDigest: "test", Categories: []string{kind}, SupportedProviderProtocols: []*pluginv1.ProtocolVersionRange{{Major: 99}}}
+			services := pluginruntime.Services{Info: info, Runtime: &helperExtensionRuntime{}}
+			if kind == "source" {
+				info.SourceKinds = []string{"fixture"}
+				info.SupportedSourceProtocols = []*pluginv1.ProtocolVersionRange{{Major: 1}}
+				services.Source = &helperSource{}
+			} else {
+				info.BuilderKinds = []string{"fixture"}
+				info.SupportedBuilderProtocols = []*pluginv1.ProtocolVersionRange{{Major: 1}}
+				services.Builder = &helperBuilder{}
+			}
+			if err := pluginruntime.Serve(context.Background(), services); err != nil {
+				os.Exit(2)
+			}
+			os.Exit(0)
+		}
 		if os.Getenv(launch.ConfiguredPluginID) == helperAccessPluginID {
 			service := &helperAccessService{}
 			err := pluginruntime.Serve(context.Background(), pluginruntime.Services{
@@ -531,5 +549,71 @@ func TestSupervisorRestartsOnePluginAndKeepsStableClient(t *testing.T) {
 	}
 	if !stable.Available() {
 		t.Fatal("restarted provider unavailable")
+	}
+}
+
+// These child processes prove registration and independent negotiation only;
+// source/build execution is deliberately outside this fixture's claimed scope.
+type helperExtensionRuntime struct {
+	pluginv1.UnimplementedPluginRuntimeServiceServer
+}
+
+func (*helperExtensionRuntime) Health(context.Context, *pluginv1.HealthRequest) (*pluginv1.HealthResponse, error) {
+	return &pluginv1.HealthResponse{Status: pluginv1.HealthResponse_STATUS_HEALTHY}, nil
+}
+
+type helperSource struct {
+	pluginv1.UnimplementedSourceServiceServer
+}
+
+func (*helperSource) GetInvocation(context.Context, *pluginv1.SourceServiceGetInvocationRequest) (*pluginv1.SourceServiceGetInvocationResponse, error) {
+	return &pluginv1.SourceServiceGetInvocationResponse{State: "unknown"}, nil
+}
+
+type helperBuilder struct {
+	pluginv1.UnimplementedBuilderServiceServer
+}
+
+func (*helperBuilder) GetInvocation(context.Context, *pluginv1.BuilderServiceGetInvocationRequest) (*pluginv1.BuilderServiceGetInvocationResponse, error) {
+	return &pluginv1.BuilderServiceGetInvocationResponse{Result: &pluginv1.BuilderServiceBuildResponse{State: "unknown"}}, nil
+}
+func TestSourceAndBuilderNegotiateIndependentProcessContracts(t *testing.T) {
+	executable := protectedTestExecutable(t)
+	digest := fileDigest(t, executable)
+	for _, category := range []string{"source", "builder"} {
+		t.Run(category, func(t *testing.T) {
+			parent, err := os.MkdirTemp("", "lc-ext-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(parent)
+			config := pluginhost.Config{Executable: executable, ExecutableSHA256: digest, RuntimeParent: parent, ConfiguredPluginID: "fixture." + category, PluginInstanceID: "plugin." + category}
+			if category == "source" {
+				config.ConfiguredSourceKind = "fixture"
+			} else {
+				config.ConfiguredBuilderKind = "fixture"
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			client, err := pluginhost.Launch(ctx, config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			if client.SelectedProtocol.GetMajor() != 1 || client.SelectedProtocol.GetMinor() != 0 {
+				t.Fatal("selected unrelated provider protocol")
+			}
+			if category == "source" {
+				value, err := client.Source.GetInvocation(ctx, &pluginv1.SourceServiceGetInvocationRequest{})
+				if err != nil || value.GetState() != "unknown" {
+					t.Fatalf("source RPC: %v", err)
+				}
+			} else {
+				value, err := client.Builder.GetInvocation(ctx, &pluginv1.BuilderServiceGetInvocationRequest{})
+				if err != nil || value.GetResult().GetState() != "unknown" {
+					t.Fatalf("builder RPC: %v", err)
+				}
+			}
+		})
 	}
 }

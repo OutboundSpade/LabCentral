@@ -22,6 +22,110 @@
         ],
         "type": "object"
       },
+      "AccessDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "endpointSchemas": {
+            "items": {
+              "$ref": "#/components/schemas/AccessEndpointSchema"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "maximumOfflineSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "method": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "renderer": {
+            "type": "string"
+          },
+          "targetKinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpointSchemas",
+          "method",
+          "title",
+          "targetKinds",
+          "presentation",
+          "maximumOfflineSeconds"
+        ],
+        "type": "object"
+      },
+      "AccessEndpointSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "major": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minor": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "major",
+          "minor"
+        ],
+        "type": "object"
+      },
+      "AccessPresentation": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/AccessPresentation.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "renderer": {
+            "type": "string"
+          },
+          "streamPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "presentation"
+        ],
+        "type": "object"
+      },
       "AccessSessionDTO": {
         "additionalProperties": false,
         "properties": {
@@ -206,6 +310,313 @@
         ],
         "type": "object"
       },
+      "BrowserExtensionDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pluginInstance": {
+            "type": "string"
+          },
+          "slot": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "pluginInstance",
+          "slot",
+          "title",
+          "url",
+          "permissions"
+        ],
+        "type": "object"
+      },
+      "BrowserExtensionListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/BrowserExtensionListBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserExtensionDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "BuildInput": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "BuildInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/BuildInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "recipeId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "revisionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "revisionId",
+          "recipeId"
+        ],
+        "type": "object"
+      },
+      "BuildLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "cpuCount": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "egress": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "inputBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memoryBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outputBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "timeoutSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "timeoutSeconds",
+          "cpuCount",
+          "memoryBytes",
+          "inputBytes",
+          "outputBytes",
+          "egress"
+        ],
+        "type": "object"
+      },
+      "BuildRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "baseImageDigests": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "builder": {
+            "type": "string"
+          },
+          "configurationJSON": {
+            "type": "string"
+          },
+          "context": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/BuildInput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "schema": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "builder",
+          "schema",
+          "architecture",
+          "configurationJSON",
+          "context",
+          "baseImageDigests"
+        ],
+        "type": "object"
+      },
+      "BuildWork": {
+        "additionalProperties": false,
+        "properties": {
+          "contextArtifact": {
+            "type": "string"
+          },
+          "contextDigest": {
+            "type": "string"
+          },
+          "contextSize": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/BuildLimits"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/BuildRecipe"
+          },
+          "recipeDigest": {
+            "type": "string"
+          },
+          "revisionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revisionId",
+          "recipe",
+          "recipeDigest",
+          "contextArtifact",
+          "contextDigest",
+          "contextSize",
+          "limits"
+        ],
+        "type": "object"
+      },
+      "ClientOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ClientOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "client": {
+            "$ref": "#/components/schemas/GatewayClient"
+          },
+          "clientSecret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "client",
+          "clientSecret"
+        ],
+        "type": "object"
+      },
+      "CodeInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/CodeInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "userCode": {
+            "maxLength": 16,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userCode"
+        ],
+        "type": "object"
+      },
       "Cookie": {
         "additionalProperties": false,
         "properties": {
@@ -304,10 +715,9 @@
             "type": "string"
           },
           "method": {
-            "enum": [
-              "vnc",
-              "ssh"
-            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9.-]*$",
             "type": "string"
           },
           "resourceId": {
@@ -427,6 +837,92 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "DeviceResponseBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/DeviceResponseBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "device_code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "expires_in": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "interval": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceTokenBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/DeviceTokenBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "access_token": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "expires_in": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token_type": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EnumValue": {
+        "additionalProperties": false,
+        "properties": {
+          "Integer": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "String": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "String",
+          "Integer"
+        ],
         "type": "object"
       },
       "ErrorDetail": {
@@ -593,6 +1089,483 @@
         ],
         "type": "object"
       },
+      "ExtensionBindingDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "hasCredentials": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "projectIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "projectIds",
+          "hasCredentials"
+        ],
+        "type": "object"
+      },
+      "ExtensionInventoryDTO": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionBindingDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "configurationSchema": {},
+          "instanceId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "protocolMajor": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "protocolMinor": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "targetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bindings",
+          "targetIds",
+          "methods",
+          "permissions",
+          "instanceId",
+          "pluginId",
+          "version",
+          "category",
+          "protocolMajor",
+          "protocolMinor",
+          "available"
+        ],
+        "type": "object"
+      },
+      "ExtensionInventoryListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ExtensionInventoryListBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionInventoryDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ExtensionWork": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ExtensionWork.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string"
+          },
+          "cancelRequested": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failureCode": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invocationId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ExtensionWorkRequest"
+          },
+          "result": {},
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "actorId",
+          "invocationId",
+          "request",
+          "state",
+          "cancelRequested",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ExtensionWorkListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ExtensionWorkListBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionWork"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ExtensionWorkRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bindingId": {
+            "type": "string"
+          },
+          "build": {
+            "$ref": "#/components/schemas/BuildWork"
+          },
+          "configurationDigest": {
+            "type": "string"
+          },
+          "dedupKey": {
+            "type": "string"
+          },
+          "import": {
+            "$ref": "#/components/schemas/ImportWork"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "pluginDigest": {
+            "type": "string"
+          },
+          "pluginInstance": {
+            "type": "string"
+          },
+          "preparation": {
+            "$ref": "#/components/schemas/PreparationWork"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "templateId": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "kind",
+          "pluginInstance",
+          "pluginDigest",
+          "bindingId",
+          "configurationDigest"
+        ],
+        "type": "object"
+      },
+      "GatewayAccessOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/GatewayAccessOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "oneTimeToken": {
+            "type": "string"
+          },
+          "presentation": {
+            "$ref": "#/components/schemas/AccessPresentation"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AccessSessionDTO"
+          }
+        },
+        "required": [
+          "session",
+          "oneTimeToken",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "GatewayClient": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "disabled"
+        ],
+        "type": "object"
+      },
+      "GatewayDevice": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/GatewayDevice.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/GatewayScope"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "clientName",
+          "scope",
+          "expiresAt",
+          "state"
+        ],
+        "type": "object"
+      },
+      "GatewayGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/GatewayScope"
+          },
+          "subjectId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "clientName",
+          "subjectId",
+          "scope",
+          "expiresAt",
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "GatewayScope": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "instanceIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "targetIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "templateIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "projectId",
+          "actions",
+          "templateIds",
+          "instanceIds",
+          "targetIds"
+        ],
+        "type": "object"
+      },
+      "Get-admin-gateway-clientsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Get-admin-gateway-clientsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GatewayClient"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "Get-audit-recordsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -671,6 +1644,60 @@
         },
         "required": [
           "source"
+        ],
+        "type": "object"
+      },
+      "Get-gateway-templates-by-id-revisionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Get-gateway-templates-by-id-revisionsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateRevisionDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Get-gateway-templatesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Get-gateway-templatesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LabTemplateDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       },
@@ -819,6 +1846,201 @@
         "required": [
           "scope",
           "items"
+        ],
+        "type": "object"
+      },
+      "Get-session-gateway-grantsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Get-session-gateway-grantsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GatewayGrant"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "Get-source-bindingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Get-source-bindingsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceBindingView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ImageBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "artifactDigest": {
+            "type": "string"
+          },
+          "imageRef": {
+            "type": "string"
+          },
+          "providerImageId": {
+            "type": "string"
+          },
+          "targetConfigurationDigest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "imageRef",
+          "providerImageId",
+          "artifactDigest",
+          "targetConfigurationDigest",
+          "architecture"
+        ],
+        "type": "object"
+      },
+      "ImagePolicyInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ImagePolicyInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "approved",
+          "retired"
+        ],
+        "type": "object"
+      },
+      "ImportInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ImportInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "buildId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "targetId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "buildId",
+          "targetId"
+        ],
+        "type": "object"
+      },
+      "ImportWork": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "buildId": {
+            "type": "string"
+          },
+          "targetFingerprint": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "buildId",
+          "targetId",
+          "architecture",
+          "targetFingerprint"
+        ],
+        "type": "object"
+      },
+      "InputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/InputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 256,
+            "minLength": 32,
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
         ],
         "type": "object"
       },
@@ -1216,6 +2438,36 @@
           "lifetimePolicyDigest",
           "resourceVersion",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "InstanceLifetimeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "persistent": {
+            "type": "boolean"
+          },
+          "ttlSeconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "ID": {
+            "type": "string"
+          },
+          "Kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "Kind",
+          "ID"
         ],
         "type": "object"
       },
@@ -1879,6 +3131,109 @@
         ],
         "type": "object"
       },
+      "Post-admin-gateway-clients-by-id-statusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Post-admin-gateway-clients-by-id-statusRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "disabled"
+        ],
+        "type": "object"
+      },
+      "Post-admin-gateway-clientsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Post-admin-gateway-clientsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "Post-device-approveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Post-device-approveRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "approve": {
+            "type": "boolean"
+          },
+          "userCode": {
+            "maxLength": 16,
+            "minLength": 8,
+            "type": "string"
+          }
+        },
+        "required": [
+          "userCode",
+          "approve"
+        ],
+        "type": "object"
+      },
+      "Post-gateway-access-sessionsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Post-gateway-access-sessionsRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "instanceId": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "method": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "resourceId": {
+            "maxLength": 128,
+            "type": "string"
+          }
+        },
+        "required": [
+          "instanceId",
+          "resourceId",
+          "method"
+        ],
+        "type": "object"
+      },
       "Post-lab-authoring-documentsRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1919,6 +3274,76 @@
         },
         "required": [
           "token"
+        ],
+        "type": "object"
+      },
+      "PreparationWork": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledged": {
+            "type": "boolean"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/TypedInput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lifetime": {
+            "$ref": "#/components/schemas/InstanceLifetimeRequest"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/InstanceOwner"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revisionId",
+          "targetId",
+          "inputs",
+          "acknowledged",
+          "lifetime"
+        ],
+        "type": "object"
+      },
+      "PrepareInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/PrepareInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "preparation": {
+            "$ref": "#/components/schemas/PreparationWork"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "preparation"
         ],
         "type": "object"
       },
@@ -2128,6 +3553,28 @@
         ],
         "type": "object"
       },
+      "PublishBundleInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/PublishBundleInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "archive": {
+            "contentEncoding": "base64",
+            "type": "string"
+          }
+        },
+        "required": [
+          "archive"
+        ],
+        "type": "object"
+      },
       "PublishRevisionInputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2313,6 +3760,9 @@
       "RecordActor": {
         "additionalProperties": false,
         "properties": {
+          "gatewayClientId": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -2350,6 +3800,47 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ResolveInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ResolveInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "binding": {
+            "maxLength": 257,
+            "minLength": 1,
+            "type": "string"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "templateId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "templateId",
+          "binding",
+          "reference"
+        ],
         "type": "object"
       },
       "ResourceDTO": {
@@ -2522,6 +4013,26 @@
         ],
         "type": "object"
       },
+      "SecretRef": {
+        "additionalProperties": false,
+        "properties": {
+          "Key": {
+            "type": "string"
+          },
+          "Name": {
+            "type": "string"
+          },
+          "Source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "Source",
+          "Name",
+          "Key"
+        ],
+        "type": "object"
+      },
       "ServerInfo": {
         "additionalProperties": false,
         "properties": {
@@ -2625,6 +4136,71 @@
           "subjectId",
           "displayName",
           "roles"
+        ],
+        "type": "object"
+      },
+      "SourceBindingView": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "binding": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding",
+          "available"
+        ],
+        "type": "object"
+      },
+      "StoredImageBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/StoredImageBinding.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/ImageBinding"
+          },
+          "id": {
+            "type": "string"
+          },
+          "importOperationId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "providerDigest": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "targetId",
+          "providerDigest",
+          "importOperationId",
+          "binding",
+          "approved",
+          "retired"
         ],
         "type": "object"
       },
@@ -2877,6 +4453,156 @@
           "canonicalDigest",
           "publishedBy",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "Topology": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Topology.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/TopologyResource"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "instanceId",
+          "generation",
+          "resources"
+        ],
+        "type": "object"
+      },
+      "TopologyAttachment": {
+        "additionalProperties": false,
+        "properties": {
+          "ipv4": {
+            "type": "string"
+          },
+          "ipv6": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "networkRef": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "networkRef"
+        ],
+        "type": "object"
+      },
+      "TopologyResource": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/AccessDescriptor"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "interfaces": {
+            "items": {
+              "$ref": "#/components/schemas/TopologyAttachment"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "phase",
+          "interfaces",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "TypedInput": {
+        "additionalProperties": false,
+        "properties": {
+          "Boolean": {
+            "type": "boolean"
+          },
+          "Enum": {
+            "$ref": "#/components/schemas/EnumValue"
+          },
+          "Integer": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "Kind": {
+            "type": "string"
+          },
+          "Name": {
+            "type": "string"
+          },
+          "Number": {
+            "format": "double",
+            "type": "number"
+          },
+          "SecretRef": {
+            "$ref": "#/components/schemas/SecretRef"
+          },
+          "String": {
+            "type": "string"
+          },
+          "StringList": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "Name",
+          "Kind",
+          "String",
+          "Integer",
+          "Number",
+          "Boolean",
+          "StringList",
+          "Enum",
+          "SecretRef"
         ],
         "type": "object"
       },
@@ -3285,6 +5011,258 @@
           }
         },
         "summary": "Post access sessions by ID actions revoke"
+      }
+    },
+    "/access-sessions/{id}/download": {
+      "post": {
+        "operationId": "post-access-sessions-by-id-download",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "contentEncoding": "base64",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Referrer-Policy": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post access sessions by ID download"
+      }
+    },
+    "/access-sessions/{id}/presentation": {
+      "get": {
+        "operationId": "get-access-sessions-by-id-presentation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessPresentation"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get access sessions by ID presentation"
+      }
+    },
+    "/admin/extensions": {
+      "get": {
+        "operationId": "get-admin-extensions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInventoryListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get admin extensions"
+      }
+    },
+    "/admin/gateway-clients": {
+      "get": {
+        "operationId": "get-admin-gateway-clients",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Get-admin-gateway-clientsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get admin gateway clients"
+      },
+      "post": {
+        "operationId": "post-admin-gateway-clients",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Post-admin-gateway-clientsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientOutputBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post admin gateway clients"
+      }
+    },
+    "/admin/gateway-clients/{id}/status": {
+      "post": {
+        "operationId": "post-admin-gateway-clients-by-id-status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Post-admin-gateway-clients-by-id-statusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post admin gateway clients by ID status"
       }
     },
     "/admin/lab-instances/{id}/usage": {
@@ -4076,6 +6054,347 @@
         "summary": "Post auth tokens"
       }
     },
+    "/builds": {
+      "post": {
+        "operationId": "post-builds",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post builds"
+      }
+    },
+    "/deployment-preparations": {
+      "post": {
+        "operationId": "post-deployment-preparations",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post deployment preparations"
+      }
+    },
+    "/device/approve": {
+      "post": {
+        "operationId": "post-device-approve",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Post-device-approveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post device approve"
+      }
+    },
+    "/device/authorization": {
+      "post": {
+        "operationId": "request-device-authorization",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Content-Type",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceResponseBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Pragma": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/device/inspect": {
+      "post": {
+        "operationId": "post-device-inspect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayDevice"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post device inspect"
+      }
+    },
+    "/device/token": {
+      "post": {
+        "operationId": "poll-device-token",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Content-Type",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "device_code": {
+                    "type": "string"
+                  },
+                  "grant_type": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTokenBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Pragma": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
     "/events": {
       "get": {
         "operationId": "get-events",
@@ -4236,6 +6555,530 @@
           }
         },
         "summary": "Get examples docker laptop"
+      }
+    },
+    "/extension-operations": {
+      "get": {
+        "operationId": "get-extension-operations",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWorkListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get extension operations"
+      }
+    },
+    "/extension-operations/{id}": {
+      "get": {
+        "operationId": "get-extension-operations-by-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get extension operations by ID"
+      }
+    },
+    "/extension-operations/{id}/cancel": {
+      "post": {
+        "operationId": "post-extension-operations-by-id-cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post extension operations by ID cancel"
+      }
+    },
+    "/extensions/browser": {
+      "get": {
+        "operationId": "get-extensions-browser",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserExtensionListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get extensions browser"
+      }
+    },
+    "/gateway/access-sessions": {
+      "post": {
+        "operationId": "post-gateway-access-sessions",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Post-gateway-access-sessionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayAccessOutputBody"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post gateway access sessions"
+      }
+    },
+    "/gateway/deployments": {
+      "post": {
+        "operationId": "post-gateway-deployments",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post gateway deployments"
+      }
+    },
+    "/gateway/operations/{id}": {
+      "get": {
+        "operationId": "get-gateway-operations-by-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get gateway operations by ID"
+      }
+    },
+    "/gateway/templates": {
+      "get": {
+        "operationId": "get-gateway-templates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Get-gateway-templatesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get gateway templates"
+      }
+    },
+    "/gateway/templates/{id}/revisions": {
+      "get": {
+        "operationId": "get-gateway-templates-by-id-revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Get-gateway-templates-by-id-revisionsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get gateway templates by ID revisions"
+      }
+    },
+    "/image-bindings/{id}": {
+      "get": {
+        "operationId": "get-image-bindings-by-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredImageBinding"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get image bindings by ID"
+      }
+    },
+    "/image-bindings/{id}/policy": {
+      "post": {
+        "operationId": "post-image-bindings-by-id-policy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImagePolicyInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredImageBinding"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post image bindings by ID policy"
+      }
+    },
+    "/image-imports": {
+      "post": {
+        "operationId": "post-image-imports",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post image imports"
       }
     },
     "/lab-authoring-documents": {
@@ -4653,6 +7496,45 @@
         "summary": "Post lab instances by ID actions extend TTL"
       }
     },
+    "/lab-instances/{id}/topology": {
+      "get": {
+        "operationId": "get-lab-instances-by-id-topology",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Topology"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get lab instances by ID topology"
+      }
+    },
     "/lab-plans": {
       "post": {
         "operationId": "post-lab-plans",
@@ -4940,6 +7822,74 @@
           }
         },
         "summary": "Put lab templates by ID"
+      }
+    },
+    "/lab-templates/{id}/bundle-revisions": {
+      "post": {
+        "operationId": "post-lab-templates-by-id-bundle-revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishBundleInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateRevisionDTO"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post lab templates by ID bundle revisions"
       }
     },
     "/lab-templates/{id}/revisions": {
@@ -6850,6 +9800,162 @@
           }
         },
         "summary": "Get session"
+      }
+    },
+    "/session/gateway-grants": {
+      "get": {
+        "operationId": "get-session-gateway-grants",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Get-session-gateway-grantsResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get session gateway grants"
+      }
+    },
+    "/session/gateway-grants/{id}/revoke": {
+      "post": {
+        "operationId": "post-session-gateway-grants-by-id-revoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post session gateway grants by ID revoke"
+      }
+    },
+    "/source-bindings": {
+      "get": {
+        "operationId": "get-source-bindings",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Get-source-bindingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get source bindings"
+      }
+    },
+    "/source-resolutions": {
+      "post": {
+        "operationId": "post-source-resolutions",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post source resolutions"
       }
     },
     "/teams": {

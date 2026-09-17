@@ -206,6 +206,18 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, "0013_target_deployment_settings", []string{"CREATE TABLE labcentral_target_deployment_settings (target_id TEXT PRIMARY KEY, maximum BIGINT NOT NULL CHECK (maximum BETWEEN 1 AND 16), resource_version BIGINT NOT NULL)"}); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, "0014_extensible_access", s.extensibleAccessMigration()); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, "0015_extension_work", extensionWorkMigration()); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, "0016_gateway_delegation", gatewayMigration()); err != nil {
+		return err
+	}
+	if err := s.applyMigration(ctx, "0017_build_orchestration", buildMigration()); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 
@@ -752,6 +764,21 @@ func (s *Store) createInstance(ctx context.Context, request application.CreateIn
 // idempotency; all other writes, including quota and allocation reservations,
 // are atomic with the enclosing transaction.
 func (s *Store) insertInstanceTx(ctx context.Context, tx *sql.Tx, request application.CreateInstanceRequest) error {
+	if request.WorkFence != nil {
+		if e := s.requireExtensionFenceTx(ctx, tx, *request.WorkFence); e != nil {
+			return e
+		}
+	}
+	for _, id := range request.ImageBindingIDs {
+		var count int
+		if e := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_image_bindings WHERE binding_id=? AND project_id=? AND target_id=? AND approved=1 AND retired=0`), id, request.ProjectID, request.ProviderTargetID).Scan(&count); e != nil {
+			return e
+		}
+		if count != 1 {
+			return fmt.Errorf("image binding approval changed before admission")
+		}
+	}
+
 	if err := s.validateInstanceScope(ctx, tx, request); err != nil {
 		return err
 	}

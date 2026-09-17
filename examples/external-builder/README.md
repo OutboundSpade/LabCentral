@@ -1,0 +1,3 @@
+# Independent builder fixture
+
+Build this separate module with `go build`. It imports only the public wire protocol and plugin SDK. Configure a builder contribution `org.example.builder`, kind `fixture`, protocol 1.0, a protected `--state` journal and a project binding with explicit limits and no egress. It validates `fixture.image.v1`, accepts bounded invocation-scoped context transfers, journals an inert image, supports cancellation and returns fresh transfer handles during recovery. It does not execute author code or establish production builder isolation. See [author examples](../../docs/plugins/extensions.md).

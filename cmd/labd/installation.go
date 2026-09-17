@@ -15,9 +15,10 @@ import (
 )
 
 type installation struct {
-	APIVersion string              `json:"apiVersion"`
-	PluginRoot string              `json:"pluginRoot"`
-	Providers  []installedProvider `json:"providers"`
+	APIVersion string               `json:"apiVersion"`
+	PluginRoot string               `json:"pluginRoot"`
+	Providers  []installedProvider  `json:"providers,omitempty"`
+	Extensions []installedExtension `json:"extensions,omitempty"`
 }
 type installedProvider struct {
 	Manifest           string            `json:"manifest"`
@@ -38,16 +39,9 @@ type installedTarget struct {
 }
 
 func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent string) ([]controlplane.TargetBinding, []*pluginhost.Client, error) {
-	b, err := manifest.ProtectedFile(cfg.installationFile, 1<<20)
+	install, err := readInstallation(cfg.installationFile)
 	if err != nil {
 		return nil, nil, err
-	}
-	var install installation
-	if err := manifest.Decode(b, &install); err != nil {
-		return nil, nil, err
-	}
-	if install.APIVersion != "labcentral.io/installation/v1" || len(install.Providers) < 1 || len(install.Providers) > 32 {
-		return nil, nil, fmt.Errorf("installation must use v1 and contain 1-32 providers")
 	}
 	var bindings []controlplane.TargetBinding
 	var clients []*pluginhost.Client
@@ -116,7 +110,13 @@ func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent strin
 			if !slices.Contains(client.Info.GetProviderKinds(), target.Kind) {
 				return fail(fmt.Errorf("plugin did not advertise configured target kind"))
 			}
-			binding := controlplane.TargetBinding{ID: domain.ProviderTargetID(target.ID), ProviderKind: target.Kind, Provider: providergrpc.NewLive(client.Provider, client.Available), Policy: target.Policy, ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures()}
+			provider := providergrpc.NewLive(client.Provider, client.Available)
+			provider.BuildDigest = client.Info.GetBuildDigest()
+			if slices.Contains(client.Info.GetFeatures(), "image-import-v1") && slices.Contains(client.Info.GetFeatures(), "artifact-transfer-v1") {
+				provider.Artifacts = client.Artifacts
+				provider.ImageImports = client.ImageImports
+			}
+			binding := controlplane.TargetBinding{ID: domain.ProviderTargetID(target.ID), ProviderKind: target.Kind, Provider: provider, Policy: target.Policy, ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures()}
 			if target.ConfigFile != "" {
 				if !filepath.IsAbs(target.ConfigFile) {
 					return fail(fmt.Errorf("target configuration path must be absolute"))

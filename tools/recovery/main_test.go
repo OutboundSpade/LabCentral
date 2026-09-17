@@ -87,6 +87,8 @@ func TestNativeArtifactGarbageCollectionIsOfflineReferenceAwareAndExplicit(t *te
 		t.Fatal(err)
 	}
 	referenced := commitRecoveryTestArtifact(t, artifacts, []byte("referenced artifact"))
+	buildRef := commitRecoveryTestArtifact(t, artifacts, []byte("in-flight build context"))
+	retainBuildTestArtifact(t, databaseStore, buildRef)
 	unreferenced := commitRecoveryTestArtifact(t, artifacts, []byte("unreferenced artifact"))
 	abandoned := recoveryArtifactManifest(t, []byte("abandoned staging"))
 	if _, err := artifacts.Stage(ctx, abandoned); err != nil {
@@ -134,7 +136,7 @@ func TestNativeArtifactGarbageCollectionIsOfflineReferenceAwareAndExplicit(t *te
 	if err := runNativeArtifactGC(ctx, arguments, &dryRun); err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"applied=false", "objects=2", "referenced=1", "unreferenced=1", "stagingFiles=3", "objectsDeleted=0"} {
+	for _, expected := range []string{"applied=false", "objects=3", "referenced=2", "unreferenced=1", "stagingFiles=3", "objectsDeleted=0"} {
 		if !strings.Contains(dryRun.String(), expected+"\n") {
 			t.Fatalf("dry-run output missing %q:\n%s", expected, dryRun.String())
 		}
@@ -163,6 +165,11 @@ func TestNativeArtifactGarbageCollectionIsOfflineReferenceAwareAndExplicit(t *te
 		t.Fatal(err)
 	}
 	_ = reader.Close()
+	buildReader, err := artifacts.Open(ctx, application.AuthorizedArtifactRef{Reference: buildRef})
+	if err != nil {
+		t.Fatal("in-flight build input was collected", err)
+	}
+	_ = buildReader.Close()
 	if _, err := artifacts.Open(ctx, application.AuthorizedArtifactRef{Reference: unreferenced}); err == nil {
 		t.Fatal("unreferenced artifact survived confirmed collection")
 	}
@@ -895,4 +902,13 @@ func mustReadFile(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return contents
+}
+
+func retainBuildTestArtifact(t *testing.T, s *localdb.Store, ref domain.ArtifactRef) {
+	t.Helper()
+	digest := recoveryArtifactManifest(t, []byte("build work")).Digest
+	_, e := s.CreateExtensionWork(context.Background(), application.CreateExtensionWork{GovernanceRecordIDs: application.GovernanceRecordIDs{AuditID: "audit.build-gc", EventID: "event.build-gc"}, IdempotencyKey: "build-gc-request", RequestDigest: digest, Work: application.ExtensionWork{ID: "operation.build-gc", ProjectID: "project.local", ActorID: application.LocalAdminID, InvocationID: "invocation.build-gc", Request: application.ExtensionWorkRequest{Version: 1, Kind: domain.WorkBuild, PluginInstance: "fixture", BindingID: "build", Build: &application.BuildWork{ContextArtifact: ref}}}})
+	if e != nil {
+		t.Fatal(e)
+	}
 }

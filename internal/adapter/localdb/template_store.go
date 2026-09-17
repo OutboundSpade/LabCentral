@@ -258,6 +258,11 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request application
 		return application.TemplateRevisionRecord{}, fmt.Errorf("begin Template Revision publication: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if request.WorkFence != nil {
+		if err := s.requireExtensionFenceTx(ctx, tx, *request.WorkFence); err != nil {
+			return application.TemplateRevisionRecord{}, err
+		}
+	}
 	if err := s.lockIdempotency(ctx, tx, request.PublishedBy, publishRevisionRouteAction, request.IdempotencyKey); err != nil {
 		return application.TemplateRevisionRecord{}, err
 	}
@@ -285,6 +290,11 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request application
 	}
 	if err := s.requireTemplateActor(ctx, tx, domain.ProjectID(projectID), request.PublishedBy); err != nil {
 		return application.TemplateRevisionRecord{}, err
+	}
+	if request.WorkFence != nil {
+		if err := s.requireExtensionAuthorTx(ctx, tx, domain.ProjectID(projectID), request.PublishedBy); err != nil {
+			return application.TemplateRevisionRecord{}, err
+		}
 	}
 	var revisionNumber int64
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT COALESCE(MAX(revision_number), 0) + 1

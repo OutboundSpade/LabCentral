@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"time"
 )
 
@@ -40,4 +41,8 @@ type AccessAuthorizationHandler interface {
 	ExchangeAccessToken(context.Context, AccessCallbackIdentity, string, string) (AccessAuthorizationDecision, error)
 	RecheckAccessLease(context.Context, AccessCallbackIdentity, string, string) (AccessAuthorizationDecision, error)
 	EndAccessLease(context.Context, AccessCallbackIdentity, string, string, string) (bool, error)
+}
+
+type AccessDeliveryStore interface {
+	ClaimAccessDelivery(context.Context, domain.AccessSessionID, domain.UserID, []KeyedTokenHash, GovernanceRecordIDs) (AccessSessionRecord, error)
 }

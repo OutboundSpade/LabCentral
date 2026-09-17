@@ -38,6 +38,8 @@ type Config struct {
 	ConfiguredPluginID     string
 	ConfiguredProviderKind string
 	ConfiguredAccessKind   string
+	ConfiguredSourceKind   string
+	ConfiguredBuilderKind  string
 	AccessAudience         string
 	AccessAuthorization    application.AccessAuthorizationHandler
 	PluginInstanceID       string
@@ -49,9 +51,13 @@ type Config struct {
 }
 
 type Client struct {
+	ImageImports     pluginv1.ImageImportServiceClient
+	Artifacts        pluginv1.ArtifactTransferServiceClient
 	supervised       *supervisedState
 	Provider         pluginv1.ProviderServiceClient
 	Access           pluginv1.AccessServiceClient
+	Source           pluginv1.SourceServiceClient
+	Builder          pluginv1.BuilderServiceClient
 	Runtime          pluginv1.PluginRuntimeServiceClient
 	Info             *pluginv1.PluginInfo
 	SelectedProtocol *pluginv1.ProtocolVersion
@@ -209,8 +215,9 @@ func Launch(ctx context.Context, config Config) (*Client, error) {
 		return nil, fmt.Errorf("plugin did not become healthy: %w", err)
 	}
 	client := &Client{
-		Provider:         pluginv1.NewProviderServiceClient(connection),
-		Access:           pluginv1.NewAccessServiceClient(connection),
+		Provider:     pluginv1.NewProviderServiceClient(connection),
+		Access:       pluginv1.NewAccessServiceClient(connection),
+		ImageImports: pluginv1.NewImageImportServiceClient(connection), Artifacts: pluginv1.NewArtifactTransferServiceClient(connection), Source: pluginv1.NewSourceServiceClient(connection), Builder: pluginv1.NewBuilderServiceClient(connection),
 		Runtime:          runtimeClient,
 		Info:             accepted.info,
 		SelectedProtocol: accepted.selectedProtocol,
@@ -303,7 +310,7 @@ func Attach(ctx context.Context, config Config) (*Client, error) {
 	}
 	_, cancel := context.WithCancel(context.Background())
 	client := &Client{
-		Provider: pluginv1.NewProviderServiceClient(connection), Access: pluginv1.NewAccessServiceClient(connection), Runtime: runtimeClient,
+		ImageImports: pluginv1.NewImageImportServiceClient(connection), Artifacts: pluginv1.NewArtifactTransferServiceClient(connection), Source: pluginv1.NewSourceServiceClient(connection), Builder: pluginv1.NewBuilderServiceClient(connection), Provider: pluginv1.NewProviderServiceClient(connection), Access: pluginv1.NewAccessServiceClient(connection), Runtime: runtimeClient,
 		Info: accepted.info, SelectedProtocol: accepted.selectedProtocol, connection: connection, cancel: cancel,
 		server: server, listener: listener, runtimeDir: runtimeDir, stdout: newBoundedWriter(config.LogMaxBytes), stderr: newBoundedWriter(config.LogMaxBytes),
 	}
@@ -399,9 +406,18 @@ func validateIdentityConfig(config Config) error {
 	if !localIdentityPattern.MatchString(config.ConfiguredPluginID) || !localIdentityPattern.MatchString(config.PluginInstanceID) {
 		return fmt.Errorf("configured plugin and instance IDs are required")
 	}
-	provider, access := config.ConfiguredProviderKind != "", config.ConfiguredAccessKind != ""
-	if provider == access {
-		return fmt.Errorf("exactly one configured provider or access kind is required")
+	access := config.ConfiguredAccessKind != ""
+	count := 0
+	for _, kind := range []string{config.ConfiguredProviderKind, config.ConfiguredAccessKind, config.ConfiguredSourceKind, config.ConfiguredBuilderKind} {
+		if kind != "" {
+			if !localIdentityPattern.MatchString(kind) {
+				return fmt.Errorf("invalid configured category kind")
+			}
+			count++
+		}
+	}
+	if count != 1 {
+		return fmt.Errorf("exactly one configured backend category is required")
 	}
 	if access {
 		if len(config.AccessAudience) == 0 || len(config.AccessAudience) > 512 || strings.ContainsAny(config.AccessAudience, "\r\n\t ") || config.AccessAuthorization == nil {
@@ -563,7 +579,7 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 		return nil, fmt.Errorf("plugin registration metadata mismatch")
 	}
 	var selectedProtocol *pluginv1.ProtocolVersion
-	var selectedProvider, selectedAccess *pluginv1.ProtocolVersion
+	var selectedProvider, selectedAccess, selectedSource, selectedBuilder *pluginv1.ProtocolVersion
 	if s.config.ConfiguredProviderKind != "" {
 		if info.GetCategories()[0] != "provider" || !contains(info.GetProviderKinds(), s.config.ConfiguredProviderKind) {
 			return nil, fmt.Errorf("plugin registration metadata mismatch")
@@ -578,6 +594,24 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 			return nil, fmt.Errorf("plugin does not support provider protocol 1.0")
 		}
 		selectedProtocol = selectedProvider
+	} else if s.config.ConfiguredSourceKind != "" || s.config.ConfiguredBuilderKind != "" {
+		category, kind, kinds, ranges := "source", s.config.ConfiguredSourceKind, info.GetSourceKinds(), info.GetSupportedSourceProtocols()
+		if s.config.ConfiguredBuilderKind != "" {
+			category, kind, kinds, ranges = "builder", s.config.ConfiguredBuilderKind, info.GetBuilderKinds(), info.GetSupportedBuilderProtocols()
+		}
+		if info.GetCategories()[0] != category || !contains(kinds, kind) {
+			return nil, fmt.Errorf("extension registration metadata mismatch")
+		}
+		var ok bool
+		selectedProtocol, ok = selectProtocolThrough(ranges, 0, 0)
+		if !ok {
+			return nil, fmt.Errorf("unsupported extension protocol")
+		}
+		if category == "source" {
+			selectedSource = selectedProtocol
+		} else {
+			selectedBuilder = selectedProtocol
+		}
 	} else {
 		if info.GetCategories()[0] != "access" || !contains(info.GetAccessKinds(), s.config.ConfiguredAccessKind) ||
 			!contains(info.GetFeatures(), "access-authorization-recheck-v1") || len(info.GetSupportedAccessMethods()) == 0 || len(info.GetAcceptedAccessEndpointSchemas()) == 0 {
@@ -603,10 +637,11 @@ func (s *registrationServer) RegisterPlugin(_ context.Context, request *pluginv1
 	s.selectedProtocol = proto.Clone(selectedProtocol).(*pluginv1.ProtocolVersion)
 	s.accepted <- registrationResult{servicePath: servicePath, info: infoCopy, selectedProtocol: selectedProtocol}
 	return &pluginv1.RegisterPluginResponse{
-		SelectedProtocol:         selectedProtocol,
-		HeartbeatInterval:        durationpb.New(2 * time.Second),
-		MaxRequestBytes:          uint64(s.config.RPCMaxBytes),
-		MaxResponseBytes:         uint64(s.config.RPCMaxBytes),
+		SelectedProtocol:       selectedProtocol,
+		HeartbeatInterval:      durationpb.New(2 * time.Second),
+		MaxRequestBytes:        uint64(s.config.RPCMaxBytes),
+		MaxResponseBytes:       uint64(s.config.RPCMaxBytes),
+		SelectedSourceProtocol: selectedSource, SelectedBuilderProtocol: selectedBuilder,
 		SelectedProviderProtocol: selectedProvider,
 		SelectedAccessProtocol:   selectedAccess,
 		AccessCallbackCredential: s.callbackCredential,
