@@ -1253,6 +1253,16 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 	if instance.ProjectID == "project.local" && actorID == application.LocalAdminID {
 		return nil
 	}
+	if instance.OwnerKind == application.OwnerTeam {
+		var groupProject string
+		err := tx.QueryRowContext(ctx, s.bind(`SELECT project_id FROM labcentral_project_groups WHERE team_id=?`), instance.OwnerID).Scan(&groupProject)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if groupProject != "" && groupProject != string(instance.ProjectID) {
+			return application.ErrAuthorityChanged
+		}
+	}
 	nowMicros := now.UTC().UnixMicro()
 	query := `WITH instance_scope AS (
 		SELECT project.organization_id
@@ -1262,7 +1272,10 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 		FROM labcentral_memberships membership
 		WHERE membership.user_id = ? AND membership.valid_from_us <= ?
 		AND (membership.valid_until_us = 0 OR membership.valid_until_us > ?)
-	), eligible_roles AS (
+	), owner_memberships AS (
+        SELECT team_id FROM active_memberships
+        UNION SELECT team_id FROM labcentral_project_enrollments WHERE project_id=? AND user_id=?
+    ), eligible_roles AS (
 		SELECT 1
 		FROM labcentral_role_assignments assignment CROSS JOIN instance_scope scope
 		WHERE assignment.valid_from_us <= ? AND (assignment.valid_until_us = 0 OR assignment.valid_until_us > ?)
@@ -1281,7 +1294,7 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 		AND (assignment.role <> 'participant'
 			OR (? = 'user' AND ? = ?)
 			OR (? = 'team' AND EXISTS (
-				SELECT 1 FROM active_memberships membership WHERE membership.team_id = ?)))
+				SELECT 1 FROM owner_memberships membership WHERE membership.team_id = ?)))
 		LIMIT 1
 	), eligible_grants AS (
 		SELECT 1
@@ -1292,7 +1305,7 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 			OR (grant_record.scope_kind = 'organization' AND grant_record.scope_id = scope.organization_id)
 			OR (grant_record.scope_kind = 'project' AND grant_record.scope_id = ?)
 			OR (grant_record.scope_kind = 'team' AND ? = 'team' AND grant_record.scope_id = ?
-				AND EXISTS (SELECT 1 FROM active_memberships membership WHERE membership.team_id = ?)))
+				AND EXISTS (SELECT 1 FROM owner_memberships membership WHERE membership.team_id = ?)))
 		LIMIT 1
 	)
 	SELECT CASE WHEN EXISTS (SELECT 1 FROM labcentral_users user_record
@@ -1302,7 +1315,7 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 		THEN 1 ELSE 0 END`
 	var allowed int
 	err := tx.QueryRowContext(ctx, s.bind(query),
-		instance.ProjectID, actorID, nowMicros, nowMicros,
+		instance.ProjectID, actorID, nowMicros, nowMicros, instance.ProjectID, actorID,
 		nowMicros, nowMicros, actorID, instance.ProjectID,
 		instance.OwnerKind, instance.OwnerID, instance.OwnerID,
 		instance.OwnerKind, instance.OwnerID, actorID, instance.OwnerKind, instance.OwnerID,

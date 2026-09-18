@@ -97,6 +97,10 @@ are distinct from instructor batch requests.
 
 ## Project groups
 
+The implemented [project group API](../users/project-groups.md) uses additive
+migration `0020_project_groups`. Enrollment is a separate ownership relationship,
+not an organizational membership or RBAC subject.
+
 Administrators create one or a bounded batch of groups and open/close enrollment.
 Users already authorized in a project can list eligible groups and join or leave
 themselves. A unique project/user active-enrollment constraint permits only one

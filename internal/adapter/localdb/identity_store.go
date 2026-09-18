@@ -320,7 +320,7 @@ func (s *Store) PutTeam(ctx context.Context, record application.TeamRecord) erro
 		(team_id, organization_id, name, created_at_us, updated_at_us) VALUES (?, ?, ?, `+s.nowMicros()+`, `+s.nowMicros()+`)
 		ON CONFLICT (team_id) DO UPDATE SET name = excluded.name,
 		resource_version = labcentral_teams.resource_version + 1, updated_at_us = `+s.nowMicros()+`
-		WHERE labcentral_teams.organization_id = excluded.organization_id`), record.ID, record.OrganizationID, record.Name)
+		WHERE labcentral_teams.organization_id = excluded.organization_id AND NOT EXISTS(SELECT 1 FROM labcentral_project_groups g WHERE g.team_id=labcentral_teams.team_id)`), record.ID, record.OrganizationID, record.Name)
 	if err != nil {
 		return wrapIdentityError("save team", err)
 	}
@@ -344,6 +344,13 @@ func (s *Store) PutMembership(ctx context.Context, record application.Membership
 		if _, err := domain.NewTeamID(string(record.TeamID)); err != nil {
 			return err
 		}
+	}
+	var groupCount int
+	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_project_groups WHERE team_id=?`), record.TeamID).Scan(&groupCount); err != nil {
+		return err
+	}
+	if groupCount != 0 {
+		return fmt.Errorf("project groups use project enrollment")
 	}
 	from, until, err := validity(record.ValidFrom, record.ValidUntil)
 	if err != nil {
@@ -472,6 +479,25 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 		}
 		assignment.ValidFrom, assignment.ValidUntil = time.UnixMicro(from).UTC(), optionalTime(until)
 		result.Assignments = append(result.Assignments, assignment)
+	}
+	if err := rows.Close(); err != nil {
+		return application.AuthorizationSnapshot{}, err
+	}
+	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT project_id,team_id FROM labcentral_project_enrollments WHERE user_id=? ORDER BY project_id,team_id`), userID)
+	if err != nil {
+		return application.AuthorizationSnapshot{}, err
+	}
+	for rows.Next() {
+		var r domain.ProjectTeamRelationship
+		if err := rows.Scan(&r.ProjectID, &r.TeamID); err != nil {
+			_ = rows.Close()
+			return application.AuthorizationSnapshot{}, err
+		}
+		result.ProjectTeams = append(result.ProjectTeams, r)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return application.AuthorizationSnapshot{}, err
 	}
 	if err := rows.Close(); err != nil {
 		return application.AuthorizationSnapshot{}, err
@@ -926,6 +952,10 @@ func (s *Store) ListInstanceAccessFiltered(ctx context.Context, filter applicati
 		if len(filter.OwnerTeamIDs) > 0 {
 			parts = append(parts, "(instance.owner_kind = 'team' AND instance.owner_id IN "+inClause(stringIDs(filter.OwnerTeamIDs))+")")
 		}
+		for _, relationship := range filter.ProjectTeamOwners {
+			parts = append(parts, "(instance.owner_kind = 'team' AND instance.owner_id = ? AND instance.project_id = ?)")
+			arguments = append(arguments, relationship.TeamID, relationship.ProjectID)
+		}
 		if len(parts) == 0 {
 			return "0 = 1"
 		}
@@ -1007,12 +1037,12 @@ func (s *Store) OwnerBelongsToScope(ctx context.Context, kind application.OwnerK
 		}
 		return err == nil, err
 	case application.OwnerTeam:
-		var organizationID string
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_teams WHERE team_id = ?`), ownerID).Scan(&organizationID)
+		var organizationID, projectID string
+		err := s.db.QueryRowContext(ctx, s.bind(`SELECT t.organization_id,COALESCE(g.project_id,'') FROM labcentral_teams t LEFT JOIN labcentral_project_groups g ON g.team_id=t.team_id WHERE t.team_id=?`), ownerID).Scan(&organizationID, &projectID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
-		return organizationID == string(hierarchy.OrganizationID), err
+		return organizationID == string(hierarchy.OrganizationID) && (projectID == "" || projectID == string(hierarchy.ProjectID)), err
 	case application.OwnerProject:
 		return ownerID == string(hierarchy.ProjectID), nil
 	default:

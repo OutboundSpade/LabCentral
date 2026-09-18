@@ -32,6 +32,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 	registerAuthentication(api, security)
 	registerGateway(api, service, security)
 	registerAdministration(api, security)
+	registerProjectGroups(api, service, security)
 
 	type providerTargetsInput struct {
 		ProjectID string `query:"projectId" maxLength:"128"`

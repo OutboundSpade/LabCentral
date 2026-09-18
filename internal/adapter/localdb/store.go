@@ -224,6 +224,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, "0019_image_import_reservations", imageImportMigration()); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, "0020_project_groups", projectGroupMigration()); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 
@@ -896,6 +899,23 @@ func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request a
 		} else if err != nil {
 			return fmt.Errorf("load instance team owner: %w", err)
 		}
+		var groupProject string
+		err := tx.QueryRowContext(ctx, s.bind(`SELECT project_id FROM labcentral_project_groups WHERE team_id=?`), request.OwnerID).Scan(&groupProject)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if groupProject != "" {
+			if groupProject != string(request.ProjectID) {
+				return application.ErrAuthorityChanged
+			}
+			now, err := s.databaseNowTx(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if err = s.requireInstanceOwnerAuthorizationTx(ctx, tx, application.InstanceRecord{ProjectID: request.ProjectID, OwnerKind: request.OwnerKind, OwnerID: request.OwnerID, ProviderTargetID: request.ProviderTargetID}, request.CreatedBy, now); err != nil {
+				return err
+			}
+		}
 	case application.OwnerProject:
 		if request.OwnerID != string(request.ProjectID) {
 			return fmt.Errorf("instance project owner does not match the project scope")
@@ -1203,6 +1223,22 @@ func (s *Store) queueDestroy(ctx context.Context, request application.QueueDestr
 		return application.EnqueueResult{}, application.ErrNotFound
 	} else if err != nil {
 		return application.EnqueueResult{}, fmt.Errorf("lock instance for destroy: %w", err)
+	}
+	if request.ExpirationDueAt.IsZero() {
+		var owned application.InstanceRecord
+		err := tx.QueryRowContext(ctx, s.bind(`SELECT i.project_id,i.owner_kind,i.owner_id,i.provider_target_id FROM labcentral_local_instances i JOIN labcentral_project_groups g ON i.owner_kind='team' AND i.owner_id=g.team_id WHERE i.instance_id=?`), request.InstanceID).Scan(&owned.ProjectID, &owned.OwnerKind, &owned.OwnerID, &owned.ProviderTargetID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return application.EnqueueResult{}, err
+		}
+		if err == nil {
+			now, e := s.databaseNowTx(ctx, tx)
+			if e != nil {
+				return application.EnqueueResult{}, e
+			}
+			if e = s.requireInstanceOwnerAuthorizationTx(ctx, tx, owned, request.SubjectID, now); e != nil {
+				return application.EnqueueResult{}, e
+			}
+		}
 	}
 	if phase == domain.InstanceDestroyed {
 		return application.EnqueueResult{}, application.ErrNotFound

@@ -189,12 +189,13 @@ type OIDCFlowRecord struct {
 }
 
 type AuthorizationSnapshot struct {
-	User        UserRecord
-	Memberships []MembershipRecord
-	Assignments []RoleAssignmentRecord
-	Projects    []ProjectRecord
-	Teams       []TeamRecord
-	Grants      []TargetGrantRecord
+	ProjectTeams []domain.ProjectTeamRelationship
+	User         UserRecord
+	Memberships  []MembershipRecord
+	Assignments  []RoleAssignmentRecord
+	Projects     []ProjectRecord
+	Teams        []TeamRecord
+	Grants       []TargetGrantRecord
 }
 
 type ScopeHierarchy struct {
@@ -245,6 +246,7 @@ type InstanceAccessFilter struct {
 	OwnerRestrictedProjects      []domain.ProjectID
 	OwnerUserID                  domain.UserID
 	OwnerTeamIDs                 []domain.TeamID
+	ProjectTeamOwners            []domain.ProjectTeamRelationship
 	TeamScopedOwnerIDs           []domain.TeamID
 }
 

@@ -20,7 +20,7 @@ export and import preview passed package/renderer/API/CLI tests, including impor
 into a fresh installation. GitHub synchronization (`TASK-TEMPLATE-004`) is
 implemented: optional collection resolution, pinned recovery, atomic publication,
 retained upstream removals, schedules and revocation passed source/API and
-SQLite/PostgreSQL race tests. Isolated builders (`TASK-TEMPLATE-005`) are implemented: Linux amd64 Ansible qcow2 and BuildKit OCI builds, dependent builds, effective-input reuse, cleanup verification, worker process-loss recovery and external deadlines passed local VM acceptance. Typed dependency/protocol, race/database, generated API and independent-package checks passed. Proxmox import/preparation (`TASK-TEMPLATE-006`) is implemented: reserved multi-image imports, reference-aware retirement, participant preparation and separate approval passed provider/API and SQLite/PostgreSQL race checks. The fixed runtime packager built and booted a Dockerfile image offline through the v2 guest agent. Changed provider/import artifacts remain gated on exact-target qualification before live use in `TASK-TEMPLATE-008`. Portable exports contain build source and pinned source dependencies,
+SQLite/PostgreSQL race tests. Isolated builders (`TASK-TEMPLATE-005`) are implemented: Linux amd64 Ansible qcow2 and BuildKit OCI builds, dependent builds, effective-input reuse, cleanup verification, worker process-loss recovery and external deadlines passed local VM acceptance. Typed dependency/protocol, race/database, generated API and independent-package checks passed. Proxmox import/preparation (`TASK-TEMPLATE-006`) is implemented: reserved multi-image imports, reference-aware retirement, participant preparation and separate approval passed provider/API and SQLite/PostgreSQL race checks. The fixed runtime packager built and booted a Dockerfile image offline through the v2 guest agent. Changed provider/import artifacts remain gated on exact-target qualification before live use in `TASK-TEMPLATE-008`. Project groups (`TASK-COLLAB-001`) are implemented with bounded administrative creation, self-service enrollment, scoped team ownership, transactional admission checks and console revocation on departure. SQLite/PostgreSQL race, API, authorization and generated-client checks passed; organizational membership semantics remain unchanged. Portable exports contain build source and pinned source dependencies,
 never VM/OCI images. The target release adds
 GitHub synchronization, isolated builders, Proxmox imports, optional feature
 packages, project groups and fenced shared-console control. The new packages have not yet been deployed; live build/import and collaboration
@@ -115,7 +115,7 @@ provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 ## Next action and production gates
 
 Continue the dependency-ordered template/collaboration tasks, starting with
-`TASK-COLLAB-001`. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
+`TASK-COLLAB-002`. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
 Within-lab parallel branches need multi-invocation recovery before implementation.

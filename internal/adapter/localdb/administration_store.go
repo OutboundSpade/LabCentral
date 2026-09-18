@@ -240,7 +240,7 @@ func (s *Store) UpdateTeam(ctx context.Context, record application.TeamRecord, e
 	}
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_teams SET name = ?, resource_version = resource_version + 1,
-		updated_at_us = `+s.nowMicros()+` WHERE team_id = ? AND organization_id = ? AND resource_version = ?`), record.Name, record.ID, record.OrganizationID, expected)
+		updated_at_us = `+s.nowMicros()+` WHERE team_id = ? AND organization_id = ? AND resource_version = ? AND NOT EXISTS(SELECT 1 FROM labcentral_project_groups g WHERE g.team_id=labcentral_teams.team_id)`), record.Name, record.ID, record.OrganizationID, expected)
 	if err != nil {
 		return application.TeamRecord{}, wrapIdentityError("update team", err)
 	}
@@ -297,6 +297,13 @@ func (s *Store) CreateMembership(ctx context.Context, record application.Members
 		return application.MembershipRecord{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var groupCount int
+	if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_project_groups WHERE team_id=?`), record.TeamID).Scan(&groupCount); err != nil {
+		return application.MembershipRecord{}, err
+	}
+	if groupCount != 0 {
+		return application.MembershipRecord{}, fmt.Errorf("project groups use project enrollment")
+	}
 	if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_memberships
 		(membership_id, user_id, organization_id, team_id, valid_from_us, valid_until_us, created_at_us)
 		VALUES (?, ?, ?, ?, ?, ?, `+s.nowMicros()+`)`), record.ID, record.UserID, record.OrganizationID, team, from, until); err != nil {

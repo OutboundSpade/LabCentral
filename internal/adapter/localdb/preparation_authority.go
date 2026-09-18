@@ -44,6 +44,15 @@ func (s *Store) requirePreparationAuthorityTx(ctx context.Context, tx *sql.Tx, w
 		return err
 	}
 	owner := r.EffectiveOwner(w.ActorID)
+	if owner.Kind == app.OwnerTeam {
+		var eligible int
+		if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_project_groups g WHERE g.team_id=? AND NOT EXISTS(SELECT 1 FROM labcentral_project_enrollments e WHERE e.project_id=g.project_id AND e.project_id=? AND e.team_id=g.team_id AND e.user_id=?)`), owner.ID, w.ProjectID, w.ActorID).Scan(&eligible); err != nil {
+			return err
+		}
+		if eligible != 0 {
+			return app.ErrAuthorityChanged
+		}
+	}
 	return s.requireInstanceOwnerAuthorizationTx(ctx, tx, app.InstanceRecord{ProjectID: w.ProjectID, ProviderTargetID: r.TargetID, OwnerKind: owner.Kind, OwnerID: owner.ID}, w.ActorID, now)
 }
 func (s *Store) requirePreparedChildTx(ctx context.Context, tx *sql.Tx, w app.ExtensionWork) error {

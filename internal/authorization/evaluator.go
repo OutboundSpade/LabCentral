@@ -77,7 +77,7 @@ func (e *Evaluator) evaluate(ctx context.Context, request application.Authorizat
 		if !roleAllows(assignment.Role, request.Action) || !assignmentCovers(assignment, hierarchy, request, snapshot) {
 			continue
 		}
-		if requiresOwnerRelationship(assignment.Role, request.Action) && !ownsResource(request, snapshot) {
+		if requiresOwnerRelationship(assignment.Role, request.Action) && !ownsResource(request, hierarchy, snapshot) {
 			continue
 		}
 		if request.TargetID != "" && requiresTargetGrant(request.Action) && !hasTargetGrant(request, hierarchy, snapshot) {
@@ -263,7 +263,7 @@ func (e *Evaluator) recordDecisionIfConfigured(ctx context.Context, request appl
 }
 
 func instanceAccessFilter(snapshot application.AuthorizationSnapshot, action application.PermissionAction) application.InstanceAccessFilter {
-	filter := application.InstanceAccessFilter{OwnerUserID: snapshot.User.ID}
+	filter := application.InstanceAccessFilter{OwnerUserID: snapshot.User.ID, ProjectTeamOwners: snapshot.ProjectTeams}
 	teamMemberships := make(map[domain.TeamID]bool)
 	for _, membership := range snapshot.Memberships {
 		if membership.TeamID != "" {
@@ -447,17 +447,30 @@ func requiresOwnerRelationship(role application.Role, action application.Permiss
 	}
 }
 
-func ownsResource(request application.AuthorizationRequest, snapshot application.AuthorizationSnapshot) bool {
+func ownsResource(request application.AuthorizationRequest, hierarchy application.ScopeHierarchy, snapshot application.AuthorizationSnapshot) bool {
 	switch request.OwnerKind {
 	case application.OwnerUser:
 		return request.OwnerID == string(request.SubjectID)
 	case application.OwnerTeam:
-		return isTeamMember(request.OwnerID, snapshot)
+		return isOwnerTeamMember(request.OwnerID, hierarchy.ProjectID, snapshot)
 	case application.OwnerProject:
 		return false
 	default:
 		return false
 	}
+}
+
+// Project enrollment grants ownership only, never a role-assignment subject.
+func isOwnerTeamMember(teamID string, projectID domain.ProjectID, snapshot application.AuthorizationSnapshot) bool {
+	if isTeamMember(teamID, snapshot) {
+		return true
+	}
+	for _, r := range snapshot.ProjectTeams {
+		if r.ProjectID == projectID && string(r.TeamID) == teamID {
+			return true
+		}
+	}
+	return false
 }
 
 func isTeamMember(teamID string, snapshot application.AuthorizationSnapshot) bool {
@@ -495,7 +508,7 @@ func hasTargetGrant(request application.AuthorizationRequest, hierarchy applicat
 				return true
 			}
 		case application.ScopeTeam:
-			if grant.ScopeID == request.OwnerID && request.OwnerKind == application.OwnerTeam && isTeamMember(grant.ScopeID, snapshot) {
+			if grant.ScopeID == request.OwnerID && request.OwnerKind == application.OwnerTeam && isOwnerTeamMember(grant.ScopeID, hierarchy.ProjectID, snapshot) {
 				return true
 			}
 		}

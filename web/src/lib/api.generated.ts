@@ -1176,6 +1176,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get projects by project ID groups */
+        get: operations["get-projects-by-project-id-groups"];
+        put?: never;
+        /** Post projects by project ID groups */
+        post: operations["post-projects-by-project-id-groups"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/groups/{id}/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put projects by project ID groups by ID enrollment */
+        put: operations["put-projects-by-project-id-groups-by-id-enrollment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/groups/{id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post projects by project ID groups by ID join */
+        post: operations["post-projects-by-project-id-groups-by-id-join"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/groups/{id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post projects by project ID groups by ID leave */
+        post: operations["post-projects-by-project-id-groups-by-id-leave"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/provider-target-grants": {
         parameters: {
             query?: never;
@@ -1914,6 +1983,16 @@ export interface components {
              * @example /api/v1/schemas/CreateInputBody.json
              */
             readonly $schema?: string;
+            enrollmentOpen: boolean;
+            names: string[] | null;
+        };
+        CreateInputBody1: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/CreateInputBody1.json
+             */
+            readonly $schema?: string;
             binding: string;
             /**
              * Format: int32
@@ -1982,6 +2061,15 @@ export interface components {
             /** Format: int64 */
             expires_in?: number;
             token_type?: string;
+        };
+        EnrollmentInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/EnrollmentInputBody.json
+             */
+            readonly $schema?: string;
+            open: boolean;
         };
         EnumValue: {
             /** Format: int64 */
@@ -2884,6 +2972,36 @@ export interface components {
              */
             readonly $schema?: string;
             items: components["schemas"]["ProjectChoiceDTO"][] | null;
+            nextCursor?: string;
+        };
+        ProjectGroup: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ProjectGroup.json
+             */
+            readonly $schema?: string;
+            apiVersion: string;
+            /** Format: date-time */
+            createdAt: string;
+            enrollmentOpen: boolean;
+            id: string;
+            joined: boolean;
+            /** Format: int32 */
+            memberCount: number;
+            name: string;
+            projectId: string;
+            /** Format: int64 */
+            resourceVersion: number;
+        };
+        ProjectGroupPage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ProjectGroupPage.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ProjectGroup"][] | null;
             nextCursor?: string;
         };
         ProjectRecord: {
@@ -6084,6 +6202,187 @@ export interface operations {
             };
         };
     };
+    "get-projects-by-project-id-groups": {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGroupPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-projects-by-project-id-groups": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGroupPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "put-projects-by-project-id-groups-by-id-enrollment": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+                "If-Match"?: string;
+            };
+            path: {
+                projectId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrollmentInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGroup"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-projects-by-project-id-groups-by-id-join": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                projectId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGroup"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-projects-by-project-id-groups-by-id-leave": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                projectId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGroup"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-provider-target-grants": {
         parameters: {
             query?: {
@@ -6838,7 +7137,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateInputBody"];
+                "application/json": components["schemas"]["CreateInputBody1"];
             };
         };
         responses: {
