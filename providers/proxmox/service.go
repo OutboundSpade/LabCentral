@@ -80,7 +80,9 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 	if err != nil {
 		return nil, status.Error(codes.Internal, "Proxmox target inventory was invalid")
 	}
-	mutationDigest, err := inventory.MutationDigest()
+	var config TargetConfig
+	_ = decodeEnvelope(request.GetTarget().GetConfigEnvelope(), maximumConfigBytes, &config)
+	mutationDigest, err := inventory.MutationDigestForConfig(config)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "Proxmox target mutation inventory was invalid")
 	}
@@ -96,6 +98,13 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 		var config TargetConfig
 		if decodeEnvelope(request.GetTarget().GetConfigEnvelope(), maximumConfigBytes, &config) == nil && config.ConsoleAccess.Enabled {
 			enableConsoleAccessCapability(capabilities, evidence, config.ConsoleAccess.MaximumDurationSeconds)
+		}
+		if config.ImageImport != nil {
+			if imports, ok := client.(ImageImportAPI); ok {
+				if supported, err := imports.ImportStorage(ctx, config.DestinationNode, config.ImageImport.StagingStorage); err == nil && supported {
+					capabilities = append(capabilities, capability("image.import.qcow2", pluginv1.Capability_SUPPORT_NATIVE, evidence, []string{"reserved VMID and owned standalone qcow2 required", "explicit core approval required before deployment"}))
+				}
+			}
 		}
 		if config.ContainerRuntime != nil {
 			capabilities = append(capabilities, capability("workload.container", pluginv1.Capability_SUPPORT_EMULATED, evidence, []string{"one dedicated VM per container", "explicit virtualMachine isolation and viaVM realization", "approved offline images only", "no mounts, secrets or published ports"}))

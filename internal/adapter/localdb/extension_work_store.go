@@ -83,7 +83,7 @@ func (s *Store) workTx(ctx context.Context, f func(*sql.Tx) error) error {
 }
 func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWork) (out app.ExtensionWork, err error) {
 	w := r.Work
-	if w.Request.Version != 1 || w.Request.Kind == domain.WorkInstance || w.Request.PluginInstance == "" || w.Request.BindingID == "" || w.InvocationID == "" {
+	if (w.Request.Version != 1 && !(w.Request.Version == 2 && w.Request.Kind == domain.WorkImageImport && w.Request.Import != nil && w.Request.Import.RetireBindingID != "")) || w.Request.Kind == domain.WorkInstance || w.Request.PluginInstance == "" || w.Request.BindingID == "" || w.InvocationID == "" {
 		return out, fmt.Errorf("invalid extension work")
 	}
 	if err := validateTemplateIdempotency(r.IdempotencyKey, r.RequestDigest); err != nil {
@@ -105,6 +105,19 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 		}
 		if e := s.requireExtensionAuthorTx(ctx, tx, w.ProjectID, w.ActorID); e != nil {
 			return e
+		}
+
+		if w.Request.Version == 2 && w.Request.Import != nil && w.Request.Import.RetireBindingID != "" {
+			if err := s.requireImageAdministratorTx(ctx, tx, w.ActorID); err != nil {
+				return err
+			}
+			result, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_image_bindings SET retired=1,approved=0 WHERE binding_id=? AND project_id=? AND target_id=? AND provider_digest=?`), w.Request.Import.RetireBindingID, w.ProjectID, w.Request.Import.TargetID, w.Request.PluginDigest)
+			if err != nil {
+				return err
+			}
+			if n, _ := result.RowsAffected(); n != 1 {
+				return app.ErrNotFound
+			}
 		}
 		if w.Request.LibraryID != "" {
 			lock := ""
@@ -129,7 +142,7 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 		}
 		if w.Request.DedupKey != "" {
 			var old domain.OperationID
-			e := tx.QueryRowContext(ctx, s.bind(`SELECT d.operation_id FROM labcentral_extension_dedup d JOIN labcentral_jobs j ON j.operation_id=d.operation_id WHERE d.project_id=? AND d.kind=? AND d.dedup_key=? AND j.state IN ('queued','running','succeeded')`), w.ProjectID, w.Request.Kind, w.Request.DedupKey).Scan(&old)
+			e := tx.QueryRowContext(ctx, s.bind(`SELECT d.operation_id FROM labcentral_extension_dedup d JOIN labcentral_jobs j ON j.operation_id=d.operation_id WHERE d.project_id=? AND d.kind=? AND d.dedup_key=? AND j.state IN ('queued','running','succeeded') AND NOT EXISTS(SELECT 1 FROM labcentral_image_bindings ib WHERE ib.import_operation_id=d.operation_id AND ib.retired=1)`), w.ProjectID, w.Request.Kind, w.Request.DedupKey).Scan(&old)
 			if e == nil {
 				out, e = scanExtensionWork(tx.QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.operation_id=?`), old))
 				if e != nil {

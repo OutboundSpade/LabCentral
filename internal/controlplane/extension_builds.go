@@ -64,7 +64,9 @@ func (s *Service) newExtensionWork(ctx context.Context, actor domain.UserID, pro
 	if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); e != nil {
 		return app.ExtensionWork{}, e
 	}
-	r.Version = 1
+	if r.Version == 0 {
+		r.Version = 1
+	}
 	raw, e := json.Marshal(r)
 	if e != nil {
 		return app.ExtensionWork{}, e

@@ -19,6 +19,15 @@ func buildMigration() []string {
 	}
 }
 func (s *Store) YieldExtensionWork(ctx context.Context, c app.ExtensionWorkClaim) error {
+	return s.yieldExtensionWork(ctx, c, nil)
+}
+func (s *Store) YieldExtensionWorkProgress(ctx context.Context, c app.ExtensionWorkClaim, result json.RawMessage) error {
+	if len(result) == 0 || len(result) > 1<<20 || !json.Valid(result) {
+		return fmt.Errorf("invalid work progress")
+	}
+	return s.yieldExtensionWork(ctx, c, result)
+}
+func (s *Store) yieldExtensionWork(ctx context.Context, c app.ExtensionWorkClaim, result json.RawMessage) error {
 	return s.workTx(ctx, func(tx *sql.Tx) error {
 		r, e := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_jobs SET state='queued',lease_until_us=0,available_at_us=`+s.nowMicros()+`+1000000 WHERE operation_id=? AND lease_owner=? AND fencing_token=? AND state='running' AND lease_until_us>`+s.nowMicros()), c.Work.ID, c.LeaseOwner, c.Operation.FencingToken)
 		if e != nil {
@@ -26,6 +35,11 @@ func (s *Store) YieldExtensionWork(ctx context.Context, c app.ExtensionWorkClaim
 		}
 		if n, _ := r.RowsAffected(); n != 1 {
 			return jobsdb.ErrFencingConflict
+		}
+		if result != nil {
+			if _, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_extension_work SET result_json=? WHERE operation_id=?`), string(result), c.Work.ID); err != nil {
+				return err
+			}
 		}
 		_, e = tx.ExecContext(ctx, s.bind(`UPDATE labcentral_extension_binding_leases SET lease_until_us=0 WHERE binding_key=? AND operation_id=?`), c.Work.Request.PluginInstance+"/"+c.Work.Request.BindingID, c.Work.ID)
 		return e
@@ -81,15 +95,10 @@ func (s *Store) SetImageBindingApproval(ctx context.Context, id string, actor do
 		if e != nil {
 			return e
 		}
-		var enabled int
-		if actor != app.LocalAdminID {
-			if e = tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_role_assignments r JOIN labcentral_users u ON u.user_id=r.subject_id WHERE u.user_id=? AND u.disabled=0 AND r.role='platform-administrator' AND r.scope_kind='platform' AND r.subject_kind='user' AND r.valid_from_us<=`+s.nowMicros()+` AND (r.valid_until_us=0 OR r.valid_until_us>`+s.nowMicros()+`)`), actor).Scan(&enabled); e != nil {
-				return e
-			}
-			if enabled == 0 {
-				return app.ErrAuthorityChanged
-			}
+		if err := s.requireImageAdministratorTx(ctx, tx, actor); err != nil {
+			return err
 		}
+
 		a, r := 0, 0
 		if approved {
 			a = 1
@@ -108,4 +117,17 @@ func (s *Store) SetImageBindingApproval(ctx context.Context, id string, actor do
 		w.ActorID = actor
 		return s.appendExtensionGovernance(ctx, tx, w, ids, "image-binding.policy-updated")
 	})
+}
+
+func (s *Store) requireImageAdministratorTx(ctx context.Context, tx *sql.Tx, actor domain.UserID) error {
+	var enabled int
+	if actor != app.LocalAdminID {
+		if e := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_role_assignments r JOIN labcentral_users u ON u.user_id=r.subject_id WHERE u.user_id=? AND u.disabled=0 AND r.role='platform-administrator' AND r.scope_kind='platform' AND r.subject_kind='user' AND r.valid_from_us<=`+s.nowMicros()+` AND (r.valid_until_us=0 OR r.valid_until_us>`+s.nowMicros()+`)`), actor).Scan(&enabled); e != nil {
+			return e
+		}
+		if enabled == 0 {
+			return app.ErrAuthorityChanged
+		}
+	}
+	return nil
 }

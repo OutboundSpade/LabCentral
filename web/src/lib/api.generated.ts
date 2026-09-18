@@ -2332,6 +2332,7 @@ export interface components {
         ImportWork: {
             architecture: string;
             buildId: string;
+            retireBindingId?: string;
             targetFingerprint: string;
             targetId: string;
         };

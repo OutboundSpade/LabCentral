@@ -35,6 +35,7 @@ var templateDiskPattern = regexp.MustCompile(`^(scsi|virtio)[0-9]{1,2}$`)
 
 const (
 	targetConfigV11      = "proxmox.target-config/v1.1"
+	targetConfigV14      = "proxmox.target-config/v1.4"
 	targetConfigV13      = "proxmox.target-config/v1.3"
 	targetConfigV12      = "proxmox.target-config/v1.2"
 	mutationInventoryV10 = "proxmox.mutation-inventory/v1.0"
@@ -42,6 +43,7 @@ const (
 )
 
 type TargetConfig struct {
+	ImageImport           *ImageImportProfile         `json:"imageImport,omitempty"`
 	ContainerRuntime      *ContainerRuntimeProfile    `json:"containerRuntime,omitempty"`
 	SchemaVersion         string                      `json:"schemaVersion,omitempty"`
 	Endpoint              string                      `json:"endpoint"`
@@ -141,11 +143,14 @@ func (config TargetConfig) validateMutation() error {
 	if !config.MutationEnabled {
 		return nil
 	}
-	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 {
+	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14 {
 		return fmt.Errorf("mutation requires schemaVersion %q or %q", targetConfigV11, targetConfigV12)
 	}
+	if err := config.validateImageImport(); err != nil {
+		return err
+	}
 	if runtime := config.ContainerRuntime; runtime != nil {
-		if config.SchemaVersion != targetConfigV13 || config.Pool == "" || runtime.SchemaVersion != containervm.Version || len(runtime.Images) == 0 || len(runtime.Images) > 64 {
+		if (config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14) || config.Pool == "" || runtime.SchemaVersion != containervm.Version || len(runtime.Images) == 0 || len(runtime.Images) > 64 {
 			return fmt.Errorf("invalid container runtime profile")
 		}
 		if _, ok := findTemplateProfile(config, runtime.TemplateAlias); !ok {
@@ -161,7 +166,7 @@ func (config TargetConfig) validateMutation() error {
 	}
 
 	if config.ConsoleAccess.Enabled {
-		if (config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13) || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
+		if (config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14) || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
 			return fmt.Errorf("console access requires schemaVersion %q and a maximum duration between 60 and 3600 seconds", targetConfigV12)
 		}
 	} else if config.ConsoleAccess.MaximumDurationSeconds != 0 {
@@ -338,6 +343,10 @@ func expectedPermissionScopes(config TargetConfig) map[string]map[string]bool {
 		destinationPath = "/pool/" + config.Pool
 	}
 	add(destinationPath, "VM.Allocate", "VM.Audit", "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Memory", "VM.Config.Network", "VM.Config.Options", "VM.GuestAgent.Audit", "VM.PowerMgmt")
+	if config.ImageImport != nil {
+		add(destinationPath, "VM.Clone", "VM.Config.Disk", "VM.Config.HWType")
+		add("/storage/"+config.ImageImport.StagingStorage, "Datastore.AllocateTemplate", "Datastore.Audit")
+	}
 	if config.ContainerRuntime != nil {
 		add(destinationPath, "VM.GuestAgent.Unrestricted")
 	}

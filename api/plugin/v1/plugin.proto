@@ -724,6 +724,21 @@ message ImageImportServiceImportRequest {
   string architecture = 4;
   string provenance_digest = 5;
   bytes configuration_json = 6;
+  ImageImportPlan reserved_plan = 7;
+}
+// Optional image-import-reservations-v1. Core persists this plan and reserves
+// every claim before transfer or import; recovery reuses the exact same plan.
+message ImageImportPlan {
+  bytes opaque = 1;
+  string digest = 2;
+  repeated AllocationClaim claims = 3;
+}
+message ImageImportServicePlanRequest {
+  ImageImportServiceImportRequest input = 1;
+  repeated AllocationClaim excluded_allocations = 2;
+}
+message ImageImportServicePlanResponse {
+  ImageImportPlan plan = 1;
 }
 message TargetImageBinding {
   string image_ref = 1;
@@ -754,7 +769,19 @@ message ImageImportServiceValidateBindingResponse {
   bool valid = 1;
   StructuredError error = 2;
 }
+// Core invokes retirement only after marking the binding unavailable and
+// proving that no retained deployment still needs the image.
+message ImageImportServiceRetireRequest {
+  CallContext context = 1;
+  TargetContext target = 2;
+  TargetImageBinding binding = 3;
+}
+message ImageImportServiceRetireResponse {
+  string state = 1;
+}
 service ImageImportService {
+  rpc Retire(ImageImportServiceRetireRequest) returns (ImageImportServiceRetireResponse);
+  rpc Plan(ImageImportServicePlanRequest) returns (ImageImportServicePlanResponse);
   rpc Import(ImageImportServiceImportRequest) returns (ImageImportServiceImportResponse);
   rpc GetInvocation(ImageImportServiceGetInvocationRequest) returns (ImageImportServiceGetInvocationResponse);
   rpc ValidateBinding(ImageImportServiceValidateBindingRequest) returns (ImageImportServiceValidateBindingResponse);

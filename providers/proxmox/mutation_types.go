@@ -16,6 +16,7 @@ import (
 
 const (
 	validationPlanV10 = "proxmox.validation-plan/v1.0"
+	validationPlanV11 = "proxmox.validation-plan/v1.1"
 	qemuPlanV11       = "proxmox.qemu-plan/v1.1"
 	qemuPlanV10       = "proxmox.qemu-plan/v1.0"
 	qemuStateV10      = "proxmox.qemu-state/v1.0"
@@ -107,16 +108,22 @@ type ProviderOverride struct {
 }
 
 type ValidationPlan struct {
-	SchemaVersion      string `json:"schemaVersion"`
-	TargetID           string `json:"targetId"`
-	ConfigFingerprint  string `json:"configFingerprint"`
-	CanonicalLabDigest string `json:"canonicalLabDigest"`
-	CapabilityDigest   string `json:"capabilityDigest"`
-	InventoryDigest    string `json:"inventoryDigest"`
-	PolicyDigest       string `json:"policyDigest"`
-	TemplateAlias      string `json:"templateAlias"`
-	StorageAlias       string `json:"storageAlias"`
-	NetworkAlias       string `json:"networkAlias"`
+	ResourceTemplates  []ResourceTemplateSelection `json:"resourceTemplates,omitempty"`
+	SchemaVersion      string                      `json:"schemaVersion"`
+	TargetID           string                      `json:"targetId"`
+	ConfigFingerprint  string                      `json:"configFingerprint"`
+	CanonicalLabDigest string                      `json:"canonicalLabDigest"`
+	CapabilityDigest   string                      `json:"capabilityDigest"`
+	InventoryDigest    string                      `json:"inventoryDigest"`
+	PolicyDigest       string                      `json:"policyDigest"`
+	TemplateAlias      string                      `json:"templateAlias"`
+	StorageAlias       string                      `json:"storageAlias"`
+	NetworkAlias       string                      `json:"networkAlias"`
+}
+
+type ResourceTemplateSelection struct {
+	ResourceID    string `json:"resourceId"`
+	TemplateAlias string `json:"templateAlias"`
 }
 
 type AllocationBinding struct {

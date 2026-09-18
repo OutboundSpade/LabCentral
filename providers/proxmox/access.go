@@ -64,7 +64,7 @@ func (service *Service) DiscoverAccessEndpoint(ctx context.Context, request *plu
 	if err != nil || inventory.normalize() != nil {
 		return fail("access_target_unavailable", "Proxmox VNC target inventory is unavailable")
 	}
-	mutationDigest, err := inventory.MutationDigest()
+	mutationDigest, err := inventory.MutationDigestForConfig(config)
 	if err != nil || config.Qualification.InventoryDigest != mutationDigest {
 		return fail("access_qualification_stale", "Proxmox VNC target qualification is stale")
 	}

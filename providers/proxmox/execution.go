@@ -392,7 +392,7 @@ func (service *Service) lifecycle(ctx context.Context, request *pluginv1.Lifecyc
 	if err != nil || inventory.normalize() != nil {
 		return executionFailure("qualification_gate_closed", "policy_denied", "Proxmox lifecycle execution requires fresh target qualification", false, resourceID)
 	}
-	mutationDigest, err := inventory.MutationDigest()
+	mutationDigest, err := inventory.MutationDigestForConfig(config)
 	if err != nil {
 		return executionFailure("qualification_gate_closed", "policy_denied", "Proxmox lifecycle execution requires fresh target qualification", false, resourceID)
 	}
@@ -644,7 +644,7 @@ func (service *Service) prepareExecution(ctx context.Context, input *pluginv1.Re
 		_ = lease.Close()
 		return nil, executionFailure("qualification_gate_closed", "policy_denied", "Proxmox mutation execution requires fresh target qualification", false, resourceID)
 	}
-	mutationDigest, err := inventory.MutationDigest()
+	mutationDigest, err := inventory.MutationDigestForConfig(config)
 	if err != nil || mutationDigest != config.Qualification.InventoryDigest {
 		client.CloseIdleConnections()
 		_ = lease.Close()
@@ -734,7 +734,7 @@ func verifyNetworkPreflight(ctx context.Context, client MutationAPI, config Targ
 	if err != nil || inventory.normalize() != nil {
 		return fmt.Errorf("target inventory is unavailable")
 	}
-	digest, err := inventory.MutationDigest()
+	digest, err := inventory.MutationDigestForConfig(config)
 	if err != nil || digest != plan.InventoryDigest || !strings.HasPrefix(inventory.Version.Release, "9.") {
 		return fmt.Errorf("target inventory is stale")
 	}
@@ -1073,7 +1073,7 @@ func verifyMutationPreflight(ctx context.Context, client MutationAPI, config Tar
 }
 
 func verifyInventoryAndPermissions(ctx context.Context, client MutationAPI, config TargetConfig, plan QEMUPlan, inventory Inventory) error {
-	digest, err := inventory.MutationDigest()
+	digest, err := inventory.MutationDigestForConfig(config)
 	if err != nil || digest != plan.InventoryDigest || !qualifiedReleaseMatchesInventory(config.Qualification.PVERelease, inventory.Version) {
 		return fmt.Errorf("target inventory is stale")
 	}

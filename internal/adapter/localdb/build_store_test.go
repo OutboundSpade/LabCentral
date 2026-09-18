@@ -134,7 +134,7 @@ func preparedBatchContract(t *testing.T, s *Store) {
 	for i := 0; i < 2; i++ {
 		id := fmt.Sprintf("import.%d", i)
 		c := create(id, domain.WorkImageImport, id)
-		b := app.StoredImageBinding{ID: id, ProjectID: "project.alpha", TargetID: "target.quota", ProviderDigest: "fixture", ImportOperationID: c.Work.ID, Binding: app.ImageBinding{ImageRef: "fixture/image", OpaqueBinding: []byte("fixture")}}
+		b := app.StoredImageBinding{ID: id, ProjectID: "project.alpha", TargetID: "target.quota", ProviderDigest: "fixture", ImportOperationID: c.Work.ID, Binding: app.ImageBinding{ImageRef: "labcentral.local/images/img-fixture-" + fmt.Sprint(i) + "@sha256:" + testRequestDigest(id).Hex(), ArtifactDigest: testRequestDigest(id), OpaqueBinding: []byte("fixture")}}
 		if e := s.PutImageBinding(ctx, c, b); e != nil {
 			t.Fatal(e)
 		}
@@ -147,7 +147,8 @@ func preparedBatchContract(t *testing.T, s *Store) {
 	request := batchTestRequest("batch.prepared", 2)
 	for i := range request.Instances {
 		request.Instances[i].WorkFence = fence
-		request.Instances[i].ImageBindingIDs = []string{fmt.Sprintf("import.%d", i)}
+		// Deliberately omit ImageBindingIDs, as a direct YAML client would.
+		request.Instances[i].CanonicalJSON = []byte(fmt.Sprintf(`{"resources":[{"kind":"VM","spec":{"image":{"repository":"labcentral.local/images/img-fixture-%d","digest":"sha256:%s"}}}]}`, i, testRequestDigest(fmt.Sprintf("import.%d", i)).Hex()))
 	}
 	if _, e := s.CreateInstanceBatch(ctx, request); e == nil {
 		t.Fatal("batch admitted an unapproved image")
@@ -162,6 +163,31 @@ func preparedBatchContract(t *testing.T, s *Store) {
 	if _, e := s.CreateInstanceBatch(ctx, request); e != nil {
 		t.Fatal(e)
 	}
+	assertTableCount(t, s, "labcentral_instance_image_bindings", 2)
+	if e := s.SetImageBindingApproval(ctx, "import.0", "user.quota", false, true, governanceIDs("retire-first")); e != nil {
+		t.Fatal(e)
+	}
+	retirement := app.ExtensionWork{ID: "retirement.first", ProjectID: "project.alpha", ActorID: "user.quota", InvocationID: "inv.retirement", Request: app.ExtensionWorkRequest{Version: 2, Kind: domain.WorkImageImport, PluginInstance: "core-import", PluginDigest: "fixture", BindingID: "target.quota", Import: &app.ImportWork{TargetID: "target.quota", RetireBindingID: "import.0"}}}
+	if _, e := s.CreateExtensionWork(ctx, app.CreateExtensionWork{Work: retirement, GovernanceRecordIDs: governanceIDs("retirement-create"), IdempotencyKey: "retirement-create", RequestDigest: testRequestDigest("retirement")}); e != nil {
+		t.Fatal(e)
+	}
+	retirementClaim, e := s.ClaimExtensionWork(ctx, "retirement-worker", "core-import/target.quota", domain.WorkImageImport, time.Minute)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if ready, e := s.CanRetireImage(ctx, retirementClaim, "import.0"); e != nil || ready {
+		t.Fatal("retirement ignored retained lab", ready, e)
+	}
+	if e := s.ReleaseImageImportClaims(ctx, retirementClaim, "import.0"); e == nil {
+		t.Fatal("released image allocation with active lab")
+	}
+	if _, e := s.db.ExecContext(ctx, s.bind(`UPDATE labcentral_local_instances SET phase='destroyed' WHERE instance_id=?`), request.Instances[0].InstanceID); e != nil {
+		t.Fatal(e)
+	}
+	if ready, e := s.CanRetireImage(ctx, retirementClaim, "import.0"); e != nil || !ready {
+		t.Fatal("destroyed lab blocked retirement", ready, e)
+	}
+
 	if e := s.CancelExtensionWork(ctx, prep.Work.ID, "user.quota", governanceIDs("cancel-prepared")); e != nil {
 		t.Fatal(e)
 	}

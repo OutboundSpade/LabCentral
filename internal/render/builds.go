@@ -1,9 +1,12 @@
 package render
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
+	"sort"
 	"strings"
 )
 
@@ -61,4 +64,48 @@ func resolveBuildImages(lab *AuthorLab, bindings []domain.ResolvedBuildImage) er
 		}
 	}
 	return nil
+}
+
+// RequiredBuildRecipes renders composition and typed inputs before selecting
+// build roots. Dependency recipes are queued by the build graph, not imported
+// as unrelated images. Placeholder references never leave this local render.
+func (r *Renderer) RequiredBuildRecipes(ctx context.Context, version string, revision domain.RevisionContent, inputs domain.TypedInputs) ([]string, error) {
+	bundle, err := labbundle.Read(revision.VerifiedBundle)
+	if err != nil {
+		return nil, err
+	}
+	if bundle.Builds() == nil {
+		return nil, nil
+	}
+	byImage := map[domain.ImageRef]string{}
+	policy := domain.RenderPolicy{}
+	for _, recipe := range bundle.Builds().Recipes {
+		sum := sha256.Sum256([]byte(recipe.ID))
+		ref := domain.ImageRef(fmt.Sprintf("labcentral.invalid/preparation@sha256:%x", sum))
+		byImage[ref] = recipe.ID
+		policy.BuildImages = append(policy.BuildImages, domain.ResolvedBuildImage{RecipeID: recipe.ID, ImageRef: ref})
+	}
+	canonical, _, err := r.RenderVersion(ctx, version, revision, inputs, policy)
+	if err != nil {
+		return nil, err
+	}
+	used := map[string]bool{}
+	for _, resource := range canonical.Resources {
+		var image domain.ImageRef
+		switch value := resource.(type) {
+		case domain.VM:
+			image = value.Spec.Image
+		case domain.Container:
+			image = value.Spec.Image
+		}
+		if name, found := byImage[image]; found {
+			used[name] = true
+		}
+	}
+	names := make([]string, 0, len(used))
+	for name := range used {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }

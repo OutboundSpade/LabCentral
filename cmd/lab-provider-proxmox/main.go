@@ -82,9 +82,12 @@ func main() {
 			{Name: "proxmox.target-config", Major: 1, Minor: 0},
 			{Name: "proxmox.target-config", Major: 1, Minor: 1},
 			{Name: "proxmox.target-config", Major: 1, Minor: 2},
+			{Name: "proxmox.target-config", Major: 1, Minor: 3},
+			{Name: "proxmox.target-config", Major: 1, Minor: 4},
 			{Name: "proxmox.api-token-credentials", Major: 1, Minor: 0},
 			{Name: "proxmox.capacity", Major: 1, Minor: 0},
 			{Name: "proxmox.validation-plan", Major: 1, Minor: 0},
+			{Name: "proxmox.validation-plan", Major: 1, Minor: 1},
 			{Name: "proxmox.qemu-plan", Major: 1, Minor: 0},
 			{Name: "proxmox.qemu-state", Major: 1, Minor: 0},
 			{Name: "proxmox.invocation-journal", Major: 1, Minor: 0},
@@ -99,7 +102,18 @@ func main() {
 			"proxmox-vnc-endpoint-v1",
 		},
 	}
-	if err := pluginruntime.Serve(ctx, pluginruntime.Services{Info: info, Runtime: service, Provider: service}); err != nil {
+	services := pluginruntime.Services{Info: info, Runtime: service, Provider: service}
+	if *journalDirectory != "" {
+		images, err := proxmox.NewImageService(service, *journalDirectory)
+		if err != nil {
+			logger.Error("configure image import journal")
+			os.Exit(1)
+		}
+		services.ImageImports = images
+		services.Artifacts = images
+		info.Features = append(info.Features, "image-import-v1", "image-import-reservations-v1", "image-retirement-v1", "artifact-transfer-v1")
+	}
+	if err := pluginruntime.Serve(ctx, services); err != nil {
 		logger.Error("serve Proxmox provider plugin", "error", err)
 		os.Exit(1)
 	}

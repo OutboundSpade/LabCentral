@@ -166,7 +166,7 @@ func (p *Provider) ImportImage(ctx context.Context, r app.ImportRequest) (string
 	if p.ImageImports == nil {
 		return "", app.ImageBinding{}, fmt.Errorf("image import unavailable")
 	}
-	v, e := p.ImageImports.Import(ctx, &wire.ImageImportServiceImportRequest{Context: call(r.Call), Target: target(r.Target), Artifact: artifact(r.Artifact), Architecture: r.Architecture, ProvenanceDigest: r.ProvenanceDigest.Hex()})
+	v, e := p.ImageImports.Import(ctx, &wire.ImageImportServiceImportRequest{Context: call(r.Call), Target: target(r.Target), Artifact: artifact(r.Artifact), Architecture: r.Architecture, ProvenanceDigest: r.ProvenanceDigest.Hex(), ReservedPlan: importPlan(r.ReservedPlan)})
 	if e != nil {
 		return "", app.ImageBinding{}, e
 	}

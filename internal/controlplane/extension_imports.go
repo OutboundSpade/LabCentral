@@ -3,11 +3,11 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/render"
-	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"time"
 )
 
@@ -53,6 +53,9 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 	if r == nil {
 		return fmt.Errorf("invalid import work")
 	}
+	if r.RetireBindingID != "" {
+		return s.executeImageRetirement(ctx, c)
+	}
 	store := s.store.(app.BuildStore)
 	build, e := store.GetExtensionWork(ctx, r.BuildID)
 	if e != nil {
@@ -77,6 +80,40 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 	call := workCall(c)
 	call.TargetID = string(r.TargetID)
 	request := app.ImportRequest{Call: call, Target: session.Context, Artifact: result.Image, Architecture: r.Architecture, ProvenanceDigest: result.ProvenanceDigest}
+
+	if session.Supports(0, "image-import-reservations-v1") {
+		reservations, ok := s.store.(app.ImageImportReservationStore)
+		planner, supported := session.Provider.(app.ImageImportPlanner)
+		if !ok || !supported {
+			return ErrAccessUnavailable
+		}
+		plan, err := reservations.GetImageImportPlan(ctx, c.Work.ID)
+		if errors.Is(err, app.ErrNotFound) {
+			excluded, snapshotErr := s.store.ListTargetAllocationKeys(ctx, r.TargetID)
+			if snapshotErr != nil {
+				return snapshotErr
+			}
+			for attempt := 0; attempt < app.MaximumAllocationPlanAttempts; attempt++ {
+				plan, err = planner.PlanImageImport(ctx, request, excluded)
+				if err != nil {
+					return err
+				}
+				err = reservations.ReserveImageImportPlan(ctx, c, plan)
+				if err == nil {
+					break
+				}
+				var conflict *app.AllocationConflictError
+				if !errors.As(err, &conflict) || len(conflict.Conflicts) == 0 {
+					return err
+				}
+				excluded = append(excluded, conflict.Conflicts...)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		request.ReservedPlan = &plan
+	}
 	state := "unknown"
 	var binding app.ImageBinding
 	if c.Recover {
@@ -154,6 +191,13 @@ func (s *Service) SetImageApproval(ctx context.Context, actor domain.UserID, pro
 	if e != nil {
 		return e
 	}
+
+	if retired {
+		queued, err := s.requestImageRetirement(ctx, actor, project, id)
+		if err != nil || queued {
+			return err
+		}
+	}
 	return s.store.(app.BuildStore).SetImageBindingApproval(ctx, id, actor, approved, retired, ids)
 }
 func (s *Service) RequestPreparation(ctx context.Context, actor domain.UserID, project domain.ProjectID, r app.PreparationWork, key string) (app.ExtensionWork, error) {
@@ -195,13 +239,13 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 	result := app.PreparationResult{}
 	images := []domain.ResolvedBuildImage{}
 	bindingIDs := []string{}
-	if rev.RendererVersion == render.BuildRendererVersion {
-		bundle, e := labbundle.Read(data)
+	if rev.RendererVersion == render.BuildRendererVersion || rev.RendererVersion == render.PackageRendererVersion {
+		recipes, e := s.renderer.RequiredBuildRecipes(ctx, rev.RendererVersion, domain.RevisionContent{VerifiedBundle: data}, r.Inputs)
 		if e != nil {
 			return e
 		}
-		for _, recipe := range bundle.Builds().Recipes {
-			build, e := s.RequestBuild(ctx, c.Work.ActorID, c.Work.ProjectID, r.RevisionID, recipe.ID, string(c.Work.ID)+".build."+recipe.ID)
+		for _, recipeID := range recipes {
+			build, e := s.RequestBuild(ctx, c.Work.ActorID, c.Work.ProjectID, r.RevisionID, recipeID, string(c.Work.ID)+".build."+recipeID)
 			if e != nil {
 				return e
 			}
@@ -213,9 +257,10 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 				return s.finishWork(ctx, c, domain.OperationFailed, result, "build_failed")
 			}
 			if build.State != domain.OperationSucceeded {
-				return store.YieldExtensionWork(ctx, c)
+				result.Stage = "building"
+				return s.yieldWorkProgress(ctx, c, result)
 			}
-			imp, e := s.RequestImport(ctx, c.Work.ActorID, c.Work.ProjectID, build.ID, r.TargetID, string(c.Work.ID)+".import."+recipe.ID)
+			imp, e := s.RequestImport(ctx, c.Work.ActorID, c.Work.ProjectID, build.ID, r.TargetID, string(c.Work.ID)+".import."+recipeID)
 			if e != nil {
 				return e
 			}
@@ -227,14 +272,19 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 				return s.finishWork(ctx, c, domain.OperationFailed, result, "import_failed")
 			}
 			if imp.State != domain.OperationSucceeded {
-				return store.YieldExtensionWork(ctx, c)
+				result.Stage = "importing"
+				return s.yieldWorkProgress(ctx, c, result)
 			}
 			binding, e := store.GetImageBinding(ctx, string(imp.ID))
 			if e != nil {
 				return e
 			}
-			if !binding.Approved || binding.Retired {
-				return store.YieldExtensionWork(ctx, c)
+			if binding.Retired {
+				return s.finishWork(ctx, c, domain.OperationFailed, result, "image_retired")
+			}
+			if !binding.Approved {
+				result.Stage = "awaiting-approval"
+				return s.yieldWorkProgress(ctx, c, result)
 			}
 			session, e := s.targets.AcquireForSubject(ctx, r.TargetID, c.Work.ActorID, app.InvocationScope{InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(time.Minute)}, true)
 			if e != nil {
@@ -243,7 +293,9 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 			provider, ok := session.Provider.(app.ImageImporter)
 			valid := ok && binding.ProviderDigest == providerIdentity(session.Provider) && binding.Binding.TargetConfigurationDigest == session.Context.ConfigFingerprint
 			if valid {
-				e = provider.ValidateImageBinding(ctx, app.ImportRequest{Call: workCall(c), Target: session.Context}, binding.Binding)
+				call := workCall(c)
+				call.TargetID = string(r.TargetID)
+				e = provider.ValidateImageBinding(ctx, app.ImportRequest{Call: call, Target: session.Context}, binding.Binding)
 			}
 			session.Close()
 			if !valid || e != nil {
@@ -254,7 +306,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 				return e
 			}
 			bindingIDs = append(bindingIDs, binding.ID)
-			images = append(images, domain.ResolvedBuildImage{RecipeID: recipe.ID, ImageRef: image})
+			images = append(images, domain.ResolvedBuildImage{RecipeID: recipeID, ImageRef: image})
 		}
 	}
 	// Persisted image bindings already exist before entering the normal planner.

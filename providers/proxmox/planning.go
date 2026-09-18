@@ -54,6 +54,18 @@ func (service *Service) ValidateLab(_ context.Context, request *pluginv1.Validat
 		PolicyDigest: config.Qualification.PolicyDigest, TemplateAlias: selection.template,
 		StorageAlias: selection.storage, NetworkAlias: selection.network,
 	}
+	aliases := map[string]bool{}
+	for _, binding := range selection.resources {
+		aliases[binding.TemplateAlias] = true
+	}
+	if len(aliases) > 1 {
+		plan.SchemaVersion = validationPlanV11
+		plan.TemplateAlias = ""
+		plan.ResourceTemplates = selection.resources
+		sort.Slice(plan.ResourceTemplates, func(i, j int) bool {
+			return plan.ResourceTemplates[i].ResourceID < plan.ResourceTemplates[j].ResourceID
+		})
+	}
 	contents, digest, err := marshalDigest(plan)
 	if err != nil {
 		return nil, fmt.Errorf("encode Proxmox validation plan: %w", err)
@@ -64,9 +76,10 @@ func (service *Service) ValidateLab(_ context.Context, request *pluginv1.Validat
 }
 
 type profileSelection struct {
-	template string
-	storage  string
-	network  string
+	resources []ResourceTemplateSelection
+	template  string
+	storage   string
+	network   string
 }
 
 func validateCanonicalLab(config TargetConfig, lab canonicalLabDocument, override ProviderOverride) (profileSelection, []*pluginv1.StructuredError) {
@@ -138,12 +151,18 @@ func validateCanonicalLab(config TargetConfig, lab canonicalLabDocument, overrid
 			}
 			result = append(result, validateVMSpec(config, resource, spec, field)...)
 			matched := matchingTemplate(config, spec.Image.Digest, override.TemplateAlias)
+			if matched == "" && strings.HasPrefix(spec.Image.Repository, "labcentral.local/images/") && sha256Pattern.MatchString(spec.Image.Digest) {
+				if profile, ok := importedTemplateProfile(config, strings.TrimPrefix(spec.Image.Repository, "labcentral.local/images/")); ok && profile.ContentDigest == spec.Image.Digest && (override.TemplateAlias == "" || override.TemplateAlias == profile.Alias) {
+					matched = profile.Alias
+				}
+			}
 			if matched == "" {
 				result = append(result, mutationError("unsupported_image", "unsupported_capability", "VM image does not match an approved Proxmox template", field+".spec.image", resource.ID))
-			} else if selection.template == "" {
-				selection.template = matched
-			} else if selection.template != matched {
-				result = append(result, mutationError("multiple_template_profiles", "unsupported_capability", "The initial Proxmox slice supports one template profile per Lab", field+".spec.image", resource.ID))
+			} else {
+				selection.resources = append(selection.resources, ResourceTemplateSelection{ResourceID: resource.ID, TemplateAlias: matched})
+				if selection.template == "" {
+					selection.template = matched
+				}
 			}
 		case "Volume":
 			result = append(result, mutationError("unsupported_volume", "unsupported_capability", "Portable Volume resources are not supported by the Proxmox QEMU subset", field, resource.ID))
@@ -338,8 +357,24 @@ func decodeValidationPlan(contents []byte) (ValidationPlan, error) {
 	if err := decodeEnvelope(contents, maximumConfigBytes, &plan); err != nil {
 		return plan, err
 	}
-	if plan.SchemaVersion != validationPlanV10 || plan.TargetID == "" || !sha256Pattern.MatchString(plan.ConfigFingerprint) || !sha256Pattern.MatchString(plan.CanonicalLabDigest) || !sha256Pattern.MatchString(plan.CapabilityDigest) || !sha256Pattern.MatchString(plan.InventoryDigest) || !sha256Pattern.MatchString(plan.PolicyDigest) || !aliasPattern.MatchString(plan.TemplateAlias) || !aliasPattern.MatchString(plan.StorageAlias) || !aliasPattern.MatchString(plan.NetworkAlias) {
+	if (plan.SchemaVersion != validationPlanV10 && plan.SchemaVersion != validationPlanV11) || plan.TargetID == "" || !sha256Pattern.MatchString(plan.ConfigFingerprint) || !sha256Pattern.MatchString(plan.CanonicalLabDigest) || !sha256Pattern.MatchString(plan.CapabilityDigest) || !sha256Pattern.MatchString(plan.InventoryDigest) || !sha256Pattern.MatchString(plan.PolicyDigest) || !aliasPattern.MatchString(plan.StorageAlias) || !aliasPattern.MatchString(plan.NetworkAlias) {
 		return plan, fmt.Errorf("invalid validation plan")
+	}
+	if plan.SchemaVersion == validationPlanV10 {
+		if !aliasPattern.MatchString(plan.TemplateAlias) || len(plan.ResourceTemplates) != 0 {
+			return plan, fmt.Errorf("invalid legacy template selection")
+		}
+	} else {
+		if plan.TemplateAlias != "" || len(plan.ResourceTemplates) == 0 || len(plan.ResourceTemplates) > maximumInventoryItems {
+			return plan, fmt.Errorf("invalid resource template selection")
+		}
+		seen := map[string]bool{}
+		for _, binding := range plan.ResourceTemplates {
+			if !logicalIDPattern.MatchString(binding.ResourceID) || !aliasPattern.MatchString(binding.TemplateAlias) || seen[binding.ResourceID] {
+				return plan, fmt.Errorf("invalid resource template binding")
+			}
+			seen[binding.ResourceID] = true
+		}
 	}
 	return plan, nil
 }
@@ -372,7 +407,15 @@ func planVM(plan *QEMUPlan, config TargetConfig, validation ValidationPlan, inpu
 	if errors := validateVMSpec(config, resource, spec, "resource"); len(errors) != 0 {
 		return fmt.Errorf("VM specification is outside the supported subset")
 	}
-	template, ok := findTemplateProfile(config, validation.TemplateAlias)
+	alias := validation.TemplateAlias
+	if validation.SchemaVersion == validationPlanV11 {
+		for _, binding := range validation.ResourceTemplates {
+			if binding.ResourceID == resource.ID {
+				alias = binding.TemplateAlias
+			}
+		}
+	}
+	template, ok := findTemplateProfile(config, alias)
 	if !ok || template.ContentDigest != spec.Image.Digest {
 		return fmt.Errorf("validated template profile is unavailable or mismatched")
 	}
@@ -617,7 +660,7 @@ func findTemplateProfile(config TargetConfig, alias string) (TemplateProfile, bo
 			return profile, true
 		}
 	}
-	return TemplateProfile{}, false
+	return importedTemplateProfile(config, alias)
 }
 
 func findStorageProfile(config TargetConfig, alias string) (StorageProfile, bool) {

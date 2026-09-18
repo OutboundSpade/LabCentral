@@ -1801,6 +1801,8 @@ var ArtifactTransferService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	ImageImportService_Retire_FullMethodName          = "/labcentral.plugin.v1.ImageImportService/Retire"
+	ImageImportService_Plan_FullMethodName            = "/labcentral.plugin.v1.ImageImportService/Plan"
 	ImageImportService_Import_FullMethodName          = "/labcentral.plugin.v1.ImageImportService/Import"
 	ImageImportService_GetInvocation_FullMethodName   = "/labcentral.plugin.v1.ImageImportService/GetInvocation"
 	ImageImportService_ValidateBinding_FullMethodName = "/labcentral.plugin.v1.ImageImportService/ValidateBinding"
@@ -1810,6 +1812,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ImageImportServiceClient interface {
+	Retire(ctx context.Context, in *ImageImportServiceRetireRequest, opts ...grpc.CallOption) (*ImageImportServiceRetireResponse, error)
+	Plan(ctx context.Context, in *ImageImportServicePlanRequest, opts ...grpc.CallOption) (*ImageImportServicePlanResponse, error)
 	Import(ctx context.Context, in *ImageImportServiceImportRequest, opts ...grpc.CallOption) (*ImageImportServiceImportResponse, error)
 	GetInvocation(ctx context.Context, in *ImageImportServiceGetInvocationRequest, opts ...grpc.CallOption) (*ImageImportServiceGetInvocationResponse, error)
 	ValidateBinding(ctx context.Context, in *ImageImportServiceValidateBindingRequest, opts ...grpc.CallOption) (*ImageImportServiceValidateBindingResponse, error)
@@ -1821,6 +1825,26 @@ type imageImportServiceClient struct {
 
 func NewImageImportServiceClient(cc grpc.ClientConnInterface) ImageImportServiceClient {
 	return &imageImportServiceClient{cc}
+}
+
+func (c *imageImportServiceClient) Retire(ctx context.Context, in *ImageImportServiceRetireRequest, opts ...grpc.CallOption) (*ImageImportServiceRetireResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImageImportServiceRetireResponse)
+	err := c.cc.Invoke(ctx, ImageImportService_Retire_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *imageImportServiceClient) Plan(ctx context.Context, in *ImageImportServicePlanRequest, opts ...grpc.CallOption) (*ImageImportServicePlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ImageImportServicePlanResponse)
+	err := c.cc.Invoke(ctx, ImageImportService_Plan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *imageImportServiceClient) Import(ctx context.Context, in *ImageImportServiceImportRequest, opts ...grpc.CallOption) (*ImageImportServiceImportResponse, error) {
@@ -1857,6 +1881,8 @@ func (c *imageImportServiceClient) ValidateBinding(ctx context.Context, in *Imag
 // All implementations must embed UnimplementedImageImportServiceServer
 // for forward compatibility.
 type ImageImportServiceServer interface {
+	Retire(context.Context, *ImageImportServiceRetireRequest) (*ImageImportServiceRetireResponse, error)
+	Plan(context.Context, *ImageImportServicePlanRequest) (*ImageImportServicePlanResponse, error)
 	Import(context.Context, *ImageImportServiceImportRequest) (*ImageImportServiceImportResponse, error)
 	GetInvocation(context.Context, *ImageImportServiceGetInvocationRequest) (*ImageImportServiceGetInvocationResponse, error)
 	ValidateBinding(context.Context, *ImageImportServiceValidateBindingRequest) (*ImageImportServiceValidateBindingResponse, error)
@@ -1870,6 +1896,12 @@ type ImageImportServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedImageImportServiceServer struct{}
 
+func (UnimplementedImageImportServiceServer) Retire(context.Context, *ImageImportServiceRetireRequest) (*ImageImportServiceRetireResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Retire not implemented")
+}
+func (UnimplementedImageImportServiceServer) Plan(context.Context, *ImageImportServicePlanRequest) (*ImageImportServicePlanResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Plan not implemented")
+}
 func (UnimplementedImageImportServiceServer) Import(context.Context, *ImageImportServiceImportRequest) (*ImageImportServiceImportResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Import not implemented")
 }
@@ -1898,6 +1930,42 @@ func RegisterImageImportServiceServer(s grpc.ServiceRegistrar, srv ImageImportSe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ImageImportService_ServiceDesc, srv)
+}
+
+func _ImageImportService_Retire_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImageImportServiceRetireRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageImportServiceServer).Retire(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageImportService_Retire_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageImportServiceServer).Retire(ctx, req.(*ImageImportServiceRetireRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ImageImportService_Plan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ImageImportServicePlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageImportServiceServer).Plan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageImportService_Plan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageImportServiceServer).Plan(ctx, req.(*ImageImportServicePlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ImageImportService_Import_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1961,6 +2029,14 @@ var ImageImportService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "labcentral.plugin.v1.ImageImportService",
 	HandlerType: (*ImageImportServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Retire",
+			Handler:    _ImageImportService_Retire_Handler,
+		},
+		{
+			MethodName: "Plan",
+			Handler:    _ImageImportService_Plan_Handler,
+		},
 		{
 			MethodName: "Import",
 			Handler:    _ImageImportService_Import_Handler,

@@ -2,7 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 
 	"io"
@@ -55,11 +57,24 @@ type ImageBinding struct {
 	OpaqueBinding             []byte              `json:"-"`
 }
 type ImportRequest struct {
+	ReservedPlan     *ImageImportPlan
 	Call             ProviderCall
 	Target           ProviderTargetContext
 	Artifact         ExtensionArtifact
 	Architecture     string
 	ProvenanceDigest domain.SHA256Digest
+}
+type ImageImportPlan struct {
+	Opaque []byte              `json:"opaque"`
+	Digest domain.SHA256Digest `json:"digest"`
+	Claims []AllocationKey     `json:"claims"`
+}
+type ImageImportPlanner interface {
+	PlanImageImport(context.Context, ImportRequest, []AllocationKey) (ImageImportPlan, error)
+}
+type ImageImportReservationStore interface {
+	GetImageImportPlan(context.Context, domain.OperationID) (ImageImportPlan, error)
+	ReserveImageImportPlan(context.Context, ExtensionWorkClaim, ImageImportPlan) error
 }
 type ImageImporter interface {
 	ArtifactTransfer
@@ -82,6 +97,7 @@ type BuildWork struct {
 	Limits          BuildLimits           `json:"limits"`
 }
 type ImportWork struct {
+	RetireBindingID   string                  `json:"retireBindingId,omitempty"`
 	BuildID           domain.OperationID      `json:"buildId"`
 	TargetID          domain.ProviderTargetID `json:"targetId"`
 	Architecture      string                  `json:"architecture"`
@@ -117,7 +133,41 @@ type BuildStore interface {
 
 // Durable results contain no transfer capability or provider credentials.
 type PreparationResult struct {
+	Stage      string               `json:"stage,omitempty"`
 	BuildIDs   []domain.OperationID `json:"buildIds"`
 	ImportIDs  []domain.OperationID `json:"importIds"`
 	Deployment json.RawMessage      `json:"deployment,omitempty"`
+}
+
+func ValidateImageImportPlan(p ImageImportPlan, target domain.ProviderTargetID) (ImageImportPlan, error) {
+	if len(p.Opaque) == 0 || len(p.Opaque) > 1<<20 || len(p.Claims) == 0 || len(p.Claims) > 16 {
+		return p, fmt.Errorf("invalid image import plan bounds")
+	}
+	sum := sha256.Sum256(p.Opaque)
+	if fmt.Sprintf("%x", sum) != p.Digest.Hex() {
+		return p, fmt.Errorf("image import plan digest mismatch")
+	}
+	claims, err := validateAllocationKeys(p.Claims)
+	if err != nil {
+		return p, err
+	}
+	for _, c := range claims {
+		if c.TargetID != target {
+			return p, fmt.Errorf("image import target mismatch")
+		}
+	}
+	p.Claims = claims
+	return p, nil
+}
+
+type ImageRetirer interface {
+	RetireImage(context.Context, ImportRequest, ImageBinding) (string, error)
+}
+type ImageRetirementStore interface {
+	CanRetireImage(context.Context, ExtensionWorkClaim, string) (bool, error)
+	ReleaseImageImportClaims(context.Context, ExtensionWorkClaim, string) error
+}
+
+type ExtensionWorkProgressStore interface {
+	YieldExtensionWorkProgress(context.Context, ExtensionWorkClaim, json.RawMessage) error
 }

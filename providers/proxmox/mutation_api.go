@@ -104,7 +104,7 @@ func ParseUPID(value string) (UPID, error) {
 		return zero, fmt.Errorf("UPID is invalid")
 	}
 	parts := strings.Split(value, ":")
-	if len(parts) != 9 || parts[0] != "UPID" || parts[8] != "" || !nodeNamePattern.MatchString(parts[1]) || !upidHexPattern.MatchString(parts[2]) || !upidHexPattern.MatchString(parts[3]) || !upidHexPattern.MatchString(parts[4]) || !upidTypePattern.MatchString(parts[5]) || parts[6] == "" || len(parts[6]) > 128 || !taskUserPattern.MatchString(parts[7]) {
+	if len(parts) != 9 || parts[0] != "UPID" || parts[8] != "" || !nodeNamePattern.MatchString(parts[1]) || !upidHexPattern.MatchString(parts[2]) || !upidHexPattern.MatchString(parts[3]) || !upidHexPattern.MatchString(parts[4]) || !upidTypePattern.MatchString(parts[5]) || (parts[6] == "" && parts[5] != "imgcopy") || len(parts[6]) > 128 || !taskUserPattern.MatchString(parts[7]) {
 		return zero, fmt.Errorf("UPID is invalid")
 	}
 	return UPID{Raw: value, Node: parts[1], Type: parts[5], ObjectID: parts[6], User: parts[7]}, nil
@@ -322,7 +322,7 @@ func (client *Client) TaskStatus(ctx context.Context, node string, upid UPID) (T
 	if !nodeNamePattern.MatchString(node) {
 		return TaskStatus{}, fmt.Errorf("task node is invalid")
 	}
-	if err := upid.validate(node, "qmclone", "qmconfig", "qmstart", "qmshutdown", "qmpause", "qmresume", "qmdestroy"); err != nil {
+	if err := upid.validate(node, "qmclone", "qmconfig", "qmstart", "qmshutdown", "qmpause", "qmresume", "qmdestroy", "imgcopy", "qmcreate", "qmtemplate"); err != nil {
 		return TaskStatus{}, err
 	}
 	raw, err := getAPI[struct {

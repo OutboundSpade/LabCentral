@@ -221,6 +221,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, "0018_template_libraries", libraryMigration()); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, "0019_image_import_reservations", imageImportMigration()); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 
@@ -772,6 +775,12 @@ func (s *Store) insertInstanceTx(ctx context.Context, tx *sql.Tx, request applic
 			return e
 		}
 	}
+
+	imageBindings, err := s.validateImportedImagesTx(ctx, tx, request)
+	if err != nil {
+		return err
+	}
+	request.ImageBindingIDs = imageBindings
 	for _, id := range request.ImageBindingIDs {
 		var count int
 		if e := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_image_bindings WHERE binding_id=? AND project_id=? AND target_id=? AND approved=1 AND retired=0`), id, request.ProjectID, request.ProviderTargetID).Scan(&count); e != nil {
@@ -811,6 +820,12 @@ func (s *Store) insertInstanceTx(ctx context.Context, tx *sql.Tx, request applic
 		lifetime.PolicyDigest.Hex()); err != nil {
 		return fmt.Errorf("insert local instance: %w", err)
 	}
+	for _, id := range request.ImageBindingIDs {
+		if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_instance_image_bindings(instance_id,binding_id) VALUES(?,?) ON CONFLICT DO NOTHING`), request.InstanceID, id); err != nil {
+			return err
+		}
+	}
+
 	for _, resource := range request.Resources {
 		if _, err := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_local_resources
 			(instance_id, resource_id, kind, ordinal, canonical_resource_json, provider_plan, phase, ownership_token, updated_at_us)

@@ -29,6 +29,10 @@ func ValidateAllocationClaims(binding AllocationBinding, source []AllocationKey)
 	if _, err := domain.ParseSHA256Digest(binding.PlanDigest.Hex()); err != nil {
 		return nil, err
 	}
+	return validateAllocationKeys(source)
+}
+
+func validateAllocationKeys(source []AllocationKey) ([]AllocationKey, error) {
 	if len(source) == 0 || len(source) > MaximumAllocationClaims {
 		return nil, fmt.Errorf("allocation claim count must be between 1 and %d", MaximumAllocationClaims)
 	}

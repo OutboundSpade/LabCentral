@@ -2105,6 +2105,9 @@
           "buildId": {
             "type": "string"
           },
+          "retireBindingId": {
+            "type": "string"
+          },
           "targetFingerprint": {
             "type": "string"
           },
