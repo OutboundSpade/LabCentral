@@ -1,0 +1,14 @@
+{
+  "id": "workstation",
+  "builder": "linux-ansible",
+  "schema": "labcentral.ansible.v1",
+  "architecture": "amd64",
+  "configurationJSON": "{\"baseDependency\":\"base\",\"playbook\":\"workstation.yaml\",\"diskGiB\":4,\"guestUser\":\"debian\"}",
+  "context": [
+    "workstation.yaml"
+  ],
+  "baseImageDigests": [],
+  "dependsOn": [
+    "base"
+  ]
+}

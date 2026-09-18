@@ -1,0 +1,9 @@
+- name: Reusable Linux base
+  hosts: all
+  become: true
+  tasks:
+    - name: Record the reusable base
+      ansible.builtin.copy:
+        dest: /etc/labcentral-base
+        content: "LabCentral Linux base\n"
+        mode: "0644"

@@ -16,7 +16,12 @@ type BuildLimits struct {
 	OutputBytes    uint64   `json:"outputBytes"`
 	Egress         []string `json:"egress"`
 }
+type BuildDependency struct {
+	RecipeID string
+	Artifact ExtensionArtifact
+}
 type BuildRequest struct {
+	Dependencies         []BuildDependency
 	BindingConfiguration []byte
 	Call                 ProviderCall
 	BindingID            string
@@ -62,14 +67,19 @@ type ImageImporter interface {
 	RecoverImport(context.Context, ImportRequest) (string, ImageBinding, error)
 	ValidateImageBinding(context.Context, ImportRequest, ImageBinding) error
 }
+type BuildDependencyWork struct {
+	RecipeID string             `json:"recipeId"`
+	BuildID  domain.OperationID `json:"buildId"`
+}
 type BuildWork struct {
-	RevisionID      domain.RevisionID   `json:"revisionId"`
-	Recipe          domain.BuildRecipe  `json:"recipe"`
-	RecipeDigest    domain.SHA256Digest `json:"recipeDigest"`
-	ContextArtifact domain.ArtifactRef  `json:"contextArtifact"`
-	ContextDigest   domain.SHA256Digest `json:"contextDigest"`
-	ContextSize     uint64              `json:"contextSize"`
-	Limits          BuildLimits         `json:"limits"`
+	Dependencies    []BuildDependencyWork `json:"dependencies,omitempty"`
+	RevisionID      domain.RevisionID     `json:"revisionId"`
+	Recipe          domain.BuildRecipe    `json:"recipe"`
+	RecipeDigest    domain.SHA256Digest   `json:"recipeDigest"`
+	ContextArtifact domain.ArtifactRef    `json:"contextArtifact"`
+	ContextDigest   domain.SHA256Digest   `json:"contextDigest"`
+	ContextSize     uint64                `json:"contextSize"`
+	Limits          BuildLimits           `json:"limits"`
 }
 type ImportWork struct {
 	BuildID           domain.OperationID      `json:"buildId"`

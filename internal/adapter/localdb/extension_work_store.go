@@ -168,6 +168,22 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 			}
 		}
 		if w.Request.Build != nil {
+			if len(w.Request.Build.Dependencies) > 8 {
+				return fmt.Errorf("build dependency limit")
+			}
+			for _, dependency := range w.Request.Build.Dependencies {
+				child, e := scanExtensionWork(tx.QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.operation_id=?`), dependency.BuildID))
+				if e != nil {
+					return e
+				}
+				if child.ProjectID != w.ProjectID || child.Request.Kind != domain.WorkBuild || child.CancelRequested || child.State == domain.OperationFailed || child.State == domain.OperationCanceled {
+					return fmt.Errorf("build dependency is unavailable")
+				}
+				if _, e = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_extension_dependencies(parent_id,child_id) VALUES(?,?)`), w.ID, child.ID); e != nil {
+					return e
+				}
+			}
+
 			if _, e := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_extension_artifact_refs(operation_id,artifact_ref) VALUES(?,?)`), w.ID, w.Request.Build.ContextArtifact); e != nil {
 				return e
 			}

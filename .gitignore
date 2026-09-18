@@ -8,6 +8,7 @@
 *.db-wal
 *.lock
 !web/bun.lock
+!tools/builders/ansible-requirements.lock
 
 __pycache__/
 

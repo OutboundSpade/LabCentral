@@ -62,3 +62,5 @@ configuration and are never attached to the export.
 The feature bridge exposes `templates.importPreview` and `templates.export` under
 `templates.write` and `templates.read` respectively. Core repeats authorization
 independently of the declared browser permission.
+
+Image recipes and dependency graphs are described in [disposable VM builders](vm-builders.md).

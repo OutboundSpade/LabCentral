@@ -1,6 +1,15 @@
 apiVersion: labcentral.library/v1
 templates:
-  - key: composed-network
-    name: composed-network
-    description: A private network composed from a pinned reusable component.
-    root: composed-network
+- key: composed-network
+  name: composed-network
+  description: A private network composed from a pinned reusable component.
+  root: composed-network
+- key: ansible-linux
+  name: ansible-linux
+  description: Ansible qcow2 workstation derived from a reusable pinned Linux base.
+  root: ansible-linux
+- key: dockerfile-web
+  name: dockerfile-web
+  description: Dockerfile web service derived from a reusable OCI base, deployed in
+    a dedicated VM.
+  root: dockerfile-web

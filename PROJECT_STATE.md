@@ -20,7 +20,7 @@ export and import preview passed package/renderer/API/CLI tests, including impor
 into a fresh installation. GitHub synchronization (`TASK-TEMPLATE-004`) is
 implemented: optional collection resolution, pinned recovery, atomic publication,
 retained upstream removals, schedules and revocation passed source/API and
-SQLite/PostgreSQL race tests. Isolated builders (`TASK-TEMPLATE-005`) are next. Portable exports contain build source and pinned source dependencies,
+SQLite/PostgreSQL race tests. Isolated builders (`TASK-TEMPLATE-005`) are implemented: Linux amd64 Ansible qcow2 and BuildKit OCI builds, dependent builds, effective-input reuse, cleanup verification, worker process-loss recovery and external deadlines passed local VM acceptance. Typed dependency/protocol, race/database, generated API and independent-package checks passed. Proxmox import/preparation (`TASK-TEMPLATE-006`) is next. Portable exports contain build source and pinned source dependencies,
 never VM/OCI images. The target release adds
 GitHub synchronization, isolated builders, Proxmox imports, optional feature
 packages, project groups and fenced shared-console control. The new packages have not yet been deployed; live build/import and collaboration
@@ -33,7 +33,7 @@ acceptance remain part of the release gate. See
 
 External fixtures exercise source recovery, concurrent build deduplication, image approval, preparation and owned lifecycle against a prebuilt core/UI. Chromium, Firefox and WebKit exercise installed stream views, sandbox isolation and browser-approved gateway grants. SQLite/PostgreSQL race tests cover work fencing, shared cancellation, delegated access revocation and atomic prepared batch admission.
 
-`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, Git, Ansible, Dockerfile, AWS and Fedora CoreOS integrations remain outside this implementation. Existing production-validation gaps remain open.
+`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, AWS and Fedora CoreOS integrations remain outside this implementation. The newer GitHub and image-builder implementations are described above; their production rollout remains pending. Existing production-validation gaps remain open.
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
@@ -115,7 +115,7 @@ provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 ## Next action and production gates
 
 Continue the dependency-ordered template/collaboration tasks, starting with
-`TASK-TEMPLATE-003`. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
+`TASK-TEMPLATE-006`. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
 Within-lab parallel branches need multi-invocation recovery before implementation.

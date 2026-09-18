@@ -1775,6 +1775,10 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["BrowserExtensionDTO"][] | null;
         };
+        BuildDependencyWork: {
+            buildId: string;
+            recipeId: string;
+        };
         BuildInput: {
             name: string;
             value: string;
@@ -1809,6 +1813,7 @@ export interface components {
             builder: string;
             configurationJSON: string;
             context: string[] | null;
+            dependsOn?: string[] | null;
             id: string;
             inputs?: components["schemas"]["BuildInput"][] | null;
             schema: string;
@@ -1818,6 +1823,7 @@ export interface components {
             contextDigest: string;
             /** Format: int64 */
             contextSize: number;
+            dependencies?: components["schemas"]["BuildDependencyWork"][] | null;
             limits: components["schemas"]["BuildLimits"];
             recipe: components["schemas"]["BuildRecipe"];
             recipeDigest: string;

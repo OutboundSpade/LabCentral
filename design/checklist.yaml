@@ -39,7 +39,7 @@ tasks:
       - Implement manual and fifteen-minute scheduled sync with durable fencing, backoff, authority rechecks and public/private configured GitHub transport.
   - id: TASK-TEMPLATE-005
     title: Implement disposable Ansible and Dockerfile builders
-    status: in_progress
+    status: complete
     dependencies: [TASK-TEMPLATE-004]
     relatedAdrs: [ADR-0028]
     relatedDocuments: [docs/design/portable-template-collaboration.md]
@@ -48,7 +48,7 @@ tasks:
       - Support dependency builds, effective-input deduplication, original invocation recovery, shared cancellation and cleanup without provider/control credentials.
   - id: TASK-TEMPLATE-006
     title: Implement qualified Proxmox image preparation
-    status: proposed
+    status: in_progress
     dependencies: [TASK-TEMPLATE-005]
     relatedAdrs: [ADR-0028]
     relatedDocuments: [docs/design/portable-template-collaboration.md]

@@ -84,3 +84,24 @@ func TestLegacyYAMLExportContainsSourceOnly(t *testing.T) {
 		t.Fatal("unexpected portable content")
 	}
 }
+
+func TestBuildDependencyGraphIsBoundedAndVersioned(t *testing.T) {
+	recipe := func(id string, dependencies ...string) BuildRecipe {
+		return BuildRecipe{ID: id, Builder: "local", Schema: "fixture-v1", Architecture: "amd64", ConfigurationJSON: `{}`, Context: []string{"Dockerfile"}, DependsOn: dependencies}
+	}
+	bundle := Bundle{Manifest: Manifest{Builds: &BuildMetadata{APIVersion: "labcentral.build/v2", Recipes: []BuildRecipe{recipe("base"), recipe("a", "base"), recipe("b", "base"), recipe("final", "a", "b")}}}, Files: map[string][]byte{"Dockerfile": []byte("FROM scratch\n")}}
+	if err := bundle.ValidateBuilds(); err != nil {
+		t.Fatal(err)
+	}
+	bundle.Manifest.Builds.APIVersion = "labcentral.build/v1"
+	if err := bundle.ValidateBuilds(); err == nil {
+		t.Fatal("legacy graph semantics changed")
+	}
+	bundle.Manifest.Builds.APIVersion = "labcentral.build/v2"
+	for _, dependencies := range [][]string{{"final"}, {"missing"}, {"a", "a"}} {
+		bundle.Manifest.Builds.Recipes[0].DependsOn = dependencies
+		if err := bundle.ValidateBuilds(); err == nil {
+			t.Fatal("invalid dependency graph accepted")
+		}
+	}
+}

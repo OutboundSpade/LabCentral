@@ -1,6 +1,7 @@
 package domain
 
 type BuildRecipe struct {
+	DependsOn         []string     `json:"dependsOn,omitempty"`
 	ID                string       `json:"id"`
 	Builder           string       `json:"builder"`
 	Schema            string       `json:"schema"`

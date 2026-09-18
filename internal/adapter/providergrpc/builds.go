@@ -68,7 +68,11 @@ func buildRecipe(r app.BuildRequest) *wire.BuildRecipe {
 	for _, a := range r.Inputs {
 		inputs = append(inputs, artifact(a))
 	}
-	return &wire.BuildRecipe{Digest: r.Digest.Hex(), Configuration: &wire.ExtensionConfiguration{Schema: &wire.SchemaVersion{Name: r.Recipe.Schema, Major: 1}, CanonicalJson: []byte(r.Recipe.ConfigurationJSON)}, Inputs: inputs, BaseImageDigests: r.Recipe.BaseImageDigests, Architecture: r.Recipe.Architecture}
+	dependencies := []*wire.BuildDependency{}
+	for _, dependency := range r.Dependencies {
+		dependencies = append(dependencies, &wire.BuildDependency{RecipeId: dependency.RecipeID, Artifact: artifact(dependency.Artifact)})
+	}
+	return &wire.BuildRecipe{Dependencies: dependencies, Digest: r.Digest.Hex(), Configuration: &wire.ExtensionConfiguration{Schema: &wire.SchemaVersion{Name: r.Recipe.Schema, Major: 1}, CanonicalJson: []byte(r.Recipe.ConfigurationJSON)}, Inputs: inputs, BaseImageDigests: r.Recipe.BaseImageDigests, Architecture: r.Recipe.Architecture}
 }
 func buildLimits(l app.BuildLimits) *wire.BuildLimits {
 	return &wire.BuildLimits{TimeoutSeconds: l.TimeoutSeconds, CpuMillis: l.CPUCount * 1000, MemoryBytes: l.MemoryBytes, MaximumInputBytes: l.InputBytes, MaximumOutputBytes: l.OutputBytes, AllowedEgress: l.Egress}

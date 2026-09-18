@@ -14,6 +14,8 @@ type BuildMetadata struct {
 	Recipes    []BuildRecipe `yaml:"recipes" json:"recipes"`
 }
 type BuildRecipe struct {
+	DependsOn         []string     `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	ContextRoot       string       `yaml:"-" json:"-"`
 	ID                string       `yaml:"id" json:"id"`
 	Builder           string       `yaml:"builder" json:"builder"`
 	Schema            string       `yaml:"schema" json:"schema"`
@@ -42,7 +44,7 @@ func (b Bundle) ValidateBuilds() error {
 		return nil
 	}
 	m := b.Builds()
-	if m.APIVersion != "labcentral.build/v1" || len(m.Recipes) == 0 || len(m.Recipes) > 8 {
+	if (m.APIVersion != "labcentral.build/v1" && m.APIVersion != "labcentral.build/v2") || len(m.Recipes) == 0 || len(m.Recipes) > 8 {
 		return fmt.Errorf("unsupported build metadata")
 	}
 	seen := map[string]bool{}
@@ -51,6 +53,9 @@ func (b Bundle) ValidateBuilds() error {
 			return fmt.Errorf("invalid build recipe")
 		}
 		seen[r.ID] = true
+		if len(r.DependsOn) > 8 || len(r.DependsOn) > 0 && m.APIVersion != "labcentral.build/v2" {
+			return fmt.Errorf("dependencies require bounded build v2 semantics")
+		}
 		var config map[string]json.RawMessage
 		if json.Unmarshal([]byte(r.ConfigurationJSON), &config) != nil || config == nil {
 			return fmt.Errorf("build configuration must be a JSON object")
@@ -74,6 +79,42 @@ func (b Bundle) ValidateBuilds() error {
 				return fmt.Errorf("invalid declared build input")
 			}
 			inputs[v.Name] = true
+		}
+	}
+	recipes := map[string]BuildRecipe{}
+	for _, recipe := range m.Recipes {
+		recipes[recipe.ID] = recipe
+	}
+	state := map[string]uint8{}
+	var visit func(string) error
+	visit = func(id string) error {
+		recipe, ok := recipes[id]
+		if !ok {
+			return fmt.Errorf("missing build dependency %q", id)
+		}
+		if state[id] == 1 {
+			return fmt.Errorf("build dependency cycle")
+		}
+		if state[id] == 2 {
+			return nil
+		}
+		state[id] = 1
+		edges := map[string]bool{}
+		for _, dependency := range recipe.DependsOn {
+			if edges[dependency] {
+				return fmt.Errorf("duplicate build dependency")
+			}
+			edges[dependency] = true
+			if err := visit(dependency); err != nil {
+				return err
+			}
+		}
+		state[id] = 2
+		return nil
+	}
+	for id := range recipes {
+		if err := visit(id); err != nil {
+			return err
 		}
 	}
 	return nil

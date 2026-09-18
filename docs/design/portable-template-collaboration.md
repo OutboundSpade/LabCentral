@@ -157,3 +157,5 @@ Production load/soak, failover, recovery and publisher gates remain open.
 
 Windows, ARM, Docker-provider imports, post-launch Ansible, webhooks, image-containing
 template exports, recording and general plugin workflow engines are out of scope.
+
+Builder execution details and the typed recipe contracts are in [disposable VM builders](../plugins/vm-builders.md). The dedicated worker uses a private virtio-serial channel, mutually authenticated typed RPC relay, restricted egress proxy and independent systemd guest deadlines. These implement ADR-0028 without giving builder guests provider or control-plane credentials.

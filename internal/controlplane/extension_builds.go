@@ -9,13 +9,16 @@ import (
 	"fmt"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
+	"github.com/OutboundSpade/LabCentral/internal/render"
 	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"io"
 	"slices"
+	"strings"
 	"time"
 )
 
 type BuilderBinding struct {
+	Dependencies                 bool
 	Requirement, Kind            string
 	InstanceID, ID, PluginDigest string
 	Projects                     []domain.ProjectID
@@ -99,6 +102,13 @@ func (s *Service) commitExtensionArtifact(ctx context.Context, data []byte) (dom
 	return ref, d, e
 }
 func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project domain.ProjectID, revision domain.RevisionID, recipeID, key string) (app.ExtensionWork, error) {
+	return s.requestBuild(ctx, actor, project, revision, recipeID, key, map[string]app.ExtensionWork{})
+}
+func (s *Service) requestBuild(ctx context.Context, actor domain.UserID, project domain.ProjectID, revision domain.RevisionID, recipeID, key string, memo map[string]app.ExtensionWork) (app.ExtensionWork, error) {
+	if work, ok := memo[recipeID]; ok {
+		return work, nil
+	}
+
 	if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); e != nil {
 		return app.ExtensionWork{}, e
 	}
@@ -132,6 +142,21 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
 
+	if len(recipe.DependsOn) > 0 && !b.Dependencies {
+		return app.ExtensionWork{}, ErrAccessUnavailable
+	}
+	dependencies := []app.BuildDependencyWork{}
+	for _, name := range recipe.DependsOn {
+		childKey := "build.dependency." + digestBytes("build.dependency.request/v1", []byte(key), []byte(name)).Hex()
+		child, err := s.requestBuild(ctx, actor, project, revision, name, childKey, memo)
+		if err != nil {
+			return app.ExtensionWork{}, err
+		}
+		dependencies = append(dependencies, app.BuildDependencyWork{RecipeID: name, BuildID: child.ID})
+	}
+	if bundle.Manifest.Package != nil {
+		slices.SortFunc(dependencies, func(a, b app.BuildDependencyWork) int { return strings.Compare(a.RecipeID, b.RecipeID) })
+	}
 	// Only declared files and nonsecret declared inputs cross the builder boundary.
 	type file struct {
 		Path string `json:"path"`
@@ -139,7 +164,11 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 	}
 	files := []file{}
 	for _, p := range recipe.Context {
-		files = append(files, file{p, bundle.Files[p]})
+		name := p
+		if recipe.ContextRoot != "" && recipe.ContextRoot != "." {
+			name = strings.TrimPrefix(p, recipe.ContextRoot+"/")
+		}
+		files = append(files, file{name, bundle.Files[p]})
 	}
 	slices.SortFunc(files, func(a, b file) int {
 		if a.Path < b.Path {
@@ -150,11 +179,16 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 		}
 		return 0
 	})
+	declaredInputs := recipe.Inputs
+	if bundle.Manifest.Package != nil {
+		declaredInputs = slices.Clone(recipe.Inputs)
+		slices.SortFunc(declaredInputs, func(a, b labbundle.BuildInput) int { return strings.Compare(a.Name, b.Name) })
+	}
 	input, e := json.Marshal(struct {
 		Version uint32                 `json:"version"`
 		Files   []file                 `json:"files"`
 		Inputs  []labbundle.BuildInput `json:"inputs"`
-	}{1, files, recipe.Inputs})
+	}{1, files, declaredInputs})
 	if e != nil {
 		return app.ExtensionWork{}, e
 	}
@@ -168,10 +202,36 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 	raw, _ := json.Marshal(recipe)
 	limits, _ := json.Marshal(b.Limits)
 	recipeDigest := digestBytes("build.recipe/v1", raw, []byte(d), []byte(b.PluginDigest), b.Configuration, limits)
-	r := app.ExtensionWorkRequest{Kind: domain.WorkBuild, PluginInstance: b.InstanceID, PluginDigest: b.PluginDigest, BindingID: b.ID, ConfigurationDigest: digestBytes("extension.configuration/v1", b.Configuration), TemplateID: rev.TemplateID, DedupKey: recipeDigest.Hex(), Build: &app.BuildWork{RevisionID: revision, Recipe: portableRecipe(*recipe), RecipeDigest: recipeDigest, ContextArtifact: ref, ContextDigest: d, ContextSize: uint64(len(input)), Limits: b.Limits}}
+	if bundle.Manifest.Package != nil {
+		// Portable aliases and paths outside the transferred context do not
+		// change a build. Bind only effective inputs and the installed toolchain.
+		configuration, err := render.DecodeJSON([]byte(recipe.ConfigurationJSON))
+		if err != nil {
+			return app.ExtensionWork{}, err
+		}
+		canonical, err := render.Canonicalize(configuration)
+		if err != nil {
+			return app.ExtensionWork{}, err
+		}
+		baseDigests := slices.Clone(recipe.BaseImageDigests)
+		slices.Sort(baseDigests)
+		effective, _ := json.Marshal(struct {
+			Schema, Architecture, Configuration string
+			BaseImageDigests                    []string
+		}{recipe.Schema, recipe.Architecture, string(canonical), baseDigests})
+		recipeDigest = digestBytes("build.portable-effective/v1", effective, []byte(d), []byte(b.InstanceID), []byte(b.ID), []byte(b.PluginDigest), b.Configuration, limits)
+	}
+	if len(dependencies) > 0 {
+		encoded, _ := json.Marshal(dependencies)
+		recipeDigest = digestBytes("build.recipe-dependencies/v1", []byte(recipeDigest), encoded)
+	}
+	r := app.ExtensionWorkRequest{Kind: domain.WorkBuild, PluginInstance: b.InstanceID, PluginDigest: b.PluginDigest, BindingID: b.ID, ConfigurationDigest: digestBytes("extension.configuration/v1", b.Configuration), TemplateID: rev.TemplateID, DedupKey: recipeDigest.Hex(), Build: &app.BuildWork{Dependencies: dependencies, RevisionID: revision, Recipe: portableRecipe(*recipe), RecipeDigest: recipeDigest, ContextArtifact: ref, ContextDigest: d, ContextSize: uint64(len(input)), Limits: b.Limits}}
 	w, e := s.newExtensionWork(ctx, actor, project, r, key)
 	if e == nil {
 		e = s.store.(app.BuildStore).ReferenceExtensionArtifact(ctx, w.ID, ref)
+	}
+	if e == nil {
+		memo[recipeID] = w
 	}
 	return w, e
 }
@@ -271,6 +331,46 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 		}
 		return s.finishWork(ctx, c, domain.OperationCanceled, nil, "")
 	}
+	// Child operation IDs bind immutable terminal outputs. Waiting never executes
+	// author code or holds a builder binding lease while another recipe builds.
+	dependencyResults := []struct {
+		name   string
+		result app.BuildResult
+	}{}
+	inputBytes := r.ContextSize
+	if inputBytes > r.Limits.InputBytes {
+		return s.finishWork(ctx, c, domain.OperationFailed, nil, "build_input_limit")
+	}
+	for _, dependency := range r.Dependencies {
+		child, err := store.GetExtensionWork(ctx, dependency.BuildID)
+		if err != nil {
+			return err
+		}
+		if child.ProjectID != c.Work.ProjectID || child.Request.Kind != domain.WorkBuild {
+			return fmt.Errorf("invalid build dependency scope")
+		}
+		if child.State == domain.OperationFailed || child.State == domain.OperationCanceled {
+			return s.finishWork(ctx, c, domain.OperationFailed, nil, "build_dependency_failed")
+		}
+		if child.State != domain.OperationSucceeded {
+			return store.YieldExtensionWork(ctx, c)
+		}
+		var result app.BuildResult
+		if err = json.Unmarshal(child.Result, &result); err != nil {
+			return err
+		}
+		if result.ArtifactRef == "" || result.Image.Size == 0 {
+			return fmt.Errorf("dependency output is missing")
+		}
+		if result.Image.Size > r.Limits.InputBytes-inputBytes {
+			return s.finishWork(ctx, c, domain.OperationFailed, nil, "build_dependency_input_limit")
+		}
+		inputBytes += result.Image.Size
+		dependencyResults = append(dependencyResults, struct {
+			name   string
+			result app.BuildResult
+		}{dependency.RecipeID, result})
+	}
 	// Shared builds keep running when the original requester loses authority; no
 	// publication or deployment is authorized by the build result itself.
 	state := "unknown"
@@ -282,6 +382,20 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 		}
 	}
 	if state == "unknown" {
+		resolvedDependencies := []app.BuildDependency{}
+		for _, dependency := range dependencyResults {
+			reader, err := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: dependency.result.ArtifactRef, SubjectID: c.Work.ActorID})
+			if err != nil {
+				return err
+			}
+			input, err := b.Builder.WriteArtifact(ctx, call, dependency.result.Image, reader)
+			reader.Close()
+			if err != nil {
+				return err
+			}
+			resolvedDependencies = append(resolvedDependencies, app.BuildDependency{RecipeID: dependency.name, Artifact: input})
+		}
+
 		input := app.ExtensionArtifact{Digest: r.ContextDigest, Size: r.ContextSize, MediaType: "application/vnd.labcentral.build-context+json"}
 		reader, e := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: r.ContextArtifact, SubjectID: c.Work.ActorID})
 		if e != nil {
@@ -292,7 +406,12 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 		if e != nil {
 			return e
 		}
-		request := app.BuildRequest{BindingConfiguration: b.Configuration, Call: call, BindingID: b.ID, Recipe: r.Recipe, Digest: r.RecipeDigest, Inputs: []app.ExtensionArtifact{input}, Limits: r.Limits}
+		effectiveDigest := r.RecipeDigest
+		if len(resolvedDependencies) > 0 {
+			encoded, _ := json.Marshal(resolvedDependencies)
+			effectiveDigest = digestBytes("build.effective-inputs/v1", []byte(r.RecipeDigest), encoded)
+		}
+		request := app.BuildRequest{Dependencies: resolvedDependencies, BindingConfiguration: b.Configuration, Call: call, BindingID: b.ID, Recipe: r.Recipe, Digest: effectiveDigest, Inputs: []app.ExtensionArtifact{input}, Limits: r.Limits}
 		if e = b.Builder.ValidateBuild(ctx, request); e != nil {
 			return s.finishWork(ctx, c, domain.OperationFailed, nil, "build_validation_failed")
 		}
@@ -310,7 +429,7 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 	default:
 		return fmt.Errorf("build requires recovery")
 	}
-	if result.Image.Size > r.Limits.OutputBytes || result.Image.Size > 1<<30 {
+	if result.Image.Size > r.Limits.OutputBytes || result.Image.Size > 32<<30 {
 		return s.finishWork(ctx, c, domain.OperationFailed, nil, "build_output_limit")
 	}
 	reader, e := b.Builder.ReadArtifact(ctx, call, result.Image)
@@ -388,5 +507,5 @@ func portableRecipe(r labbundle.BuildRecipe) domain.BuildRecipe {
 	for _, i := range r.Inputs {
 		inputs = append(inputs, domain.BuildInput{Name: i.Name, Value: i.Value})
 	}
-	return domain.BuildRecipe{ID: r.ID, Builder: r.Builder, Schema: r.Schema, Architecture: r.Architecture, ConfigurationJSON: r.ConfigurationJSON, Context: slices.Clone(r.Context), BaseImageDigests: slices.Clone(r.BaseImageDigests), Inputs: inputs}
+	return domain.BuildRecipe{DependsOn: slices.Clone(r.DependsOn), ID: r.ID, Builder: r.Builder, Schema: r.Schema, Architecture: r.Architecture, ConfigurationJSON: r.ConfigurationJSON, Context: slices.Clone(r.Context), BaseImageDigests: slices.Clone(r.BaseImageDigests), Inputs: inputs}
 }

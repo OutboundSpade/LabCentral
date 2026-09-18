@@ -1,0 +1,15 @@
+{
+  "id": "web",
+  "builder": "linux-dockerfile",
+  "schema": "labcentral.dockerfile.v1",
+  "architecture": "amd64",
+  "configurationJSON": "{\"dockerfile\":\"Dockerfile\"}",
+  "context": [
+    "Dockerfile",
+    "index.html"
+  ],
+  "baseImageDigests": [],
+  "dependsOn": [
+    "base"
+  ]
+}

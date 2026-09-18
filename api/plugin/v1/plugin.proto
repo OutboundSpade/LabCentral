@@ -640,7 +640,12 @@ message BuildLimits {
   uint64 maximum_output_bytes = 5;
   repeated string allowed_egress = 6;
 }
+message BuildDependency {
+  string recipe_id = 1;
+  ArtifactHandle artifact = 2;
+}
 message BuildRecipe {
+  repeated BuildDependency dependencies = 6;
   string digest = 1;
   ExtensionConfiguration configuration = 2;
   repeated ArtifactHandle inputs = 3;

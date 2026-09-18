@@ -193,6 +193,7 @@ func (b *Bundle) validatePortable() error {
 			return fmt.Errorf("trailing recipe data")
 		}
 		recipe.ID = imp.Name
+		recipe.ContextRoot = path.Dir(imp.Path)
 		for i, p := range recipe.Context {
 			if !ValidPath(p) {
 				return fmt.Errorf("invalid recipe context path")
@@ -200,7 +201,7 @@ func (b *Bundle) validatePortable() error {
 			recipe.Context[i] = path.Join(path.Dir(imp.Path), p)
 		}
 		if b.ResolvedBuilds == nil {
-			b.ResolvedBuilds = &BuildMetadata{APIVersion: "labcentral.build/v1"}
+			b.ResolvedBuilds = &BuildMetadata{APIVersion: "labcentral.build/v2"}
 		}
 		b.ResolvedBuilds.Recipes = append(b.ResolvedBuilds.Recipes, recipe)
 	}

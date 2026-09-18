@@ -375,6 +375,22 @@
         ],
         "type": "object"
       },
+      "BuildDependencyWork": {
+        "additionalProperties": false,
+        "properties": {
+          "buildId": {
+            "type": "string"
+          },
+          "recipeId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipeId",
+          "buildId"
+        ],
+        "type": "object"
+      },
       "BuildInput": {
         "additionalProperties": false,
         "properties": {
@@ -504,6 +520,15 @@
               "null"
             ]
           },
+          "dependsOn": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -544,6 +569,15 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/BuildDependencyWork"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "limits": {
             "$ref": "#/components/schemas/BuildLimits"

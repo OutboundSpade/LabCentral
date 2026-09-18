@@ -207,3 +207,65 @@ func preparationYieldContract(t *testing.T, s *Store) {
 		t.Fatal("waiting preparation starved another deployment")
 	}
 }
+
+func TestSQLiteBuildDependencyAdmissionAndCancellation(t *testing.T) {
+	buildDependencyAdmissionContract(t, newSQLiteAccessContractStore(t))
+}
+func TestPostgreSQLBuildDependencyAdmissionAndCancellation(t *testing.T) {
+	s := newPostgreSQLQuotaTestStore(t, "build_dependency_admission")
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	buildDependencyAdmissionContract(t, s)
+}
+func buildDependencyAdmissionContract(t *testing.T, s *Store) {
+	ctx := context.Background()
+	request := func(id string, deps ...app.BuildDependencyWork) app.CreateExtensionWork {
+		return app.CreateExtensionWork{GovernanceRecordIDs: governanceIDs(id), IdempotencyKey: "request-" + id, RequestDigest: testRequestDigest(id), Work: app.ExtensionWork{ID: domain.OperationID(id), ProjectID: "project.local", ActorID: app.LocalAdminID, InvocationID: domain.InvocationID("inv." + id), Request: app.ExtensionWorkRequest{Version: 1, Kind: domain.WorkBuild, PluginInstance: "builder", BindingID: "default", Build: &app.BuildWork{Dependencies: deps, ContextArtifact: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}
+	}
+	if _, err := s.CreateExtensionWork(ctx, request("missing-parent", app.BuildDependencyWork{RecipeID: "base", BuildID: "absent"})); err == nil {
+		t.Fatal("missing dependency accepted")
+	}
+	if _, err := s.GetExtensionWork(ctx, "missing-parent"); err == nil {
+		t.Fatal("invalid dependency partially committed parent")
+	}
+	for i := 0; i < 12; i++ {
+		child := fmt.Sprintf("base.%d", i)
+		parent := fmt.Sprintf("parent.%d", i)
+		if _, err := s.CreateExtensionWork(ctx, request(child)); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		admitted := make(chan error, 1)
+		canceled := make(chan error, 1)
+		go func() {
+			<-start
+			_, err := s.CreateExtensionWork(ctx, request(parent, app.BuildDependencyWork{RecipeID: "base", BuildID: domain.OperationID(child)}))
+			admitted <- err
+		}()
+		go func() {
+			<-start
+			canceled <- s.CancelExtensionWork(ctx, domain.OperationID(child), app.LocalAdminID, governanceIDs("cancel-"+child))
+		}()
+		close(start)
+		admitErr, cancelErr := <-admitted, <-canceled
+		if admitErr == nil && cancelErr == nil {
+			t.Fatal("shared base cancellation raced through dependency admission")
+		}
+		if admitErr != nil && cancelErr != nil {
+			t.Fatalf("neither serialized operation completed: %v / %v", admitErr, cancelErr)
+		}
+		if admitErr == nil {
+			childWork, err := s.GetExtensionWork(ctx, domain.OperationID(child))
+			if err != nil || childWork.CancelRequested {
+				t.Fatal("admitted parent lost base", err)
+			}
+			if err = s.CancelExtensionWork(ctx, domain.OperationID(parent), app.LocalAdminID, governanceIDs("cancel-"+parent)); err != nil {
+				t.Fatal(err)
+			}
+			if err = s.CancelExtensionWork(ctx, domain.OperationID(child), app.LocalAdminID, governanceIDs("retry-cancel-"+child)); err != nil {
+				t.Fatal("departed waiter retained exclusive base", err)
+			}
+		}
+	}
+}
