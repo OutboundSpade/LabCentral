@@ -18,7 +18,22 @@ func providerIdentity(p app.Provider) string {
 	return ""
 }
 func (s *Service) RequestImport(ctx context.Context, actor domain.UserID, project domain.ProjectID, buildID domain.OperationID, targetID domain.ProviderTargetID, key string) (app.ExtensionWork, error) {
-	build, e := s.GetExtensionWork(ctx, actor, project, buildID)
+	return s.requestImport(ctx, actor, project, buildID, targetID, key, "")
+}
+func (s *Service) requestImport(ctx context.Context, actor domain.UserID, project domain.ProjectID, buildID domain.OperationID, targetID domain.ProviderTargetID, key string, preparation domain.OperationID) (app.ExtensionWork, error) {
+	var build app.ExtensionWork
+	var e error
+	if preparation == "" {
+		build, e = s.GetExtensionWork(ctx, actor, project, buildID)
+	} else {
+		if e = s.authorizePreparation(ctx, actor, project, preparation); e != nil {
+			return app.ExtensionWork{}, e
+		}
+		build, e = s.store.(app.BuildStore).GetExtensionWork(ctx, buildID)
+		if e == nil && build.ProjectID != project {
+			e = app.ErrNotFound
+		}
+	}
 	if e != nil {
 		return app.ExtensionWork{}, e
 	}
@@ -37,14 +52,26 @@ func (s *Service) RequestImport(ctx context.Context, actor domain.UserID, projec
 	if !target.Supports(0, "image-import-v1", "artifact-transfer-v1") || providerIdentity(target.Provider) == "" {
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
-	// Import is an administrator-authorized provider mutation, separately from
-	// deployment. It never receives an external URL or implicitly approves images.
-	if e = s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: actor, Action: app.ActionProviderTargetGrant, ScopeKind: app.ScopePlatform, ScopeID: "platform", TargetID: targetID}); e != nil {
-		return app.ExtensionWork{}, e
+	// Explicit imports need image-administrator authority. A v2 preparation
+	// derives only this import from current launch authority; approval stays separate.
+	if preparation == "" {
+		if e = s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: actor, Action: app.ActionProviderTargetGrant, ScopeKind: app.ScopePlatform, ScopeID: "platform", TargetID: targetID}); e != nil {
+			return app.ExtensionWork{}, e
+		}
 	}
 	identity := providerIdentity(target.Provider)
 	d := digestBytes("image.import/v1", []byte(result.Image.Digest), []byte(targetID), []byte(target.Context.ConfigFingerprint), []byte(identity), []byte(build.Request.Build.Recipe.Architecture))
-	return s.newExtensionWork(ctx, actor, project, app.ExtensionWorkRequest{Kind: domain.WorkImageImport, PluginInstance: "core-import", PluginDigest: identity, BindingID: string(targetID), ConfigurationDigest: digestBytes("extension.configuration/v1", target.Context.Config), TemplateID: build.Request.TemplateID, DedupKey: d.Hex(), Import: &app.ImportWork{BuildID: buildID, TargetID: targetID, Architecture: build.Request.Build.Recipe.Architecture, TargetFingerprint: target.Context.ConfigFingerprint}}, key)
+	r := app.ExtensionWorkRequest{Kind: domain.WorkImageImport, PluginInstance: "core-import", PluginDigest: identity, BindingID: string(targetID), ConfigurationDigest: digestBytes("extension.configuration/v1", target.Context.Config), TemplateID: build.Request.TemplateID, DedupKey: d.Hex(), Import: &app.ImportWork{BuildID: buildID, TargetID: targetID, Architecture: build.Request.Build.Recipe.Architecture, TargetFingerprint: target.Context.ConfigFingerprint}}
+	if preparation != "" {
+		parent, err := s.store.(app.BuildStore).GetExtensionWork(ctx, preparation)
+		if err != nil {
+			return app.ExtensionWork{}, err
+		}
+		r.Version = 2
+		r.PreparationID = preparation
+		r.TemplateID = parent.Request.TemplateID
+	}
+	return s.newExtensionWork(ctx, actor, project, r, key)
 }
 func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim) error {
 	ctx, done := s.workContext(parent, c, 15*time.Minute)
@@ -65,7 +92,18 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 	if e = json.Unmarshal(build.Result, &result); e != nil {
 		return e
 	}
-	session, e := s.targets.AcquireForSubject(ctx, r.TargetID, c.Work.ActorID, app.InvocationScope{InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(15 * time.Minute)}, true)
+	actor := c.Work.ActorID
+	if c.Work.Request.PreparationID != "" {
+		authorized, err := s.preparationWorkActor(ctx, c.Work.ID)
+		if err == nil {
+			actor = authorized
+		} else if !errors.Is(err, app.ErrAuthorityChanged) {
+			return err
+		} else if !c.Recover {
+			return s.finishWork(ctx, c, domain.OperationCanceled, nil, "authority_changed")
+		}
+	}
+	session, e := s.targets.AcquireForSubject(ctx, r.TargetID, actor, app.InvocationScope{InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(15 * time.Minute)}, true)
 	if e != nil {
 		return e
 	}
@@ -130,10 +168,15 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 		if current.CancelRequested {
 			return s.finishWork(ctx, c, domain.OperationCanceled, nil, "")
 		}
-		if e = s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: c.Work.ActorID, Action: app.ActionProviderTargetGrant, ScopeKind: app.ScopePlatform, ScopeID: "platform", TargetID: r.TargetID}); e != nil {
+		if c.Work.Request.PreparationID != "" {
+			_, e = s.preparationWorkActor(ctx, c.Work.ID)
+		} else {
+			e = s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: c.Work.ActorID, Action: app.ActionProviderTargetGrant, ScopeKind: app.ScopePlatform, ScopeID: "platform", TargetID: r.TargetID})
+		}
+		if e != nil {
 			return s.finishWork(ctx, c, domain.OperationCanceled, nil, "authority_changed")
 		}
-		reader, e := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: result.ArtifactRef, SubjectID: c.Work.ActorID})
+		reader, e := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: result.ArtifactRef, SubjectID: actor})
 		if e != nil {
 			return e
 		}
@@ -201,7 +244,11 @@ func (s *Service) SetImageApproval(ctx context.Context, actor domain.UserID, pro
 	return s.store.(app.BuildStore).SetImageBindingApproval(ctx, id, actor, approved, retired, ids)
 }
 func (s *Service) RequestPreparation(ctx context.Context, actor domain.UserID, project domain.ProjectID, r app.PreparationWork, key string) (app.ExtensionWork, error) {
-	if e := s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: actor, Action: app.ActionInstanceCreate, ScopeKind: app.ScopeProject, ScopeID: string(project), TargetID: r.TargetID, OwnerKind: app.OwnerUser, OwnerID: string(actor)}); e != nil {
+	if e := r.ValidateVersion(); e != nil {
+		return app.ExtensionWork{}, e
+	}
+	owner := r.EffectiveOwner(actor)
+	if e := s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: actor, Action: app.ActionInstanceCreate, ScopeKind: app.ScopeProject, ScopeID: string(project), TargetID: r.TargetID, OwnerKind: owner.Kind, OwnerID: owner.ID}); e != nil {
 		return app.ExtensionWork{}, e
 	}
 	rev, _, e := s.OpenTemplateRevision(ctx, actor, r.RevisionID)
@@ -212,7 +259,15 @@ func (s *Service) RequestPreparation(ctx context.Context, actor domain.UserID, p
 	if e != nil || tpl.ProjectID != project {
 		return app.ExtensionWork{}, app.ErrNotFound
 	}
-	return s.newExtensionWork(ctx, actor, project, app.ExtensionWorkRequest{Kind: domain.WorkPreparation, PluginInstance: "core-preparation", PluginDigest: "core.preparation/v1", BindingID: "default", TemplateID: rev.TemplateID, Preparation: &r}, key)
+	if e = s.authorizeExtension(ctx, actor, project, app.ActionTemplateRead); e != nil {
+		return app.ExtensionWork{}, e
+	}
+	request := app.ExtensionWorkRequest{Kind: domain.WorkPreparation, PluginInstance: "core-preparation", PluginDigest: "core.preparation/v1", BindingID: "default", TemplateID: rev.TemplateID, Preparation: &r}
+	if r.Version == 2 {
+		request.Version = 2
+		request.PluginDigest = "core.preparation/v2"
+	}
+	return s.newExtensionWork(ctx, actor, project, request, key)
 }
 func (s *Service) executePreparation(parent context.Context, c app.ExtensionWorkClaim) error {
 	ctx, done := s.workContext(parent, c, 2*time.Minute)
@@ -229,13 +284,23 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 	if current.CancelRequested {
 		return s.finishWork(ctx, c, domain.OperationCanceled, nil, "")
 	}
-	if e = s.authorizeExtension(ctx, c.Work.ActorID, c.Work.ProjectID, app.ActionTemplateRevisionPublish); e != nil {
+	if r.Version == 2 {
+		e = s.authorizePreparation(ctx, c.Work.ActorID, c.Work.ProjectID, c.Work.ID)
+	} else {
+		e = s.authorizeExtension(ctx, c.Work.ActorID, c.Work.ProjectID, app.ActionTemplateRevisionPublish)
+	}
+	if e != nil {
 		return s.finishWork(ctx, c, domain.OperationCanceled, nil, "authority_changed")
 	}
 	rev, data, e := s.OpenTemplateRevision(ctx, c.Work.ActorID, r.RevisionID)
 	if e != nil {
 		return e
 	}
+	preparation := domain.OperationID("")
+	if r.Version == 2 {
+		preparation = c.Work.ID
+	}
+	owner := r.EffectiveOwner(c.Work.ActorID)
 	result := app.PreparationResult{}
 	images := []domain.ResolvedBuildImage{}
 	bindingIDs := []string{}
@@ -245,7 +310,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 			return e
 		}
 		for _, recipeID := range recipes {
-			build, e := s.RequestBuild(ctx, c.Work.ActorID, c.Work.ProjectID, r.RevisionID, recipeID, string(c.Work.ID)+".build."+recipeID)
+			build, e := s.requestBuild(ctx, c.Work.ActorID, c.Work.ProjectID, r.RevisionID, recipeID, string(c.Work.ID)+".build."+recipeID, map[string]app.ExtensionWork{}, preparation)
 			if e != nil {
 				return e
 			}
@@ -260,7 +325,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 				result.Stage = "building"
 				return s.yieldWorkProgress(ctx, c, result)
 			}
-			imp, e := s.RequestImport(ctx, c.Work.ActorID, c.Work.ProjectID, build.ID, r.TargetID, string(c.Work.ID)+".import."+recipeID)
+			imp, e := s.requestImport(ctx, c.Work.ActorID, c.Work.ProjectID, build.ID, r.TargetID, string(c.Work.ID)+".import."+recipeID, preparation)
 			if e != nil {
 				return e
 			}
@@ -311,7 +376,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 	}
 	// Persisted image bindings already exist before entering the normal planner.
 	// Admission still performs current authority, quota and exact-target checks.
-	if e = s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: c.Work.ActorID, Action: app.ActionInstanceCreate, ScopeKind: app.ScopeProject, ScopeID: string(c.Work.ProjectID), TargetID: r.TargetID, OwnerKind: app.OwnerUser, OwnerID: string(c.Work.ActorID)}); e != nil {
+	if e = s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: c.Work.ActorID, Action: app.ActionInstanceCreate, ScopeKind: app.ScopeProject, ScopeID: string(c.Work.ProjectID), TargetID: r.TargetID, OwnerKind: owner.Kind, OwnerID: owner.ID}); e != nil {
 		return s.finishWork(ctx, c, domain.OperationCanceled, result, "authority_changed")
 	}
 	current, e = store.GetExtensionWork(ctx, c.Work.ID)
@@ -332,7 +397,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 			result.Deployment, _ = json.Marshal(deployed)
 		}
 	} else {
-		deployed, err := s.CreateInstanceRevisionTargetForLifetime(ctx, c.Work.ActorID, c.Work.ProjectID, app.OwnerUser, string(c.Work.ActorID), r.RevisionID, data, r.Lifetime, r.Acknowledged, "prepare."+string(c.Work.ID), r.TargetID, nil, option)
+		deployed, err := s.CreateInstanceRevisionTargetForLifetime(ctx, c.Work.ActorID, c.Work.ProjectID, owner.Kind, owner.ID, r.RevisionID, data, r.Lifetime, r.Acknowledged, "prepare."+string(c.Work.ID), r.TargetID, nil, option)
 		e = err
 		if e == nil {
 			result.Deployment, _ = json.Marshal(deployed)

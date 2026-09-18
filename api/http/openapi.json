@@ -1436,6 +1436,9 @@
           "preparation": {
             "$ref": "#/components/schemas/PreparationWork"
           },
+          "preparationId": {
+            "type": "string"
+          },
           "reference": {
             "type": "string"
           },
@@ -3633,6 +3636,22 @@
         ],
         "type": "object"
       },
+      "PreparationOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
       "PreparationWork": {
         "additionalProperties": false,
         "properties": {
@@ -3651,6 +3670,9 @@
           "lifetime": {
             "$ref": "#/components/schemas/InstanceLifetimeRequest"
           },
+          "owner": {
+            "$ref": "#/components/schemas/PreparationOwner"
+          },
           "owners": {
             "items": {
               "$ref": "#/components/schemas/InstanceOwner"
@@ -3665,6 +3687,11 @@
           },
           "targetId": {
             "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [

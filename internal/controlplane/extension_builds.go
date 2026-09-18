@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -61,8 +62,10 @@ func (s *Service) newExtensionWork(ctx context.Context, actor domain.UserID, pro
 	if !ok {
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
-	if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); e != nil {
-		return app.ExtensionWork{}, e
+	if r.Version != 2 || (r.Preparation == nil && r.PreparationID == "") {
+		if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); e != nil {
+			return app.ExtensionWork{}, e
+		}
 	}
 	if r.Version == 0 {
 		r.Version = 1
@@ -104,14 +107,18 @@ func (s *Service) commitExtensionArtifact(ctx context.Context, data []byte) (dom
 	return ref, d, e
 }
 func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project domain.ProjectID, revision domain.RevisionID, recipeID, key string) (app.ExtensionWork, error) {
-	return s.requestBuild(ctx, actor, project, revision, recipeID, key, map[string]app.ExtensionWork{})
+	return s.requestBuild(ctx, actor, project, revision, recipeID, key, map[string]app.ExtensionWork{}, "")
 }
-func (s *Service) requestBuild(ctx context.Context, actor domain.UserID, project domain.ProjectID, revision domain.RevisionID, recipeID, key string, memo map[string]app.ExtensionWork) (app.ExtensionWork, error) {
+func (s *Service) requestBuild(ctx context.Context, actor domain.UserID, project domain.ProjectID, revision domain.RevisionID, recipeID, key string, memo map[string]app.ExtensionWork, preparation domain.OperationID) (app.ExtensionWork, error) {
 	if work, ok := memo[recipeID]; ok {
 		return work, nil
 	}
 
-	if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); e != nil {
+	if preparation == "" {
+		if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); e != nil {
+			return app.ExtensionWork{}, e
+		}
+	} else if e := s.authorizePreparation(ctx, actor, project, preparation); e != nil {
 		return app.ExtensionWork{}, e
 	}
 	rev, data, e := s.OpenTemplateRevision(ctx, actor, revision)
@@ -150,7 +157,7 @@ func (s *Service) requestBuild(ctx context.Context, actor domain.UserID, project
 	dependencies := []app.BuildDependencyWork{}
 	for _, name := range recipe.DependsOn {
 		childKey := "build.dependency." + digestBytes("build.dependency.request/v1", []byte(key), []byte(name)).Hex()
-		child, err := s.requestBuild(ctx, actor, project, revision, name, childKey, memo)
+		child, err := s.requestBuild(ctx, actor, project, revision, name, childKey, memo, preparation)
 		if err != nil {
 			return app.ExtensionWork{}, err
 		}
@@ -228,6 +235,10 @@ func (s *Service) requestBuild(ctx context.Context, actor domain.UserID, project
 		recipeDigest = digestBytes("build.recipe-dependencies/v1", []byte(recipeDigest), encoded)
 	}
 	r := app.ExtensionWorkRequest{Kind: domain.WorkBuild, PluginInstance: b.InstanceID, PluginDigest: b.PluginDigest, BindingID: b.ID, ConfigurationDigest: digestBytes("extension.configuration/v1", b.Configuration), TemplateID: rev.TemplateID, DedupKey: recipeDigest.Hex(), Build: &app.BuildWork{Dependencies: dependencies, RevisionID: revision, Recipe: portableRecipe(*recipe), RecipeDigest: recipeDigest, ContextArtifact: ref, ContextDigest: d, ContextSize: uint64(len(input)), Limits: b.Limits}}
+	if preparation != "" {
+		r.Version = 2
+		r.PreparationID = preparation
+	}
 	w, e := s.newExtensionWork(ctx, actor, project, r, key)
 	if e == nil {
 		e = s.store.(app.BuildStore).ReferenceExtensionArtifact(ctx, w.ID, ref)
@@ -383,10 +394,21 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 			return e
 		}
 	}
+	artifactActor := c.Work.ActorID
+	if state == "unknown" && c.Work.Request.PreparationID != "" {
+		authorized, err := s.preparationWorkActor(ctx, c.Work.ID)
+		if err != nil {
+			if !errors.Is(err, app.ErrAuthorityChanged) {
+				return err
+			}
+			return s.finishWork(ctx, c, domain.OperationCanceled, nil, "authority_changed")
+		}
+		artifactActor = authorized
+	}
 	if state == "unknown" {
 		resolvedDependencies := []app.BuildDependency{}
 		for _, dependency := range dependencyResults {
-			reader, err := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: dependency.result.ArtifactRef, SubjectID: c.Work.ActorID})
+			reader, err := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: dependency.result.ArtifactRef, SubjectID: artifactActor})
 			if err != nil {
 				return err
 			}
@@ -399,7 +421,7 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 		}
 
 		input := app.ExtensionArtifact{Digest: r.ContextDigest, Size: r.ContextSize, MediaType: "application/vnd.labcentral.build-context+json"}
-		reader, e := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: r.ContextArtifact, SubjectID: c.Work.ActorID})
+		reader, e := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: r.ContextArtifact, SubjectID: artifactActor})
 		if e != nil {
 			return e
 		}

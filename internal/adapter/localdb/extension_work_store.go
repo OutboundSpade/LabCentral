@@ -83,7 +83,7 @@ func (s *Store) workTx(ctx context.Context, f func(*sql.Tx) error) error {
 }
 func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWork) (out app.ExtensionWork, err error) {
 	w := r.Work
-	if (w.Request.Version != 1 && !(w.Request.Version == 2 && w.Request.Kind == domain.WorkImageImport && w.Request.Import != nil && w.Request.Import.RetireBindingID != "")) || w.Request.Kind == domain.WorkInstance || w.Request.PluginInstance == "" || w.Request.BindingID == "" || w.InvocationID == "" {
+	if !validExtensionVersion(w.Request) || w.Request.Kind == domain.WorkInstance || w.Request.PluginInstance == "" || w.Request.BindingID == "" || w.InvocationID == "" {
 		return out, fmt.Errorf("invalid extension work")
 	}
 	if err := validateTemplateIdempotency(r.IdempotencyKey, r.RequestDigest); err != nil {
@@ -94,6 +94,15 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 		return out, e
 	}
 	err = s.workTx(ctx, func(tx *sql.Tx) error {
+		if w.Request.Version == 2 && w.Request.Preparation != nil {
+			if e := s.requirePreparationAuthorityTx(ctx, tx, w); e != nil {
+				return e
+			}
+		} else if w.Request.PreparationID != "" {
+			if e := s.requirePreparedChildTx(ctx, tx, w); e != nil {
+				return e
+			}
+		}
 		if e := s.lockIdempotency(ctx, tx, w.ActorID, "extension."+string(w.Request.Kind), r.IdempotencyKey); e != nil {
 			return e
 		}
@@ -101,10 +110,15 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 			return e
 		} else if found {
 			out, e = scanExtensionWork(tx.QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.operation_id=?`), existing))
-			return e
+			if e != nil {
+				return e
+			}
+			return s.linkPreparationTx(ctx, tx, w.Request.PreparationID, out.ID)
 		}
-		if e := s.requireExtensionAuthorTx(ctx, tx, w.ProjectID, w.ActorID); e != nil {
-			return e
+		if w.Request.Version == 1 || (w.Request.Preparation == nil && w.Request.PreparationID == "") {
+			if e := s.requireExtensionAuthorTx(ctx, tx, w.ProjectID, w.ActorID); e != nil {
+				return e
+			}
 		}
 
 		if w.Request.Version == 2 && w.Request.Import != nil && w.Request.Import.RetireBindingID != "" {
@@ -151,6 +165,9 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 				if e = s.recordExtensionRequestTx(ctx, tx, w.ActorID, w.Request.Kind, r.IdempotencyKey, old); e != nil {
 					return e
 				}
+				if e = s.linkPreparationTx(ctx, tx, w.Request.PreparationID, old); e != nil {
+					return e
+				}
 				return s.bindIdempotency(ctx, tx, w.ActorID, "extension."+string(w.Request.Kind), r.IdempotencyKey, r.RequestDigest, string(old))
 			}
 			if e != sql.ErrNoRows {
@@ -170,6 +187,9 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 			return e
 		}
 		if _, e := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_extension_work(operation_id,project_id,actor_id,invocation_id,plugin_instance,binding_id,request_json,created_at_us) VALUES(?,?,?,?,?,?,?,`+s.nowMicros()+`)`), w.ID, w.ProjectID, w.ActorID, w.InvocationID, w.Request.PluginInstance, w.Request.BindingID, string(payload)); e != nil {
+			return e
+		}
+		if e := s.linkPreparationTx(ctx, tx, w.Request.PreparationID, w.ID); e != nil {
 			return e
 		}
 		if w.Request.LibraryID != "" {

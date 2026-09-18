@@ -2124,6 +2124,7 @@ export interface components {
             pluginDigest: string;
             pluginInstance: string;
             preparation?: components["schemas"]["PreparationWork"];
+            preparationId?: string;
             reference?: string;
             templateId?: string;
             /** Format: int32 */
@@ -2834,13 +2835,20 @@ export interface components {
             readonly $schema?: string;
             token: string;
         };
+        PreparationOwner: {
+            id: string;
+            kind: string;
+        };
         PreparationWork: {
             acknowledged: boolean;
             inputs: components["schemas"]["TypedInput"][] | null;
             lifetime: components["schemas"]["InstanceLifetimeRequest"];
+            owner?: components["schemas"]["PreparationOwner"];
             owners?: components["schemas"]["InstanceOwner"][] | null;
             revisionId: string;
             targetId: string;
+            /** Format: int32 */
+            version?: number;
         };
         PrepareInputBody: {
             /**

@@ -37,6 +37,7 @@ type ExtensionSource interface {
 // ExtensionWorkRequest is a versioned core-owned payload. Never put credentials,
 // transfer handles, provider state or arbitrary plugin workflow nodes in it.
 type ExtensionWorkRequest struct {
+	PreparationID       domain.OperationID     `json:"preparationId,omitempty"`
 	LibraryID           string                 `json:"libraryId,omitempty"`
 	Build               *BuildWork             `json:"build,omitempty"`
 	Import              *ImportWork            `json:"import,omitempty"`

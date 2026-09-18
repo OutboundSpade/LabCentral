@@ -78,6 +78,29 @@ imports only selected outputs. Durable results report `building`, `importing`, o
 `awaiting-approval`; retirement reports `waiting-for-labs`. Admission rechecks
 approval.
 
-`TASK-TEMPLATE-006` remains in progress: participant preparation, OCI packaging into
+`TASK-TEMPLATE-006` remains in progress: OCI packaging into
 the fixed container runtime and exact-target live qualification remain release
 gates. These implementation contracts do not claim production deployment.
+
+## Participant preparation
+
+`POST /deployment-preparations` accepts `preparation.version: 2` for a single
+published revision and an optional `owner: {kind: "team", id: "…"}`. Omitting
+`owner` retains the initiating user as owner. Version 2 rejects the legacy
+`owners` batch field. Omitted/version-1 requests retain their author and
+instructor-batch semantics.
+
+Version 2 requires current project template-read and instance-create authority,
+including the requested owner relationship and target grant. It does not grant
+authoring, general build/import, or image approval permissions. Core derives
+bounded build/import work from that published revision, links every dependency
+to its preparation transactionally, and rechecks authority before new execution.
+Shared work can continue for another currently authorized preparation. The
+initiating user remains the audit actor. Participants can read their own
+preparation and its linked work through `/extension-operations/{id}`; project
+read access remains required.
+
+Progress reports `building`, `importing`, or `awaiting-approval`. Once images are
+approved, admission rechecks the preparation's exact actor, revision, project,
+owner and target under its fence in the same transaction as quota/allocation
+reservation. Revoked launch authority cannot admit a pending deployment.

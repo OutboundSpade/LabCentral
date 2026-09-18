@@ -97,18 +97,37 @@ func (s *Service) ListExtensionWork(ctx context.Context, actor domain.UserID, pr
 	return store.ListExtensionWork(ctx, project)
 }
 func (s *Service) GetExtensionWork(ctx context.Context, actor domain.UserID, project domain.ProjectID, id domain.OperationID) (app.ExtensionWork, error) {
-	if err := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); err != nil {
-		return app.ExtensionWork{}, err
-	}
 	store, ok := s.store.(app.ExtensionWorkStore)
 	if !ok {
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
-	w, e := store.GetExtensionWork(ctx, id)
-	if e == nil && w.ProjectID != project {
+	authorErr := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish)
+	if authorErr != nil {
+		if e := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRead); e != nil {
+			return app.ExtensionWork{}, e
+		}
+	}
+	w, err := store.GetExtensionWork(ctx, id)
+	if err != nil {
+		return app.ExtensionWork{}, err
+	}
+	if w.ProjectID != project {
 		return app.ExtensionWork{}, app.ErrNotFound
 	}
-	return w, e
+	if authorErr != nil {
+		authority, ok := s.store.(app.PreparationAuthorityStore)
+		if !ok {
+			return app.ExtensionWork{}, authorErr
+		}
+		allowed, e := authority.CanReadPreparationWork(ctx, id, actor)
+		if e != nil {
+			return app.ExtensionWork{}, e
+		}
+		if !allowed {
+			return app.ExtensionWork{}, authorErr
+		}
+	}
+	return w, nil
 }
 func (s *Service) CancelExtensionWork(ctx context.Context, actor domain.UserID, project domain.ProjectID, id domain.OperationID) error {
 	if _, err := s.GetExtensionWork(ctx, actor, project, id); err != nil {

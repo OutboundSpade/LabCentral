@@ -774,6 +774,9 @@ func (s *Store) insertInstanceTx(ctx context.Context, tx *sql.Tx, request applic
 		if e := s.requireExtensionFenceTx(ctx, tx, *request.WorkFence); e != nil {
 			return e
 		}
+		if e := s.requirePreparationAdmissionTx(ctx, tx, request); e != nil {
+			return e
+		}
 	}
 
 	imageBindings, err := s.validateImportedImagesTx(ctx, tx, request)

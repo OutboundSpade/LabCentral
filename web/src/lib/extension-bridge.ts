@@ -112,7 +112,7 @@ export function featureRequest(method: string, input: unknown, context: FeatureC
       const lifetime = object(data.lifetime);
       closed(lifetime, ["ttlSeconds", "persistent"]);
       if (!Number.isSafeInteger(lifetime.ttlSeconds) || Number(lifetime.ttlSeconds) < 0) throw new Error("Invalid lifetime");
-      return post("/deployment-preparations", {projectId, preparation: {
+      return post("/deployment-preparations", {projectId, preparation: {version: 2,
         revisionId: decodeURIComponent(id(data.revisionId)), targetId: decodeURIComponent(id(data.targetId)),
         inputs: data.inputs, lifetime: {ttlSeconds: lifetime.ttlSeconds, persistent: bool(lifetime.persistent)}, acknowledged: bool(data.acknowledged),
       }});

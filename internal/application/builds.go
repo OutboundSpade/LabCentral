@@ -103,7 +103,13 @@ type ImportWork struct {
 	Architecture      string                  `json:"architecture"`
 	TargetFingerprint string                  `json:"targetFingerprint"`
 }
+type PreparationOwner struct {
+	Kind OwnerKind `json:"kind"`
+	ID   string    `json:"id"`
+}
 type PreparationWork struct {
+	Version      uint32                  `json:"version,omitempty"`
+	Owner        *PreparationOwner       `json:"owner,omitempty"`
 	Owners       []InstanceOwner         `json:"owners,omitempty"`
 	RevisionID   domain.RevisionID       `json:"revisionId"`
 	TargetID     domain.ProviderTargetID `json:"targetId"`
@@ -170,4 +176,33 @@ type ImageRetirementStore interface {
 
 type ExtensionWorkProgressStore interface {
 	YieldExtensionWorkProgress(context.Context, ExtensionWorkClaim, json.RawMessage) error
+}
+
+// PreparationAuthorityStore rechecks launch authority against current stored
+// relationships. Shared work may use any still-authorized preparation waiter.
+type PreparationAuthorityStore interface {
+	AuthorizePreparationWork(context.Context, domain.OperationID) (domain.UserID, error)
+	CanReadPreparationWork(context.Context, domain.OperationID, domain.UserID) (bool, error)
+}
+
+func (r PreparationWork) EffectiveOwner(actor domain.UserID) InstanceOwner {
+	if r.Owner != nil {
+		return InstanceOwner{Kind: r.Owner.Kind, ID: r.Owner.ID}
+	}
+	return InstanceOwner{Kind: OwnerUser, ID: string(actor)}
+}
+func (r PreparationWork) ValidateVersion() error {
+	if r.Version == 2 {
+		if len(r.Owners) != 0 {
+			return fmt.Errorf("preparation v2 accepts one owner")
+		}
+		if r.Owner != nil && (r.Owner.ID == "" || (r.Owner.Kind != OwnerUser && r.Owner.Kind != OwnerTeam)) {
+			return fmt.Errorf("invalid preparation owner")
+		}
+		return nil
+	}
+	if r.Version > 1 || r.Owner != nil {
+		return fmt.Errorf("explicit owner requires preparation v2")
+	}
+	return nil
 }
