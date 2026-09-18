@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"net"
 	"net/url"
 	"path/filepath"
@@ -18,12 +19,13 @@ import (
 )
 
 type extensionBinding struct {
-	Requirement    string                `json:"requirement,omitempty"`
-	ID             string                `json:"id"`
-	ProjectIDs     []string              `json:"projectIds"`
-	Configuration  json.RawMessage       `json:"configuration"`
-	CredentialFile string                `json:"credentialFile,omitempty"`
-	Limits         *extensionBuildLimits `json:"limits,omitempty"`
+	ContainerRuntime *containervm.RuntimeBuildPolicy `json:"containerRuntime,omitempty"`
+	Requirement      string                          `json:"requirement,omitempty"`
+	ID               string                          `json:"id"`
+	ProjectIDs       []string                        `json:"projectIds"`
+	Configuration    json.RawMessage                 `json:"configuration"`
+	CredentialFile   string                          `json:"credentialFile,omitempty"`
+	Limits           *extensionBuildLimits           `json:"limits,omitempty"`
 }
 type extensionBuildLimits struct {
 	TimeoutSeconds uint32   `json:"timeoutSeconds"`
@@ -170,6 +172,9 @@ func loadInstalledExtensions(ctx context.Context, cfg config, runtimeParent stri
 				if e != nil {
 					return result, e
 				}
+			}
+			if binding.ContainerRuntime != nil && (category != "builder" || entry.Kind != "container-runtime") {
+				return result, fmt.Errorf("runtime packaging policy requires a container-runtime builder")
 			}
 			if category == "builder" {
 				l := binding.Limits

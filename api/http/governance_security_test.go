@@ -292,7 +292,7 @@ type governanceHTTPFixture struct {
 	artifacts *governanceCountingArtifacts
 }
 
-func newGovernanceHTTPFixture(t *testing.T) *governanceHTTPFixture {
+func newGovernanceHTTPFixture(t *testing.T, bindings ...controlplane.TargetBinding) *governanceHTTPFixture {
 	t.Helper()
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:governance-http-%d?mode=memory&cache=shared", time.Now().UnixNano()))
@@ -396,6 +396,16 @@ func newGovernanceHTTPFixture(t *testing.T) *governanceHTTPFixture {
 	service, err := controlplane.NewService(renderer, countingStore, providergrpc.New(provider), controlplane.CryptoIDs{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(bindings) > 0 {
+		targets, e := controlplane.NewTargetRegistry(bindings)
+		if e != nil {
+			t.Fatal(e)
+		}
+		service, e = controlplane.NewServiceWithTargets(renderer, countingStore, targets, controlplane.CryptoIDs{})
+		if e != nil {
+			t.Fatal(e)
+		}
 	}
 	artifactRoot := t.TempDir()
 	if err := os.Chmod(artifactRoot, 0o700); err != nil {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/ocilayout"
 	"io"
 	"regexp"
 	"sort"
@@ -20,6 +21,7 @@ var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 var envPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Config struct {
+	ImageID        string            `json:"imageId,omitempty"`
 	SchemaVersion  string            `json:"schemaVersion"`
 	InstallationID string            `json:"installationId"`
 	InstanceID     string            `json:"instanceId"`
@@ -48,7 +50,14 @@ func Decode(data []byte) (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
-	if c.SchemaVersion != Version || !idPattern.MatchString(c.InstallationID) || !idPattern.MatchString(c.InstanceID) || !idPattern.MatchString(c.ResourceID) || c.Generation == 0 || !ValidImage(c.Image) {
+	if c.SchemaVersion == PackagedRuntimeVersion {
+		if !ocilayout.SHA256(c.ImageID) {
+			return fmt.Errorf("packaged runtime requires exact local image ID")
+		}
+	} else if c.SchemaVersion != Version || c.ImageID != "" {
+		return fmt.Errorf("unsupported runtime version")
+	}
+	if !idPattern.MatchString(c.InstallationID) || !idPattern.MatchString(c.InstanceID) || !idPattern.MatchString(c.ResourceID) || c.Generation == 0 || !ValidImage(c.Image) {
 		return fmt.Errorf("invalid runtime identity or image")
 	}
 	if len(c.Environment) > 64 || len(c.Command) > 64 || len(c.Args) > 64 {
@@ -87,6 +96,10 @@ func (c Config) PodmanCreateArgs(binding string) []string {
 		entry, _ := json.Marshal(c.Command)
 		args = append(args, "--entrypoint", string(entry))
 	}
-	args = append(args, c.Image)
+	image := c.Image
+	if c.SchemaVersion == PackagedRuntimeVersion {
+		image = c.ImageID
+	}
+	args = append(args, image)
 	return append(args, c.Args...)
 }

@@ -78,9 +78,7 @@ imports only selected outputs. Durable results report `building`, `importing`, o
 `awaiting-approval`; retirement reports `waiting-for-labs`. Admission rechecks
 approval.
 
-`TASK-TEMPLATE-006` remains in progress: OCI packaging into
-the fixed container runtime and exact-target live qualification remain release
-gates. These implementation contracts do not claim production deployment.
+`TASK-TEMPLATE-006` implements these paths. Exact-target live qualification remains a `TASK-TEMPLATE-008` gate before using the changed artifacts on infrastructure. These implementation contracts do not claim production deployment.
 
 ## Participant preparation
 
@@ -100,7 +98,24 @@ initiating user remains the audit actor. Participants can read their own
 preparation and its linked work through `/extension-operations/{id}`; project
 read access remains required.
 
-Progress reports `building`, `importing`, or `awaiting-approval`. Once images are
+Progress reports `building`, `packaging`, `importing`, or `awaiting-approval`. Once images are
 approved, admission rechecks the preparation's exact actor, revision, project,
 owner and target under its fence in the same transaction as quota/allocation
 reservation. Revoked launch authority cannot admit a pending deployment.
+
+## Packaged containers
+
+`imageImport.containerRuntime` optionally pins `baseSHA256` and `agentSHA256`.
+It requires the existing qualified container runtime/guest-agent profile.
+Discovery advertises `image.import.container-vm` only alongside actual import
+storage support and fresh infrastructure qualification.
+
+The negotiated `container-image-import-v1` feature interprets import
+`configuration_json` as closed `labcentral.container-image/v1` evidence. A
+`proxmox.image-import-plan/v1.1` binds that evidence together with the qcow2
+artifact and reserved allocation; changing the manifest, configuration ID or
+runtime pins invalidates the plan. Ordinary qcow2 imports retain v1 identities.
+The imported image reference uses the OCI manifest digest, while
+`artifactDigest` continues to identify the containing qcow2 bytes. Per-resource
+planning selects that imported VM template and v2 offline runtime configuration;
+no registry fetch or arbitrary guest command is added.

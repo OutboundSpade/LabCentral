@@ -1819,6 +1819,7 @@ export interface components {
             schema: string;
         };
         BuildWork: {
+            containerRuntime?: components["schemas"]["ContainerRuntimeImage"];
             contextArtifact: string;
             contextDigest: string;
             /** Format: int64 */
@@ -1852,6 +1853,13 @@ export interface components {
              */
             readonly $schema?: string;
             userCode: string;
+        };
+        ContainerRuntimeImage: {
+            agentSHA256: string;
+            baseSHA256: string;
+            configDigest: string;
+            manifestDigest: string;
+            schemaVersion: string;
         };
         Cookie: {
             Domain: string;

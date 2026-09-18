@@ -33,9 +33,11 @@ type BuildRequest struct {
 	Limits               BuildLimits
 }
 type BuildResult struct {
-	Image            ExtensionArtifact   `json:"image"`
-	ArtifactRef      domain.ArtifactRef  `json:"artifactRef"`
-	ProvenanceDigest domain.SHA256Digest `json:"provenanceDigest"`
+	ContainerRuntime *domain.ContainerRuntimeImage `json:"containerRuntime,omitempty"`
+	OCI              *domain.OCIImageIdentity      `json:"oci,omitempty"`
+	Image            ExtensionArtifact             `json:"image"`
+	ArtifactRef      domain.ArtifactRef            `json:"artifactRef"`
+	ProvenanceDigest domain.SHA256Digest           `json:"provenanceDigest"`
 }
 type ArtifactTransfer interface {
 	ReadArtifact(context.Context, ProviderCall, ExtensionArtifact) (io.ReadCloser, error)
@@ -57,6 +59,7 @@ type ImageBinding struct {
 	OpaqueBinding             []byte              `json:"-"`
 }
 type ImportRequest struct {
+	ContainerRuntime *domain.ContainerRuntimeImage
 	ReservedPlan     *ImageImportPlan
 	Call             ProviderCall
 	Target           ProviderTargetContext
@@ -87,14 +90,15 @@ type BuildDependencyWork struct {
 	BuildID  domain.OperationID `json:"buildId"`
 }
 type BuildWork struct {
-	Dependencies    []BuildDependencyWork `json:"dependencies,omitempty"`
-	RevisionID      domain.RevisionID     `json:"revisionId"`
-	Recipe          domain.BuildRecipe    `json:"recipe"`
-	RecipeDigest    domain.SHA256Digest   `json:"recipeDigest"`
-	ContextArtifact domain.ArtifactRef    `json:"contextArtifact"`
-	ContextDigest   domain.SHA256Digest   `json:"contextDigest"`
-	ContextSize     uint64                `json:"contextSize"`
-	Limits          BuildLimits           `json:"limits"`
+	ContainerRuntime *domain.ContainerRuntimeImage `json:"containerRuntime,omitempty"`
+	Dependencies     []BuildDependencyWork         `json:"dependencies,omitempty"`
+	RevisionID       domain.RevisionID             `json:"revisionId"`
+	Recipe           domain.BuildRecipe            `json:"recipe"`
+	RecipeDigest     domain.SHA256Digest           `json:"recipeDigest"`
+	ContextArtifact  domain.ArtifactRef            `json:"contextArtifact"`
+	ContextDigest    domain.SHA256Digest           `json:"contextDigest"`
+	ContextSize      uint64                        `json:"contextSize"`
+	Limits           BuildLimits                   `json:"limits"`
 }
 type ImportWork struct {
 	RetireBindingID   string                  `json:"retireBindingId,omitempty"`

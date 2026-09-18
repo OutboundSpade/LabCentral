@@ -4,12 +4,17 @@ import "fmt"
 
 // ImageImportProfile is local operator policy, never portable source content.
 // Its exact bytes remain bound by signed infrastructure qualification.
+type ContainerImageImportPolicy struct {
+	BaseSHA256  string `json:"baseSHA256"`
+	AgentSHA256 string `json:"agentSHA256"`
+}
 type ImageImportProfile struct {
-	StagingStorage       string         `json:"stagingStorage"`
-	StorageAlias         string         `json:"storageAlias"`
-	VMIDRanges           []IntegerRange `json:"vmidRanges"`
-	MaximumArtifactBytes uint64         `json:"maximumArtifactBytes"`
-	MaximumDiskBytes     uint64         `json:"maximumDiskBytes"`
+	ContainerRuntime     *ContainerImageImportPolicy `json:"containerRuntime,omitempty"`
+	StagingStorage       string                      `json:"stagingStorage"`
+	StorageAlias         string                      `json:"storageAlias"`
+	VMIDRanges           []IntegerRange              `json:"vmidRanges"`
+	MaximumArtifactBytes uint64                      `json:"maximumArtifactBytes"`
+	MaximumDiskBytes     uint64                      `json:"maximumDiskBytes"`
 }
 
 func (config TargetConfig) validateImageImport() error {
@@ -19,6 +24,11 @@ func (config TargetConfig) validateImageImport() error {
 	}
 	if config.SchemaVersion != targetConfigV14 || config.Pool == "" || !storageIDPattern.MatchString(p.StagingStorage) || p.MaximumArtifactBytes < 1<<20 || p.MaximumArtifactBytes > 32<<30 || p.MaximumDiskBytes < 1<<30 || p.MaximumDiskBytes > 128<<30 {
 		return fmt.Errorf("image import requires bounded v1.4 policy and an ownership pool")
+	}
+	if runtime := p.ContainerRuntime; runtime != nil {
+		if config.ContainerRuntime == nil || !sha256Pattern.MatchString("sha256:"+runtime.BaseSHA256) || !sha256Pattern.MatchString("sha256:"+runtime.AgentSHA256) {
+			return fmt.Errorf("container import requires fixed runtime pins and qualified guest-agent access")
+		}
 	}
 	if _, ok := findStorageProfile(config, p.StorageAlias); !ok {
 		return fmt.Errorf("image import storage profile unavailable")

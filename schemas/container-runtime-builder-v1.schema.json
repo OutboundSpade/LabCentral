@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labcentral.io/schemas/container-runtime-builder-v1.schema.json",
+  "title": "Core-generated fixed container runtime build settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy",
+    "image"
+  ],
+  "properties": {
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseSHA256",
+        "agentSHA256",
+        "diskGiB"
+      ],
+      "properties": {
+        "baseSHA256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "agentSHA256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "diskGiB": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 64
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestDigest",
+        "configDigest",
+        "architecture",
+        "os"
+      ],
+      "properties": {
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "configDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "architecture": {
+          "const": "amd64"
+        },
+        "os": {
+          "const": "linux"
+        }
+      }
+    }
+  }
+}

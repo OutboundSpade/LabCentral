@@ -25,3 +25,23 @@ func TestClosedBootstrapAndLiteralArgv(t *testing.T) {
 		}
 	}
 }
+
+func TestPackagedRuntimeUsesExactOfflineImageID(t *testing.T) {
+	c := Config{SchemaVersion: PackagedRuntimeVersion, ImageID: "sha256:" + strings.Repeat("b", 64), InstallationID: "test", InstanceID: "instance.test", ResourceID: "container.test", Generation: 1, Image: "labcentral.local/images/img-test@sha256:" + strings.Repeat("a", 64)}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	args := c.PodmanCreateArgs("binding")
+	if args[len(args)-1] != c.ImageID || !strings.Contains(strings.Join(args, " "), "--pull=never") {
+		t.Fatal("runtime attempted to resolve a logical provider reference", args)
+	}
+	c.SchemaVersion = Version
+	if c.Validate() == nil {
+		t.Fatal("new semantics accepted under old version")
+	}
+	c.SchemaVersion = PackagedRuntimeVersion
+	c.ImageID = "latest"
+	if c.Validate() == nil {
+		t.Fatal("mutable runtime image accepted")
+	}
+}

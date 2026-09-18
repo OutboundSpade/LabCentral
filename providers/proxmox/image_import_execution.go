@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -57,7 +58,7 @@ func (s *ImageService) Import(ctx context.Context, r *wire.ImageImportServiceImp
 	} else if err != nil {
 		return nil, err
 	}
-	if record.Plan != plan || record.Fence > r.Context.FencingToken {
+	if !reflect.DeepEqual(record.Plan, plan) || record.Fence > r.Context.FencingToken {
 		return nil, status.Error(codes.FailedPrecondition, "image invocation or fence changed")
 	}
 	record.Fence = r.Context.FencingToken
@@ -272,7 +273,7 @@ func (s *ImageService) run(ctx context.Context, client ImageImportAPI, config Ta
 }
 func validateImportedConfig(e importedImageEvidence, current VMConfig, config TargetConfig) error {
 	raw, _ := json.Marshal(config)
-	if e.Version != imageImportPlanV1 || e.ConfigurationDigest != bareDigest(raw) || e.Retired || e.Ownership != imageOwnership(e.Plan, config) || current.Description != e.Ownership || current.Fields["template"] != "1" || current.Fields["lock"] != "" || current.Fields["onboot"] != "0" || current.Fields["ciupgrade"] != "0" {
+	if e.Version != imageImportPlanV1 || !validRuntimeEvidence(config, e.Plan.ContainerRuntime) || e.ConfigurationDigest != bareDigest(raw) || e.Retired || e.Ownership != imageOwnership(e.Plan, config) || current.Description != e.Ownership || current.Fields["template"] != "1" || current.Fields["lock"] != "" || current.Fields["onboot"] != "0" || current.Fields["ciupgrade"] != "0" {
 		return fmt.Errorf("imported image identity or ownership changed")
 	}
 	plan := QEMUPlan{Template: &PlanTemplate{ConfigDigest: e.Profile.ConfigDigest}, Disks: []PlanDisk{{Device: "scsi0"}}}
@@ -288,7 +289,11 @@ func validateImportedConfig(e importedImageEvidence, current VMConfig, config Ta
 }
 func importSuccess(e importedImageEvidence) *wire.ImageImportServiceImportResponse {
 	raw, _ := json.Marshal(e)
-	return &wire.ImageImportServiceImportResponse{State: "succeeded", Binding: &wire.TargetImageBinding{ImageRef: "labcentral.local/images/" + e.Profile.Alias + "@sha256:" + e.Plan.ArtifactDigest, ProviderImageId: strconv.FormatUint(uint64(e.Plan.VMID), 10), ArtifactDigest: e.Plan.ArtifactDigest, TargetConfigurationDigest: e.Plan.Fingerprint, Architecture: "amd64", OpaqueBinding: raw}}
+	digest := "sha256:" + e.Plan.ArtifactDigest
+	if e.Plan.ContainerRuntime != nil {
+		digest = e.Plan.ContainerRuntime.ManifestDigest
+	}
+	return &wire.ImageImportServiceImportResponse{State: "succeeded", Binding: &wire.TargetImageBinding{ImageRef: "labcentral.local/images/" + e.Profile.Alias + "@" + digest, ProviderImageId: strconv.FormatUint(uint64(e.Plan.VMID), 10), ArtifactDigest: e.Plan.ArtifactDigest, TargetConfigurationDigest: e.Plan.Fingerprint, Architecture: "amd64", OpaqueBinding: raw}}
 }
 func (s *ImageService) ValidateBinding(ctx context.Context, r *wire.ImageImportServiceValidateBindingRequest) (*wire.ImageImportServiceValidateBindingResponse, error) {
 	config, client, err := s.qualified(ctx, r.GetContext(), r.GetTarget())

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	spb "github.com/moby/buildkit/sourcepolicy/pb"
 )
 
@@ -95,6 +96,8 @@ func ExecuteGuestBuild(ctx context.Context, root string, recipe *wire.BuildRecip
 	switch recipe.Configuration.Schema.Name {
 	case DockerfileSchema:
 		return executeDockerfile(ctx, root, recipe, source, limits)
+	case containervm.RuntimeBuildSchema:
+		return executeContainerRuntime(ctx, root, recipe, source, limits)
 	case AnsibleSchema:
 		return executeAnsible(ctx, root, recipe, source, limits)
 	default:

@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -49,6 +50,21 @@ func (s *Service) PreviewPortableTemplate(ctx context.Context, actor domain.User
 		if !resolved {
 			preview.UnresolvedBuilders = append(preview.UnresolvedBuilders, req.ID)
 		}
+	}
+	for _, req := range preview.Builders {
+		if req.Kind != "dockerfile" {
+			continue
+		}
+		available := false
+		for _, binding := range s.builders {
+			if binding.ContainerRuntime != nil && slices.Contains(binding.Projects, project) {
+				available = true
+			}
+		}
+		if !available {
+			preview.UnresolvedBuilders = append(preview.UnresolvedBuilders, "core:container-runtime")
+		}
+		break
 	}
 	return preview, nil
 }

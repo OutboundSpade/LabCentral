@@ -111,7 +111,7 @@ func main() {
 		}
 		services.ImageImports = images
 		services.Artifacts = images
-		info.Features = append(info.Features, "image-import-v1", "image-import-reservations-v1", "image-retirement-v1", "artifact-transfer-v1")
+		info.Features = append(info.Features, "image-import-v1", "image-import-reservations-v1", "image-retirement-v1", "container-image-import-v1", "artifact-transfer-v1")
 	}
 	if err := pluginruntime.Serve(ctx, services); err != nil {
 		logger.Error("serve Proxmox provider plugin", "error", err)

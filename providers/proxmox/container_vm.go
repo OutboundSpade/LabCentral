@@ -62,14 +62,28 @@ func containerVM(config TargetConfig, resource canonicalResource) (canonicalReso
 		return resource, runtime, fmt.Errorf("container requires viaVM, VM isolation, one static interface, whole CPUs and at least 512Mi memory")
 	}
 	image := spec.Image.Repository + "@" + spec.Image.Digest
-	if !contains(config.ContainerRuntime.Images, image) {
-		return resource, runtime, fmt.Errorf("container image is not preloaded in the approved runtime")
-	}
-	template, ok := findTemplateProfile(config, config.ContainerRuntime.TemplateAlias)
-	if !ok {
-		return resource, runtime, fmt.Errorf("container runtime template unavailable")
-	}
+	var template TemplateProfile
 	runtime = containervm.Config{SchemaVersion: containervm.Version, InstallationID: config.InstallationID, ResourceID: resource.ID, Image: image, Command: spec.Command, Args: spec.Args}
+	repository := "labcentral/container-runtime"
+	if strings.HasPrefix(spec.Image.Repository, "labcentral.local/images/") {
+		evidence, ok := importedImageProfile(config, strings.TrimPrefix(spec.Image.Repository, "labcentral.local/images/"))
+		if !ok || evidence.Plan.ContainerRuntime == nil || evidence.Plan.ContainerRuntime.ManifestDigest != spec.Image.Digest {
+			return resource, runtime, fmt.Errorf("container image has no approved runtime evidence")
+		}
+		template = evidence.Profile
+		repository = spec.Image.Repository
+		runtime.SchemaVersion = containervm.PackagedRuntimeVersion
+		runtime.ImageID = evidence.Plan.ContainerRuntime.ConfigDigest
+	} else {
+		if !contains(config.ContainerRuntime.Images, image) {
+			return resource, runtime, fmt.Errorf("container image is not preloaded in the approved runtime")
+		}
+		var ok bool
+		template, ok = findTemplateProfile(config, config.ContainerRuntime.TemplateAlias)
+		if !ok {
+			return resource, runtime, fmt.Errorf("container runtime template unavailable")
+		}
+	}
 	if len(spec.Environment) > 0 {
 		runtime.Environment = make(map[string]string, len(spec.Environment))
 	}
@@ -86,7 +100,7 @@ func containerVM(config TargetConfig, resource canonicalResource) (canonicalReso
 		return resource, runtime, err
 	}
 	vm := canonicalVMSpec{OSFamily: "linux"}
-	vm.Image.Repository = "labcentral/container-runtime"
+	vm.Image.Repository = repository
 	vm.Image.Digest = template.ContentDigest
 	vm.Compute = spec.Compute
 	vm.Interfaces = spec.Interfaces
@@ -164,7 +178,7 @@ func (client *Client) EnsureContainerRuntime(ctx context.Context, node string, v
 				SchemaVersion string `json:"schemaVersion"`
 				Ready         bool   `json:"ready"`
 			}
-			if json.Unmarshal([]byte(status.Out), &result) != nil || result.SchemaVersion != containervm.Version || !result.Ready {
+			if json.Unmarshal([]byte(status.Out), &result) != nil || result.SchemaVersion != config.SchemaVersion || !result.Ready {
 				return fmt.Errorf("container readiness response invalid")
 			}
 			return nil
@@ -179,5 +193,11 @@ func runtimeVMPath(config TargetConfig, path string) bool {
 		return false
 	}
 	id, err := strconv.ParseUint(strings.TrimPrefix(path, "/vms/"), 10, 32)
-	return err == nil && valueInRanges(uint32(id), config.VMIDRanges)
+	if err != nil {
+		return false
+	}
+	if valueInRanges(uint32(id), config.VMIDRanges) {
+		return true
+	}
+	return config.ImageImport != nil && valueInRanges(uint32(id), config.ImageImport.VMIDRanges)
 }

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -17,19 +19,21 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const imageImportPlanV11 = "proxmox.image-import-plan/v1.1"
 const imageImportPlanV1 = "proxmox.image-import-plan/v1"
 const qcowArtifactMedia = "application/x-qemu-disk"
 
 type importPlanDocument struct {
-	Version        string `json:"version"`
-	InvocationID   string `json:"invocationId"`
-	TargetID       string `json:"targetId"`
-	Fingerprint    string `json:"fingerprint"`
-	ArtifactDigest string `json:"artifactDigest"`
-	ArtifactBytes  uint64 `json:"artifactBytes"`
-	Provenance     string `json:"provenance"`
-	Node           string `json:"node"`
-	VMID           uint32 `json:"vmid"`
+	ContainerRuntime *containervm.PackagedImage `json:"containerRuntime,omitempty"`
+	Version          string                     `json:"version"`
+	InvocationID     string                     `json:"invocationId"`
+	TargetID         string                     `json:"targetId"`
+	Fingerprint      string                     `json:"fingerprint"`
+	ArtifactDigest   string                     `json:"artifactDigest"`
+	ArtifactBytes    uint64                     `json:"artifactBytes"`
+	Provenance       string                     `json:"provenance"`
+	Node             string                     `json:"node"`
+	VMID             uint32                     `json:"vmid"`
 }
 type importedImageEvidence struct {
 	Version             string             `json:"version"`
@@ -215,6 +219,14 @@ func (s *ImageService) Plan(ctx context.Context, in *wire.ImageImportServicePlan
 		return nil, err
 	}
 	defer client.CloseIdleConnections()
+	runtime, err := importRuntimeConfiguration(r.GetConfigurationJson(), config)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid runtime image evidence")
+	}
+	version := imageImportPlanV1
+	if runtime != nil {
+		version = imageImportPlanV11
+	}
 	a := r.GetArtifact()
 	if r.Architecture != "amd64" || a.GetMediaType() != qcowArtifactMedia || !sha256Pattern.MatchString("sha256:"+a.GetDigest()) || a.GetSize() == 0 || a.Size > config.ImageImport.MaximumArtifactBytes || !sha256Pattern.MatchString("sha256:"+r.ProvenanceDigest) || len(in.ExcludedAllocations) > 4096 {
 		return nil, status.Error(codes.InvalidArgument, "invalid image artifact")
@@ -249,7 +261,7 @@ func (s *ImageService) Plan(ctx context.Context, in *wire.ImageImportServicePlan
 	if vmid == 0 {
 		return nil, status.Error(codes.ResourceExhausted, "no import VMID available")
 	}
-	p, err := planWire(importPlanDocument{Version: imageImportPlanV1, InvocationID: r.Context.InvocationId, TargetID: r.Target.TargetId, Fingerprint: r.Target.ConfigFingerprint, ArtifactDigest: a.Digest, ArtifactBytes: a.Size, Provenance: r.ProvenanceDigest, Node: config.DestinationNode, VMID: vmid})
+	p, err := planWire(importPlanDocument{ContainerRuntime: runtime, Version: version, InvocationID: r.Context.InvocationId, TargetID: r.Target.TargetId, Fingerprint: r.Target.ConfigFingerprint, ArtifactDigest: a.Digest, ArtifactBytes: a.Size, Provenance: r.ProvenanceDigest, Node: config.DestinationNode, VMID: vmid})
 	return &wire.ImageImportServicePlanResponse{Plan: p}, err
 }
 func decodeImportPlan(r *wire.ImageImportServiceImportRequest, config TargetConfig) (p importPlanDocument, err error) {
@@ -260,7 +272,15 @@ func decodeImportPlan(r *wire.ImageImportServiceImportRequest, config TargetConf
 	if err = decodeEnvelope(w.Opaque, maximumJournalBytes, &p); err != nil {
 		return p, err
 	}
-	if p.Version != imageImportPlanV1 || p.InvocationID != r.GetContext().GetInvocationId() || p.TargetID != r.GetTarget().GetTargetId() || p.Fingerprint != r.GetTarget().GetConfigFingerprint() || p.Node != config.DestinationNode || p.ArtifactDigest != r.GetArtifact().GetDigest() || p.ArtifactBytes != r.GetArtifact().GetSize() || p.Provenance != r.ProvenanceDigest || r.Architecture != "amd64" || r.GetArtifact().GetMediaType() != qcowArtifactMedia || !sha256Pattern.MatchString("sha256:"+p.ArtifactDigest) || !sha256Pattern.MatchString("sha256:"+p.Provenance) || p.ArtifactBytes == 0 || p.ArtifactBytes > config.ImageImport.MaximumArtifactBytes {
+	runtime, err := importRuntimeConfiguration(r.GetConfigurationJson(), config)
+	if err != nil {
+		return p, err
+	}
+	version := imageImportPlanV1
+	if runtime != nil {
+		version = imageImportPlanV11
+	}
+	if p.Version != version || !reflect.DeepEqual(p.ContainerRuntime, runtime) || p.InvocationID != r.GetContext().GetInvocationId() || p.TargetID != r.GetTarget().GetTargetId() || p.Fingerprint != r.GetTarget().GetConfigFingerprint() || p.Node != config.DestinationNode || p.ArtifactDigest != r.GetArtifact().GetDigest() || p.ArtifactBytes != r.GetArtifact().GetSize() || p.Provenance != r.ProvenanceDigest || r.Architecture != "amd64" || r.GetArtifact().GetMediaType() != qcowArtifactMedia || !sha256Pattern.MatchString("sha256:"+p.ArtifactDigest) || !sha256Pattern.MatchString("sha256:"+p.Provenance) || p.ArtifactBytes == 0 || p.ArtifactBytes > config.ImageImport.MaximumArtifactBytes {
 		return p, fmt.Errorf("import plan binding mismatch")
 	}
 	valid := false
@@ -288,4 +308,24 @@ func imageFilename(p importPlanDocument) string {
 func imageAlias(plan importPlanDocument) string {
 	raw, _ := json.Marshal(plan)
 	return "img-" + bareDigest(raw)[:56]
+}
+
+func importRuntimeConfiguration(data []byte, config TargetConfig) (*containervm.PackagedImage, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var runtime containervm.PackagedImage
+	if decodeEnvelope(data, 4096, &runtime) != nil || runtime.Validate() != nil {
+		return nil, fmt.Errorf("invalid runtime evidence")
+	}
+	if !validRuntimeEvidence(config, &runtime) {
+		return nil, fmt.Errorf("runtime image does not match qualified pins")
+	}
+	return &runtime, nil
+}
+func validRuntimeEvidence(config TargetConfig, runtime *containervm.PackagedImage) bool {
+	if runtime == nil {
+		return true
+	}
+	return config.ImageImport != nil && config.ImageImport.ContainerRuntime != nil && runtime.Validate() == nil && runtime.BaseSHA256 == config.ImageImport.ContainerRuntime.BaseSHA256 && runtime.AgentSHA256 == config.ImageImport.ContainerRuntime.AgentSHA256
 }

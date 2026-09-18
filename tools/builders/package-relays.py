@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package an already-built worker as two independently installable relays."""
+"""Package an already-built worker as independently installable builder relays."""
 import argparse
 import hashlib
 import json
@@ -20,7 +20,7 @@ args.destination.mkdir(mode=0o755, parents=True, exist_ok=False)
 def encode(value):
     return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
 
-for kind in ("ansible", "dockerfile"):
+for kind in ("ansible", "dockerfile", "container-runtime"):
     root = args.destination / kind
     root.mkdir(mode=0o755)
     executable = root / "lab-builder-vm"
@@ -44,4 +44,4 @@ for kind in ("ansible", "dockerfile"):
         f"Installation arguments must include --kind {kind} and the worker endpoint, TLS CA,\n"
         "client certificate/key and expected TLS server name. Keep those local settings\n"
         "outside this package. Obtain the binding hashes with inspect-profile on the worker.\n")
-print("Created independent Ansible and Dockerfile packages; no worker endpoint or credentials included.")
+print("Created independent Ansible, Dockerfile and fixed runtime packages; no worker endpoint or credentials included.")

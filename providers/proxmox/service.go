@@ -103,6 +103,9 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 			if imports, ok := client.(ImageImportAPI); ok {
 				if supported, err := imports.ImportStorage(ctx, config.DestinationNode, config.ImageImport.StagingStorage); err == nil && supported {
 					capabilities = append(capabilities, capability("image.import.qcow2", pluginv1.Capability_SUPPORT_NATIVE, evidence, []string{"reserved VMID and owned standalone qcow2 required", "explicit core approval required before deployment"}))
+					if config.ImageImport.ContainerRuntime != nil && config.ContainerRuntime != nil {
+						capabilities = append(capabilities, capability("image.import.container-vm", pluginv1.Capability_SUPPORT_EMULATED, evidence, []string{"fixed runtime disk and agent pins", "one offline OCI image per dedicated VM", "explicit core approval required before deployment"}))
+					}
 				}
 			}
 		}

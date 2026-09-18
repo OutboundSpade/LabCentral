@@ -113,7 +113,11 @@ func run() error {
 	for i := 0; i < 20; i++ {
 		state, e := podman("inspect", "--format", "{{.State.Running}}", "workload")
 		if e == nil && string(bytes.TrimSpace(state)) == "true" {
-			fmt.Println(`{"schemaVersion":"labcentral.container-vm/v1","ready":true}`)
+			response, _ := json.Marshal(struct {
+				SchemaVersion string `json:"schemaVersion"`
+				Ready         bool   `json:"ready"`
+			}{c.SchemaVersion, true})
+			fmt.Println(string(response))
 			return nil
 		}
 		time.Sleep(250 * time.Millisecond)

@@ -2,6 +2,7 @@ package providergrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
@@ -166,7 +167,7 @@ func (p *Provider) ImportImage(ctx context.Context, r app.ImportRequest) (string
 	if p.ImageImports == nil {
 		return "", app.ImageBinding{}, fmt.Errorf("image import unavailable")
 	}
-	v, e := p.ImageImports.Import(ctx, &wire.ImageImportServiceImportRequest{Context: call(r.Call), Target: target(r.Target), Artifact: artifact(r.Artifact), Architecture: r.Architecture, ProvenanceDigest: r.ProvenanceDigest.Hex(), ReservedPlan: importPlan(r.ReservedPlan)})
+	v, e := p.ImageImports.Import(ctx, &wire.ImageImportServiceImportRequest{Context: call(r.Call), Target: target(r.Target), Artifact: artifact(r.Artifact), Architecture: r.Architecture, ProvenanceDigest: r.ProvenanceDigest.Hex(), ReservedPlan: importPlan(r.ReservedPlan), ConfigurationJson: importConfiguration(r)})
 	if e != nil {
 		return "", app.ImageBinding{}, e
 	}
@@ -191,4 +192,12 @@ func (p *Provider) ValidateImageBinding(ctx context.Context, r app.ImportRequest
 		e = fmt.Errorf("image binding no longer valid")
 	}
 	return e
+}
+
+func importConfiguration(r app.ImportRequest) []byte {
+	if r.ContainerRuntime == nil {
+		return nil
+	}
+	data, _ := json.Marshal(r.ContainerRuntime)
+	return data
 }

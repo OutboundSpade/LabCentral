@@ -20,7 +20,7 @@ func configureBuilderExtensions(control *controlplane.Service, extensions loaded
 				projects = append(projects, domain.ProjectID(p))
 			}
 			l := entry.Limits
-			bindings = append(bindings, controlplane.BuilderBinding{Dependencies: slices.Contains(backend.Client.Info.GetFeatures(), "builder-dependencies-v1"), Requirement: entry.Requirement, Kind: backend.Entry.Kind, InstanceID: backend.Entry.InstanceID, ID: entry.ID, PluginDigest: backend.Client.Info.GetBuildDigest(), Projects: projects, Configuration: entry.Configuration, Limits: app.BuildLimits{TimeoutSeconds: l.TimeoutSeconds, CPUCount: l.CPUCount, MemoryBytes: l.MemoryBytes, InputBytes: l.InputBytes, OutputBytes: l.OutputBytes, Egress: l.Egress}, Builder: &providergrpc.Builder{Source: providergrpc.Source{Artifacts: backend.Client.Artifacts}, Client: backend.Client.Builder}, Available: backend.Client.Available})
+			bindings = append(bindings, controlplane.BuilderBinding{ContainerRuntime: entry.ContainerRuntime, OCIIdentity: slices.Contains(backend.Client.Info.GetFeatures(), "oci-layout-v1"), Dependencies: slices.Contains(backend.Client.Info.GetFeatures(), "builder-dependencies-v1"), Requirement: entry.Requirement, Kind: backend.Entry.Kind, InstanceID: backend.Entry.InstanceID, ID: entry.ID, PluginDigest: backend.Client.Info.GetBuildDigest(), Projects: projects, Configuration: entry.Configuration, Limits: app.BuildLimits{TimeoutSeconds: l.TimeoutSeconds, CPUCount: l.CPUCount, MemoryBytes: l.MemoryBytes, InputBytes: l.InputBytes, OutputBytes: l.OutputBytes, Egress: l.Egress}, Builder: &providergrpc.Builder{Source: providergrpc.Source{Artifacts: backend.Client.Artifacts}, Client: backend.Client.Builder}, Available: backend.Client.Available})
 		}
 	}
 	return control.SetBuilders(bindings)

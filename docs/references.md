@@ -173,3 +173,8 @@ Retrieved 2026-09-18. These sources inform ADR-0027–ADR-0029; live target capa
 - [Proxmox QEMU API implementation](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu.pm) — typed VM creation accepts storage volume references with `import-from`; creation and template conversion remain provider mutations.
 - [Proxmox task API](https://github.com/proxmox/pve-manager/blob/master/PVE/API2/Tasks.pm) — bounded listings support active/archive selection and user/type/VM filters; task logs provide upload ownership evidence after response loss.
 - [QEMU qcow2 format](https://www.qemu.org/docs/master/interop/qcow2.html) — header fields identify backing files, virtual size, encryption, snapshots and external-data features; version 3 permits a 112-byte header with zero optional fields.
+
+## OCI runtime packaging (retrieved 2026-09-18)
+
+- [OCI image layout](https://github.com/opencontainers/image-spec/blob/main/image-layout.md), [image manifest](https://github.com/opencontainers/image-spec/blob/main/manifest.md), and [configuration](https://github.com/opencontainers/image-spec/blob/main/config.md): indexes address manifests; manifests address configuration and layer blobs. Configuration identity includes uncompressed layer identities and is distinct from the archive and manifest digests.
+- [Podman load](https://docs.podman.io/en/latest/markdown/podman-load.1.html): OCI archives can be loaded into local container storage. LabCentral performs that operation as the rootless runtime user inside a disposable VM, then starts the verified local image ID using the existing offline pull policy.

@@ -61,7 +61,7 @@ func run() error {
 		args = args[1:]
 	}
 	flags := flag.NewFlagSet("lab-builder-vm", flag.ContinueOnError)
-	kind := flags.String("kind", "", "installed builder kind: ansible or dockerfile")
+	kind := flags.String("kind", "", "installed builder kind: ansible, dockerfile or container-runtime")
 	address := flags.String("endpoint", "", "dedicated worker host:port (listen address in worker mode)")
 	root := flags.String("state", "", "private worker state directory")
 	profileFile := flags.String("profile", "", "pinned worker profile file")
@@ -126,5 +126,5 @@ func run() error {
 		return err
 	}
 	defer relay.Close()
-	return pluginruntime.Serve(ctx, pluginruntime.Services{Info: &wire.PluginInfo{PluginId: strings.TrimSuffix(vm.PluginID, ".vm") + "." + *kind, PluginVersion: "0.1.0", BuildDigest: "sha256:" + digest, Categories: []string{"builder"}, BuilderKinds: []string{*kind}, SupportedBuilderProtocols: []*wire.ProtocolVersionRange{{Major: 1}}, Features: []string{"artifact-transfer-v1", "builder-dependencies-v1"}}, Runtime: relay, Builder: relay, Artifacts: relay})
+	return pluginruntime.Serve(ctx, pluginruntime.Services{Info: &wire.PluginInfo{PluginId: strings.TrimSuffix(vm.PluginID, ".vm") + "." + *kind, PluginVersion: "0.1.0", BuildDigest: "sha256:" + digest, Categories: []string{"builder"}, BuilderKinds: []string{*kind}, SupportedBuilderProtocols: []*wire.ProtocolVersionRange{{Major: 1}}, Features: []string{"artifact-transfer-v1", "builder-dependencies-v1", "oci-layout-v1"}}, Runtime: relay, Builder: relay, Artifacts: relay})
 }

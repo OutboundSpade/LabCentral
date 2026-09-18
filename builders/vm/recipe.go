@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"github.com/distribution/reference"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
@@ -135,6 +136,11 @@ func ValidateRecipe(recipe *wire.BuildRecipe, limits *wire.BuildLimits) error {
 		}
 	}
 	switch recipe.Configuration.Schema.Name {
+	case containervm.RuntimeBuildSchema:
+		var config containervm.RuntimeBuildSettings
+		if strictJSON(recipe.Configuration.CanonicalJson, &config) != nil || config.Validate() != nil || limits.MemoryBytes < 2<<30 || len(deps) != 1 || deps["oci"] == nil || deps["oci"].MediaType != OCIMedia || len(recipe.BaseImageDigests) != 1 || recipe.BaseImageDigests[0] != "sha256:"+config.Policy.BaseSHA256 {
+			return fmt.Errorf("invalid fixed runtime packaging recipe")
+		}
 	case AnsibleSchema:
 		if limits.MemoryBytes < 2<<30 {
 			return fmt.Errorf("Ansible requires at least 2 GiB guest memory")

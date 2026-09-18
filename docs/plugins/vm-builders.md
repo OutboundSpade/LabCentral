@@ -98,7 +98,7 @@ Back up the worker journal with its output files when recovering the deployment.
 ## Installation
 
 Build `cmd/lab-builder-vm` once. `tools/builders/package-relays.py BINARY NEW_OUTPUT_DIRECTORY`
-creates independently installable Ansible and Dockerfile packages with pinned
+creates independently installable Ansible, Dockerfile and fixed-runtime packages with pinned
 executables and a closed worker-binding schema. Configure each installation's
 explicit `--kind` argument and local TLS connection separately; packages contain
 no endpoint or credentials. `tools/builders/fetch-toolchain.py` verifies the
@@ -127,8 +127,8 @@ Use a dedicated CA and distinct client/server certificates with the appropriate
 TLS extended key usages. TLS 1.3 and mutual certificate validation are required;
 there is no insecure TCP mode. Run the local installed plugin without `worker`,
 using the same TLS flags plus `--tls-server-name EXPECTED_WORKER_NAME` and
-`--kind ansible` or `--kind dockerfile`. Each installed relay accepts only its
-declared recipe schema; either package can be installed independently. It exposes
+`--kind ansible`, `--kind dockerfile`, or `--kind container-runtime`. Each installed relay accepts only its
+declared recipe schema; each package can be installed independently. It exposes
 only the existing typed builder/artifact/runtime services over the normal local
 plugin socket and forwards them to that worker. The core host gives this relay
 no provider credential envelope.
@@ -150,3 +150,45 @@ OCI output, and confirms guest closure. Its private evidence directory is
 reported by the test. Ordinary tests do not launch VMs.
 
 Ansible uses a non-root `guestUser` with temporary sudo access. Sanitization explicitly enables custom deletion, then checks that cloud-init state, the temporary Ansible installation and generated SSH identity are absent before conversion. A failed cleanup check prevents publication.
+
+## Fixed container runtime packaging
+
+The optional `oci-layout-v1` builder feature lets core verify a complete OCI
+archive after transfer: bounded metadata, SHA-256 blobs, one Linux amd64
+manifest, its configuration and layer references. This does not extract layers
+on the control-plane host. The archive digest, manifest digest and configuration
+image ID remain separate identities.
+
+For a version-2 preparation, core derives an internal
+`labcentral.container-runtime.v1` recipe using the project's unique
+`container-runtime` binding. Portable import previews report `core:container-runtime` when that local binding is missing. Authors cannot request this recipe through the
+general build endpoint. Its [closed settings](../../schemas/container-runtime-builder-v1.schema.json)
+bind the verified OCI identity and operator-owned runtime policy. The binding's
+`containerRuntime` object contains `baseSHA256`, `agentSHA256` and `diskGiB`
+(8–64); it is local configuration, excluded from portable sources. The recipe
+has one `oci` dependency and a fixed empty source context. Shared runtime builds
+are deduplicated by image, runtime policy, toolchain, binding and limits.
+
+Build the fixed base with:
+
+```text
+go build -o labcentral-container-vm ./cmd/lab-container-vm
+tools/builders/build-container-runtime.sh VERIFIED_DEBIAN_BASE RUNTIME_AGENT NEW_RUNTIME_QCOW2
+tools/builders/build-toolchain.sh VERIFIED_DEBIAN_BASE BUILDER_BINARY NEW_TOOLCHAIN_QCOW2 RUNTIME_QCOW2
+```
+
+The runtime base contains the fixed agent and rootless Podman account (UID 1001),
+without an image or deployment identity. Pin its disk and agent SHA-256 values
+in both the builder binding and target image-import policy; pin the complete
+containing toolchain image in the worker profile. The packager verifies that
+base, then boots an inner disposable guest, checks the fixed agent, loads the
+OCI archive as `labworkload`, verifies the exact local image ID, removes temporary
+authentication files and applies the existing offline identity cleanup.
+
+The result is qcow2 plus typed `labcentral.container-image/v1` evidence. Core
+imports it under negotiated `container-image-import-v1`; approval remains
+separate. Runtime configuration `labcentral.container-vm/v2` preserves the
+logical manifest reference while launching the exact local configuration image
+ID with `--pull=never`. Existing v1 runtime configurations and static image lists
+retain their original behavior. Each container still gets its own VM, with the
+same no-mount, no-secret, no-published-port restrictions.

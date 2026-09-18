@@ -8,6 +8,8 @@ import (
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/render"
+	"github.com/OutboundSpade/LabCentral/pkg/ocilayout"
+	"strings"
 	"time"
 )
 
@@ -50,6 +52,9 @@ func (s *Service) requestImport(ctx context.Context, actor domain.UserID, projec
 	}
 	defer target.Close()
 	if !target.Supports(0, "image-import-v1", "artifact-transfer-v1") || providerIdentity(target.Provider) == "" {
+		return app.ExtensionWork{}, ErrAccessUnavailable
+	}
+	if result.ContainerRuntime != nil && !target.Supports(0, "container-image-import-v1") {
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
 	// Explicit imports need image-administrator authority. A v2 preparation
@@ -111,13 +116,16 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 	if session.Context.ConfigFingerprint != r.TargetFingerprint || providerIdentity(session.Provider) != c.Work.Request.PluginDigest || !session.Supports(0, "image-import-v1", "artifact-transfer-v1") {
 		return fmt.Errorf("original provider identity and target required to recover image import")
 	}
+	if result.ContainerRuntime != nil && !session.Supports(0, "container-image-import-v1") {
+		return ErrAccessUnavailable
+	}
 	provider, ok := session.Provider.(app.ImageImporter)
 	if !ok {
 		return ErrAccessUnavailable
 	}
 	call := workCall(c)
 	call.TargetID = string(r.TargetID)
-	request := app.ImportRequest{Call: call, Target: session.Context, Artifact: result.Image, Architecture: r.Architecture, ProvenanceDigest: result.ProvenanceDigest}
+	request := app.ImportRequest{ContainerRuntime: result.ContainerRuntime, Call: call, Target: session.Context, Artifact: result.Image, Architecture: r.Architecture, ProvenanceDigest: result.ProvenanceDigest}
 
 	if session.Supports(0, "image-import-reservations-v1") {
 		reservations, ok := s.store.(app.ImageImportReservationStore)
@@ -197,6 +205,9 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 		return fmt.Errorf("image import remains uncertain")
 	}
 	if binding.ArtifactDigest != result.Image.Digest || binding.Architecture != r.Architecture || binding.TargetConfigurationDigest != r.TargetFingerprint {
+		return s.finishWork(ctx, c, domain.OperationFailed, nil, "image_binding_invalid")
+	}
+	if result.ContainerRuntime != nil && !strings.HasSuffix(binding.ImageRef, "@"+result.ContainerRuntime.ManifestDigest) {
 		return s.finishWork(ctx, c, domain.OperationFailed, nil, "image_binding_invalid")
 	}
 	if e = provider.ValidateImageBinding(ctx, request, binding); e != nil {
@@ -324,6 +335,25 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 			if build.State != domain.OperationSucceeded {
 				result.Stage = "building"
 				return s.yieldWorkProgress(ctx, c, result)
+			}
+			var built app.BuildResult
+			if e = json.Unmarshal(build.Result, &built); e != nil {
+				return e
+			}
+			if built.Image.MediaType == ocilayout.MediaType {
+				packaged, err := s.requestContainerRuntime(ctx, c.Work, build, string(c.Work.ID)+".runtime."+recipeID)
+				if err != nil {
+					return err
+				}
+				result.BuildIDs = append(result.BuildIDs, packaged.ID)
+				if packaged.State == domain.OperationFailed || packaged.State == domain.OperationCanceled {
+					return s.finishWork(ctx, c, domain.OperationFailed, result, "runtime_packaging_failed")
+				}
+				if packaged.State != domain.OperationSucceeded {
+					result.Stage = "packaging"
+					return s.yieldWorkProgress(ctx, c, result)
+				}
+				build = packaged
 			}
 			imp, e := s.requestImport(ctx, c.Work.ActorID, c.Work.ProjectID, build.ID, r.TargetID, string(c.Work.ID)+".import."+recipeID, preparation)
 			if e != nil {

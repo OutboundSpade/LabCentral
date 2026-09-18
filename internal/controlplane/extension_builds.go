@@ -11,7 +11,9 @@ import (
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/internal/render"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
+	"github.com/OutboundSpade/LabCentral/pkg/ocilayout"
 	"io"
 	"slices"
 	"strings"
@@ -19,6 +21,8 @@ import (
 )
 
 type BuilderBinding struct {
+	ContainerRuntime             *containervm.RuntimeBuildPolicy
+	OCIIdentity                  bool
 	Dependencies                 bool
 	Requirement, Kind            string
 	InstanceID, ID, PluginDigest string
@@ -35,6 +39,26 @@ func (s *Service) SetBuilders(bindings []BuilderBinding) error {
 		k := b.InstanceID + "/" + b.ID
 		if b.InstanceID == "" || b.ID == "" || b.Builder == nil || s.builders[k].Builder != nil || len(b.Projects) == 0 || b.Limits.TimeoutSeconds == 0 || b.Limits.OutputBytes == 0 || b.Limits.InputBytes == 0 || b.Limits.Egress == nil {
 			return fmt.Errorf("invalid builder binding")
+		}
+		if (b.Kind == "container-runtime") != (b.ContainerRuntime != nil) {
+			return fmt.Errorf("runtime packager requires explicit operator policy")
+		}
+		if b.ContainerRuntime != nil {
+			if err := b.ContainerRuntime.Validate(); err != nil {
+				return err
+			}
+			if !b.Dependencies {
+				return fmt.Errorf("runtime packager requires dependency support")
+			}
+			for _, existing := range s.builders {
+				if existing.ContainerRuntime != nil {
+					for _, project := range b.Projects {
+						if slices.Contains(existing.Projects, project) {
+							return fmt.Errorf("ambiguous runtime packager in project")
+						}
+					}
+				}
+			}
 		}
 		b.Projects = slices.Clone(b.Projects)
 		b.Configuration = slices.Clone(b.Configuration)
@@ -147,7 +171,7 @@ func (s *Service) requestBuild(ctx context.Context, actor domain.UserID, project
 		return app.ExtensionWork{}, fmt.Errorf("recipe not found")
 	}
 	b, ok := s.resolveRecipeBuilder(bundle, *recipe, project)
-	if !ok {
+	if !ok || b.Kind == "container-runtime" {
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
 
@@ -473,6 +497,27 @@ func (s *Service) executeBuild(parent context.Context, b BuilderBinding, c app.E
 	result.ArtifactRef, e = s.artifacts.Commit(ctx, upload, m)
 	if e != nil {
 		return e
+	}
+	if r.ContainerRuntime != nil {
+		if result.Image.MediaType != "application/x-qemu-disk" || r.ContainerRuntime.Validate() != nil {
+			return s.finishWork(ctx, c, domain.OperationFailed, nil, "invalid_runtime_image")
+		}
+		result.ContainerRuntime = r.ContainerRuntime
+	}
+	// OCI identity is measured by core from the verified artifact, not accepted
+	// from a builder assertion. Legacy builders retain their old result shape.
+	if b.OCIIdentity && result.Image.MediaType == ocilayout.MediaType {
+		source, err := s.artifacts.Open(ctx, app.AuthorizedArtifactRef{Reference: result.ArtifactRef, SubjectID: artifactActor})
+		if err != nil {
+			return err
+		}
+		identity, err := ocilayout.Inspect(source, result.Image.Size)
+		source.Close()
+		if err != nil {
+			return s.finishWork(ctx, c, domain.OperationFailed, nil, "invalid_oci_layout")
+		}
+		portableIdentity := domain.OCIImageIdentity(identity)
+		result.OCI = &portableIdentity
 	}
 	if e = store.ReferenceExtensionArtifact(ctx, c.Work.ID, result.ArtifactRef); e != nil {
 		return e

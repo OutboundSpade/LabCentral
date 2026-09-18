@@ -23,7 +23,7 @@ func (p *Provider) PlanImageImport(ctx context.Context, r app.ImportRequest, exc
 	if p.ImageImports == nil {
 		return app.ImageImportPlan{}, fmt.Errorf("image import unavailable")
 	}
-	req := &wire.ImageImportServicePlanRequest{Input: &wire.ImageImportServiceImportRequest{Context: call(r.Call), Target: target(r.Target), Artifact: artifact(r.Artifact), Architecture: r.Architecture, ProvenanceDigest: r.ProvenanceDigest.Hex()}}
+	req := &wire.ImageImportServicePlanRequest{Input: &wire.ImageImportServiceImportRequest{Context: call(r.Call), Target: target(r.Target), Artifact: artifact(r.Artifact), Architecture: r.Architecture, ProvenanceDigest: r.ProvenanceDigest.Hex(), ConfigurationJson: importConfiguration(r)}}
 	for _, c := range excluded {
 		if string(c.TargetID) != r.Target.ID {
 			return app.ImageImportPlan{}, fmt.Errorf("allocation target mismatch")

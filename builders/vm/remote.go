@@ -11,6 +11,7 @@ import (
 	"time"
 
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -95,7 +96,7 @@ type Relay struct {
 }
 
 func NewRelay(address string, files TLSFiles, kind string) (*Relay, error) {
-	if kind != "ansible" && kind != "dockerfile" {
+	if kind != "ansible" && kind != "dockerfile" && kind != "container-runtime" {
 		return nil, fmt.Errorf("explicit builder kind required")
 	}
 	config, err := files.config(false)
@@ -193,6 +194,9 @@ func (r *Relay) requireKind(recipe *wire.BuildRecipe) error {
 	schema := DockerfileSchema
 	if r.kind == "ansible" {
 		schema = AnsibleSchema
+	}
+	if r.kind == "container-runtime" {
+		schema = containervm.RuntimeBuildSchema
 	}
 	if recipe.GetConfiguration().GetSchema().GetName() != schema {
 		return status.Error(codes.InvalidArgument, "recipe does not match installed builder kind")

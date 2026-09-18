@@ -3,7 +3,9 @@ package controlplane
 import (
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +53,21 @@ func TestPortableBuilderRebindingPreservesSourceAndProjectIsolation(t *testing.T
 	recipe.Builder = "a/local"
 	if _, ok := first.resolveRecipeBuilder(legacy, recipe, "project.a"); !ok {
 		t.Fatal("legacy physical binding lost")
+	}
+}
+
+func TestRuntimeEvidenceDomainAndPluginContractAgree(t *testing.T) {
+	valid := containervm.PackagedImage{SchemaVersion: containervm.PackagedImageVersion, ManifestDigest: "sha256:" + strings.Repeat("a", 64), ConfigDigest: "sha256:" + strings.Repeat("b", 64), BaseSHA256: strings.Repeat("c", 64), AgentSHA256: strings.Repeat("d", 64)}
+	cases := []containervm.PackagedImage{valid}
+	for _, mutate := range []func(*containervm.PackagedImage){func(p *containervm.PackagedImage) { p.ManifestDigest = "sha256:" + p.ManifestDigest }, func(p *containervm.PackagedImage) { p.ConfigDigest = "latest" }, func(p *containervm.PackagedImage) { p.AgentSHA256 = strings.ToUpper(p.AgentSHA256) }, func(p *containervm.PackagedImage) { p.BaseSHA256 = "sha256:" + p.BaseSHA256 }, func(p *containervm.PackagedImage) { p.SchemaVersion = "v0" }} {
+		c := valid
+		mutate(&c)
+		cases = append(cases, c)
+	}
+	for _, wire := range cases {
+		portable := domain.ContainerRuntimeImage(wire)
+		if (wire.Validate() == nil) != (portable.Validate() == nil) {
+			t.Fatal("runtime evidence adapter changed validation")
+		}
 	}
 }

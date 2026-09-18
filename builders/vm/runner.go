@@ -17,6 +17,7 @@ import (
 	"time"
 
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -200,7 +201,7 @@ func (r Runner) Run(ctx context.Context, spec RunSpec, start bool) (RunOutput, e
 		}
 	}
 	expectedMedia := OCIMedia
-	if recipe.Configuration.Schema.Name == AnsibleSchema {
+	if recipe.Configuration.Schema.Name == AnsibleSchema || recipe.Configuration.Schema.Name == containervm.RuntimeBuildSchema {
 		expectedMedia = QcowMedia
 	}
 	if !digestValid(response.Digest) || response.Size == 0 || response.Size > spec.Limits.MaximumOutputBytes || response.MediaType != expectedMedia {

@@ -559,6 +559,9 @@
       "BuildWork": {
         "additionalProperties": false,
         "properties": {
+          "containerRuntime": {
+            "$ref": "#/components/schemas/ContainerRuntimeImage"
+          },
           "contextArtifact": {
             "type": "string"
           },
@@ -668,6 +671,34 @@
         },
         "required": [
           "userCode"
+        ],
+        "type": "object"
+      },
+      "ContainerRuntimeImage": {
+        "additionalProperties": false,
+        "properties": {
+          "agentSHA256": {
+            "type": "string"
+          },
+          "baseSHA256": {
+            "type": "string"
+          },
+          "configDigest": {
+            "type": "string"
+          },
+          "manifestDigest": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "manifestDigest",
+          "configDigest",
+          "baseSHA256",
+          "agentSHA256"
         ],
         "type": "object"
       },
