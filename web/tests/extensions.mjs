@@ -51,6 +51,15 @@ try {
    // A new document in the same frame must not inherit an authorized channel.
    await contribution.evaluate(()=>location.reload());
    await page.getByRole('alert').filter({hasText:'Extension navigation ended its connection.'}).waitFor();
+   await page.getByRole('link',{name:'Independent feature fixture',exact:true}).click();
+   const feature=page.frameLocator('iframe[title="Independent feature fixture"]');
+   await feature.locator('#project').filter({hasText:'project.local'}).waitFor();
+   await feature.getByRole('button',{name:'Create fixture template'}).click();
+   await feature.locator('#created').filter({hasText:'Created'}).waitFor();
+   await feature.getByRole('button',{name:'Probe foreign project'}).click();
+   await feature.locator('#denied').filter({hasText:'Denied'}).waitFor();
+   await page.goto(origin+'/feature/?contribution=missing/page');
+   await page.getByText('This feature is not installed or is unavailable.',{exact:true}).waitFor();
    console.log(`PASS: ${name} independently installed browser package, opaque origin, denied bridge/network and navigation invalidation`);
   }finally{await browser.close();}
  }

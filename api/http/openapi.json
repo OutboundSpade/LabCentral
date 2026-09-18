@@ -569,6 +569,26 @@
         ],
         "type": "object"
       },
+      "BuilderRequirement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "schema"
+        ],
+        "type": "object"
+      },
       "ClientOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -759,6 +779,48 @@
           "session",
           "launchUrl",
           "oneTimeToken"
+        ],
+        "type": "object"
+      },
+      "CreateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/CreateInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "binding": {
+            "maxLength": 257,
+            "minLength": 1,
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "default": 900,
+            "format": "int32",
+            "maximum": 86400,
+            "minimum": 60,
+            "type": "integer"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reference": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "binding",
+          "reference"
         ],
         "type": "object"
       },
@@ -1326,6 +1388,9 @@
             "$ref": "#/components/schemas/ImportWork"
           },
           "kind": {
+            "type": "string"
+          },
+          "libraryId": {
             "type": "string"
           },
           "pluginDigest": {
@@ -2646,6 +2711,88 @@
         ],
         "type": "object"
       },
+      "LibraryEntriesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/LibraryEntriesOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryEntry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "LibraryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "commit": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "revisionId": {
+            "type": "string"
+          },
+          "templateId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "templateId",
+          "revisionId",
+          "available",
+          "commit"
+        ],
+        "type": "object"
+      },
+      "LibraryListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/LibraryListOutputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateLibrary"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "LifetimePolicyMutationBody": {
         "additionalProperties": false,
         "properties": {
@@ -3082,6 +3229,27 @@
         ],
         "type": "object"
       },
+      "PauseInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/PauseInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "type": "object"
+      },
       "PlanResult": {
         "additionalProperties": false,
         "properties": {
@@ -3128,6 +3296,136 @@
           "providerKind",
           "resources",
           "warnings"
+        ],
+        "type": "object"
+      },
+      "PortableExportBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/PortableExportBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "archive": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "archive",
+          "filename"
+        ],
+        "type": "object"
+      },
+      "PortablePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/PortablePreview.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "builders": {
+            "items": {
+              "$ref": "#/components/schemas/BuilderRequirement"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/SourceDependency"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "entrypoint": {
+            "type": "string"
+          },
+          "fileCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "requiredCapabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sourceBytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unresolvedBuilders": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "apiVersion",
+          "entrypoint",
+          "fileCount",
+          "sourceBytes",
+          "dependencies",
+          "builders",
+          "unresolvedBuilders",
+          "requiredCapabilities"
+        ],
+        "type": "object"
+      },
+      "PortablePreviewInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/PortablePreviewInputBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "archive": {
+            "contentEncoding": "base64",
+            "type": "string"
+          },
+          "projectId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "archive"
         ],
         "type": "object"
       },
@@ -3253,6 +3551,27 @@
         },
         "required": [
           "source"
+        ],
+        "type": "object"
+      },
+      "Post-template-libraries-by-id-scheduleResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Post-template-libraries-by-id-scheduleResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
         ],
         "type": "object"
       },
@@ -4147,11 +4466,44 @@
           },
           "binding": {
             "type": "string"
+          },
+          "collections": {
+            "type": "boolean"
           }
         },
         "required": [
+          "collections",
           "binding",
           "available"
+        ],
+        "type": "object"
+      },
+      "SourceDependency": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "requires": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "root": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "root",
+          "sha256"
         ],
         "type": "object"
       },
@@ -4342,6 +4694,67 @@
         "required": [
           "source",
           "parameters"
+        ],
+        "type": "object"
+      },
+      "TemplateLibrary": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/TemplateLibrary.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "binding": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nextSyncAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "pauseReason": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "resourceVersion": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "authorId",
+          "binding",
+          "reference",
+          "intervalSeconds",
+          "paused",
+          "nextSyncAt",
+          "resourceVersion"
         ],
         "type": "object"
       },
@@ -7271,6 +7684,17 @@
     "/lab-instances": {
       "get": {
         "operationId": "get-lab-instances",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7920,8 +8344,7 @@
             },
             "description": "Error"
           }
-        },
-        "summary": "Post lab templates by ID bundle revisions"
+        }
       }
     },
     "/lab-templates/{id}/revisions": {
@@ -8174,6 +8597,64 @@
           }
         },
         "summary": "Get lab templates by ID revisions by revision ID content"
+      }
+    },
+    "/lab-templates/{id}/revisions/{revisionId}/export": {
+      "get": {
+        "operationId": "get-lab-templates-by-id-revisions-by-revision-id-export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revisionId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortableExportBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get lab templates by ID revisions by revision ID export"
       }
     },
     "/lab-validations": {
@@ -10095,6 +10576,345 @@
           }
         },
         "summary": "Put teams by ID"
+      }
+    },
+    "/template-import-previews": {
+      "post": {
+        "operationId": "preview-template-import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortablePreviewInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortablePreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/template-libraries": {
+      "get": {
+        "operationId": "get-template-libraries",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get template libraries"
+      },
+      "post": {
+        "operationId": "post-template-libraries",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateLibrary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post template libraries"
+      }
+    },
+    "/template-libraries/{id}/entries": {
+      "get": {
+        "operationId": "get-template-libraries-by-id-entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryEntriesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get template libraries by ID entries"
+      }
+    },
+    "/template-libraries/{id}/history": {
+      "get": {
+        "operationId": "get-template-libraries-by-id-history",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWorkListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get template libraries by ID history"
+      }
+    },
+    "/template-libraries/{id}/schedule": {
+      "post": {
+        "operationId": "post-template-libraries-by-id-schedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post-template-libraries-by-id-scheduleResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post template libraries by ID schedule"
+      }
+    },
+    "/template-libraries/{id}/sync": {
+      "post": {
+        "operationId": "post-template-libraries-by-id-sync",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post template libraries by ID sync"
       }
     },
     "/users": {

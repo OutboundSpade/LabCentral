@@ -1,6 +1,96 @@
 formatVersion: 1
-lastUpdated: "2026-09-17"
+lastUpdated: "2026-09-18"
 tasks:
+  - id: TASK-TEMPLATE-001
+    title: Record portable template and collaboration contracts
+    status: complete
+    dependencies: [TASK-EXT-009]
+    relatedAdrs: [ADR-0026, ADR-0027, ADR-0028, ADR-0029]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Record the accepted kernel/feature boundaries, source-only portability, production build/import and collaboration decisions with explicit compatibility.
+      - Keep requirements, ADR supersession links, design documentation and executable contracts consistent.
+  - id: TASK-TEMPLATE-002
+    title: Extend the isolated feature plugin host
+    status: complete
+    dependencies: [TASK-TEMPLATE-001]
+    relatedAdrs: [ADR-0026]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Add top-level page and navigation contributions plus bounded typed permission-declared host operations through authorized Huma APIs.
+      - Prove existing slots remain compatible and core-only operation remains available when feature packages are absent.
+  - id: TASK-TEMPLATE-003
+    title: Implement portable composed source packages
+    status: complete
+    dependencies: [TASK-TEMPLATE-002]
+    relatedAdrs: [ADR-0027]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Implement deterministic source packaging, pinned vendored component/recipe dependencies, logical builder requirements, import preview and authorized export.
+      - Reject cycles, unsafe archives and image-containing exports; preserve old bundle and renderer semantics.
+  - id: TASK-TEMPLATE-004
+    title: Implement GitHub library synchronization
+    status: complete
+    dependencies: [TASK-TEMPLATE-003]
+    relatedAdrs: [ADR-0027]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Resolve collections to one commit; validate before atomic publication with stable source keys, unchanged-content deduplication and retained removed entries.
+      - Implement manual and fifteen-minute scheduled sync with durable fencing, backoff, authority rechecks and public/private configured GitHub transport.
+  - id: TASK-TEMPLATE-005
+    title: Implement disposable Ansible and Dockerfile builders
+    status: in_progress
+    dependencies: [TASK-TEMPLATE-004]
+    relatedAdrs: [ADR-0028]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Build Linux amd64 qcow2 and OCI outputs inside isolated disposable VMs with enforced limits, controlled downloads, pinned inputs and provenance.
+      - Support dependency builds, effective-input deduplication, original invocation recovery, shared cancellation and cleanup without provider/control credentials.
+  - id: TASK-TEMPLATE-006
+    title: Implement qualified Proxmox image preparation
+    status: proposed
+    dependencies: [TASK-TEMPLATE-005]
+    relatedAdrs: [ADR-0028]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Implement owned restart-safe imports, per-resource image bindings, container-runtime packaging, approval waiting and explicit reference-aware retirement.
+      - Qualify changed provider/import paths before live use while preserving static-template behavior and existing instances.
+  - id: TASK-COLLAB-001
+    title: Implement self-service project groups and team launches
+    status: proposed
+    dependencies: [TASK-TEMPLATE-006]
+    relatedAdrs: [ADR-0029]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Administrators create groups and control enrollment; eligible users join or leave with one active group per project and no role escalation.
+      - Preserve team-owned labs across departure, revoke access and recheck membership for explicit team-owned preparation and admission.
+  - id: TASK-COLLAB-002
+    title: Implement shared console presence and fenced driver control
+    status: proposed
+    dependencies: [TASK-COLLAB-001]
+    relatedAdrs: [ADR-0029]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Provide per-user shared viewing and take/release control with exactly one input-authorized session per VM generation.
+      - Enforce RFB input permissions in the access plugin and test takeover, departure, revocation, reconnect and outages without recording screen contents.
+  - id: TASK-TEMPLATE-007
+    title: Deliver independent Library Teams and Classroom packages
+    status: proposed
+    dependencies: [TASK-COLLAB-002]
+    relatedAdrs: [ADR-0026, ADR-0027, ADR-0029]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Ship Template Library and Teams as independently installed packages; make Classroom optional while preserving existing workflows and routes.
+      - Prove independent installation against unchanged prebuilt core/UI and cross-browser feature behavior.
+  - id: TASK-TEMPLATE-008
+    title: Verify publish and deploy the template collaboration release
+    status: proposed
+    dependencies: [TASK-TEMPLATE-007]
+    relatedAdrs: [ADR-0026, ADR-0027, ADR-0028, ADR-0029]
+    relatedDocuments: [docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Pass affected race/database parity, contract/API, browser, release, migration/rollback and exact-target qualification gates.
+      - Push verified work to main and deploy exact tested artifacts to the private testbed with a consistent backup, retained user data and focused build/collaboration smoke tests.
   - id: TASK-UI-010
     title: Delete API clients and clarify container deployment compatibility
     status: complete

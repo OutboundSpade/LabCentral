@@ -341,7 +341,9 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		return &struct{ Body InstanceBatchDTO }{Body: body}, nil
 	})
 
-	huma.Get(api, "/lab-instances", func(ctx context.Context, _ *struct{}) (*struct {
+	huma.Get(api, "/lab-instances", func(ctx context.Context, input *struct {
+		ProjectID string `query:"projectId" maxLength:"128"`
+	}) (*struct {
 		Body struct {
 			Items      []InstanceDTO `json:"items"`
 			NextCursor string        `json:"nextCursor,omitempty"`
@@ -373,6 +375,9 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		}{}
 		output.Body.Items = make([]InstanceDTO, 0, len(instances))
 		for _, instance := range instances {
+			if input.ProjectID != "" && string(instance.ProjectID) != input.ProjectID {
+				continue
+			}
 			_, resources, err := service.GetInstance(ctx, instance.ID)
 			if err != nil {
 				return nil, apiError(err)

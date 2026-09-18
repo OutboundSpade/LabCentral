@@ -1,10 +1,31 @@
 # LabCentral project state
 
-**Updated:** 2026-09-17
+**Updated:** 2026-09-18
 
 LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
 quotas, lifetime and ownership; plugins translate infrastructure operations.
+
+## Portable templates and collaboration
+
+The owner accepted ADR-0026–ADR-0029 and the dependency-ordered
+`TASK-TEMPLATE-001`–`TASK-TEMPLATE-008`, `TASK-COLLAB-001` and `TASK-COLLAB-002`.
+Contract decisions and consistency checks are complete (`TASK-TEMPLATE-001`);
+the feature host (`TASK-TEMPLATE-002`) is complete. Installed pages, project-bound
+typed API calls and denied cross-project bridge requests passed manifest/API,
+Svelte type/build, independent-package and three-browser navigation checks.
+Source packaging (`TASK-TEMPLATE-003`) is complete: deterministic locked source
+archives, component/recipe composition, logical builder rebinding, authorized
+export and import preview passed package/renderer/API/CLI tests, including import
+into a fresh installation. GitHub synchronization (`TASK-TEMPLATE-004`) is
+implemented: optional collection resolution, pinned recovery, atomic publication,
+retained upstream removals, schedules and revocation passed source/API and
+SQLite/PostgreSQL race tests. Isolated builders (`TASK-TEMPLATE-005`) are next. Portable exports contain build source and pinned source dependencies,
+never VM/OCI images. The target release adds
+GitHub synchronization, isolated builders, Proxmox imports, optional feature
+packages, project groups and fenced shared-console control. The new packages have not yet been deployed; live build/import and collaboration
+acceptance remain part of the release gate. See
+[the implementation contract](docs/design/portable-template-collaboration.md).
 
 ## Independently installed extensions
 
@@ -93,7 +114,8 @@ provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 
 ## Next action and production gates
 
-The extension implementation and authorized testbed rollout are complete. Continue `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
+Continue the dependency-ordered template/collaboration tasks, starting with
+`TASK-TEMPLATE-003`. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
 Within-lab parallel branches need multi-invocation recovery before implementation.

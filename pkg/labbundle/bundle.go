@@ -34,6 +34,7 @@ type Provenance struct {
 	ResolvedIdentity string `yaml:"resolvedIdentity" json:"resolvedIdentity"`
 }
 type Manifest struct {
+	Package    *SourcePackage `yaml:"package,omitempty" json:"package,omitempty"`
 	Builds     *BuildMetadata `yaml:"builds,omitempty" json:"builds,omitempty"`
 	APIVersion string         `yaml:"apiVersion" json:"apiVersion"`
 	Kind       string         `yaml:"kind" json:"kind"`
@@ -43,8 +44,9 @@ type Manifest struct {
 	Provenance *Provenance    `yaml:"provenance,omitempty" json:"provenance,omitempty"`
 }
 type Bundle struct {
-	Manifest Manifest
-	Files    map[string][]byte
+	ResolvedBuilds *BuildMetadata
+	Manifest       Manifest
+	Files          map[string][]byte
 }
 
 func Archive(data []byte) bool { return len(data) > 1 && data[0] == 0x1f && data[1] == 0x8b }
@@ -168,7 +170,7 @@ func Read(data []byte) (Bundle, error) {
 		return result, fmt.Errorf("multiple manifest documents")
 	}
 	m := result.Manifest
-	if m.APIVersion != "labcentral.bundle/v1alpha1" || m.Kind != "LabBundle" || !ValidPath(m.Entrypoint) || m.Entrypoint == "bundle.yaml" || len(m.Files) != len(result.Files)-1 {
+	if (m.APIVersion != "labcentral.bundle/v1alpha1" && m.APIVersion != PortableVersion) || m.Kind != "LabBundle" || !ValidPath(m.Entrypoint) || m.Entrypoint == "bundle.yaml" || len(m.Files) != len(result.Files)-1 {
 		return result, fmt.Errorf("invalid bundle manifest")
 	}
 	declared := map[string]bool{}
@@ -187,6 +189,9 @@ func Read(data []byte) (Bundle, error) {
 	}
 	if !declared[m.Entrypoint] || (m.TotalBytes != 0 && m.TotalBytes != total) {
 		return result, fmt.Errorf("bundle entrypoint or byte count mismatch")
+	}
+	if err := result.validatePortable(); err != nil {
+		return result, err
 	}
 	return result, result.ValidateBuilds()
 }

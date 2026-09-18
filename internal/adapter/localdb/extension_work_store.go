@@ -106,6 +106,27 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 		if e := s.requireExtensionAuthorTx(ctx, tx, w.ProjectID, w.ActorID); e != nil {
 			return e
 		}
+		if w.Request.LibraryID != "" {
+			lock := ""
+			if s.dialect == jobsdb.DialectPostgreSQL {
+				lock = " FOR UPDATE"
+			}
+			library, e := scanLibrary(tx.QueryRowContext(ctx, s.bind(`SELECT `+libraryColumns+` FROM labcentral_template_libraries WHERE library_id=?`+lock), w.Request.LibraryID))
+			if e != nil {
+				return e
+			}
+			if library.ProjectID != w.ProjectID || library.AuthorID != w.ActorID || library.Binding != w.Request.PluginInstance+"/"+w.Request.BindingID || library.Reference != w.Request.Reference || w.Request.Kind != domain.WorkSource || w.Request.TemplateID != "" {
+				return app.ErrNotFound
+			}
+			existing, e := scanExtensionWork(tx.QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id JOIN labcentral_library_syncs ls ON ls.operation_id=w.operation_id WHERE ls.library_id=? AND j.state IN('queued','running') ORDER BY w.created_at_us LIMIT 1`), library.ID))
+			if e == nil {
+				out = existing
+				return s.bindIdempotency(ctx, tx, w.ActorID, "extension."+string(w.Request.Kind), r.IdempotencyKey, r.RequestDigest, string(out.ID))
+			}
+			if !errors.Is(e, app.ErrNotFound) {
+				return e
+			}
+		}
 		if w.Request.DedupKey != "" {
 			var old domain.OperationID
 			e := tx.QueryRowContext(ctx, s.bind(`SELECT d.operation_id FROM labcentral_extension_dedup d JOIN labcentral_jobs j ON j.operation_id=d.operation_id WHERE d.project_id=? AND d.kind=? AND d.dedup_key=? AND j.state IN ('queued','running','succeeded')`), w.ProjectID, w.Request.Kind, w.Request.DedupKey).Scan(&old)
@@ -137,6 +158,14 @@ func (s *Store) CreateExtensionWork(ctx context.Context, r app.CreateExtensionWo
 		}
 		if _, e := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_extension_work(operation_id,project_id,actor_id,invocation_id,plugin_instance,binding_id,request_json,created_at_us) VALUES(?,?,?,?,?,?,?,`+s.nowMicros()+`)`), w.ID, w.ProjectID, w.ActorID, w.InvocationID, w.Request.PluginInstance, w.Request.BindingID, string(payload)); e != nil {
 			return e
+		}
+		if w.Request.LibraryID != "" {
+			if _, e := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_library_syncs(operation_id,library_id) VALUES(?,?)`), w.ID, w.Request.LibraryID); e != nil {
+				return e
+			}
+			if _, e := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_template_libraries SET next_sync_at_us=`+s.nowMicros()+`+interval_seconds*1000000 WHERE library_id=?`), w.Request.LibraryID); e != nil {
+				return e
+			}
 		}
 		if w.Request.Build != nil {
 			if _, e := tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_extension_artifact_refs(operation_id,artifact_ref) VALUES(?,?)`), w.ID, w.Request.Build.ContextArtifact); e != nil {

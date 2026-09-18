@@ -440,6 +440,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	workerDone := make(chan error, 1)
 	go func() { workerDone <- worker.Run(workerContext) }()
 	go control.RunBuildWork(workerContext, configuration.replicaID+"-build", func(err error) { logger.Error("build operation requires recovery") })
+	go control.RunLibrarySchedules(workerContext, func(err error) { logger.Error("library schedule requires attention") })
 	go control.RunSourceWork(workerContext, configuration.replicaID+"-source", func(err error) { logger.Error("source operation requires recovery") })
 
 	browserViews, inventory, stopAssets, err := startExtensionAssets(ctx, configuration, extensions)

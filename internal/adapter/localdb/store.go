@@ -218,6 +218,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, "0017_build_orchestration", buildMigration()); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, "0018_template_libraries", libraryMigration()); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 

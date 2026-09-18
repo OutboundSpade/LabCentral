@@ -1,4 +1,25 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { page } from "$app/state";
+  import { api } from "./api";
+  import type { components } from "./api.generated";
+  let featurePages = $state<components["schemas"]["BrowserExtensionDTO"][]>([]);
+  onMount(() => {
+    const abort = new AbortController();
+    let pending = false;
+    const refresh = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const result = await api<{items: typeof featurePages}>("/extensions/browser", {signal: abort.signal});
+        if (!abort.signal.aborted) featurePages = result.items.filter(e => e.slot === "page");
+      } catch { if (!abort.signal.aborted) featurePages = []; }
+      finally { pending = false; }
+    };
+    void refresh();
+    const interval = setInterval(() => void refresh(), 10000);
+    return () => {abort.abort(); clearInterval(interval);};
+  });
   import {
     LayoutDashboard,
     BookOpen,
@@ -96,6 +117,13 @@
 
 <nav aria-label="Main navigation">
   <ul class="menu w-full gap-1">
+    {#if featurePages.length}
+      <li class="menu-title mt-4 text-xs">FEATURES</li>
+      {#each featurePages as feature (`${feature.pluginInstance}/${feature.id}`)}
+        {@const active = view === "feature" && page.url.searchParams.get("contribution") === `${feature.pluginInstance}/${feature.id}`}
+        <li><a href={`/feature/?contribution=${encodeURIComponent(`${feature.pluginInstance}/${feature.id}`)}`} class:menu-active={active} aria-current={active ? "page" : undefined}><Plug size={18} />{feature.title}</a></li>
+      {/each}
+    {/if}
     {#each groups as group}
       {#if group.items.length}<li class="menu-title mt-4 text-xs">
           {group.title}

@@ -17,6 +17,7 @@ type extensionWorkList struct {
 
 func registerSourceOperations(api huma.API, s *controlplane.Service, security *requestSecurity) {
 	registerBuildOperations(api, s, security)
+	registerLibraries(api, s, security)
 	type resolveInput struct {
 		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
 		Body           struct {

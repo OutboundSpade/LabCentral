@@ -13,6 +13,7 @@ export const routeViews = {
   device: "device",
   account: "account",
   extension: "extension",
+  feature: "feature",
 } as const;
 export type View = (typeof routeViews)[keyof typeof routeViews];
 export const titles: Record<View, string> = {
@@ -29,6 +30,7 @@ export const titles: Record<View, string> = {
   device: "Authorize an application",
   account: "Your settings",
   extension: "Lab access",
+  feature: "Extensions",
 };
 export const isGlobalView = (view: View) =>
   [

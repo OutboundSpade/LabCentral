@@ -200,7 +200,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 		if e != nil {
 			return e
 		}
-		for _, recipe := range bundle.Manifest.Builds.Recipes {
+		for _, recipe := range bundle.Builds().Recipes {
 			build, e := s.RequestBuild(ctx, c.Work.ActorID, c.Work.ProjectID, r.RevisionID, recipe.ID, string(c.Work.ID)+".build."+recipe.ID)
 			if e != nil {
 				return e

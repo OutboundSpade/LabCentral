@@ -1,0 +1,6 @@
+apiVersion: labcentral.library/v1
+templates:
+  - key: composed-network
+    name: composed-network
+    description: A private network composed from a pinned reusable component.
+    root: composed-network

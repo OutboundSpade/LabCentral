@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { featurePermissions, featureRequest } from "./extension-bridge";
   import { presentAccess } from "./access-navigation";
   import { onMount } from "svelte";
   import { goto, beforeNavigate } from "$app/navigation";
@@ -6,7 +7,7 @@
   import type { components } from "./api.generated";
   type Extension = components["schemas"]["BrowserExtensionDTO"];
   type Topology = components["schemas"]["Topology"];
-  let { extension, instanceId = "", resourceId = "", initialSessionId = "" }: { extension: Extension; instanceId?: string; resourceId?:string; initialSessionId?:string } = $props();
+  let { extension, instanceId = "", resourceId = "", initialSessionId = "", projectId = "" }: { extension: Extension; instanceId?: string; resourceId?:string; initialSessionId?:string; projectId?:string } = $props();
   let frame = $state<HTMLIFrameElement>();
   let error = $state("");
   let disconnect = () => {};
@@ -21,6 +22,7 @@
     const closeStreams = () => { for (const stream of streams.values()) stream.socket.close(); streams.clear(); };
     const permissions = new Set(extension.permissions);
     const required: Record<string, string> = {
+      ...featurePermissions,
       "access.stream.write": "access.stream", "access.stream.close": "access.stream",
       "context.read": "context.read", "topology.read": "topology.read",
       "status.read": "status.read", "navigation.lab": "navigation.lab", "access.create": "access.create",
@@ -42,8 +44,16 @@
         }
         pending++;
         try {
+          if (!(data.data instanceof ArrayBuffer) && JSON.stringify(data).length > (12 << 20)) throw new Error("Request exceeds limit");
           let result: unknown;
-          if (data.method === "context.read") result = { instanceId, resourceId, pluginInstance: extension.pluginInstance };
+          if (data.method === "context.read") result = { instanceId, resourceId, projectId, pluginInstance: extension.pluginInstance, hostVersion: 2, methods: Object.keys(required).filter(method => permissions.has(required[method])) };
+          else if (featurePermissions[data.method]) {
+            if (extension.slot !== "page") throw new Error("Feature operation requires a page contribution");
+            const request = featureRequest(data.method, data.input, {projectId});
+            result = await api(request.path, {method: request.method, signal: abort.signal,
+              headers: request.method === "POST" ? {...mutationHeaders(), "Idempotency-Key": request.idempotencyKey!} : undefined,
+              body: request.body ? JSON.stringify(request.body) : undefined});
+          }
           else if (data.method === "topology.read" || data.method === "status.read") {
             if (!instanceId) throw new Error("No lab context");
             result = await api<Topology>(`/lab-instances/${encodeURIComponent(instanceId)}/topology`, { signal: abort.signal });
@@ -118,4 +128,4 @@
   });
 </script>
 {#if error}<p role="alert" class="text-error">{error}</p>{/if}
-<iframe bind:this={frame} src={extension.url} title={extension.title} sandbox="allow-scripts" referrerpolicy="no-referrer" class="h-96 w-full rounded-box border border-base-300"></iframe>
+<iframe bind:this={frame} src={extension.url} title={extension.title} sandbox="allow-scripts" referrerpolicy="no-referrer" class="w-full rounded-box border border-base-300" style:height={extension.slot === "page" ? "75vh" : "24rem"}></iframe>

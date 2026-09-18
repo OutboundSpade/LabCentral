@@ -51,3 +51,7 @@ Canonical resources use the stable topological apply order. Ready-node ties sort
 Component arguments are literals or direct lexical bindings to declared root `params.<name>` values and the current iteration variables. Component child names are qualified by the use name and stable iteration key; invalid or oversized keys use a deterministic 128-bit SHA-256 suffix. A `secretRef` component argument may bind only to a declared root secret reference. Only its `{source,name,key}` identity reaches canonical bytes; secret material never enters CEL or canonical output.
 
 The executable golden catalog is [`schemas/fixtures/canonical/vectors.yaml`](../../schemas/fixtures/canonical/vectors.yaml). It covers object order, YAML anchors/aliases, equivalent number forms/negative zero, and Unicode. [`tools/jcs.mjs`](../../tools/jcs.mjs) is a design-contract oracle used only to verify those vectors; the Go implementation must reproduce the bytes/digests independently and pass the same fixtures.
+
+## Portable composed sources
+
+ADR-0027 adds versioned digest-locked source composition and logical builder requirements without reinterpreting existing immutable revisions. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).

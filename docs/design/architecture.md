@@ -42,3 +42,7 @@ Huma route registration is the API authority. `tools/openapi` exports `api/http/
 The static SvelteKit UI currently implements authentication/project selection, target selection, source and typed parameter editing, plan/create/destroy, instance status, and browser console launch. Broader template/governance administration exists in the API; dedicated UI screens are future work. The UI calls only the product API and uses relative URLs under `/api/v1`.
 
 See [plugin installation](../operations/plugin-installation.md), [application ports](domain-ports.md), [compatibility](../compatibility.md), and [project state](../../PROJECT_STATE.md) for the operational and implementation contract.
+
+## Kernel and optional product features
+
+ADR-0026 preserves the modular control plane while moving Library, Teams and Classroom workflows into independent feature packages. Authorization, durable coordination and typed semantics remain core-owned. The target contract is defined in [portable templates and collaboration](portable-template-collaboration.md).

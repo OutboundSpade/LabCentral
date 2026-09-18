@@ -3,7 +3,6 @@ package render
 import (
 	"context"
 	"fmt"
-	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 )
@@ -20,11 +19,7 @@ func (r *Renderer) PrepareTemplate(ctx context.Context, source []byte) (Template
 	if err := ctx.Err(); err != nil {
 		return TemplateRepresentation{}, err
 	}
-	entry, _, err := labbundle.Source(source)
-	if err != nil {
-		return TemplateRepresentation{}, err
-	}
-	document, err := ParseYAML(entry, r.limits.Parse)
+	document, err := packageDocument(source, r.limits.Parse)
 	if err != nil {
 		return TemplateRepresentation{}, err
 	}
@@ -61,14 +56,24 @@ func (r *Renderer) PrepareTemplate(ctx context.Context, source []byte) (Template
 // RendererVersion is a semantics identifier, not the product build version.
 // A future semantic change must retain this implementation for old revisions.
 func (r *Renderer) RenderVersion(ctx context.Context, version string, revision domain.RevisionContent, inputs domain.TypedInputs, policy domain.RenderPolicy) (domain.CanonicalLab, domain.RenderReport, error) {
-	if version != "" && version != RendererVersion && version != BuildRendererVersion {
+	if version != "" && version != RendererVersion && version != BuildRendererVersion && version != PackageRendererVersion {
 		return domain.CanonicalLab{}, domain.RenderReport{}, fmt.Errorf("unsupported renderer semantics %q", version)
 	}
-	if version != BuildRendererVersion && len(policy.BuildImages) > 0 {
+	if version != "" && version != BuildRendererVersion && version != PackageRendererVersion && len(policy.BuildImages) > 0 {
 		return domain.CanonicalLab{}, domain.RenderReport{}, fmt.Errorf("build resolution requires versioned semantics")
 	}
+	actual, err := BundleRendererVersion(revision.VerifiedBundle)
+	if err != nil {
+		return domain.CanonicalLab{}, domain.RenderReport{}, err
+	}
+	if version == "" && actual == RendererVersion && len(policy.BuildImages) > 0 {
+		return domain.CanonicalLab{}, domain.RenderReport{}, fmt.Errorf("build resolution requires versioned semantics")
+	}
+	if (actual == PackageRendererVersion || version == PackageRendererVersion) && version != "" && actual != version {
+		return domain.CanonicalLab{}, domain.RenderReport{}, fmt.Errorf("package requires its stored renderer semantics")
+	}
 	result, report, err := r.Render(ctx, revision, inputs, policy)
-	if version == BuildRendererVersion {
+	if version == BuildRendererVersion || version == PackageRendererVersion {
 		result.RendererVersion = version
 	}
 	return result, report, err

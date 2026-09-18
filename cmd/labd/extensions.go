@@ -18,6 +18,7 @@ import (
 )
 
 type extensionBinding struct {
+	Requirement    string                `json:"requirement,omitempty"`
 	ID             string                `json:"id"`
 	ProjectIDs     []string              `json:"projectIds"`
 	Configuration  json.RawMessage       `json:"configuration"`
@@ -175,6 +176,9 @@ func loadInstalledExtensions(ctx context.Context, cfg config, runtimeParent stri
 				if l == nil || l.TimeoutSeconds == 0 || l.TimeoutSeconds > 86400 || l.CPUCount == 0 || l.CPUCount > 256 || l.MemoryBytes == 0 || l.InputBytes == 0 || l.OutputBytes == 0 || l.Egress == nil || len(l.Egress) > 64 {
 					return result, fmt.Errorf("builder requires explicit bounded time, CPU, memory, input, output and egress limits")
 				}
+			}
+			if binding.Requirement != "" && (category != "builder" || len(binding.Requirement) > 64) {
+				return result, fmt.Errorf("logical requirement requires a bounded builder identity")
 			}
 			if category == "source" && binding.Limits != nil {
 				return result, fmt.Errorf("build limits require builder")

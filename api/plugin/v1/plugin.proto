@@ -597,6 +597,7 @@ message SourceServiceGetInvocationRequest {
 message SourceServiceGetInvocationResponse {
   string state = 1;
   SourceServiceResolveResponse result = 2;
+  SourceServiceResolveCollectionResponse collection = 3;
 }
 message SourceServiceCancelRequest {
   CallContext context = 1;
@@ -604,7 +605,28 @@ message SourceServiceCancelRequest {
 message SourceServiceCancelResponse {
   string outcome = 1;
 }
+// Optional source-collection-v1 capability. Every entry comes from one identity.
+message SourceCollectionEntry {
+  string key = 1;
+  string name = 2;
+  string description = 3;
+  ArtifactHandle bundle = 4;
+}
+message SourceServiceResolveCollectionRequest {
+  CallContext context = 1;
+  string binding_id = 2;
+  string reference = 3;
+  ExtensionConfiguration configuration = 4;
+  bytes credential_envelope = 5;
+}
+message SourceServiceResolveCollectionResponse {
+  string resolved_identity = 1;
+  string provenance_digest = 2;
+  repeated SourceCollectionEntry entries = 3;
+  StructuredError error = 4;
+}
 service SourceService {
+  rpc ResolveCollection(SourceServiceResolveCollectionRequest) returns (SourceServiceResolveCollectionResponse);
   rpc Resolve(SourceServiceResolveRequest) returns (SourceServiceResolveResponse);
   rpc GetInvocation(SourceServiceGetInvocationRequest) returns (SourceServiceGetInvocationResponse);
   rpc Cancel(SourceServiceCancelRequest) returns (SourceServiceCancelResponse);

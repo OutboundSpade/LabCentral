@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-17
 - **Supersedes:** ADR-0015 (provider-only installation scope); ADR-0009 (built-in-only browser contributions)
-- **Superseded by:** None
+- **Superseded by:** ADR-0026 (only the scope explicitly identified there)
 
 ## Decision
 

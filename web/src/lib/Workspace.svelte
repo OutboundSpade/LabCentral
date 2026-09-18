@@ -1,4 +1,5 @@
 <script lang="ts">
+ import ExtensionPage from "./ExtensionPage.svelte";
  import ExtensionAccessView from "./ExtensionAccessView.svelte";
  import DeviceAuthorization from "./DeviceAuthorization.svelte";
  import GatewayGrants from "./GatewayGrants.svelte";
@@ -1372,6 +1373,7 @@
               </div>
             </form>
           </div>
+        {:else if view === "feature"}<ExtensionPage contribution={page.url.searchParams.get("contribution") ?? ""} {projectId} />
         {:else if view === "extension"}{#key page.url.searchParams.get("session")}<ExtensionAccessView sessionId={page.url.searchParams.get("session")??""} />{/key}
  {:else if view === "device"}<DeviceAuthorization />
  {:else if view === "account"}<GatewayGrants />

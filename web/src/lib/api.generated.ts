@@ -909,7 +909,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Post lab templates by ID bundle revisions */
         post: operations["post-lab-templates-by-id-bundle-revisions"];
         delete?: never;
         options?: never;
@@ -961,6 +960,23 @@ export interface paths {
         };
         /** Get lab templates by ID revisions by revision ID content */
         get: operations["get-lab-templates-by-id-revisions-by-revision-id-content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab-templates/{id}/revisions/{revisionId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get lab templates by ID revisions by revision ID export */
+        get: operations["get-lab-templates-by-id-revisions-by-revision-id-export"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1468,6 +1484,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/template-import-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview-template-import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/template-libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get template libraries */
+        get: operations["get-template-libraries"];
+        put?: never;
+        /** Post template libraries */
+        post: operations["post-template-libraries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/template-libraries/{id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get template libraries by ID entries */
+        get: operations["get-template-libraries-by-id-entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/template-libraries/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get template libraries by ID history */
+        get: operations["get-template-libraries-by-id-history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/template-libraries/{id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post template libraries by ID schedule */
+        post: operations["post-template-libraries-by-id-schedule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/template-libraries/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post template libraries by ID sync */
+        post: operations["post-template-libraries-by-id-sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1705,6 +1823,11 @@ export interface components {
             recipeDigest: string;
             revisionId: string;
         };
+        BuilderRequirement: {
+            id: string;
+            kind: string;
+            schema: string;
+        };
         ClientOutputBody: {
             /**
              * Format: uri
@@ -1769,6 +1892,22 @@ export interface components {
             launchUrl: string;
             oneTimeToken: string;
             session: components["schemas"]["AccessSessionDTO"];
+        };
+        CreateInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/CreateInputBody.json
+             */
+            readonly $schema?: string;
+            binding: string;
+            /**
+             * Format: int32
+             * @default 900
+             */
+            intervalSeconds: number;
+            projectId: string;
+            reference: string;
         };
         CreateTemplateInputBody: {
             /**
@@ -1975,6 +2114,7 @@ export interface components {
             dedupKey?: string;
             import?: components["schemas"]["ImportWork"];
             kind: string;
+            libraryId?: string;
             pluginDigest: string;
             pluginInstance: string;
             preparation?: components["schemas"]["PreparationWork"];
@@ -2382,6 +2522,31 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        LibraryEntriesOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/LibraryEntriesOutputBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["LibraryEntry"][] | null;
+        };
+        LibraryEntry: {
+            available: boolean;
+            commit: string;
+            key: string;
+            revisionId: string;
+            templateId: string;
+        };
+        LibraryListOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/LibraryListOutputBody.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["TemplateLibrary"][] | null;
+        };
         LifetimePolicyMutationBody: {
             /**
              * Format: uri
@@ -2536,6 +2701,15 @@ export interface components {
             /** Format: int64 */
             resourceVersion?: number;
         };
+        PauseInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PauseInputBody.json
+             */
+            readonly $schema?: string;
+            paused: boolean;
+        };
         PlanResult: {
             /**
              * Format: uri
@@ -2548,6 +2722,44 @@ export interface components {
             providerTargetId: string;
             resources: components["schemas"]["ResourcePlan"][] | null;
             warnings: components["schemas"]["Issue"][] | null;
+        };
+        PortableExportBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PortableExportBody.json
+             */
+            readonly $schema?: string;
+            archive: string;
+            filename: string;
+        };
+        PortablePreview: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PortablePreview.json
+             */
+            readonly $schema?: string;
+            apiVersion: string;
+            builders: components["schemas"]["BuilderRequirement"][] | null;
+            dependencies: components["schemas"]["SourceDependency"][] | null;
+            entrypoint: string;
+            /** Format: int64 */
+            fileCount: number;
+            requiredCapabilities: string[] | null;
+            /** Format: int64 */
+            sourceBytes: number;
+            unresolvedBuilders: string[] | null;
+        };
+        PortablePreviewInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/PortablePreviewInputBody.json
+             */
+            readonly $schema?: string;
+            archive: string;
+            projectId: string;
         };
         "Post-admin-gateway-clients-by-id-statusRequest": {
             /**
@@ -2596,6 +2808,15 @@ export interface components {
              */
             readonly $schema?: string;
             source: string;
+        };
+        "Post-template-libraries-by-id-scheduleResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Post-template-libraries-by-id-scheduleResponse.json
+             */
+            readonly $schema?: string;
+            paused: boolean;
         };
         "Post-users-by-id-actions-issue-password-recoveryResponse": {
             /**
@@ -2884,6 +3105,13 @@ export interface components {
         SourceBindingView: {
             available: boolean;
             binding: string;
+            collections: boolean;
+        };
+        SourceDependency: {
+            id: string;
+            requires?: string[] | null;
+            root: string;
+            sha256: string;
         };
         StoredImageBinding: {
             /**
@@ -2951,6 +3179,27 @@ export interface components {
             readonly $schema?: string;
             parameters: components["schemas"]["TemplateParameterDTO"][] | null;
             source: string;
+        };
+        TemplateLibrary: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/TemplateLibrary.json
+             */
+            readonly $schema?: string;
+            authorId: string;
+            binding: string;
+            id: string;
+            /** Format: int32 */
+            intervalSeconds: number;
+            /** Format: date-time */
+            nextSyncAt: string;
+            pauseReason?: string;
+            paused: boolean;
+            projectId: string;
+            reference: string;
+            /** Format: int64 */
+            resourceVersion: number;
         };
         TemplateParameterDTO: {
             default?: unknown;
@@ -4689,7 +4938,9 @@ export interface operations {
     };
     "get-lab-instances": {
         parameters: {
-            query?: never;
+            query?: {
+                projectId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5237,6 +5488,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TemplateContentDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-lab-templates-by-id-revisions-by-revision-id-export": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortableExportBody"];
                 };
             };
             /** @description Error */
@@ -6442,6 +6727,243 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TeamRecord"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "preview-template-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortablePreviewInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortablePreview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-template-libraries": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryListOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-template-libraries": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateLibrary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-template-libraries-by-id-entries": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntriesOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-template-libraries-by-id-history": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWorkListBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-template-libraries-by-id-schedule": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Post-template-libraries-by-id-scheduleResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-template-libraries-by-id-sync": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWork"];
                 };
             };
             /** @description Error */

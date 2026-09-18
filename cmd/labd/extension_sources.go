@@ -6,6 +6,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/manifest"
+	"slices"
 )
 
 func configureSourceExtensions(control *controlplane.Service, extensions loadedExtensions) error {
@@ -24,7 +25,7 @@ func configureSourceExtensions(control *controlplane.Service, extensions loadedE
 				file := entry.CredentialFile
 				credential = func(context.Context) ([]byte, error) { return manifest.ProtectedFile(file, 64<<10) }
 			}
-			bindings = append(bindings, controlplane.SourceBinding{InstanceID: backend.Entry.InstanceID, ID: entry.ID, PluginDigest: backend.Client.Info.GetBuildDigest(), Projects: projects, Configuration: entry.Configuration, Credential: credential, Source: &providergrpc.Source{Client: backend.Client.Source, Artifacts: backend.Client.Artifacts}, Available: backend.Client.Available})
+			bindings = append(bindings, controlplane.SourceBinding{Collections: slices.Contains(backend.Client.Info.GetFeatures(), "source-collection-v1"), InstanceID: backend.Entry.InstanceID, ID: entry.ID, PluginDigest: backend.Client.Info.GetBuildDigest(), Projects: projects, Configuration: entry.Configuration, Credential: credential, Source: &providergrpc.Source{Client: backend.Client.Source, Artifacts: backend.Client.Artifacts}, Available: backend.Client.Available})
 		}
 	}
 	return control.SetSources(bindings)

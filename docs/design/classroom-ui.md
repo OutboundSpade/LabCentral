@@ -234,3 +234,7 @@ Validation notifications retain bounded API field explanations so unsupported
 isolation or runtime features are visible. Submitted values are not echoed.
 Docker templates and dedicated-VM container templates retain distinct semantics;
 see [template requirements](../users/templates.md).
+
+## Optional classroom package
+
+ADR-0026 makes Classroom an independently installed feature package; generic project teams and collaboration work without it. Existing classroom workflows and URLs retain compatibility when installed. The target contract is defined in [portable templates and collaboration](portable-template-collaboration.md).

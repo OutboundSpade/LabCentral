@@ -59,7 +59,18 @@ func (s *Store) createLabTemplate(ctx context.Context, request application.Creat
 	if err != nil {
 		return application.LabTemplateRecord{}, fmt.Errorf("begin Lab Template creation: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback()
+	record, err := s.createLabTemplateTx(ctx, tx, request)
+	if err != nil {
+		return application.LabTemplateRecord{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return application.LabTemplateRecord{}, err
+	}
+	return record, nil
+}
+
+func (s *Store) createLabTemplateTx(ctx context.Context, tx *sql.Tx, request application.CreateLabTemplateRequest) (application.LabTemplateRecord, error) {
 	if err := s.lockIdempotency(ctx, tx, request.CreatedBy, createTemplateRouteAction, request.IdempotencyKey); err != nil {
 		return application.LabTemplateRecord{}, err
 	}
@@ -72,7 +83,7 @@ func (s *Store) createLabTemplate(ctx context.Context, request application.Creat
 		if err != nil {
 			return application.LabTemplateRecord{}, fmt.Errorf("load replayed Lab Template: %w", err)
 		}
-		return record, tx.Commit()
+		return record, nil
 	}
 	if err := s.requireTemplateActor(ctx, tx, request.ProjectID, request.CreatedBy); err != nil {
 		return application.LabTemplateRecord{}, err
@@ -98,9 +109,6 @@ func (s *Store) createLabTemplate(ctx context.Context, request application.Creat
 	}
 	if err := s.bindIdempotency(ctx, tx, request.CreatedBy, createTemplateRouteAction, request.IdempotencyKey, request.RequestDigest, string(record.ID)); err != nil {
 		return application.LabTemplateRecord{}, fmt.Errorf("bind Lab Template idempotency: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return application.LabTemplateRecord{}, fmt.Errorf("commit Lab Template creation: %w", err)
 	}
 	return record, nil
 }
@@ -151,6 +159,9 @@ func (s *Store) updateLabTemplate(ctx context.Context, request application.Updat
 		return application.LabTemplateRecord{}, fmt.Errorf("lock Lab Template for update: %w", err)
 	}
 	if err := s.requireTemplateActor(ctx, tx, projectID, request.UpdatedBy); err != nil {
+		return application.LabTemplateRecord{}, err
+	}
+	if err := s.requireIndependentTemplateTx(ctx, tx, request.ID); err != nil {
 		return application.LabTemplateRecord{}, err
 	}
 	row := tx.QueryRowContext(ctx, s.bind(`UPDATE labcentral_lab_templates
@@ -257,7 +268,18 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request application
 	if err != nil {
 		return application.TemplateRevisionRecord{}, fmt.Errorf("begin Template Revision publication: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback()
+	record, err := s.publishTemplateRevisionTx(ctx, tx, request)
+	if err != nil {
+		return application.TemplateRevisionRecord{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return application.TemplateRevisionRecord{}, err
+	}
+	return record, nil
+}
+
+func (s *Store) publishTemplateRevisionTx(ctx context.Context, tx *sql.Tx, request application.PublishTemplateRevisionRequest) (application.TemplateRevisionRecord, error) {
 	if request.WorkFence != nil {
 		if err := s.requireExtensionFenceTx(ctx, tx, *request.WorkFence); err != nil {
 			return application.TemplateRevisionRecord{}, err
@@ -276,7 +298,7 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request application
 		if err != nil {
 			return application.TemplateRevisionRecord{}, fmt.Errorf("load replayed Template Revision: %w", err)
 		}
-		return record, tx.Commit()
+		return record, nil
 	}
 	parentQuery := `SELECT project_id FROM labcentral_lab_templates WHERE template_id = ?`
 	if s.dialect == jobsdb.DialectPostgreSQL {
@@ -295,6 +317,9 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request application
 		if err := s.requireExtensionAuthorTx(ctx, tx, domain.ProjectID(projectID), request.PublishedBy); err != nil {
 			return application.TemplateRevisionRecord{}, err
 		}
+	}
+	if err := s.requireLibraryPublicationTx(ctx, tx, request.TemplateID, request.WorkFence); err != nil {
+		return application.TemplateRevisionRecord{}, err
 	}
 	var revisionNumber int64
 	if err := tx.QueryRowContext(ctx, s.bind(`SELECT COALESCE(MAX(revision_number), 0) + 1
@@ -328,9 +353,6 @@ func (s *Store) publishTemplateRevision(ctx context.Context, request application
 	}
 	if err := s.bindIdempotency(ctx, tx, request.PublishedBy, publishRevisionRouteAction, request.IdempotencyKey, request.RequestDigest, string(record.ID)); err != nil {
 		return application.TemplateRevisionRecord{}, fmt.Errorf("bind Template Revision idempotency: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return application.TemplateRevisionRecord{}, fmt.Errorf("commit Template Revision publication: %w", err)
 	}
 	return record, nil
 }

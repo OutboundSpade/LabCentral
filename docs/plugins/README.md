@@ -79,3 +79,6 @@ plugin category is introduced.
 
 
 See [extension author examples](extensions.md) for recipe metadata, bindings, optional provider imports and the independent fixture commands. Use only public SDK/protocol surfaces in separately built packages. Never import `internal/` packages or depend on the core database/filesystem. Browser dependencies must be packaged with immutable assets, and backend credentials remain category-specific.
+
+Use [portable source packages](portable-templates.md) for import/export and
+[GitHub libraries](github-library.md) for source-only synchronization.

@@ -104,3 +104,7 @@ requests still fail. This avoids intermittent rejection at the TTL boundary.
 ## Independent extension foundations
 
 ADR-0024 adds namespaced descriptors, workload/network targets and one-time credential delivery without introducing plugin-defined authorization classes. See the [extension contract](extensions.md) for adapter resolution, enforcement/recovery features and remaining conformance gates. Legacy ssh/vnc records keep their existing meaning.
+
+## Fenced shared-console control
+
+ADR-0029 adds independently authenticated shared viewing and a single core-fenced driver per VM generation, enforced by the access plugin. Existing individual-session authorization and closure bounds remain. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).

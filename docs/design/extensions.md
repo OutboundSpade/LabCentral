@@ -60,3 +60,7 @@ Grants last at most fifteen minutes without refresh. Gateway calls send the gran
 ### Storage and recovery
 
 Additive jobs migration `0003_typed_work_subjects` isolates non-instance work from existing instance workers. Core migrations `0014`–`0017` preserve old access records and add work, gateway and build records without changing previously checksummed migrations. Work input/output artifact references, published bundles, dependencies and image bindings are included in database backups; offline artifact GC retains every referenced input/output. Restore the database and artifact set together. Target images are retired explicitly and are never automatically deleted with a lab.
+
+## Feature packages and portable source libraries
+
+ADR-0026 and ADR-0027 extend the four original browser slots with top-level pages and typed feature operations, and extend explicit single-source resolution with collection synchronization and durable schedules. The preceding sections describe the existing v1 implementation; the accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).

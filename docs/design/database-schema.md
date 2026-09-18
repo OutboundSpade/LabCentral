@@ -114,3 +114,7 @@ audit reads remain recorded. The executable producer catalog is
 [`design/contracts/governance-audit-producers.yaml`](../../design/contracts/governance-audit-producers.yaml).
 
 Migration `0012_template_representations` adds non-null `representation_json` with an empty default for legacy revisions. New revisions store canonical authoring JSON; old rows keep their digest/version/renderer fields and verification path. Migration checksums for prior versions are unchanged. See ADR-0016.
+
+## Template and collaboration persistence
+
+ADR-0026–ADR-0029 require additive migrations preserving all existing checksums and history. Collection publication, one-group enrollment and console driver fencing require atomic transactions with SQLite/PostgreSQL parity. The target contract is defined in [portable templates and collaboration](portable-template-collaboration.md).

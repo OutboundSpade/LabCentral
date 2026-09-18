@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Supersedes:** None
-- **Superseded by:** None
+- **Superseded by:** ADR-0029 (only the scope explicitly identified there)
 
 ## Context and constraints
 

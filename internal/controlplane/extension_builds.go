@@ -16,6 +16,7 @@ import (
 )
 
 type BuilderBinding struct {
+	Requirement, Kind            string
 	InstanceID, ID, PluginDigest string
 	Projects                     []domain.ProjectID
 	Configuration                []byte
@@ -34,6 +35,20 @@ func (s *Service) SetBuilders(bindings []BuilderBinding) error {
 		b.Projects = slices.Clone(b.Projects)
 		b.Configuration = slices.Clone(b.Configuration)
 		b.Limits.Egress = slices.Clone(b.Limits.Egress)
+		if b.Requirement != "" {
+			if len(b.Requirement) > 64 || b.Kind == "" {
+				return fmt.Errorf("logical builder requires identity and kind")
+			}
+			for _, existing := range s.builders {
+				if existing.Requirement == b.Requirement {
+					for _, project := range b.Projects {
+						if slices.Contains(existing.Projects, project) {
+							return fmt.Errorf("ambiguous logical builder requirement in project")
+						}
+					}
+				}
+			}
+		}
 		s.builders[k] = b
 	}
 	return nil
@@ -100,8 +115,8 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 		return app.ExtensionWork{}, e
 	}
 	var recipe *labbundle.BuildRecipe
-	if bundle.Manifest.Builds != nil {
-		for _, r := range bundle.Manifest.Builds.Recipes {
+	if bundle.Builds() != nil {
+		for _, r := range bundle.Builds().Recipes {
 			if r.ID == recipeID {
 				r := r
 				recipe = &r
@@ -112,10 +127,11 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 	if recipe == nil {
 		return app.ExtensionWork{}, fmt.Errorf("recipe not found")
 	}
-	b, ok := s.builders[recipe.Builder]
-	if !ok || !slices.Contains(b.Projects, project) || b.Available != nil && !b.Available() {
+	b, ok := s.resolveRecipeBuilder(bundle, *recipe, project)
+	if !ok {
 		return app.ExtensionWork{}, ErrAccessUnavailable
 	}
+
 	// Only declared files and nonsecret declared inputs cross the builder boundary.
 	type file struct {
 		Path string `json:"path"`
@@ -159,6 +175,30 @@ func (s *Service) RequestBuild(ctx context.Context, actor domain.UserID, project
 	}
 	return w, e
 }
+
+// A portable recipe resolves a logical requirement only within its project.
+// Legacy bundles continue to select the exact installation/binding identity.
+func (s *Service) resolveRecipeBuilder(bundle labbundle.Bundle, recipe labbundle.BuildRecipe, project domain.ProjectID) (BuilderBinding, bool) {
+	b, ok := s.builders[recipe.Builder]
+	if bundle.Manifest.Package != nil {
+		ok = false
+		for _, candidate := range s.builders {
+			if candidate.Requirement != recipe.Builder || !slices.Contains(candidate.Projects, project) {
+				continue
+			}
+			for _, requirement := range bundle.Manifest.Package.Builders {
+				if requirement.ID == recipe.Builder && requirement.Kind == candidate.Kind && requirement.Schema == recipe.Schema {
+					b, ok = candidate, true
+				}
+			}
+		}
+	}
+	if !ok || !slices.Contains(b.Projects, project) || b.Available != nil && !b.Available() {
+		return BuilderBinding{}, false
+	}
+	return b, true
+}
+
 func workCall(c app.ExtensionWorkClaim) app.ProviderCall {
 	return app.ProviderCall{RequestID: string(c.Work.ID), OperationID: string(c.Work.ID), InvocationID: string(c.Work.InvocationID), IdempotencyKey: string(c.Work.InvocationID), Generation: 1, Fence: uint64(c.Operation.FencingToken)}
 }

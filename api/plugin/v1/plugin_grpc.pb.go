@@ -1228,15 +1228,17 @@ var AccessAuthorizationService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	SourceService_Resolve_FullMethodName       = "/labcentral.plugin.v1.SourceService/Resolve"
-	SourceService_GetInvocation_FullMethodName = "/labcentral.plugin.v1.SourceService/GetInvocation"
-	SourceService_Cancel_FullMethodName        = "/labcentral.plugin.v1.SourceService/Cancel"
+	SourceService_ResolveCollection_FullMethodName = "/labcentral.plugin.v1.SourceService/ResolveCollection"
+	SourceService_Resolve_FullMethodName           = "/labcentral.plugin.v1.SourceService/Resolve"
+	SourceService_GetInvocation_FullMethodName     = "/labcentral.plugin.v1.SourceService/GetInvocation"
+	SourceService_Cancel_FullMethodName            = "/labcentral.plugin.v1.SourceService/Cancel"
 )
 
 // SourceServiceClient is the client API for SourceService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SourceServiceClient interface {
+	ResolveCollection(ctx context.Context, in *SourceServiceResolveCollectionRequest, opts ...grpc.CallOption) (*SourceServiceResolveCollectionResponse, error)
 	Resolve(ctx context.Context, in *SourceServiceResolveRequest, opts ...grpc.CallOption) (*SourceServiceResolveResponse, error)
 	GetInvocation(ctx context.Context, in *SourceServiceGetInvocationRequest, opts ...grpc.CallOption) (*SourceServiceGetInvocationResponse, error)
 	Cancel(ctx context.Context, in *SourceServiceCancelRequest, opts ...grpc.CallOption) (*SourceServiceCancelResponse, error)
@@ -1248,6 +1250,16 @@ type sourceServiceClient struct {
 
 func NewSourceServiceClient(cc grpc.ClientConnInterface) SourceServiceClient {
 	return &sourceServiceClient{cc}
+}
+
+func (c *sourceServiceClient) ResolveCollection(ctx context.Context, in *SourceServiceResolveCollectionRequest, opts ...grpc.CallOption) (*SourceServiceResolveCollectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SourceServiceResolveCollectionResponse)
+	err := c.cc.Invoke(ctx, SourceService_ResolveCollection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *sourceServiceClient) Resolve(ctx context.Context, in *SourceServiceResolveRequest, opts ...grpc.CallOption) (*SourceServiceResolveResponse, error) {
@@ -1284,6 +1296,7 @@ func (c *sourceServiceClient) Cancel(ctx context.Context, in *SourceServiceCance
 // All implementations must embed UnimplementedSourceServiceServer
 // for forward compatibility.
 type SourceServiceServer interface {
+	ResolveCollection(context.Context, *SourceServiceResolveCollectionRequest) (*SourceServiceResolveCollectionResponse, error)
 	Resolve(context.Context, *SourceServiceResolveRequest) (*SourceServiceResolveResponse, error)
 	GetInvocation(context.Context, *SourceServiceGetInvocationRequest) (*SourceServiceGetInvocationResponse, error)
 	Cancel(context.Context, *SourceServiceCancelRequest) (*SourceServiceCancelResponse, error)
@@ -1297,6 +1310,9 @@ type SourceServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSourceServiceServer struct{}
 
+func (UnimplementedSourceServiceServer) ResolveCollection(context.Context, *SourceServiceResolveCollectionRequest) (*SourceServiceResolveCollectionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveCollection not implemented")
+}
 func (UnimplementedSourceServiceServer) Resolve(context.Context, *SourceServiceResolveRequest) (*SourceServiceResolveResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Resolve not implemented")
 }
@@ -1325,6 +1341,24 @@ func RegisterSourceServiceServer(s grpc.ServiceRegistrar, srv SourceServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&SourceService_ServiceDesc, srv)
+}
+
+func _SourceService_ResolveCollection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SourceServiceResolveCollectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SourceServiceServer).ResolveCollection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SourceService_ResolveCollection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SourceServiceServer).ResolveCollection(ctx, req.(*SourceServiceResolveCollectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _SourceService_Resolve_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1388,6 +1422,10 @@ var SourceService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "labcentral.plugin.v1.SourceService",
 	HandlerType: (*SourceServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ResolveCollection",
+			Handler:    _SourceService_ResolveCollection_Handler,
+		},
 		{
 			MethodName: "Resolve",
 			Handler:    _SourceService_Resolve_Handler,

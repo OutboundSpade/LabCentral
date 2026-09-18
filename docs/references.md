@@ -146,3 +146,13 @@ Navigation continuity reference (retrieved 2026-09-08):
 - [MDN iframe](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe): opaque-origin sandbox with scripts only, separate asset origin, and response CSP constrain browser contributions (ADR-0023).
 - [MDN postMessage](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage): validate sender window and message shape; use a fresh nonce and a transferred channel for the opaque-origin frame (ADR-0023).
 - [RFC 8628](https://www.rfc-editor.org/rfc/rfc8628.html): browser approval, device/user codes, polling interval and slow-down responses inform gateway delegation (ADR-0024). LabCentral further restricts grants to current user authority and a 15-minute lifetime without refresh tokens.
+
+## Portable templates and collaboration sources
+
+Retrieved 2026-09-18. These sources inform ADR-0027–ADR-0029; live target capabilities still require discovery and qualification.
+
+- [Packer QEMU builder](https://developer.hashicorp.com/packer/integrations/hashicorp/qemu/latest/components/builder/qemu) and [ansible-local](https://developer.hashicorp.com/packer/integrations/hashicorp/ansible/latest/components/provisioner/ansible-local): QEMU image construction and running the Ansible controller inside the build guest.
+- [BuildKit OCI exporter](https://docs.docker.com/build/exporters/oci-docker/): OCI archives are internal build outputs, not portable template contents.
+- [GitHub Git trees API](https://docs.github.com/en/rest/git/trees) and [commits API](https://docs.github.com/en/rest/commits/commits): resolve one commit before immutable tree/blob retrieval; reject truncated recursive trees (GitHub documents 100,000 entries/7 MB). Contents read permission suffices for configured private repositories. The source plugin pins REST version 2026-03-10.
+- [Proxmox storage upload implementation](https://github.com/proxmox/pve-storage/blob/master/src/PVE/API2/Storage/Status.pm): import content requires matching storage support and validates uploaded image format; upstream support does not establish installed-target support.
+- [noVNC API](https://novnc.com/noVNC/docs/API.html) and [RFB RFC 6143](https://datatracker.ietf.org/doc/rfc6143/): shared initialization and client input messages. Browser view-only settings are not an authorization boundary.

@@ -3,7 +3,6 @@ package render
 import (
 	"context"
 	"fmt"
-	"github.com/OutboundSpade/LabCentral/pkg/labbundle"
 	"math"
 	"net/netip"
 	"regexp"
@@ -83,11 +82,7 @@ func (r *Renderer) Render(
 	if err := ctx.Err(); err != nil {
 		return domain.CanonicalLab{}, domain.RenderReport{}, renderError(StageParse, "render_canceled", "", "render was canceled", err)
 	}
-	entry, _, err := labbundle.Source(revision.VerifiedBundle)
-	if err != nil {
-		return domain.CanonicalLab{}, domain.RenderReport{}, err
-	}
-	document, err := ParseYAML(entry, limits.Parse)
+	document, err := packageDocument(revision.VerifiedBundle, limits.Parse)
 	if err != nil {
 		return domain.CanonicalLab{}, domain.RenderReport{}, err
 	}
@@ -141,9 +136,13 @@ func (r *Renderer) Render(
 	if err != nil {
 		return domain.CanonicalLab{}, domain.RenderReport{}, err
 	}
+	semantics, err := BundleRendererVersion(revision.VerifiedBundle)
+	if err != nil {
+		return domain.CanonicalLab{}, domain.RenderReport{}, err
+	}
 	return domain.CanonicalLab{
 		APIVersion:      CanonicalFormatVersion,
-		RendererVersion: RendererVersion,
+		RendererVersion: semantics,
 		CanonicalBytes:  canonical,
 		Digest:          digest,
 		Resources:       graph.Resources,

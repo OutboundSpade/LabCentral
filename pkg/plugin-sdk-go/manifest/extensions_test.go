@@ -57,3 +57,35 @@ func TestConfigurationSchemasNeverResolveExternalData(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPageContributionHostContract(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("<!doctype html><title>Library</title>")
+	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "index.html"), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{RequestedPermissions: []string{"context.read", "templates.read"}, Browser: &BrowserPackage{
+		APIVersion: "labcentral.browser/v1", MinimumHostVersion: BrowserHostVersion,
+		Assets:        []BrowserAsset{{Path: "index.html", SHA256: fmt.Sprintf("%x", sha256.Sum256(content))}},
+		Contributions: []BrowserContribution{{ID: "library", Slot: "page", Title: "Library", Entrypoint: "index.html", Permissions: []string{"templates.read"}}},
+	}}
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err != nil {
+		t.Fatal(err)
+	}
+	m.Browser.MinimumHostVersion++
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("future host contract accepted")
+	}
+	m.Browser.MinimumHostVersion = BrowserHostVersion
+	m.RequestedPermissions = append(m.RequestedPermissions, "http.proxy")
+	m.Browser.Contributions[0].Permissions = []string{"http.proxy"}
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("arbitrary proxy permission accepted")
+	}
+}

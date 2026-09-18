@@ -144,3 +144,7 @@ it does not change dependency ordering or authorize shared-resource mutation.
 TASK-SCHEDULING-001 requires fresh exact-build T3 qualification and an observed
 live overlap before rollout. Production cross-node shared-journal validation
 remains open under TASK-PROD-004.
+
+## Owned image import extension
+
+ADR-0028 extends the original fixed-template subset with separately qualified owned imports, per-resource bindings and reference-aware image retirement. Its implementation is a later task and does not imply current target capability. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).

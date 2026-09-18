@@ -1,0 +1,22 @@
+package:
+    apiVersion: labcentral.source-package/v1
+    dependencies:
+        - id: network-base
+          root: deps/base
+          sha256: 5462c4c0373e70deb53fa03218597683ba20f711feebb618614d894d0c4aeb02
+    components:
+        - name: private-network
+          path: deps/base/network.yaml
+apiVersion: labcentral.bundle/v1beta1
+kind: LabBundle
+entrypoint: lab.yaml
+files:
+    - path: deps/base/network.yaml
+      size: 141
+      sha256: 56423b4931abf255b9d163e7f913880350483a58865c632d14008abfbaf51bfa
+      mediaType: text/plain
+    - path: lab.yaml
+      size: 168
+      sha256: 269a7fd944357121f8e640cd5689258130235a8de9ef14bfb603c8c712766759
+      mediaType: text/plain
+totalBytes: 309

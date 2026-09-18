@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -16,6 +17,7 @@ import (
 )
 
 type SourceBinding struct {
+	Collections                  bool
 	InstanceID, ID, PluginDigest string
 	Projects                     []domain.ProjectID
 	Configuration                []byte
@@ -141,8 +143,15 @@ func (s *Service) RunSourceWork(ctx context.Context, owner string, report func(e
 			if err != nil {
 				continue
 			}
-			if err = s.executeSource(ctx, store, b, claim); err != nil && report != nil {
-				report(err)
+			if err = s.executeSource(ctx, store, b, claim); err != nil {
+				if claim.Work.Request.LibraryID != "" {
+					if libraries, ok := s.store.(app.LibraryStore); ok {
+						_ = libraries.DeferLibraryWork(ctx, claim, time.Duration(min(uint64(15)<<min(uint64(claim.Operation.Attempt), 6), 900))*time.Second)
+					}
+				}
+				if report != nil {
+					report(err)
+				}
 			}
 		}
 		select {
@@ -203,6 +212,11 @@ func (s *Service) executeSource(parent context.Context, store app.ExtensionWorkS
 			return err
 		}
 		switch state {
+		case "resumable":
+			if c.Work.Request.LibraryID == "" {
+				return fmt.Errorf("unexpected collection recovery state")
+			}
+			dispatch = true
 		case "unknown":
 			dispatch = true
 		case "succeeded":
@@ -223,11 +237,38 @@ func (s *Service) executeSource(parent context.Context, store app.ExtensionWorkS
 				return e
 			}
 		}
-		result, e = b.Source.Resolve(ctx, app.ExtensionSourceRequest{Call: call, BindingID: b.ID, Reference: c.Work.Request.Reference, Configuration: b.Configuration, Credential: credential})
+		request := app.ExtensionSourceRequest{Call: call, BindingID: b.ID, Reference: c.Work.Request.Reference, Configuration: b.Configuration, Credential: credential}
+		if c.Work.Request.LibraryID != "" {
+			resolver, ok := b.Source.(app.SourceCollectionResolver)
+			if !ok || !b.Collections {
+				clear(credential)
+				return fmt.Errorf("source collection capability unavailable")
+			}
+			result, e = resolver.ResolveCollection(ctx, request)
+		} else {
+			result, e = b.Source.Resolve(ctx, request)
+		}
 		clear(credential)
+		if errors.Is(e, app.ErrInvalidSource) {
+			return finish(domain.OperationFailed, nil, "source_collection_invalid")
+		}
 		if e != nil {
 			return e
 		}
+	}
+	if c.Work.Request.LibraryID != "" {
+		if err := s.publishSourceCollection(ctx, b, c, result); err != nil {
+			var invalid *ValidationError
+			if errors.As(err, &invalid) || errors.Is(err, app.ErrAlreadyExists) {
+				return finish(domain.OperationFailed, nil, "source_collection_invalid")
+			}
+			return err
+		}
+		output, err := json.Marshal(result)
+		if err != nil {
+			return err
+		}
+		return finish(domain.OperationSucceeded, output, "")
 	}
 	reader, e := b.Source.ReadArtifact(ctx, call, result.Bundle)
 	if e != nil {
@@ -275,8 +316,9 @@ func (s *Service) executeSource(parent context.Context, store app.ExtensionWorkS
 }
 
 type SourceBindingView struct {
-	Binding   string `json:"binding"`
-	Available bool   `json:"available"`
+	Collections bool   `json:"collections"`
+	Binding     string `json:"binding"`
+	Available   bool   `json:"available"`
 }
 
 func (s *Service) SourceBindings(ctx context.Context, actor domain.UserID, project domain.ProjectID) ([]SourceBindingView, error) {
@@ -286,7 +328,7 @@ func (s *Service) SourceBindings(ctx context.Context, actor domain.UserID, proje
 	out := []SourceBindingView{}
 	for key, b := range s.sources {
 		if slices.Contains(b.Projects, project) {
-			out = append(out, SourceBindingView{Binding: key, Available: b.Available == nil || b.Available()})
+			out = append(out, SourceBindingView{Collections: b.Collections, Binding: key, Available: b.Available == nil || b.Available()})
 		}
 	}
 	slices.SortFunc(out, func(a, b SourceBindingView) int { return strings.Compare(a.Binding, b.Binding) })

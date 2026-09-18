@@ -64,3 +64,14 @@ This document is the durable interpretation of the product brief. “Must” req
 
 Cross-provider instances, continuous autonomous drift repair, arbitrary plugin resource kinds, a general secrets product, mandatory Git/OCI distribution, a production message broker, provider-equivalent networking, education/scoring, and production application implementation during this design phase are excluded.
 
+
+## Portable templates and collaborative use
+
+- **REQ-TEMPLATE-001:** Source-only portable packages export/import lab declarations, build scripts and digest-pinned source dependencies needed to recreate images; VM/OCI image bytes and deployment-local authority are excluded.
+- **REQ-TEMPLATE-002:** Libraries synchronize configured GitHub collections at one commit, manually or on durable schedules, with atomic validated publication under current authority and retained immutable history.
+- **REQ-TEMPLATE-003:** Isolated disposable VM builders execute Ansible and Dockerfile recipes; durable preparation resolves approved per-resource Proxmox image bindings without broadening participant authority.
+- **REQ-EXT-001:** Independently installed Library, Teams and Classroom packages use isolated typed browser bridges; core lab operation and collaboration do not require Classroom.
+- **REQ-COLLAB-001:** Administrators create project groups; eligible users self-enroll in at most one per project, without role escalation or cross-project authority. Team labs survive membership changes.
+- **REQ-COLLAB-002:** Shared VM viewers authenticate independently; a core-fenced driver lease and access-plugin input enforcement permit at most one controlling session per VM generation.
+
+See [the implementation contract](portable-template-collaboration.md) and ADR-0026–ADR-0029.

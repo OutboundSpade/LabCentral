@@ -9,7 +9,7 @@ descriptorBaseline:
   breakingCategory: FILE
 currentDescriptor:
   protocol: {major: 1, minor: 2}
-  sha256: c07911da241c20a6c3f2518c644d3f03fc3374aa37c30329bff9681e654b2d88
+  sha256: d37d491d76d57b492c0719eaffb25897ed88f07b7c065276d47781433b138dfb
 cases:
   - id: TEST-PLUGIN-NEGOTIATE-001
     kind: negotiate

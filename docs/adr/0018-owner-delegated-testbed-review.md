@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-07
 - **Supersedes:** ADR-0017
-- **Superseded by:** ADR-0020 (delegated task scope only); ADR-0021 (journal-wide execution serialization only)
+- **Superseded by:** ADR-0020 (delegated task scope only); ADR-0021 (journal-wide execution serialization only); ADR-0028 (only the scope explicitly identified there)
 
 ## Decision
 

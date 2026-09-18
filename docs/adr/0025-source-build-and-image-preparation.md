@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-17
 - **Supersedes:** None
-- **Superseded by:** None
+- **Superseded by:** ADR-0027 (only the scope explicitly identified there); ADR-0028 (only the scope explicitly identified there)
 
 ## Decision
 

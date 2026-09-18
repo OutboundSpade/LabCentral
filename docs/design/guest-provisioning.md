@@ -28,3 +28,7 @@ Builds are separate durable operations executed in isolated, disposable builders
 ## Approved container VM runtime
 
 [ADR-0022](../adr/0022-proxmox-container-vm-runtime.md) adds a fixed, typed guest runtime for explicitly VM-isolated containers. It does not enable author-supplied cloud-init or arbitrary host commands. The immutable runtime image preloads approved OCI digests; bootstrap binds a guest once and starts a rootless workload through a fixed entrypoint. See [setup and supported fields](../operations/container-vm-runtime.md).
+
+## Reusable production image recipes
+
+ADR-0028 adds isolated Ansible image baking and Dockerfile builders; Ansible post-launch guest provisioning remains out of scope. Source portability never includes built image bytes. The accepted production build/import contract is defined in [portable templates and collaboration](portable-template-collaboration.md).

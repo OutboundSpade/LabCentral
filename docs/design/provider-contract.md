@@ -108,3 +108,7 @@ read after exact state/generation/ownership validation. This behavior-changing
 provider build requires fresh target qualification before deployment.
 
 The implemented Proxmox subset uses the closed [container VM bootstrap v1](../../design/contracts/container-vm-runtime.schema.json), shared `pkg/containervm` and the fixed `cmd/lab-container-vm` guest entrypoint. [ADR-0022](../adr/0022-proxmox-container-vm-runtime.md) defines its offline image, one-VM-per-container and exact-pool guest execution rules. Broader mounts, secrets, online pulls and other cloud adapters remain planned.
+
+## Imported per-resource image bindings
+
+ADR-0028 adds qualified provider-owned image imports and per-resource bindings while preserving existing static image and instance semantics. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).

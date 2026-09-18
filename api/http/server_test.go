@@ -335,3 +335,23 @@ func TestServerVersionMustBeBoundedPrintableAndTrimmed(t *testing.T) {
 		}
 	}
 }
+
+func TestInstanceListProjectFilterDoesNotWidenAuthority(t *testing.T) {
+	fixture := newNoAuthQuotaHTTPFixture(t)
+	server := fixture.server
+	seedQuotaHTTPInstance(t, fixture.store, "instance.filter", "project.local", controlplane.LocalAdminID, application.OwnerUser, string(controlplane.LocalAdminID), 3600)
+
+	for _, tc := range []struct {
+		query string
+		count int
+	}{{"", 1}, {"?projectId=project.local", 1}, {"?projectId=project.other", 0}} {
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/lab-instances"+tc.query, nil))
+		var result struct {
+			Items []InstanceDTO `json:"items"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || len(result.Items) != tc.count {
+			t.Fatalf("filter %q: %d %s", tc.query, response.Code, response.Body.String())
+		}
+	}
+}

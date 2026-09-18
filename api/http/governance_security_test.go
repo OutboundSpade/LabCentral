@@ -285,6 +285,7 @@ func TestAuthenticatedAuditAndEventAPIScopeAndFilters(t *testing.T) {
 }
 
 type governanceHTTPFixture struct {
+	service   *controlplane.Service
 	server    *Server
 	database  *localdb.Store
 	store     *governanceCountingStore
@@ -420,7 +421,7 @@ func newGovernanceHTTPFixture(t *testing.T) *governanceHTTPFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &governanceHTTPFixture{server: server, database: database, store: countingStore, artifacts: countingArtifacts}
+	return &governanceHTTPFixture{service: service, server: server, database: database, store: countingStore, artifacts: countingArtifacts}
 }
 
 type governanceClient struct {
@@ -497,7 +498,7 @@ type governanceStoreSnapshot struct {
 }
 
 type governanceCountingStore struct {
-	controlplane.Store
+	*localdb.Store
 	createTemplate   atomic.Int64
 	updateTemplate   atomic.Int64
 	getTemplate      atomic.Int64

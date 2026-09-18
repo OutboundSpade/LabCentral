@@ -181,6 +181,9 @@ func authorizationError(err error, hideExistence bool) error {
 }
 
 func apiError(err error) error {
+	if errors.Is(err, application.ErrTemplateManaged) {
+		return huma.Error409Conflict("Make an independent copy before editing a synchronized template")
+	}
 	if errors.Is(err, authorization.ErrDenied) {
 		return huma.Error403Forbidden("Current authority does not permit this operation")
 	}

@@ -218,7 +218,7 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 			Archive []byte `json:"archive"`
 		}
 	}
-	huma.Post(api, "/lab-templates/{id}/bundle-revisions", func(ctx context.Context, input *publishBundleInput) (*struct{ Body TemplateRevisionDTO }, error) {
+	huma.Register(api, huma.Operation{OperationID: "post-lab-templates-by-id-bundle-revisions", Method: "POST", Path: "/lab-templates/{id}/bundle-revisions", MaxBodyBytes: 12 << 20}, func(ctx context.Context, input *publishBundleInput) (*struct{ Body TemplateRevisionDTO }, error) {
 		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRevisionPublish)
 		if err != nil {
 			return nil, err
@@ -241,6 +241,53 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		RevisionID string `path:"revisionId" maxLength:"128"`
 		ProjectID  string `query:"projectId" required:"true" maxLength:"128"`
 	}
+	type portableExport struct {
+		Body struct {
+			Archive  []byte `json:"archive"`
+			Filename string `json:"filename"`
+		}
+	}
+	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}/export", func(ctx context.Context, input *revisionInput) (*portableExport, error) {
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
+		if err != nil {
+			return nil, err
+		}
+		id, err := domain.NewRevisionID(input.RevisionID)
+		if err != nil {
+			return nil, huma.Error404NotFound("Revision was not found")
+		}
+		actor, _ := requestPrincipal(ctx)
+		revision, source, err := service.OpenTemplateRevisionForProject(ctx, actor.user.ID, template.ProjectID, id)
+		if err != nil || revision.TemplateID != template.ID {
+			return nil, huma.Error404NotFound("Revision source is unavailable")
+		}
+		archive, err := labbundle.ExportSource(source)
+		if err != nil {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
+		out := &portableExport{}
+		out.Body.Archive = archive
+		out.Body.Filename = string(revision.ID) + ".lab.tar.gz"
+		return out, nil
+	})
+	type portablePreviewInput struct {
+		Body struct {
+			ProjectID string `json:"projectId" minLength:"1" maxLength:"128"`
+			Archive   []byte `json:"archive"`
+		}
+	}
+	huma.Register(api, huma.Operation{OperationID: "preview-template-import", Method: "POST", Path: "/template-import-previews", MaxBodyBytes: 12 << 20}, func(ctx context.Context, input *portablePreviewInput) (*struct{ Body controlplane.PortablePreview }, error) {
+		actor, err := authorizeActor(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateRevisionPublish, ScopeKind: application.ScopeProject, ScopeID: input.Body.ProjectID})
+		if err != nil {
+			return nil, err
+		}
+		preview, err := service.PreviewPortableTemplate(ctx, actor.user.ID, domain.ProjectID(input.Body.ProjectID), input.Body.Archive)
+		if err != nil {
+			return nil, apiError(err)
+		}
+		return &struct{ Body controlplane.PortablePreview }{Body: preview}, nil
+	})
+
 	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}/content", func(ctx context.Context, input *revisionInput) (*struct{ Body TemplateContentDTO }, error) {
 		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
 		if err != nil {

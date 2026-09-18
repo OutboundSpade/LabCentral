@@ -17,7 +17,10 @@ func BundleRendererVersion(source []byte) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	if b.Manifest.Builds != nil {
+	if b.Manifest.Package != nil {
+		return PackageRendererVersion, nil
+	}
+	if b.Builds() != nil {
 		return BuildRendererVersion, nil
 	}
 	return RendererVersion, nil

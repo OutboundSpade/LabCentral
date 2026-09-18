@@ -42,3 +42,28 @@ node web/tests/gateway-external.mjs
 To verify the release SDK as well, set `LABCENTRAL_EXTENSION_SDK_ROOT` to the extracted distribution: all fixtures then build only from its shipped public packages and examples.
 
 Each command verifies the core's identity remains unchanged while packages are independently built/installed. Browser scenarios use Chromium, Firefox and WebKit. The [gateway client](../../examples/external-gateway/) imports only the product API and validates HTTPS, device approval, scoped reads and revocation. Use fixtures in isolated development; production plugin isolation and exact-target qualification require separate conformance evidence. VM-backed containers remain provider-owned under the [guest runtime contract](../operations/container-vm-runtime.md); there is no runtime-driver category.
+
+## Feature pages (host contract 2)
+
+Declare `browser.minimumHostVersion: 2` and a contribution with `slot: page`.
+The shell adds a navigation entry at `/feature/?contribution=INSTANCE/ID`. The
+contribution is mounted under the selected project; switching project destroys
+its frame and channel. Missing packages show an unavailable state without breaking
+core navigation. Existing v1 slots and bridge framing remain compatible.
+
+`context.read` includes `projectId`, `hostVersion` and the contribution's available
+method names. Typed feature calls use `host.request(method, {input: {...}})`.
+Methods include `templates.list|revisions|content|export|importPreview|create|publish|publishBundle`,
+`sources.bindings|resolve`, `builds.list|get|create|cancel`, `images.get|approve`,
+`targets.list`, `labs.list|prepare` and `members.list` (with an authorized target).
+Declare only the corresponding `templates.read|write`, `sources.read|resolve`,
+`builds.read|create`, `images.manage`, `labs.read|create` or `members.read` permissions.
+Writes carry a caller-generated `idempotencyKey` retained across retries. The host
+chooses the path, method, active project and security headers; callers cannot supply
+those values. The canonical HTTP API still authorizes each request. Feature calls
+are available only to page contributions. No API tokens or access launch tokens
+are returned by these operations. See `web/src/lib/extension-bridge.ts` for the
+closed validated input catalog and `examples/external-browser/page.js` for an
+independently packaged example.
+
+See [portable template packaging](portable-templates.md) for the source-only package contract and CLI.

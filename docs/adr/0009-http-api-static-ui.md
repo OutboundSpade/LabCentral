@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Supersedes:** None
-- **Superseded by:** ADR-0023 (browser contribution scope only; other decisions remain accepted)
+- **Superseded by:** ADR-0023 (browser contribution scope only; other decisions remain accepted); ADR-0026 (only the scope explicitly identified there)
 
 ## Context and constraints
 

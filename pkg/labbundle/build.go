@@ -30,11 +30,18 @@ type BuildInput struct {
 
 var buildName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`)
 
+func (b Bundle) Builds() *BuildMetadata {
+	if b.ResolvedBuilds != nil {
+		return b.ResolvedBuilds
+	}
+	return b.Manifest.Builds
+}
+
 func (b Bundle) ValidateBuilds() error {
-	if b.Manifest.Builds == nil {
+	if b.Builds() == nil {
 		return nil
 	}
-	m := b.Manifest.Builds
+	m := b.Builds()
 	if m.APIVersion != "labcentral.build/v1" || len(m.Recipes) == 0 || len(m.Recipes) > 8 {
 		return fmt.Errorf("unsupported build metadata")
 	}

@@ -26,10 +26,14 @@ type BrowserContribution struct {
 	Entrypoint  string   `json:"entrypoint"`
 	Permissions []string `json:"permissions"`
 }
+
+const BrowserHostVersion = 2
+
 type BrowserPackage struct {
-	APIVersion    string                `json:"apiVersion"`
-	Assets        []BrowserAsset        `json:"assets"`
-	Contributions []BrowserContribution `json:"contributions"`
+	MinimumHostVersion uint32                `json:"minimumHostVersion,omitempty"`
+	APIVersion         string                `json:"apiVersion"`
+	Assets             []BrowserAsset        `json:"assets"`
+	Contributions      []BrowserContribution `json:"contributions"`
 }
 type AssetSnapshot struct {
 	Content   []byte
@@ -40,7 +44,7 @@ type AssetSnapshot struct {
 // SnapshotBrowser reads and verifies all assets once. HTTP handlers serve only
 // this immutable snapshot, never the operator's mutable installation directory.
 func SnapshotBrowser(root, manifestPath string, m Manifest) (map[string]AssetSnapshot, error) {
-	if m.Browser == nil || m.Browser.APIVersion != "labcentral.browser/v1" || len(m.Browser.Assets) == 0 || len(m.Browser.Assets) > 256 || len(m.Browser.Contributions) == 0 || len(m.Browser.Contributions) > 32 {
+	if m.Browser == nil || m.Browser.APIVersion != "labcentral.browser/v1" || m.Browser.MinimumHostVersion > BrowserHostVersion || len(m.Browser.Assets) == 0 || len(m.Browser.Assets) > 256 || len(m.Browser.Contributions) == 0 || len(m.Browser.Contributions) > 32 {
 		return nil, fmt.Errorf("invalid browser package")
 	}
 	manifestFile, err := Within(root, manifestPath)
@@ -83,7 +87,7 @@ func SnapshotBrowser(root, manifestPath string, m Manifest) (map[string]AssetSna
 	}
 	ids := map[string]bool{}
 	for _, c := range m.Browser.Contributions {
-		if !identityPattern.MatchString(c.ID) || ids[c.ID] || c.Title == "" || len(c.Title) > 128 || !slices.Contains([]string{"lab-panel", "resource-action", "access-view", "plugin-settings"}, c.Slot) {
+		if !identityPattern.MatchString(c.ID) || ids[c.ID] || c.Title == "" || len(c.Title) > 128 || !slices.Contains([]string{"lab-panel", "resource-action", "access-view", "plugin-settings", "page"}, c.Slot) {
 			return nil, fmt.Errorf("invalid browser contribution")
 		}
 		ids[c.ID] = true
@@ -92,7 +96,7 @@ func SnapshotBrowser(root, manifestPath string, m Manifest) (map[string]AssetSna
 		}
 		seen := map[string]bool{}
 		for _, permission := range c.Permissions {
-			if !slices.Contains(m.RequestedPermissions, permission) || seen[permission] || !slices.Contains([]string{"context.read", "topology.read", "status.read", "access.create", "access.stream", "navigation.lab"}, permission) {
+			if !slices.Contains(m.RequestedPermissions, permission) || seen[permission] || !slices.Contains([]string{"context.read", "topology.read", "status.read", "access.create", "access.stream", "navigation.lab", "templates.read", "templates.write", "builds.read", "builds.create", "images.manage", "sources.read", "sources.resolve", "labs.read", "labs.create", "labs.manage", "members.read"}, permission) {
 				return nil, fmt.Errorf("invalid browser permission")
 			}
 			seen[permission] = true

@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"io"
 	"time"
@@ -21,6 +22,7 @@ type ExtensionSourceRequest struct {
 	Configuration, Credential []byte
 }
 type ExtensionSourceResult struct {
+	Collection       *SourceCollection   `json:"collection,omitempty"`
 	ResolvedIdentity string              `json:"resolvedIdentity"`
 	ProvenanceDigest domain.SHA256Digest `json:"provenanceDigest"`
 	Bundle           ExtensionArtifact   `json:"bundle"`
@@ -35,6 +37,7 @@ type ExtensionSource interface {
 // ExtensionWorkRequest is a versioned core-owned payload. Never put credentials,
 // transfer handles, provider state or arbitrary plugin workflow nodes in it.
 type ExtensionWorkRequest struct {
+	LibraryID           string                 `json:"libraryId,omitempty"`
 	Build               *BuildWork             `json:"build,omitempty"`
 	Import              *ImportWork            `json:"import,omitempty"`
 	Preparation         *PreparationWork       `json:"preparation,omitempty"`
@@ -81,3 +84,19 @@ type ExtensionWorkStore interface {
 	FinishExtensionWork(context.Context, ExtensionWorkClaim, domain.OperationState, json.RawMessage, string, GovernanceRecordIDs) error
 	CancelExtensionWork(context.Context, domain.OperationID, domain.UserID, GovernanceRecordIDs) error
 }
+
+// Collection support is optional and negotiated independently of Resolve.
+type SourceCollection struct {
+	Entries []SourceCollectionEntry `json:"entries"`
+}
+type SourceCollectionEntry struct {
+	Key         string            `json:"key"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Bundle      ExtensionArtifact `json:"bundle"`
+}
+type SourceCollectionResolver interface {
+	ResolveCollection(context.Context, ExtensionSourceRequest) (ExtensionSourceResult, error)
+}
+
+var ErrInvalidSource = errors.New("invalid source collection")

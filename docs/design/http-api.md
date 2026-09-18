@@ -82,3 +82,7 @@ a protected operator file plus restart, as ADR-0015 specifies.
 ## Independent extension foundations
 
 The extension foundations add authenticated browser contribution discovery, administrator inventory, sanitized lab topology, access presentation/download, and bundle publication endpoints to Huma/OpenAPI. See [extensions](extensions.md) for their current boundaries; gateway and source/build orchestration APIs are not enabled.
+
+## Portable source and collaboration additions
+
+ADR-0026–ADR-0029 require versioned typed APIs for library schedules, portable packages, project enrollment, explicit preparation owners and fenced console control. Existing public fields and meanings remain compatible. The target contract is defined in [portable templates and collaboration](portable-template-collaboration.md).

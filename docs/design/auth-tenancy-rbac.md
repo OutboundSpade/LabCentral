@@ -49,3 +49,7 @@ never establish identity or ownership. Scope IDs, role/target authorization and
 optimistic update preconditions are unchanged. Project creation does not implicitly
 create memberships, roles or target grants. A revoked target grant is renewed by
 updating the same identity tuple with its current resource version.
+
+## Self-service project collaboration
+
+ADR-0029 adds project-limited self-service team enrollment without granting roles or organization membership. Existing administrative teams retain their semantics. Core continues to own every authorization decision. The new enrollment and driver-control contract is defined in [portable templates and collaboration](portable-template-collaboration.md).

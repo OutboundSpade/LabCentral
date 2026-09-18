@@ -66,3 +66,19 @@ Single-document revisions remain byte-compatible; the new bundle publication
 path is additive. Bundle build recipes select `labcentral.renderer/v1alpha1+builds/v1`; old revisions retain their original semantics and canonical vectors. Jobs migration `0003_typed_work_subjects` and core migrations `0015_extension_work`, `0016_gateway_delegation`, `0017_build_orchestration` add durable work and delegation. Roll back this release with a consistent pre-upgrade database/artifact set, never by editing migration history.
 
 Provider `image-import-v1` and `artifact-transfer-v1` are optional features. A rebuilt provider has a different qualification identity even when its source behavior is unchanged. Core/UI-only upgrades may retain the exact qualified installed provider executable. Builder limits and binding configurations are captured in immutable work; restore the original identity/configuration to recover uncertain invocations after a binding change.
+
+## Portable sources and feature pages
+
+ADR-0026–ADR-0029 preserve existing API routes, role IDs, revision identities and
+stored provider state. Browser host contract 2 adds `page` contributions and typed
+project-bound operations while keeping v1 framing and existing slots. Portable
+source packages opt into `labcentral.bundle/v1beta1` and renderer semantics
+`labcentral.renderer/v1alpha1+package/v1`; old YAML and bundle revisions are not
+rewritten. Logical builder requirements are destination bindings.
+
+Optional `source-collection-v1` adds typed collection resolution/recovery while
+retaining source protocol 1.0 and existing Resolve behavior. Migration
+`0018_template_libraries` adds schedules, retained upstream entries and atomic sync
+publication. Its removal is not a rollback procedure: retain the matching
+pre-upgrade database/artifact backup. Feature packages and the remaining
+builder/import/team/console rollout are tracked independently in the checklist.
