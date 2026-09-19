@@ -84,6 +84,8 @@ tasks:
       - Prove independent installation against unchanged prebuilt core/UI and cross-browser feature behavior.
   - id: TASK-TEMPLATE-008
     title: Verify publish and deploy the template collaboration release
+    # Candidate/rebuild/migration/qualification checks passed; deployment and
+    # published-template/team-console rollout acceptance remain open.
     status: in_progress
     dependencies: [TASK-TEMPLATE-007]
     relatedAdrs: [ADR-0026, ADR-0027, ADR-0028, ADR-0029]
