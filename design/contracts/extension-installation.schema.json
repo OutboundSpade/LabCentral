@@ -295,6 +295,30 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 64
+                },
+                "containerRuntime": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "baseSHA256",
+                    "agentSHA256",
+                    "diskGiB"
+                  ],
+                  "properties": {
+                    "baseSHA256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "agentSHA256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "diskGiB": {
+                      "type": "integer",
+                      "minimum": 8,
+                      "maximum": 64
+                    }
+                  }
                 }
               }
             }
