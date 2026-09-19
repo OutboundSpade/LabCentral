@@ -115,7 +115,7 @@ func registerDirectory(api huma.API, security *requestSecurity) {
 					return nil, authorizationError(err, false)
 				}
 				choice := ProjectChoiceDTO{ProjectRecord: project, AllowedActions: []application.PermissionAction{application.ActionTemplateRead}}
-				for _, action := range []application.PermissionAction{application.ActionTemplateCreate, application.ActionQuotaManage, application.ActionProjectManage} {
+				for _, action := range []application.PermissionAction{application.ActionTemplateCreate, application.ActionQuotaManage, application.ActionProjectManage, application.ActionTeamManage} {
 					request.Action = action
 					if err := security.options.Authorizer.Authorize(ctx, request); err == nil {
 						choice.AllowedActions = append(choice.AllowedActions, action)

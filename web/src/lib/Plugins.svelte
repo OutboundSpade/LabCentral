@@ -152,7 +152,7 @@
     await load();
     await onchange();
     notice =
-      "Environment access granted. Instructors can now launch classroom labs in this workspace.";
+      "Environment access granted to this workspace.";
   }
   async function revoke() {
     if (!revoking) return;

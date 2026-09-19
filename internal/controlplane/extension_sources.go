@@ -96,6 +96,16 @@ func (s *Service) ListExtensionWork(ctx context.Context, actor domain.UserID, pr
 	}
 	return store.ListExtensionWork(ctx, project)
 }
+func (s *Service) ListOwnPreparations(ctx context.Context, actor domain.UserID, project domain.ProjectID) ([]app.ExtensionWork, error) {
+	if err := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRead); err != nil {
+		return nil, err
+	}
+	store, ok := s.store.(app.PreparationListStore)
+	if !ok {
+		return nil, ErrAccessUnavailable
+	}
+	return store.ListOwnPreparations(ctx, project, actor)
+}
 func (s *Service) GetExtensionWork(ctx context.Context, actor domain.UserID, project domain.ProjectID, id domain.OperationID) (app.ExtensionWork, error) {
 	store, ok := s.store.(app.ExtensionWorkStore)
 	if !ok {

@@ -41,10 +41,17 @@ func startExtensionAssets(ctx context.Context, cfg config, extensions loadedExte
 		core = "http://" + cfg.listen
 	}
 	files := map[string]map[string]manifest.AssetSnapshot{}
+	aliases := map[string]bool{}
 	for _, b := range extensions.Browsers {
 		files[b.InstanceID] = b.Assets
 		for _, v := range b.Manifest.Browser.Contributions {
-			views = append(views, httpapi.BrowserExtensionDTO{ID: v.ID, PluginInstance: b.InstanceID, Slot: v.Slot, Title: v.Title, URL: cfg.extensionAssetOrigin + "/" + url.PathEscape(b.InstanceID) + "/" + v.Entrypoint, Permissions: v.Permissions})
+			if v.RouteAlias != "" {
+				if aliases[v.RouteAlias] {
+					return nil, nil, func() {}, fmt.Errorf("duplicate browser route alias %q", v.RouteAlias)
+				}
+				aliases[v.RouteAlias] = true
+			}
+			views = append(views, httpapi.BrowserExtensionDTO{ID: v.ID, RouteAlias: v.RouteAlias, PluginInstance: b.InstanceID, Slot: v.Slot, Title: v.Title, URL: cfg.extensionAssetOrigin + "/" + url.PathEscape(b.InstanceID) + "/" + v.Entrypoint, Permissions: v.Permissions})
 		}
 	}
 	handler, err := browserassets.Handler(cfg.extensionAssetOrigin, core, files)

@@ -7,6 +7,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,11 +28,12 @@ func TestParticipantPreparationDoesNotGrantAuthorOrImagePrivileges(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	response = author.request(http.MethodPost, "/api/v1/lab-templates/"+template.ID+"/revisions?projectId=project.alpha", map[string]any{"source": string(source)}, "", "participant-revision")
+	response = author.request(http.MethodPost, "/api/v1/lab-templates/"+template.ID+"/revisions?projectId=project.alpha", map[string]any{"source": strings.Replace(string(source), "spec:\n", "spec:\n  parameters:\n    - {name: count, type: integer}\n    - {name: choice, type: enum, enum: [0, 1]}\n", 1)}, "", "participant-revision")
 	requireGovernanceStatus(t, response, 200)
 	var revision TemplateRevisionDTO
 	decodeGovernanceResponse(t, response, &revision)
-	preparation := app.PreparationWork{Version: 2, RevisionID: domain.RevisionID(revision.ID), TargetID: controlplane.LocalDockerTarget, Inputs: domain.TypedInputs{}, Acknowledged: true, Lifetime: app.InstanceLifetimeRequest{TTLSeconds: 3600}}
+	zero := int64(0)
+	preparation := app.PreparationWork{Version: 2, RevisionID: domain.RevisionID(revision.ID), TargetID: controlplane.LocalDockerTarget, Inputs: domain.TypedInputs{{Name: "count", Kind: domain.InputInteger, Integer: 2}, {Name: "choice", Kind: domain.InputEnum, Enum: &domain.EnumValue{Integer: &zero}}}, Acknowledged: true, Lifetime: app.InstanceLifetimeRequest{TTLSeconds: 3600}}
 	body := map[string]any{"projectId": "project.alpha", "preparation": preparation}
 	response = participant.request(http.MethodPost, "/api/v1/deployment-preparations", body, "", "participant-prepare")
 	requireGovernanceStatus(t, response, 200)
@@ -46,6 +48,27 @@ func TestParticipantPreparationDoesNotGrantAuthorOrImagePrivileges(t *testing.T)
 	}
 	response = participant.request(http.MethodGet, "/api/v1/extension-operations/"+string(work.ID)+"?projectId=project.alpha", nil, "", "")
 	requireGovernanceStatus(t, response, 200)
+	response = participant.request(http.MethodGet, "/api/v1/deployment-preparations?projectId=project.alpha", nil, "", "")
+	requireGovernanceStatus(t, response, 200)
+	var own struct {
+		Items []app.ExtensionWork `json:"items"`
+	}
+	decodeGovernanceResponse(t, response, &own)
+	if len(own.Items) != 1 || own.Items[0].ID != work.ID {
+		t.Fatal("own preparation missing")
+	}
+	response = author.request(http.MethodGet, "/api/v1/deployment-preparations?projectId=project.alpha", nil, "", "")
+	requireGovernanceStatus(t, response, 200)
+	decodeGovernanceResponse(t, response, &own)
+	if len(own.Items) != 0 {
+		t.Fatal("another user's preparations disclosed")
+	}
+	response = participant.request(http.MethodGet, "/api/v1/deployment-preparations?projectId=project.foreign", nil, "", "")
+	if response.Code == http.StatusOK {
+		t.Fatal("foreign project accepted")
+	}
+	response = participant.request(http.MethodGet, "/api/v1/extension-operations?projectId=project.alpha", nil, "", "")
+	requireGovernanceStatus(t, response, http.StatusForbidden)
 	preparation.Owner = &app.PreparationOwner{Kind: app.OwnerUser, ID: "user.author"}
 	body["preparation"] = preparation
 	response = participant.request(http.MethodPost, "/api/v1/deployment-preparations", body, "", "participant-foreign-owner")

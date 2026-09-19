@@ -364,7 +364,7 @@
         bind:value={name}
         required
         maxlength="128"
-        placeholder="Classroom SSH gateway"
+        placeholder="Lab SSH gateway"
       />
     </fieldset>
     {#if formError}<p role="alert" class="text-sm text-error">

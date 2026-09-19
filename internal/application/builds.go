@@ -210,3 +210,8 @@ func (r PreparationWork) ValidateVersion() error {
 	}
 	return nil
 }
+
+// PreparationListStore exposes only the caller's recent preparation requests.
+type PreparationListStore interface {
+	ListOwnPreparations(context.Context, domain.ProjectID, domain.UserID) ([]ExtensionWork, error)
+}

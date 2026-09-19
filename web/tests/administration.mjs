@@ -1,3 +1,4 @@
+import {featureExtensions,serveFeature} from './feature-fixture.mjs';
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -34,6 +35,7 @@ const permissions = (p) => ({
     : ["template.read"],
 });
 const server = createServer(async (req, res) => {
+  if(await serveFeature(req,res))return;
   const url = new URL(req.url, "http://localhost");
   const json = (data, status = 200) => {
     res.writeHead(status, { "Content-Type": "application/json" });
@@ -74,7 +76,8 @@ const server = createServer(async (req, res) => {
     )
       return json({ items: [] });
     if (!admin) return json({ detail: "Forbidden" }, 403);
-    if(path === "/extensions/browser") return json({items:[]});
+    if(path === "/extensions/browser") return json(await featureExtensions(origin));
+    if(["/source-bindings","/template-libraries","/extension-operations","/deployment-preparations"].includes(path)||path.endsWith("/groups"))return json({items:[]});
     if(path === "/admin/extensions") return json({items:[
       {instanceId:"plugin.proxmox",pluginId:"io.labcentral.provider.proxmox",category:"provider",version:"0.1.0",protocolMajor:1,protocolMinor:1,available:true,targetIds:[target.id]},
       {instanceId:"plugin.novnc",pluginId:"io.labcentral.access.novnc",category:"access",version:"0.1.0",protocolMajor:1,protocolMinor:1,available:true,methods:["vnc"]}
@@ -263,15 +266,15 @@ try {
       await page
         .getByRole("link", { name: "Open Network labs", exact: true })
         .click();
-      await page.getByRole("heading", { name: "Classroom limits" }).waitFor();
+      await page.getByRole("heading", { name: "Lab limits" }).waitFor();
       await page.getByRole("link", { name: "Classroom", exact: true }).click();
-      await page
+      await page.frameLocator('iframe[title="Classroom"]')
         .getByText("Classroom launches require instructor access", {
           exact: false,
         })
         .waitFor();
       await page
-        .getByRole("link", { name: "Configure environment access" })
+        .getByRole("link", { name: "Integrations", exact:true })
         .click();
       await page
         .getByRole("heading", { name: "Environments", exact: true })
@@ -313,7 +316,7 @@ try {
         .getByRole("heading", { name: "Classroom", exact: true })
         .waitFor();
       assert.equal(
-        await page
+        await page.frameLocator('iframe[title="Classroom"]')
           .getByText("Classroom launches require instructor access", {
             exact: false,
           })
@@ -323,7 +326,7 @@ try {
       await page
         .getByLabel("Switch workspace", { exact: true })
         .selectOption(projects[1].id);
-      await page
+      await page.frameLocator('iframe[title="Classroom"]')
         .getByText("Classroom launches require instructor access", {
           exact: false,
         })
@@ -428,12 +431,12 @@ try {
         path: new URL(`${engineName}-plugins.png`, shots).pathname,
         fullPage: true,
       });
-      await page.goto(origin+'/templates/');await page.getByRole('button',{name:'Form',exact:true}).click();
-      await page.getByRole('group',{name:'metadata',exact:true}).getByRole('textbox',{name:'name *',exact:true}).fill('generated-lab');
-      await page.getByRole('button',{name:'Add vms',exact:true}).click();await page.getByRole('button',{name:'Add vms item',exact:true}).click();
-      const vm=page.getByRole('group',{name:'vms 1',exact:true});await vm.getByRole('textbox',{name:'name *',exact:true}).fill('workstation');await vm.getByRole('textbox',{name:'imageRef *',exact:true}).fill('example@sha256:test');await vm.getByRole('spinbutton',{name:'cpu *',exact:true}).fill('2');await vm.getByRole('textbox',{name:'memory *',exact:true}).fill('512Mi');
-      await page.getByRole('button',{name:'Source',exact:true}).click();const built=JSON.parse(await page.getByLabel('Lab YAML',{exact:true}).inputValue());assert.equal(built.metadata.name,'generated-lab');assert.equal(built.spec.resources.vms[0].compute.cpu,2);
-      await page.getByRole('button',{name:'Form',exact:true}).click();await page.getByRole('group',{name:'vms 1',exact:true}).waitFor();
+      await page.goto(origin+'/templates/');const library=page.frameLocator('iframe[title="Template Library"]');await library.getByText('Author a template',{exact:true}).click();await library.getByRole('button',{name:'Form',exact:true}).click();
+      await library.getByRole('group',{name:'metadata',exact:true}).getByRole('textbox',{name:'name *',exact:true}).fill('generated-lab');
+      await library.getByRole('button',{name:'Add vms',exact:true}).click();await library.getByRole('button',{name:'Add vms item',exact:true}).click();
+      const vm=library.getByRole('group',{name:'vms 1',exact:true});await vm.getByRole('textbox',{name:'name *',exact:true}).fill('workstation');await vm.getByRole('textbox',{name:'imageRef *',exact:true}).fill('example@sha256:test');await vm.getByRole('spinbutton',{name:'cpu *',exact:true}).fill('2');await vm.getByRole('textbox',{name:'memory *',exact:true}).fill('512Mi');
+      await library.getByRole('button',{name:'Source',exact:true}).click();const built=JSON.parse(await library.getByLabel('Lab YAML',{exact:true}).inputValue());assert.equal(built.metadata.name,'generated-lab');assert.equal(built.spec.resources.vms[0].compute.cpu,2);
+      await library.getByRole('button',{name:'Form',exact:true}).click();await library.getByRole('group',{name:'vms 1',exact:true}).waitFor();
       await page.goto(origin+'/plugins/');
       await page.setViewportSize({ width: 390, height: 844 });
       await page.waitForTimeout(200);

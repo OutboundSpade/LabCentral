@@ -1,0 +1,195 @@
+:root {
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+  color: #213047;
+  background: #fff;
+  color-scheme: light dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  padding: 12px 8px 32px;
+  max-width: 1200px;
+  margin: auto;
+}
+h2 {
+  font-size: 1.2rem;
+  margin: 0 0 12px;
+}
+h3 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+p {
+  margin: 8px 0;
+}
+section,
+article,
+details {
+  border: 1px solid #d9e0e8;
+  border-radius: 12px;
+  padding: 18px;
+  margin: 0 0 16px;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  border: 1px solid #c3cfdf;
+  border-radius: 7px;
+  padding: 8px 14px;
+  background: #f3f6fb;
+  color: inherit;
+  cursor: pointer;
+}
+button.primary {
+  background: #325bcc;
+  color: white;
+  border-color: #325bcc;
+}
+button.danger {
+  color: #ad2639;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+input:not([type="checkbox"]),
+select,
+textarea {
+  padding: 9px;
+  border: 1px solid #bcc8d8;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  width: 100%;
+}
+textarea {
+  min-height: 100px;
+}
+textarea.source {
+  min-height: 320px;
+  font:
+    13px/1.6 ui-monospace,
+    monospace;
+}
+label {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0;
+}
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+small,
+.muted {
+  color: #66768a;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+nav,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.status {
+  padding: 10px 0;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+}
+.error {
+  color: #ad2639;
+}
+.badge {
+  background: #eaf0fd;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+dialog {
+  max-width: 560px;
+  width: calc(100% - 32px);
+  border: 1px solid #bcc8d8;
+  border-radius: 12px;
+  padding: 24px;
+}
+dialog::backdrop {
+  background: #12213d88;
+}
+ul {
+  padding-left: 22px;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #80a4ff;
+  outline-offset: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #e1e8f4;
+    background: #18212e;
+  }
+  section,
+  article,
+  details {
+    border-color: #3b4b60;
+  }
+  button {
+    background: #263348;
+    border-color: #51627b;
+  }
+  .badge {
+    background: #2c3b56;
+  }
+  small,
+  .muted {
+    color: #a9b8cd;
+  }
+  .error,
+  button.danger {
+    color: #ff9aa8;
+  }
+  input,
+  select,
+  textarea {
+    border-color: #51627b;
+  }
+  dialog {
+    background: #18212e;
+    color: inherit;
+  }
+}

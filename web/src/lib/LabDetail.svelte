@@ -76,7 +76,7 @@
     </div>
     {#if !browserConsole}<p class="mt-4 text-sm text-base-content/70">
         Browser consoles are not available on this installation. Contact your
-        instructor for access.
+        administrator for access.
       </p>{/if}
 
     <ExtensionPanels instanceId={detail.id} />

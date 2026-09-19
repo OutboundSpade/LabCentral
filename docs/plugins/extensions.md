@@ -67,3 +67,10 @@ closed validated input catalog and `examples/external-browser/page.js` for an
 independently packaged example.
 
 See [portable template packaging](portable-templates.md) for the source-only package contract and CLI.
+
+Host contract 3 adds optional typed legacy-route aliases, project-group operations,
+explicit team preparation ownership, caller preparation history, schema authoring,
+source downloads, and classroom batch/lifecycle methods. Context includes the
+caller's subject and project display permissions. Existing contract 2 packages
+retain their behavior. See [feature packages](feature-packages.md) for installation,
+compatibility, and the permission boundaries.

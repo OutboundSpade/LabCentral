@@ -214,12 +214,34 @@
                     "status.read",
                     "access.create",
                     "access.stream",
-                    "navigation.lab"
+                    "navigation.lab",
+                    "templates.read",
+                    "templates.write",
+                    "builds.read",
+                    "builds.create",
+                    "images.manage",
+                    "sources.read",
+                    "sources.resolve",
+                    "labs.read",
+                    "labs.create",
+                    "labs.manage",
+                    "members.read",
+                    "groups.read",
+                    "groups.enroll",
+                    "groups.manage"
                   ]
                 },
                 "minItems": 0,
                 "maxItems": 64,
                 "uniqueItems": true
+              },
+              "routeAlias": {
+                "type": "string",
+                "enum": [
+                  "templates",
+                  "teams",
+                  "classroom"
+                ]
               }
             },
             "required": [
@@ -228,6 +250,22 @@
               "title",
               "entrypoint",
               "permissions"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "routeAlias"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "slot": {
+                      "const": "page"
+                    }
+                  }
+                }
+              }
             ]
           },
           "minItems": 1,
@@ -237,13 +275,38 @@
         "minimumHostVersion": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 2
+          "maximum": 3
         }
       },
       "required": [
         "apiVersion",
         "assets",
         "contributions"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "contributions": {
+                "contains": {
+                  "required": [
+                    "routeAlias"
+                  ]
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "minimumHostVersion"
+            ],
+            "properties": {
+              "minimumHostVersion": {
+                "minimum": 3
+              }
+            }
+          }
+        }
       ]
     }
   },

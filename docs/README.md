@@ -23,3 +23,5 @@ workflows; design documents explain the contracts behind them.
 
 Keep one canonical home for each subject. Link to contracts and runbooks instead
 of copying their details into README files or progress summaries.
+
+Portable sources and collaboration: [Template Library and feature packages](plugins/feature-packages.md), [project groups](users/project-groups.md), and [shared consoles](plugins/shared-console.md).

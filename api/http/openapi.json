@@ -331,6 +331,9 @@
           "pluginInstance": {
             "type": "string"
           },
+          "routeAlias": {
+            "type": "string"
+          },
           "slot": {
             "type": "string"
           },
@@ -5295,7 +5298,14 @@
             "type": "boolean"
           },
           "Enum": {
-            "$ref": "#/components/schemas/EnumValue"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnumValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "Integer": {
             "format": "int64",
@@ -5312,7 +5322,14 @@
             "type": "number"
           },
           "SecretRef": {
-            "$ref": "#/components/schemas/SecretRef"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SecretRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "String": {
             "type": "string"
@@ -7029,6 +7046,45 @@
       }
     },
     "/deployment-preparations": {
+      "get": {
+        "operationId": "get-deployment-preparations",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionWorkListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get deployment preparations"
+      },
       "post": {
         "operationId": "post-deployment-preparations",
         "parameters": [

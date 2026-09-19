@@ -9,6 +9,7 @@ import (
 
 type BrowserExtensionDTO struct {
 	ID             string   `json:"id"`
+	RouteAlias     string   `json:"routeAlias,omitempty"`
 	PluginInstance string   `json:"pluginInstance"`
 	Slot           string   `json:"slot"`
 	Title          string   `json:"title"`

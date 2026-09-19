@@ -43,9 +43,9 @@ func TestEmbeddedUIBootAssetsAreServed(t *testing.T) {
 	}
 }
 
-func TestEmbeddedUIClassroomDeepLinks(t *testing.T) {
+func TestEmbeddedUIProjectAndFeatureDeepLinks(t *testing.T) {
 	handler := staticHandler(webassets.FS())
-	for _, route := range []string{"/operations", "/workspaces", "/plugins", "/launch", "/templates", "/classroom", "/people", "/settings", "/lab?id=instance.test", "/access/access.test"} {
+	for _, route := range []string{"/operations", "/workspaces", "/plugins", "/launch", "/templates", "/classroom", "/teams", "/teams/", "/feature", "/people", "/settings", "/lab?id=instance.test", "/access/access.test"} {
 		t.Run(route, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, route, nil))

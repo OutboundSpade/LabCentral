@@ -82,3 +82,5 @@ See [extension author examples](extensions.md) for recipe metadata, bindings, op
 
 Use [portable source packages](portable-templates.md) for import/export and
 [GitHub libraries](github-library.md) for source-only synchronization.
+
+[Feature packages](feature-packages.md) describes the independently installed Template Library, Teams, and optional Classroom pages.

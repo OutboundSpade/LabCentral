@@ -61,6 +61,22 @@ func (s *Store) ListExtensionWork(ctx context.Context, project domain.ProjectID)
 	}
 	return out, rows.Err()
 }
+func (s *Store) ListOwnPreparations(ctx context.Context, project domain.ProjectID, actor domain.UserID) ([]app.ExtensionWork, error) {
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.project_id=? AND w.actor_id=? AND j.subject_kind='preparation' ORDER BY w.created_at_us DESC,w.operation_id LIMIT 200`), project, actor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []app.ExtensionWork{}
+	for rows.Next() {
+		w, e := scanExtensionWork(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, w)
+	}
+	return out, rows.Err()
+}
 func (s *Store) workTx(ctx context.Context, f func(*sql.Tx) error) error {
 	for attempt := 0; ; attempt++ {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})

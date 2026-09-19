@@ -8,7 +8,7 @@
     "normalize-build": "bun ../tools/normalize_web_build.mjs",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:extensions": "node tests/extensions.mjs",
-    "test:browser": "node tests/startup.mjs && node tests/classroom.mjs && node tests/operations.mjs && node tests/shared-console.mjs && node tests/administration.mjs",
+    "test:browser": "node tests/startup.mjs && node tests/classroom.mjs && node tests/features.mjs && node tests/operations.mjs && node tests/shared-console.mjs && node tests/administration.mjs",
     "generate:api": "cd .. && go run ./tools/openapi && cd web && openapi-typescript ../api/http/openapi.json -o src/lib/api.generated.ts",
     "test:cache": "bun test tests/query.test.ts tests/schema.test.ts"
   },

@@ -1,10 +1,8 @@
 <script lang="ts">
- import ExtensionPage from "./ExtensionPage.svelte";
- import ExtensionAccessView from "./ExtensionAccessView.svelte";
- import DeviceAuthorization from "./DeviceAuthorization.svelte";
- import GatewayGrants from "./GatewayGrants.svelte";
- import BuildControls from "./BuildControls.svelte";
- import SourceControls from "./SourceControls.svelte";
+  import ExtensionPage from "./ExtensionPage.svelte";
+  import ExtensionAccessView from "./ExtensionAccessView.svelte";
+  import DeviceAuthorization from "./DeviceAuthorization.svelte";
+  import GatewayGrants from "./GatewayGrants.svelte";
   import { onMount } from "svelte";
   import { afterNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
@@ -24,10 +22,8 @@
     FingerprintPattern,
   } from "@lucide/svelte";
   import Modal from "./Modal.svelte";
-  import DocumentEditor from "./DocumentEditor.svelte";
   import ProviderOptions from "./ProviderOptions.svelte";
   import LabDetail from "./LabDetail.svelte";
-  import BulkLabControls from "./BulkLabControls.svelte";
   import LabList from "./LabList.svelte";
   import Operations from "./Operations.svelte";
   import Notifications from "./Notifications.svelte";
@@ -36,7 +32,6 @@
   import Plugins from "./Plugins.svelte";
   import { routeViews, titles, isGlobalView } from "./navigation";
   import StatusBadge from "./StatusBadge.svelte";
-  import ParameterInputs from "./ParameterInputs.svelte";
   import DeclaredInputs from "./DeclaredInputs.svelte";
   import People from "./People.svelte";
   import Policies from "./Policies.svelte";
@@ -47,7 +42,6 @@
     mutationHeaders,
     terminal,
     type Project,
-    type Person,
     type LabTemplate,
     type Revision,
     type TemplateContent,
@@ -58,7 +52,6 @@
     type ProviderTarget,
     type InputValue,
     type AccessLaunch,
-    type Batch,
   } from "./api";
 
   let view = $derived(
@@ -90,22 +83,10 @@
   let inputsValid = $state(true);
   let acknowledge = $state(false);
   let source = $state("");
-  let templateName = $state("");
-  let templateDescription = $state("");
   let providerOverride = $state("");
-  let roster = $state<Person[]>([]);
-  let selectedOwners = $state<string[]>([]);
-  let classroomLaunch = $state(false);
-  let validationOpen = $state(false);
   let ttlMinutes = $state<number | undefined>();
-  let batch = $state<Batch>();
   let activeOperation = $state<Operation>();
   let search = $state("");
-  let selectedClassroomLabs = $state<string[]>([]);
-  let bulkBusy = $state(false);
-  let bulkResults = $state<
-    Record<string, { operation?: Operation; error?: string; key: string }>
-  >({});
   let showEnded = $state(false);
   let detailId = $derived(page.url.searchParams.get("id") ?? "");
   let drawerOpen = $state(false);
@@ -125,9 +106,6 @@
     server?.authMode === "none" ||
       project?.allowedActions?.includes("template.create"),
   );
-  let operator = $derived(
-    project?.allowedActions?.includes("instance.batchCreate") ?? false,
-  );
   let manager = $derived(
     project?.allowedActions?.includes("quota.manage") ?? false,
   );
@@ -138,27 +116,21 @@
     instances.filter(
       (i) =>
         (showEnded || i.phase !== "destroyed") &&
-        (view === "classroom" ||
-          i.ownerId === session?.subjectId ||
-          i.ownerKind !== "user") &&
+        (i.ownerId === session?.subjectId || i.ownerKind !== "user") &&
         labName(i).toLowerCase().includes(search.toLowerCase()),
     ),
   );
   let allowed = $derived(
     (view === "workspaces" || view === "people") && server?.authMode === "none"
       ? false
-      : view === "templates"
-        ? !!author
-        : view === "classroom"
-          ? operator
-          : view === "people" ||
-              view === "workspaces" ||
-              view === "operations" ||
-              view === "plugins"
-            ? administrator
-            : view === "settings"
-              ? manager
-              : true,
+      : view === "people" ||
+          view === "workspaces" ||
+          view === "operations" ||
+          view === "plugins"
+        ? administrator
+        : view === "settings"
+          ? manager
+          : true,
   );
 
   onMount(() => {
@@ -174,8 +146,7 @@
   afterNavigate(({ from }) => {
     if (!from) return;
     drawerOpen = false;
-    classroomLaunch = false;
-    validationOpen = false;
+
     error = "";
     notice = "";
     activeOperation = undefined;
@@ -194,7 +165,7 @@
         loading = true;
         generation++;
         instances = [];
-        roster = [];
+
         projects = [];
         try {
           await loadProjects();
@@ -215,7 +186,7 @@
       session = undefined;
       loading = false;
       instances = [];
-      roster = [];
+
       clearTimeout(refreshTimer);
     }
     error =
@@ -294,7 +265,7 @@
       session = undefined;
       projects = [];
       instances = [];
-      roster = [];
+
       clearTimeout(refreshTimer);
     });
   }
@@ -314,15 +285,10 @@
       templateId = "";
       revisionId = "";
       revisions = [];
-      selectedOwners = [];
-      selectedClassroomLabs = [];
-      bulkResults = {};
-      bulkBusy = false;
-      batch = undefined;
+
       activeOperation = undefined;
       instances = [];
       templates = [];
-      roster = [];
     }
     localStorage.setItem(
       `labcentral.selected-project.v1.${session?.subjectId}`,
@@ -399,32 +365,16 @@
           },
         ];
       }
-      if (
-        !templateId &&
-        (view === "launch" || view === "classroom" || view === "templates")
-      ) {
+      if (!templateId && view === "launch") {
         templateId = templates[0]?.id ?? "";
         if (templateId) await chooseTemplate();
       }
-      if (view === "classroom" && operator && targetId) await loadRoster(reset);
       scheduleRefresh();
     } catch (cause) {
       if (current === generation) failure(cause);
     } finally {
       if (current === generation) loading = false;
     }
-  }
-  async function loadRoster(resetSelection = true) {
-    const current = generation;
-    const selectedTarget = targetId;
-    const people = await collection<Person>(
-      `/projects/${encodeURIComponent(projectId)}/members?targetId=${encodeURIComponent(targetId)}`,
-      "after",
-    );
-    if (disposed || current !== generation || selectedTarget !== targetId)
-      return;
-    roster = people;
-    if (resetSelection) selectedOwners = [];
   }
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
@@ -448,13 +398,6 @@
         );
         if (disposed || current !== generation) return;
         activeOperation = updated;
-      }
-      if (batch) {
-        const updated = await api<Batch>(`/lab-instance-batches/${batch.id}`, {
-          fresh,
-        });
-        if (disposed || current !== generation) return;
-        batch = updated;
       }
       stale = false;
     } catch (cause) {
@@ -488,8 +431,7 @@
       if (selected !== selection || disposed) return;
       revisions = result.sort((a, b) => b.revisionNumber - a.revisionNumber);
       revisionId = revisions[0]?.id ?? "";
-      templateName = template?.name ?? "";
-      templateDescription = template?.description ?? "";
+
       if (revisionId) await chooseRevision();
     } catch (cause) {
       failure(cause);
@@ -542,89 +484,6 @@
       await refresh();
       await goto("/");
       notice = "Lab launch queued.";
-    });
-  }
-  async function launchClassroom() {
-    await action(async () => {
-      batch = await api<Batch>("/lab-instance-batches", {
-        method: "POST",
-        headers: mutationHeaders(),
-        body: JSON.stringify({
-          ...requestBody(),
-          owners: selectedOwners.map((ownerId) => ({
-            ownerKind: "user",
-            ownerId,
-          })),
-        }),
-      });
-      classroomLaunch = false;
-      notice = "Classroom launch accepted.";
-      await refresh();
-    });
-  }
-  async function validateTemplate() {
-    await action(async () => {
-      const result = await api<{
-        resourceCount: number;
-        warnings?: { message: string }[];
-      }>("/lab-validations", {
-        method: "POST",
-        body: JSON.stringify({
-          source,
-          projectId,
-          providerTargetId: targetId,
-          inputs,
-          acknowledgeDockerIsolationRisk: acknowledge,
-        }),
-      });
-      notice =
-        `Template validated: ${result.resourceCount} resources.` +
-        (result.warnings ?? [])
-          .map((warning) => ` ${warning.message}`)
-          .join("");
-    });
-  }
-  async function publish() {
-    await action(async () => {
-      if (!templateId) {
-        const created = await api<LabTemplate>("/lab-templates", {
-          method: "POST",
-          headers: mutationHeaders(),
-          body: JSON.stringify({
-            projectId,
-            name: templateName,
-            description: templateDescription,
-          }),
-        });
-        templates = [...templates, created];
-        templateId = created.id;
-      } else {
-        const updated = await api<LabTemplate>(
-          `/lab-templates/${templateId}?projectId=${encodeURIComponent(projectId)}`,
-          {
-            method: "PUT",
-            headers: {
-              ...mutationHeaders(),
-              "If-Match": `"${template?.resourceVersion}"`,
-            },
-            body: JSON.stringify({
-              name: templateName,
-              description: templateDescription,
-            }),
-          },
-        );
-        templates = templates.map((t) => (t.id === updated.id ? updated : t));
-      }
-      await api(
-        `/lab-templates/${templateId}/revisions?projectId=${encodeURIComponent(projectId)}`,
-        {
-          method: "POST",
-          headers: mutationHeaders(),
-          body: JSON.stringify({ source }),
-        },
-      );
-      await chooseTemplate();
-      notice = "Revision published. Students can now launch this lab.";
     });
   }
   async function endLab() {
@@ -729,7 +588,7 @@
           >
           <p class="mt-4 text-sm leading-6 text-base-content/70">
             Use your organization's account. If you need access, contact your
-            instructor.
+            administrator.
           </p>
         {:else if server?.authMode === "local"}
           <form
@@ -847,8 +706,8 @@
             <BookOpen size={28} class="mb-4 text-base-content/60" />
             <h2 class="text-lg font-semibold">No projects assigned yet</h2>
             <p class="mt-2 max-w-lg text-sm leading-6 text-base-content/70">
-              Ask your administrator to add you to a classroom. Your projects
-              will appear here automatically.
+              Ask your administrator to add you to a project. Your projects will
+              appear here automatically.
             </p>
             <button class="btn mt-5" onclick={bootstrap}
               >Check for access</button
@@ -862,16 +721,10 @@
               This view needs additional access
             </h2>
             <p class="mt-2 text-sm text-base-content/70">
-              {view === "classroom"
-                ? "Classroom launches require instructor access and an environment granted to this workspace. Choose an enabled workspace or ask an administrator to configure access."
-                : "Choose another project or return to your labs."}
+              Choose another project or return to your labs.
             </p>
             <div class="mt-5 flex flex-wrap gap-3">
-              <a href="/" class="btn">My labs</a
-              >{#if administrator && view === "classroom"}<a
-                  href="/plugins/"
-                  class="btn">Configure environment access</a
-                >{/if}
+              <a href="/" class="btn">My labs</a>
             </div>
           </section>
         {:else if view === "workspaces"}
@@ -929,7 +782,7 @@
               <p class="mt-2 max-w-sm text-sm leading-6 text-base-content/70">
                 {search
                   ? "Try a different search or include ended labs."
-                  : "Launch a lab from your classroom’s templates. Your own environment will appear here."}
+                  : "Launch a lab from your project’s templates. Your own environment will appear here."}
               </p>
               {#if !search}<a href="/launch/" class="btn mt-6"
                   ><Plus size={16} />Browse labs</a
@@ -944,25 +797,25 @@
           <Operations {projects} name={labName} />
         {:else if view === "detail"}
           {#key projectId}<LabDetail
-            {detail}
-            name={detail ? labName(detail) : ""}
-            expires={detail ? expiry(detail) : ""}
-            instructions={detail?.revisionId
-              ? revisionTemplates[detail.revisionId]?.description
-              : undefined}
-            {administrator}
-            browserConsole={server?.uiFeatures?.includes("browser-vnc") ??
-              false}
-            {busy}
-            onopen={openConsole}
-            onend={confirmEnd}
-          />{/key}
-        {:else if view === "launch" || view === "classroom"}
+              {detail}
+              name={detail ? labName(detail) : ""}
+              expires={detail ? expiry(detail) : ""}
+              instructions={detail?.revisionId
+                ? revisionTemplates[detail.revisionId]?.description
+                : undefined}
+              {administrator}
+              browserConsole={server?.uiFeatures?.includes("browser-vnc") ??
+                false}
+              {busy}
+              onopen={openConsole}
+              onend={confirmEnd}
+            />{/key}
+        {:else if view === "launch"}
           {#snippet launchOptions()}
             <form
               onsubmit={(e) => {
                 e.preventDefault();
-                void (view === "classroom" ? launchClassroom() : launch());
+                void launch();
               }}
             >
               {#if !templates.length}<section
@@ -971,7 +824,7 @@
                   <BookOpen size={28} class="mb-4" />
                   <h2 class="text-lg font-semibold">No published labs yet</h2>
                   <p class="mt-2 text-sm text-base-content/70">
-                    Your instructor needs to publish a lab template for this
+                    A template author needs to publish a lab template for this
                     project.
                   </p>
                   {#if author}<a href="/templates/" class="btn mt-5"
@@ -1023,13 +876,6 @@
                           onchange={() => {
                             acknowledge = false;
                             providerOverride = "";
-                            if (view === "classroom")
-                              void action(async () => {
-                                await loadRoster(false);
-                                selectedOwners = selectedOwners.filter((id) =>
-                                  roster.some((person) => person.id === id),
-                                );
-                              });
                           }}
                           >{#each targets as t}<option value={t.id}
                               >{t.providerKind} · {t.id}</option
@@ -1067,22 +913,6 @@
                   </section>
                   <aside class="rounded-box bg-base-200 p-6">
                     <h2 class="font-semibold">Ready to launch</h2>
-                    {#if view === "classroom"}<fieldset
-                        class="mt-4 max-h-64 space-y-3 overflow-y-auto"
-                      >
-                        <legend class="mb-2 text-sm font-medium"
-                          >Students ({selectedOwners.length} selected)</legend
-                        >{#each roster as person}<label
-                            class="flex items-center gap-2 text-sm"
-                            ><input
-                              type="checkbox"
-                              class="checkbox checkbox-sm"
-                              value={person.id}
-                              bind:group={selectedOwners}
-                              disabled={busy}
-                            />{person.displayName}</label
-                          >{/each}
-                      </fieldset>{/if}
                     <p class="mt-3 text-sm leading-6 text-base-content/70">
                       Labs expire automatically. Save your work before deleting
                       them.
@@ -1096,288 +926,30 @@
                         !content ||
                         !inputsValid ||
                         !targetId ||
-                        (view === "classroom" && !selectedOwners.length) ||
                         (docker && !acknowledge)}
                       ><Play size={16} />{busy
                         ? "Launching…"
-                        : view === "classroom"
-                          ? `Launch for ${selectedOwners.length} selected`
-                          : "Launch lab"}</button
+                        : "Launch lab"}</button
                     >
                   </aside>
                 </div>{/if}
             </form>
           {/snippet}
-          {#if view === "launch"}{@render launchOptions()}{:else}<Modal
-              bind:open={classroomLaunch}
-              title="Launch classroom labs"
-              wide
-              >{@render launchOptions()}{#if error}<p
-                  role="alert"
-                  class="mt-4 text-sm text-error"
-                >
-                  {error}
-                </p>{/if}</Modal
-            >{/if}
-          {#if view === "classroom"}<section class="min-w-0">
-              <div
-                class="mb-5 flex flex-wrap items-center justify-between gap-3"
-              >
-                <h2 class="text-lg font-semibold">Students & labs</h2>
-                <div class="flex items-center gap-3">
-                  <label class="flex items-center gap-2 text-sm"
-                    ><input
-                      class="checkbox checkbox-sm"
-                      type="checkbox"
-                      bind:checked={showEnded}
-                    />Show ended labs</label
-                  ><button
-                    class="btn btn-primary"
-                    disabled={busy || !templates.length}
-                    onclick={() => (classroomLaunch = true)}
-                    ><Play size={16} />Launch labs</button
-                  >
-                </div>
-              </div>
-              <p class="mb-4 text-sm text-base-content/70">
-                Select students to launch labs. Select labs to end them
-                together.
-              </p>
-              {#key projectId}<BulkLabControls
-                  instances={instances.filter((i) => i.phase !== "destroyed")}
-                  name={labName}
-                  owner={(i) =>
-                    roster.find((p) => p.id === i.ownerId)?.displayName ??
-                    i.ownerId}
-                  {refresh}
-                  label="End selected labs"
-                  bind:selected={selectedClassroomLabs}
-                  bind:busy={bulkBusy}
-                  bind:results={bulkResults}
-                />{/key}
-              <div class="overflow-x-auto rounded-box border border-base-300">
-                <table class="table">
-                  <thead
-                    ><tr
-                      ><th
-                        ><input
-                          type="checkbox"
-                          class="checkbox checkbox-sm"
-                          aria-label="Select all students"
-                          checked={roster.length > 0 &&
-                            selectedOwners.length === roster.length}
-                          onchange={(e) =>
-                            (selectedOwners = e.currentTarget.checked
-                              ? roster.map((p) => p.id)
-                              : [])}
-                        /></th
-                      ><th>Student</th><th>Labs</th></tr
-                    ></thead
-                  ><tbody>
-                    {#each [...roster.map( (p) => ({ id: p.id, name: p.displayName, username: p.username, eligible: true }) ), ...Array.from(new Set(instances
-                            .filter((i) => (showEnded || i.phase !== "destroyed") && !roster.some((p) => p.id === i.ownerId))
-                            .map((i) => i.ownerId))).map( (id) => ({ id, name: id, username: "Not eligible for this environment", eligible: false }) )] as person (person.id)}
-                      <tr
-                        ><td
-                          ><input
-                            class="checkbox checkbox-sm"
-                            type="checkbox"
-                            value={person.id}
-                            bind:group={selectedOwners}
-                            disabled={!person.eligible || busy}
-                            aria-label={`Select ${person.name}`}
-                          /></td
-                        ><td class="font-medium"
-                          >{person.name}
-                          <p
-                            class="mt-1 text-xs font-normal text-base-content/60"
-                          >
-                            {person.username}
-                          </p></td
-                        ><td>
-                          <div class="grid gap-3">
-                            {#each instances.filter((i) => i.ownerId === person.id && (showEnded || i.phase !== "destroyed")) as instance (instance.id)}<div
-                                class="flex flex-wrap items-center gap-3"
-                              >
-                                {#if instance.phase !== "destroyed"}<input
-                                    type="checkbox"
-                                    class="checkbox checkbox-sm"
-                                    aria-label={`Select lab ${labName(instance)} for ${person.name}`}
-                                    value={instance.id}
-                                    bind:group={selectedClassroomLabs}
-                                    disabled={bulkBusy ||
-                                      !!bulkResults[instance.id]?.operation ||
-                                      (instance.desiredLifecycle ===
-                                        "destroyed" &&
-                                        !["failed", "degraded"].includes(
-                                          instance.phase,
-                                        ))}
-                                  />{/if}
-                                <a
-                                  class="link font-medium"
-                                  href={`/lab/?id=${instance.id}`}
-                                  >{labName(instance)}</a
-                                ><StatusBadge state={instance.phase} /><span
-                                  class="text-xs text-base-content/60"
-                                  >{expiry(instance)}</span
-                                >{#if instance.phase !== "destroyed"}<button
-                                    class="btn btn-xs btn-ghost ml-auto"
-                                    disabled={busy}
-                                    onclick={() => confirmEnd(instance)}
-                                    >End lab</button
-                                  >{/if}
-                                {#if bulkResults[instance.id]?.error}<p
-                                    class="w-full text-sm text-error"
-                                    role="alert"
-                                  >
-                                    {bulkResults[instance.id].error}
-                                  </p>{/if}
-                              </div>{:else}<span
-                                class="text-sm text-base-content/60"
-                                >No active labs</span
-                              >{/each}
-                          </div>
-                          {#each batch?.items?.filter((i) => i.ownerId === person.id && i.operation.state === "failed") ?? [] as item}<p
-                              class="mt-2 text-sm text-error"
-                            >
-                              Launch failed. {item.operation.message}
-                            </p>{/each}
-                        </td></tr
-                      >
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-              {#if !roster.length}<p class="mt-4 text-sm text-base-content/70">
-                  No eligible students are assigned to this workspace and
-                  environment.
-                </p>{/if}
-            </section>{/if}
-        {:else if view === "templates"}
- {#key `${projectId}/${templateId}`}<SourceControls {projectId} {templateId} onpublished={()=>void chooseTemplate()} />{/key}
- {#key `${projectId}/${revisionId}`}<BuildControls {projectId} {revisionId} />{/key}
-          <div class="grid gap-6 xl:grid-cols-[17rem_minmax(0,1fr)]">
-            <aside>
-              <button
-                class="btn mb-4 w-full"
-                onclick={() => {
-                  selection++;
-                  templateId = "";
-                  revisionId = "";
-                  templateName = "";
-                  templateDescription = "";
-                  source = target?.example?.source ?? "";
-                  content = undefined;
-                }}><Plus size={16} />New template</button
-              >
-              <ul class="menu w-full rounded-box border border-base-300">
-                {#each templates as t}<li>
-                    <button
-                      class:menu-active={templateId === t.id}
-                      onclick={() => {
-                        templateId = t.id;
-                        void chooseTemplate();
-                      }}><BookOpen size={16} />{t.name}</button
-                    >
-                  </li>{/each}
-              </ul>
-            </aside>
-            <form
-              class="grid min-w-0 gap-5 rounded-box border border-base-300 p-6"
-              onsubmit={(e) => {
-                e.preventDefault();
-                void publish();
-              }}
-            >
-              <h2 class="text-lg font-semibold">
-                {templateId
-                  ? "Publish a new revision"
-                  : "Create a lab template"}
-              </h2>
-              <label class="grid gap-2 text-sm"
-                >Template name<input
-                  class="input w-full"
-                  bind:value={templateName}
-                  required
-                  maxlength="63"
-                  placeholder="debian-starter"
-                /></label
-              ><label class="grid gap-2 text-sm"
-                >Description and instructions<textarea
-                  class="textarea h-28 w-full"
-                  bind:value={templateDescription}
-                  maxlength="4096"
-                  placeholder="What will students learn, and how should they get started?"
-                ></textarea></label
-              >
-              <DocumentEditor bind:source />
-              <button
-                type="button"
-                class="btn justify-self-start"
-                onclick={() => (validationOpen = true)}
-                >Validate with example values</button
-              >
-              <Modal
-                bind:open={validationOpen}
-                title="Validate with example values"
-              >
-                <p class="mt-3 text-base-content/70">
-                  Values below are only used for validation. Define student
-                  inputs in the YAML parameters.
-                </p>
-                <ParameterInputs
-                  bind:values={inputs}
-                  bind:valid={inputsValid}
-                />
-                <label class="mt-4 grid gap-2"
-                  >Validation environment<select
-                    class="select w-full"
-                    bind:value={targetId}
-                  >
-                    {#each targets as t}<option value={t.id}
-                        >{t.providerKind} · {t.id}</option
-                      >{/each}
-                  </select></label
-                >
-                {#if docker}<label class="mt-4 flex items-start gap-3"
-                    ><input
-                      type="checkbox"
-                      class="checkbox checkbox-sm"
-                      bind:checked={acknowledge}
-                    />I understand this container environment is for trusted
-                    code.</label
-                  >{/if}
-                <button
-                  type="button"
-                  class="btn mt-4"
-                  disabled={busy ||
-                    !source ||
-                    !targetId ||
-                    !inputsValid ||
-                    (docker && !acknowledge)}
-                  onclick={validateTemplate}>Validate template</button
-                >
-                {#if error}<p role="alert" class="mt-3 text-error">
-                    {error}
-                  </p>{/if}{#if notice}<p role="status" class="mt-3">
-                    {notice}
-                  </p>{/if}</Modal
-              >
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <p class="text-sm text-base-content/70">
-                  Published revisions are immutable.
-                </p>
-                <button class="btn btn-primary" disabled={busy || !source}
-                  >{busy ? "Publishing…" : "Publish revision"}</button
-                >
-              </div>
-            </form>
-          </div>
-        {:else if view === "feature"}<ExtensionPage contribution={page.url.searchParams.get("contribution") ?? ""} {projectId} />
-        {:else if view === "extension"}{#key page.url.searchParams.get("session")}<ExtensionAccessView sessionId={page.url.searchParams.get("session")??""} />{/key}
- {:else if view === "device"}<DeviceAuthorization />
- {:else if view === "account"}<GatewayGrants />
- {:else if view === "people"}{#key projectId}<People
+          {@render launchOptions()}
+        {:else if view === "feature" || view === "templates" || view === "classroom" || view === "teams"}
+          <ExtensionPage
+            contribution={page.url.searchParams.get("contribution") ?? ""}
+            routeAlias={view === "feature" ? "" : view}
+            {projectId}
+            allowedActions={project?.allowedActions ?? []}
+            subjectId={session?.subjectId ?? ""}
+          />
+        {:else if view === "extension"}{#key page.url.searchParams.get("session")}<ExtensionAccessView
+              sessionId={page.url.searchParams.get("session") ?? ""}
+            />{/key}
+        {:else if view === "device"}<DeviceAuthorization />
+        {:else if view === "account"}<GatewayGrants />
+        {:else if view === "people"}{#key projectId}<People
               {project}
               authMode={server?.authMode ?? ""}
             />{/key}
@@ -1436,7 +1008,11 @@
           <p class="mb-3 break-words text-sm text-base-content/60">
             {session.displayName}
           </p>
-          {#if server?.authMode !== "none"}<a href="/account" class="btn btn-sm btn-ghost mb-2 w-full justify-start">Your settings</a><button
+          {#if server?.authMode !== "none"}<a
+              href="/account"
+              class="btn btn-sm btn-ghost mb-2 w-full justify-start"
+              >Your settings</a
+            ><button
               class="btn btn-sm btn-ghost w-full justify-start"
               onclick={logout}
               disabled={busy}><LogOut size={16} />Sign out</button

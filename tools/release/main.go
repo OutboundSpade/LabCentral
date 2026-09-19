@@ -142,6 +142,34 @@ func run(ctx context.Context, args []string) error {
 	if err := buildBinary(ctx, cfg, "./tools/recovery", filepath.Join(root, recoveryName), ""); err != nil {
 		return err
 	}
+	additionalSubjects := []subject{}
+	for _, entry := range []struct {
+		name, pkg string
+		linuxOnly bool
+	}{
+		{"lab-source-github", "./cmd/lab-source-github", false},
+		{"lab-template", "./cmd/lab-template", false},
+		{"lab-builder-vm", "./cmd/lab-builder-vm", true},
+		{"lab-container-vm", "./cmd/lab-container-vm", true},
+	} {
+		if entry.linuxOnly && (cfg.goos != "linux" || cfg.goarch != "amd64") {
+			continue
+		}
+		name := entry.name + extension
+		if err := buildBinary(ctx, cfg, entry.pkg, filepath.Join(root, name), ""); err != nil {
+			return err
+		}
+		digest, err := fileSHA256(filepath.Join(root, name))
+		if err != nil {
+			return err
+		}
+		additionalSubjects = append(additionalSubjects, subject{Name: name, SHA256: digest})
+	}
+	// Package feature assets after the immutable core/UI binary has been built.
+	featureCommand := exec.CommandContext(ctx, cfg.bunBinary, "features/package.mjs", filepath.Join(root, "features"), "/opt/labcentral/features")
+	if output, err := featureCommand.CombinedOutput(); err != nil {
+		return fmt.Errorf("package features: %w: %s", err, output)
+	}
 	labdDigest, err := fileSHA256(filepath.Join(root, labdName))
 	if err != nil {
 		return err
@@ -177,22 +205,25 @@ func run(ctx context.Context, args []string) error {
 
 	created := time.Unix(cfg.epoch, 0).UTC()
 	type pluginManifest struct {
-		APIVersion           string   `json:"apiVersion"`
-		ID                   string   `json:"id"`
-		Version              string   `json:"version"`
-		Executable           string   `json:"executable"`
-		SHA256               string   `json:"sha256"`
-		Categories           []string `json:"categories"`
-		ProviderKinds        []string `json:"providerKinds,omitempty"`
-		AccessKinds          []string `json:"accessKinds,omitempty"`
-		AccessMethods        []string `json:"accessMethods,omitempty"`
-		EndpointSchemas      []string `json:"endpointSchemas,omitempty"`
-		ProtocolMajor        int      `json:"protocolMajor"`
-		MinimumProtocolMinor int      `json:"minimumProtocolMinor"`
-		MaximumProtocolMinor int      `json:"maximumProtocolMinor"`
-		OperatingSystems     []string `json:"operatingSystems"`
-		Architectures        []string `json:"architectures"`
-		RequestedPermissions []string `json:"requestedPermissions"`
+		APIVersion           string          `json:"apiVersion"`
+		ID                   string          `json:"id"`
+		Version              string          `json:"version"`
+		Executable           string          `json:"executable"`
+		SHA256               string          `json:"sha256"`
+		Categories           []string        `json:"categories"`
+		ProviderKinds        []string        `json:"providerKinds,omitempty"`
+		AccessKinds          []string        `json:"accessKinds,omitempty"`
+		SourceKinds          []string        `json:"sourceKinds,omitempty"`
+		BuilderKinds         []string        `json:"builderKinds,omitempty"`
+		ConfigurationSchema  json.RawMessage `json:"configurationSchema,omitempty"`
+		AccessMethods        []string        `json:"accessMethods,omitempty"`
+		EndpointSchemas      []string        `json:"endpointSchemas,omitempty"`
+		ProtocolMajor        int             `json:"protocolMajor"`
+		MinimumProtocolMinor int             `json:"minimumProtocolMinor"`
+		MaximumProtocolMinor int             `json:"maximumProtocolMinor"`
+		OperatingSystems     []string        `json:"operatingSystems"`
+		Architectures        []string        `json:"architectures"`
+		RequestedPermissions []string        `json:"requestedPermissions"`
 	}
 	dockerManifest := pluginManifest{
 		APIVersion: "labcentral.io/plugin-manifest/v1", ID: dockerPluginID, Version: pluginVersion,
@@ -226,13 +257,35 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	sbom := makeSBOM(cfg, created, modules, labdName, labdDigest, []subject{
+	for _, entry := range additionalSubjects {
+		var m pluginManifest
+		if entry.Name == "lab-source-github"+extension {
+			m = pluginManifest{APIVersion: "labcentral.io/plugin-manifest/v2", ID: "io.labcentral.source.github", Version: pluginVersion, Executable: "../" + entry.Name, SHA256: entry.SHA256, Categories: []string{"source"}, SourceKinds: []string{"github"}, ProtocolMajor: 1, OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch}, RequestedPermissions: []string{"github-api-endpoint", "invocation-journal-write"}}
+			if err := writeJSON(filepath.Join(root, "plugins", "source-github.json"), m); err != nil {
+				return err
+			}
+		}
+		if entry.Name == "lab-builder-vm"+extension {
+			schema, err := os.ReadFile("schemas/vm-builder-binding-v1.schema.json")
+			if err != nil {
+				return err
+			}
+			for _, kind := range []string{"ansible", "dockerfile", "container-runtime"} {
+				m = pluginManifest{APIVersion: "labcentral.io/plugin-manifest/v2", ID: "io.labcentral.builder." + kind, Version: pluginVersion, Executable: "../" + entry.Name, SHA256: entry.SHA256, Categories: []string{"builder"}, BuilderKinds: []string{kind}, ProtocolMajor: 1, OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch}, RequestedPermissions: []string{"isolated-builder-endpoint", "worker-tls-identity-read"}, ConfigurationSchema: schema}
+				if err := writeJSON(filepath.Join(root, "plugins", "builder-"+kind+".json"), m); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	sbom := makeSBOM(cfg, created, modules, labdName, labdDigest, append([]subject{
 		{Name: dockerProviderName, SHA256: dockerProviderDigest},
 		{Name: proxmoxProviderName, SHA256: proxmoxProviderDigest},
 		{Name: accessProviderName, SHA256: accessProviderDigest},
 		{Name: qualificationName, SHA256: qualificationDigest},
 		{Name: recoveryName, SHA256: recoveryDigest},
-	})
+	}, additionalSubjects...))
 	if err := writeJSON(filepath.Join(root, "sbom.cdx.json"), sbom); err != nil {
 		return err
 	}
@@ -262,6 +315,7 @@ func run(ctx context.Context, args []string) error {
 		{Name: qualificationName, SHA256: qualificationDigest},
 		{Name: recoveryName, SHA256: recoveryDigest},
 	}
+	provenance.Subjects = append(provenance.Subjects, additionalSubjects...)
 	if err := writeJSON(filepath.Join(root, "provenance.json"), provenance); err != nil {
 		return err
 	}
@@ -310,7 +364,7 @@ func run(ctx context.Context, args []string) error {
 		}
 	}
 	// Ship the independently usable SDK/protocol surface and author examples.
-	for _, directory := range []string{"pkg/plugin-sdk-go", "pkg/plugin-sdk-browser", "pkg/labbundle", "api/plugin", "examples/external-source", "examples/external-builder", "examples/external-lifecycle-provider", "examples/external-access", "examples/external-browser", "examples/external-gateway"} {
+	for _, directory := range []string{"pkg/plugin-sdk-go", "pkg/plugin-sdk-browser", "pkg/labbundle", "api/plugin", "examples/external-source", "examples/external-builder", "examples/external-lifecycle-provider", "examples/external-access", "examples/external-browser", "examples/external-gateway", "examples/template-library", "tools/builders", "features"} {
 		if err := filepath.WalkDir(directory, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -326,7 +380,7 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	for _, path := range []string{"go.mod", "go.sum", "docs/plugins/README.md", "docs/plugins/extensions.md", "docs/design/extensions.md", "docs/operations/container-vm-runtime.md", "design/contracts/extension-package.schema.json", "design/contracts/extension-manifest.schema.json", "design/contracts/extension-installation.schema.json"} {
+	for _, path := range []string{"go.mod", "go.sum", "docs/plugins/README.md", "docs/plugins/extensions.md", "docs/plugins/feature-packages.md", "docs/plugins/github-library.md", "docs/plugins/portable-templates.md", "docs/plugins/vm-builders.md", "docs/plugins/proxmox-image-import.md", "docs/plugins/shared-console.md", "docs/users/project-groups.md", "schemas/vm-builder-binding-v1.schema.json", "docs/design/extensions.md", "docs/operations/container-vm-runtime.md", "design/contracts/extension-package.schema.json", "design/contracts/extension-manifest.schema.json", "design/contracts/extension-installation.schema.json"} {
 		if err := copyReleaseFile(path, filepath.Join(root, path)); err != nil {
 			return err
 		}
@@ -572,6 +626,14 @@ checksums and signed exact-build qualification bind the installed files. The
 recovery utility creates and verifies signed age-encrypted PostgreSQL/shared
 state or native SQLite/provider-state recovery sets and performs offline,
 reference-aware filesystem artifact maintenance; follow docs/operations/recovery.md.
+
+Template Library and Teams are packaged in features/standard.installation.json.
+Classroom is explicitly enabled with features/with-classroom.installation.json.
+Configure the protected installation root and separate asset origin as described
+in docs/plugins/feature-packages.md. These packages can be changed without rebuilding
+core/UI. Linux amd64 also includes the isolated builder worker/relays and fixed
+container-runtime agent; configure the separate VM builder environment using
+docs/plugins/vm-builders.md. The GitHub source and source-package CLI are included.
 
 For the local Docker example, run:
 

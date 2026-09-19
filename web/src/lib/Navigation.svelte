@@ -11,14 +11,24 @@
       if (pending) return;
       pending = true;
       try {
-        const result = await api<{items: typeof featurePages}>("/extensions/browser", {signal: abort.signal});
-        if (!abort.signal.aborted) featurePages = result.items.filter(e => e.slot === "page");
-      } catch { if (!abort.signal.aborted) featurePages = []; }
-      finally { pending = false; }
+        const result = await api<{ items: typeof featurePages }>(
+          "/extensions/browser",
+          { signal: abort.signal },
+        );
+        if (!abort.signal.aborted)
+          featurePages = result.items.filter((e) => e.slot === "page");
+      } catch {
+        if (!abort.signal.aborted) featurePages = [];
+      } finally {
+        pending = false;
+      }
     };
     void refresh();
     const interval = setInterval(() => void refresh(), 10000);
-    return () => {abort.abort(); clearInterval(interval);};
+    return () => {
+      abort.abort();
+      clearInterval(interval);
+    };
   });
   import {
     LayoutDashboard,
@@ -49,22 +59,6 @@
       title: "LABS",
       items: [
         { view: "labs", href: "/", label: "My labs", icon: LayoutDashboard },
-        {
-          view: "classroom",
-          href: "/classroom/",
-          label: "Classroom",
-          icon: Users,
-        },
-        ...(author
-          ? [
-              {
-                view: "templates",
-                href: "/templates/",
-                label: "Templates",
-                icon: BookOpen,
-              },
-            ]
-          : []),
         ...(manager
           ? [
               {
@@ -120,8 +114,21 @@
     {#if featurePages.length}
       <li class="menu-title mt-4 text-xs">FEATURES</li>
       {#each featurePages as feature (`${feature.pluginInstance}/${feature.id}`)}
-        {@const active = view === "feature" && page.url.searchParams.get("contribution") === `${feature.pluginInstance}/${feature.id}`}
-        <li><a href={`/feature/?contribution=${encodeURIComponent(`${feature.pluginInstance}/${feature.id}`)}`} class:menu-active={active} aria-current={active ? "page" : undefined}><Plug size={18} />{feature.title}</a></li>
+        {@const active = feature.routeAlias
+          ? view === feature.routeAlias
+          : view === "feature" &&
+            page.url.searchParams.get("contribution") ===
+              `${feature.pluginInstance}/${feature.id}`}
+        <li>
+          <a
+            href={feature.routeAlias
+              ? `/${feature.routeAlias}/`
+              : `/feature/?contribution=${encodeURIComponent(`${feature.pluginInstance}/${feature.id}`)}`}
+            class:menu-active={active}
+            aria-current={active ? "page" : undefined}
+            ><Plug size={18} />{feature.title}</a
+          >
+        </li>
       {/each}
     {/if}
     {#each groups as group}
@@ -130,7 +137,8 @@
         </li>{/if}
       {#each group.items as item}
         {@const active =
-          view === item.view || (["detail", "launch"].includes(view) && item.view === "labs")}
+          view === item.view ||
+          (["detail", "launch"].includes(view) && item.view === "labs")}
         <li>
           <a
             href={item.href}

@@ -433,7 +433,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get deployment preparations */
+        get: operations["get-deployment-preparations"];
         put?: never;
         /** Post deployment preparations */
         post: operations["post-deployment-preparations"];
@@ -1883,6 +1884,7 @@ export interface components {
             id: string;
             permissions: string[] | null;
             pluginInstance: string;
+            routeAlias?: string;
             slot: string;
             title: string;
             url: string;
@@ -3481,14 +3483,14 @@ export interface components {
         };
         TypedInput: {
             Boolean: boolean;
-            Enum: components["schemas"]["EnumValue"];
+            Enum: components["schemas"]["EnumValue"] | null;
             /** Format: int64 */
             Integer: number;
             Kind: string;
             Name: string;
             /** Format: double */
             Number: number;
-            SecretRef: components["schemas"]["SecretRef"];
+            SecretRef: components["schemas"]["SecretRef"] | null;
             String: string;
             StringList: string[] | null;
         };
@@ -4464,6 +4466,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExtensionWork"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-deployment-preparations": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionWorkListBody"];
                 };
             };
             /** @description Error */

@@ -1,5 +1,10 @@
 # Project groups
 
+Open **Teams** in the selected workspace to join or leave a group, see its labs,
+and prepare a team-owned deployment. Administrators can create groups and open or
+close enrollment on the same page. Teams is installed independently of Classroom;
+see [feature packages](../plugins/feature-packages.md) for setup.
+
 Project groups use the versioned `labcentral.project-group/v1` API representation.
 They are project-scoped collaboration teams, separate from administrator-managed
 organizational memberships. The Teams feature package uses these core APIs; the

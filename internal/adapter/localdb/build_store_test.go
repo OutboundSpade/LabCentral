@@ -65,6 +65,23 @@ func buildWorkContract(t *testing.T, s *Store) {
 			t.Fatal(e)
 		}
 	}
+	preparations, err := s.ListOwnPreparations(ctx, "project.local", app.LocalAdminID)
+	if err != nil || len(preparations) != 2 {
+		t.Fatalf("own preparation list: %v %v", preparations, err)
+	}
+	for _, w := range preparations {
+		if w.Request.Kind != domain.WorkPreparation {
+			t.Fatal("build escaped preparation filter")
+		}
+	}
+	preparations, err = s.ListOwnPreparations(ctx, "project.local", "user.other")
+	if err != nil || len(preparations) != 0 {
+		t.Fatal("foreign actor preparation disclosure", err)
+	}
+	preparations, err = s.ListOwnPreparations(ctx, "project.other", app.LocalAdminID)
+	if err != nil || len(preparations) != 0 {
+		t.Fatal("foreign project preparation disclosure", err)
+	}
 	if e := s.CancelExtensionWork(ctx, "preparation.0", app.LocalAdminID, governanceIDs("cancel-prep")); e != nil {
 		t.Fatal(e)
 	}

@@ -6,9 +6,20 @@ import (
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
 	"github.com/danielgtaylor/huma/v2"
+	"reflect"
 )
 
 func registerBuildOperations(api huma.API, s *controlplane.Service, security *requestSecurity) {
+	// The established preparation representation is domain-shaped. Its unused
+	// pointer alternatives marshal as null; Huma object refs are nonnullable by
+	// default. Widen those two schema alternatives without changing stored bytes,
+	// field names or the accepted representation of existing clients.
+	typedInput := api.OpenAPI().Components.Schemas.Schema(reflect.TypeOf(domain.TypedInput{}), false, "")
+	for _, name := range []string{"Enum", "SecretRef"} {
+		typedInput.Properties[name] = &huma.Schema{AnyOf: []*huma.Schema{typedInput.Properties[name], {Type: "null"}}}
+	}
+	typedInput.PrecomputeMessages()
+
 	type buildInput struct {
 		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
 		Body           struct {
@@ -46,6 +57,22 @@ func registerBuildOperations(api huma.API, s *controlplane.Service, security *re
 			return nil, apiError(e)
 		}
 		return &extensionWorkOutput{Body: w}, nil
+	})
+	type preparationListInput struct {
+		ProjectID string `query:"projectId" required:"true" minLength:"1" maxLength:"128"`
+	}
+	huma.Get(api, "/deployment-preparations", func(ctx context.Context, in *preparationListInput) (*extensionWorkList, error) {
+		p, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication required")
+		}
+		items, err := s.ListOwnPreparations(ctx, p.user.ID, domain.ProjectID(in.ProjectID))
+		if err != nil {
+			return nil, apiError(err)
+		}
+		out := &extensionWorkList{}
+		out.Body.Items = items
+		return out, nil
 	})
 	type prepareInput struct {
 		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`

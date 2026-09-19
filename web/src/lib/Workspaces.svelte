@@ -113,7 +113,7 @@
       <table class="table table-sm">
         <thead
           ><tr
-            ><th>Workspace</th><th>Organization</th><th>Classroom launches</th
+            ><th>Workspace</th><th>Organization</th><th>Batch launches</th
             ><th>Actions</th></tr
           ></thead
         >

@@ -54,7 +54,7 @@
       externalSubject = "";
       password = "";
       await load();
-      notice = "Account created. Assign classroom access below.";
+      notice = "Account created. Assign project access below.";
     });
   }
   async function grant() {
@@ -97,7 +97,7 @@
           role,
         }),
       });
-      notice = "Classroom access assigned.";
+      notice = "Project access assigned.";
     });
   }
   async function setEnabled(person: Person) {
@@ -174,7 +174,7 @@
     }}
   >
     <h2 class="flex items-center gap-2 text-lg font-semibold">
-      <ShieldCheck size={20} />Assign classroom access
+      <ShieldCheck size={20} />Assign project access
     </h2>
     <p class="text-sm text-base-content/70">Project: {project?.name}</p>
     <label class="grid gap-2 text-sm"
@@ -186,7 +186,7 @@
       ></label
     ><label class="grid gap-2 text-sm"
       >Role<select aria-label="Role" class="select w-full" bind:value={role}
-        ><option value="participant">Student</option><option value="instructor"
+        ><option value="participant">Participant</option><option value="instructor"
           >Instructor</option
         ><option value="lab-author">Lab author</option><option value="viewer"
           >Viewer</option

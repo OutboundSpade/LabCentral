@@ -23,6 +23,12 @@ HTTP handlers repeat object authorization. There is no general fetch proxy, data
 access, session-cookie delivery or arbitrary navigation. Immutable assets, origin
 isolation, frame nonces, bounded concurrency/messages and channel teardown remain.
 
+Host contract 3 implements optional typed route aliases for `/templates/`,
+`/teams/`, and `/classroom/`, with installation-wide uniqueness. The independently
+packaged workflows and caller-scoped preparation history are described in
+[feature packages](../plugins/feature-packages.md). Legacy host contracts remain
+supported; missing packages leave core lab management and administration usable.
+
 ## Source portability and composition
 
 A portable package includes lab YAML, scripts, Dockerfiles, Ansible playbooks,

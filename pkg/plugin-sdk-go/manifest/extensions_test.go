@@ -78,6 +78,26 @@ func TestPageContributionHostContract(t *testing.T) {
 	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err != nil {
 		t.Fatal(err)
 	}
+	m.Browser.Contributions[0].RouteAlias = "teams"
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err != nil {
+		t.Fatal(err)
+	}
+	m.Browser.MinimumHostVersion = 2
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("route alias accepted without host 3")
+	}
+	m.Browser.MinimumHostVersion = BrowserHostVersion
+	m.Browser.Contributions[0].RouteAlias = "admin"
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("arbitrary route alias accepted")
+	}
+	m.Browser.Contributions[0].RouteAlias = "teams"
+	m.Browser.Contributions[0].Slot = "lab-panel"
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("non-page alias accepted")
+	}
+	m.Browser.Contributions[0].RouteAlias = ""
+	m.Browser.Contributions[0].Slot = "page"
 	m.Browser.MinimumHostVersion++
 	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
 		t.Fatal("future host contract accepted")

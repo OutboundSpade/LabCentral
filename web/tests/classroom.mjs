@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {featureExtensions,serveFeature} from './feature-fixture.mjs';
 import { readFile, mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { chromium, firefox, webkit } from 'playwright';
@@ -9,12 +10,15 @@ const revision={id:'revision.debian',templateId:template.id,revisionNumber:1};
 const lab={id:'instance.student',projectId:'project.class',revisionId:revision.id,providerTargetId:'target.test',ownerKind:'user',ownerId:'user.student',phase:'ready',expiresAt:new Date(Date.now()+14400000).toISOString(),resources:[{id:'workstation',kind:'VM',phase:'ready'}]};
 let subjectId="user.student",noProjects=false,sessionDenied=false,slowNavigation=false,reads=[],labs=[],mutations=[],outage=false,role='participant',consoleLaunchKind='relative';
 const server=createServer(async(req,res)=>{
+ if(await serveFeature(req,res))return;
  const url=new URL(req.url,'http://localhost'),path=url.pathname;
  const json=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
  if(path.startsWith('/api/v1/')) {
   if(slowNavigation && req.method==='GET')await new Promise(r=>setTimeout(r,200));
   const p=path.slice(7);if(req.method==='GET')reads.push(p+url.search);let body='';for await(const chunk of req)body+=chunk;
   if(['POST','PUT'].includes(req.method))mutations.push({path:p,body:body?JSON.parse(body):null,headers:req.headers});
+  if(p==='/extensions/browser')return json(await featureExtensions(origin));
+  if(p==='/source-bindings'||p==='/template-libraries'||p==='/extension-operations'||p==='/deployment-preparations'||p==='/projects/project.class/groups')return json({items:[]});
   if(p.startsWith('/quotas/')||p.startsWith('/lifetime-policies/')){
    if(url.searchParams.get('organizationId')!=='org.class')return json({detail:'Quota scope is invalid'},400);
    if(req.method==='GET')return json({detail:'Not configured'},404);
@@ -33,9 +37,10 @@ const server=createServer(async(req,res)=>{
   if(p.endsWith('/content'))return json({source:'apiVersion: labcentral.io/v1alpha1',parameters:[{name:'hostname',type:'string',description:'Workstation name',required:true}]});
   if(p==='/lab-instances'&&req.method==='GET')return outage?json({detail:'Temporarily unavailable'},503):json({items:labs});
   if(p==='/lab-instances'&&req.method==='POST'){labs=[lab];return json({operation:{id:'operation.create',instanceId:lab.id,state:'succeeded'}},202);}
-  if(p.endsWith('/actions/destroy')){labs=[{...lab,phase:'destroyed'}];return json({operation:{id:'operation.end',state:'succeeded'}},202);}
+  if(p.startsWith('/lab-instances/')&&req.method==='GET')return json(labs.find(l=>l.id===p.split('/')[2])??lab);
+  if(p.endsWith('/actions/destroy')){labs=labs.map(l=>l.id===p.split('/')[2]?{...l,phase:'destroyed'}:l);return json({operation:{id:'operation.end',state:'succeeded'}},202);}
   if(p==='/projects/project.class/members'||p==='/users')return json({items:[{id:'user.student',displayName:'Alex Morgan',username:'alex',resourceVersion:1}]});
-  if(p.startsWith('/lab-instance-batches'))return json({id:'batch.test',items:[{ownerId:'user.student',operation:{state:'succeeded'}}]},req.method==='POST'?202:200);
+  if(p.startsWith('/lab-instance-batches'))return json({id:'batch.test',projectId:'project.class',items:[{ownerId:'user.student',operation:{state:'succeeded'}}]},req.method==='POST'?202:200);
   return json({detail:'Not configured'},404);
  }
  let name=path==='/'?'index.html':path.replace(/^\//,'').replace(/\/$/,'');
@@ -50,7 +55,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  const browser=await engine.launch();try{
   subjectId="user.student";noProjects=false;sessionDenied=false;reads=[];labs=[];mutations=[];outage=false;role='participant';
   const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(10000);
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.message);});
   await page.waitForLoadState("networkidle");await page.goto(origin);await page.getByRole('heading',{name:'Your next lab starts here'}).waitFor();
   assert.equal(await page.getByRole('link',{name:'People',exact:true}).count(),0);
   await page.evaluate(()=>{
@@ -100,14 +105,26 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await page.getByText('Project limits saved. Existing lab expiry times are unchanged.').waitFor();
   assert.equal(mutations.find(m=>m.path==='/quotas/project/project.class/instances').body.limit,25);
   assert.equal(mutations.find(m=>m.path==='/lifetime-policies/project/project.class').body.defaultTtlSeconds,14400);
-  await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');await page.getByRole('heading',{name:'Students & labs'}).waitFor();await page.getByLabel('Select Alex Morgan').check();await page.getByRole('button',{name:'Launch labs',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByLabel('Workstation name',{exact:false}).fill('classroom');await page.getByLabel('Lab lifetime (minutes)',{exact:false}).fill('90');await page.getByRole('button',{name:'Launch for 1 selected'}).click();await page.getByText('Classroom launch accepted.').waitFor();await page.waitForFunction(()=>!document.querySelector('button.btn-primary:disabled'));assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.owners[0].ownerId,'user.student');assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.ttlSeconds,5400);await page.getByRole('dialog',{name:'Launch classroom labs'}).waitFor({state:'hidden'});
+  await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');
+  const classroom=page.frameLocator('iframe[title="Classroom"]');
+  await classroom.getByRole('heading',{name:'Students & labs'}).waitFor();
+  await classroom.getByLabel('Alex Morgan',{exact:true}).check();
+  await classroom.getByText('Launch classroom labs',{exact:true}).click();
+  await classroom.getByLabel('Template',{exact:true}).selectOption(template.id);
+  await classroom.getByLabel('Workstation name',{exact:true}).fill('classroom');
+  await classroom.getByLabel('Lab lifetime (minutes)',{exact:true}).fill('90');
+  await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).click();
+  await classroom.locator('.status').filter({hasText:'Classroom launch accepted.'}).waitFor();
+  assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.owners[0].ownerId,'user.student');
+  assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.ttlSeconds,5400);
   labs=[{...lab,id:'instance.bulk-a'},{...lab,id:'instance.bulk-b'}];
-  await page.reload();await page.getByRole('heading',{name:'Students & labs'}).waitFor();
-  await page.getByRole('checkbox',{name:'Select all active labs'}).check();
-  await page.getByRole('button',{name:'End selected labs'}).click();
-  await page.getByRole('heading',{name:'Delete 2 labs?'}).waitFor();
-  await page.getByRole('button',{name:'Delete labs and files'}).click();
-  await page.getByText('2 deletions queued.').waitFor();
+  await page.waitForLoadState('networkidle');await page.reload();
+  await classroom.getByLabel('Select lab instance.bulk-a',{exact:true}).check();
+  await classroom.getByLabel('Select lab instance.bulk-b',{exact:true}).check();
+  await classroom.getByRole('button',{name:'End selected labs'}).click();
+  await classroom.getByRole('heading',{name:'End 2 labs?'}).waitFor();
+  await classroom.getByRole('button',{name:'Confirm',exact:true}).click();
+  await classroom.getByText('2 deletions queued.',{exact:true}).waitFor();
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-a/actions/destroy'));
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-b/actions/destroy'));
   await page.setViewportSize({width:390,height:844});

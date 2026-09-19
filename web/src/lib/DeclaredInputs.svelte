@@ -18,7 +18,7 @@
     let message = "";
     for (const parameter of parameters) {
       if (parameter.type === "secretRef") {
-        if (parameter.required) message = "This lab requires an administrator-managed secret reference. Contact your instructor.";
+        if (parameter.required) message = "This lab requires an administrator-managed secret reference. Contact your administrator.";
         continue;
       }
       const raw = entered[parameter.name];

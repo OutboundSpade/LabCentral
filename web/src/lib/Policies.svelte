@@ -119,7 +119,7 @@
   }}
 >
   <h2 class="flex items-center gap-2 text-lg font-semibold">
-    <Clock size={20} />Classroom limits
+    <Clock size={20} />Lab limits
   </h2>
   <label class="grid gap-2 text-sm"
     >Maximum active labs in this project<input

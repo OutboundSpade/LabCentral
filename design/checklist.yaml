@@ -75,7 +75,7 @@ tasks:
       - Enforce RFB input permissions in the access plugin and test takeover, departure, revocation, reconnect and outages without recording screen contents.
   - id: TASK-TEMPLATE-007
     title: Deliver independent Library Teams and Classroom packages
-    status: in_progress
+    status: complete
     dependencies: [TASK-COLLAB-002]
     relatedAdrs: [ADR-0026, ADR-0027, ADR-0029]
     relatedDocuments: [docs/design/portable-template-collaboration.md]
@@ -84,7 +84,7 @@ tasks:
       - Prove independent installation against unchanged prebuilt core/UI and cross-browser feature behavior.
   - id: TASK-TEMPLATE-008
     title: Verify publish and deploy the template collaboration release
-    status: proposed
+    status: in_progress
     dependencies: [TASK-TEMPLATE-007]
     relatedAdrs: [ADR-0026, ADR-0027, ADR-0028, ADR-0029]
     relatedDocuments: [docs/design/portable-template-collaboration.md]

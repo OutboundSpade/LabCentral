@@ -21,13 +21,14 @@ type BrowserAsset struct {
 }
 type BrowserContribution struct {
 	ID          string   `json:"id"`
+	RouteAlias  string   `json:"routeAlias,omitempty"`
 	Slot        string   `json:"slot"`
 	Title       string   `json:"title"`
 	Entrypoint  string   `json:"entrypoint"`
 	Permissions []string `json:"permissions"`
 }
 
-const BrowserHostVersion = 2
+const BrowserHostVersion = 3
 
 type BrowserPackage struct {
 	MinimumHostVersion uint32                `json:"minimumHostVersion,omitempty"`
@@ -90,13 +91,16 @@ func SnapshotBrowser(root, manifestPath string, m Manifest) (map[string]AssetSna
 		if !identityPattern.MatchString(c.ID) || ids[c.ID] || c.Title == "" || len(c.Title) > 128 || !slices.Contains([]string{"lab-panel", "resource-action", "access-view", "plugin-settings", "page"}, c.Slot) {
 			return nil, fmt.Errorf("invalid browser contribution")
 		}
+		if c.RouteAlias != "" && (m.Browser.MinimumHostVersion < 3 || c.Slot != "page" || !slices.Contains([]string{"templates", "teams", "classroom"}, c.RouteAlias)) {
+			return nil, fmt.Errorf("invalid browser route alias")
+		}
 		ids[c.ID] = true
 		if asset, ok := assets[c.Entrypoint]; !ok || !strings.HasPrefix(asset.MediaType, "text/html") {
 			return nil, fmt.Errorf("browser entrypoint is not verified HTML")
 		}
 		seen := map[string]bool{}
 		for _, permission := range c.Permissions {
-			if !slices.Contains(m.RequestedPermissions, permission) || seen[permission] || !slices.Contains([]string{"context.read", "topology.read", "status.read", "access.create", "access.stream", "navigation.lab", "templates.read", "templates.write", "builds.read", "builds.create", "images.manage", "sources.read", "sources.resolve", "labs.read", "labs.create", "labs.manage", "members.read"}, permission) {
+			if !slices.Contains(m.RequestedPermissions, permission) || seen[permission] || !slices.Contains([]string{"context.read", "topology.read", "status.read", "access.create", "access.stream", "navigation.lab", "templates.read", "templates.write", "builds.read", "builds.create", "images.manage", "sources.read", "sources.resolve", "labs.read", "labs.create", "labs.manage", "members.read", "groups.read", "groups.enroll", "groups.manage"}, permission) {
 				return nil, fmt.Errorf("invalid browser permission")
 			}
 			seen[permission] = true
