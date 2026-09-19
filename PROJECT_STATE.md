@@ -8,23 +8,57 @@ quotas, lifetime and ownership; plugins translate infrastructure operations.
 
 ## Portable templates and collaboration
 
-The owner accepted ADR-0026–ADR-0029 and the dependency-ordered
-`TASK-TEMPLATE-001`–`TASK-TEMPLATE-008`, `TASK-COLLAB-001` and `TASK-COLLAB-002`.
-Contract decisions and consistency checks are complete (`TASK-TEMPLATE-001`);
-the feature host (`TASK-TEMPLATE-002`) is complete. Installed pages, project-bound
-typed API calls and denied cross-project bridge requests passed manifest/API,
-Svelte type/build, independent-package and three-browser navigation checks.
-Source packaging (`TASK-TEMPLATE-003`) is complete: deterministic locked source
-archives, component/recipe composition, logical builder rebinding, authorized
-export and import preview passed package/renderer/API/CLI tests, including import
-into a fresh installation. GitHub synchronization (`TASK-TEMPLATE-004`) is
-implemented: optional collection resolution, pinned recovery, atomic publication,
-retained upstream removals, schedules and revocation passed source/API and
-SQLite/PostgreSQL race tests. Isolated builders (`TASK-TEMPLATE-005`) are implemented: Linux amd64 Ansible qcow2 and BuildKit OCI builds, dependent builds, effective-input reuse, cleanup verification, worker process-loss recovery and external deadlines passed local VM acceptance. Typed dependency/protocol, race/database, generated API and independent-package checks passed. Proxmox import/preparation (`TASK-TEMPLATE-006`) is implemented: reserved multi-image imports, reference-aware retirement, participant preparation and separate approval passed provider/API and SQLite/PostgreSQL race checks. The fixed runtime packager built and booted a Dockerfile image offline through the v2 guest agent. Changed provider/import artifacts passed exact-target qualification in `TASK-TEMPLATE-008`; production installation and collaborative-console acceptance remain open. Project groups (`TASK-COLLAB-001`) are implemented with bounded administrative creation, self-service enrollment, scoped team ownership, transactional admission checks and console revocation on departure. SQLite/PostgreSQL race, API, authorization and generated-client checks passed; organizational membership semantics remain unchanged. Shared console control (`TASK-COLLAB-002`) is implemented with fenced input leases, per-session presence, take/release APIs and server-side RFB filtering. Database race/parity, authenticated API, real WebSocket bridge, migration, protocol and three-browser checks passed, including departure and outage behavior. Exact-target multi-user qualification remains a release gate. Independent feature packages (`TASK-TEMPLATE-007`) are implemented: Template Library and Teams are included in the standard distribution; Classroom is optional. The host preserves legacy routes, typed project-bound operations and core-only navigation. Real-core export/import into a fresh installation preserved source/dependency identity without image transfer; each package installed against unchanged prebuilt core/UI. Three-browser workflows, legacy extension compatibility, authenticated API, database parity and architecture checks passed. Portable exports contain build source and pinned source dependencies,
-never VM/OCI images. The target release adds
-GitHub synchronization, isolated builders, Proxmox imports, optional feature
-packages, project groups and fenced shared-console control. The new packages are staged but not deployed. Source-only export/import into a fresh installation with different builder bindings rebuilt both Ansible qcow2 and Dockerfile OCI images on the isolated worker, including their shared-base dependencies. The release reproduced byte-for-byte; migration/rollback rehearsal and exact-target infrastructure, recovery, container and image-import qualification passed. `TASK-TEMPLATE-008` remains open for operator installation setup, production deployment, published-template preparation/approval and multi-user team-console acceptance. Operator-bound setup and recovery records remain outside tracked source. See
-[the implementation contract](docs/design/portable-template-collaboration.md).
+The accepted ADR-0026–ADR-0029 contracts and `TASK-TEMPLATE-001` through
+`TASK-TEMPLATE-008`, `TASK-COLLAB-001` and `TASK-COLLAB-002` are implemented and
+released on the authorized private testbed. Core retains typed semantics,
+authorization, immutable revisions, ownership, quotas, durable operations and
+Huma/OpenAPI. Template Library and Teams ship as independent feature packages;
+Classroom is optional and is enabled on this installation. Core-only operation,
+independent installation against unchanged prebuilt core/UI, typed bridge
+permissions and compatibility routes passed their checks.
+
+Portable packages contain build source and a pinned source dependency closure,
+never VM disks or OCI archives. Deterministic packaging, composition, import
+preview, export and local builder rebinding passed contract/API/CLI checks.
+Export/import into a fresh installation with different bindings rebuilt both
+Ansible and Dockerfile images, including shared-base dependencies. GitHub
+collection synchronization supports atomic commit-pinned publication, unchanged
+content reuse, retained upstream removals, schedules and authority revocation.
+Its source plugin is installed; the owner deferred the repository/credential
+binding. Synchronization alone never executes builds.
+
+Linux amd64 builds run inside disposable VMs in a separate builder environment.
+Pinned QEMU/Packer/Ansible produce qcow2 images; pinned BuildKit produces OCI
+artifacts that the fixed runtime packager places in dedicated container VMs.
+Dependency reuse, cancellation, limits, recovery and cleanup passed builder and
+SQLite/PostgreSQL checks. Qualified Proxmox import uses reserved allocations,
+ownership, per-resource image bindings, separate evidence and explicit approval.
+Live participant preparation waited for approval, rejected participant
+self-approval, and deployed a two-image Ansible lab and a Dockerfile HTTP lab.
+In-guest checks verified both playbook configurations and the container content.
+The reusable Ansible base includes the guest agent required for VM readiness.
+
+Project groups enforce one active self-service enrollment per user/project without
+changing organizational roles or memberships. Team-owned admission, concurrent
+enrollment, isolation, pending-preparation departure and member lifecycle actions
+passed authorization and database race/parity checks. Live users joined running
+labs, left without deleting them, and retained team ownership independently of
+the initiating user. Three authenticated console users shared the same display;
+physical guest probes confirmed driver input and rejected raw viewer input.
+Control handoffs, concurrent takeovers, release, departure, reconnect, revocation
+and core/access-plugin outages passed. The native noVNC unit restarts after
+heartbeat-triggered clean exits; reconnection never restores control automatically.
+
+`TASK-TEMPLATE-008` is complete. Affected normal/race database, architecture,
+protocol/OpenAPI, Chromium/Firefox/WebKit, vulnerability, independent-package,
+migration/rollback and exact-target qualification gates passed. The final release
+reproduced byte-for-byte and its installed files passed integrity verification.
+Consistent database/artifact backups and prior packages were retained. Existing
+lab records, organizational memberships and role assignments were preserved;
+only test-owned VM/image resources and temporary sessions were cleaned up.
+Host-bound evidence and rollback instructions remain in protected operator records.
+Existing production load, recovery, failover and publisher gates remain open.
+See [the implementation contract](docs/design/portable-template-collaboration.md).
 
 ## Independently installed extensions
 
@@ -32,7 +66,7 @@ packages, project groups and fenced shared-console control. The new packages are
 
 External fixtures exercise source recovery, concurrent build deduplication, image approval, preparation and owned lifecycle against a prebuilt core/UI. Chromium, Firefox and WebKit exercise installed stream views, sandbox isolation and browser-approved gateway grants. SQLite/PostgreSQL race tests cover work fencing, shared cancellation, delegated access revocation and atomic prepared batch admission.
 
-`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, AWS and Fedora CoreOS integrations remain outside this implementation. The newer GitHub and image-builder implementations are described above; their production rollout remains pending. Existing production-validation gaps remain open.
+`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, AWS and Fedora CoreOS integrations remain outside this implementation. The newer GitHub and image-builder implementations are deployed on the private testbed as described above; repository binding remains owner-deferred. Existing production-validation gaps remain open.
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
@@ -113,8 +147,8 @@ provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 
 ## Next action and production gates
 
-Continue the dependency-ordered template/collaboration tasks, starting with
-`TASK-TEMPLATE-008`: verify the release, qualify the exact changed artifacts and complete the authorized rollout. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
+Configure the GitHub library binding when the owner supplies its repository and
+credential details. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
 Within-lab parallel branches need multi-invocation recovery before implementation.
