@@ -145,29 +145,50 @@ func (client *Client) DeleteImageStaging(ctx context.Context, node, storage, fil
 		return fmt.Errorf("invalid staging identity")
 	}
 
-	type contentItem struct {
-		Volume string `json:"volid"`
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	exists := func() (bool, error) {
+		type contentItem struct {
+			Volume string `json:"volid"`
+		}
+		items, err := getAPI[[]contentItem](ctx, client, "/nodes/"+node+"/storage/"+storage+"/content", url.Values{"content": {"import"}})
+		if err != nil {
+			return false, err
+		}
+		if len(items) > 4096 {
+			return false, fmt.Errorf("staging inventory exceeds bound")
+		}
+		for _, item := range items {
+			if item.Volume == storage+":import/"+filename {
+				return true, nil
+			}
+		}
+		return false, nil
 	}
-	items, err := getAPI[[]contentItem](ctx, client, "/nodes/"+node+"/storage/"+storage+"/content", url.Values{"content": {"import"}})
+	found, err := exists()
+	if err != nil || !found {
+		return err
+	}
+	// PVE deletion is asynchronous. Its accepted task is not absence evidence.
+	// Recovery lists this invocation's immutable name before attempting cleanup.
+	_, err = requestAPIWithNull[json.RawMessage](ctx, client, "DELETE", "/nodes/"+node+"/storage/"+storage+"/content/"+storage+":import/"+filename, nil, true)
 	if err != nil {
 		return err
 	}
-	if len(items) > 4096 {
-		return fmt.Errorf("staging inventory exceeds bound")
-	}
-	found := false
-	for _, item := range items {
-		if item.Volume == storage+":import/"+filename {
-			found = true
+	for {
+		found, err = exists()
+		if err != nil || !found {
+			return err
+		}
+		timer := time.NewTimer(250 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
 		}
 	}
-	if !found {
-		return nil
-	}
-	// PVE import files have no VM owner; their deterministic invocation filename
-	// is established before upload and only that exact name may be removed.
-	_, err = requestAPIWithNull[json.RawMessage](ctx, client, "DELETE", "/nodes/"+node+"/storage/"+storage+"/content/"+storage+":import/"+filename, nil, true)
-	return err
+
 }
 
 // inspectStandaloneQCOW reads only the fixed header, without invoking a parser

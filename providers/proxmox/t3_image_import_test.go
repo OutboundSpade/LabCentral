@@ -90,6 +90,7 @@ func TestCredentialedProxmoxT3ImageImport(t *testing.T) {
 		}
 		return &t3LostImageCreate{ImageImportAPI: underlying, lost: &lost}, nil
 	}))
+	provider.sleep = time.Sleep
 	service, err := NewImageService(provider, config.JournalDirectory)
 	if err != nil {
 		t.Fatal(err)
