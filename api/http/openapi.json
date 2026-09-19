@@ -177,6 +177,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "sharedConsole": {
+            "type": "boolean"
+          },
           "state": {
             "type": "string"
           },
@@ -671,6 +674,87 @@
         },
         "required": [
           "userCode"
+        ],
+        "type": "object"
+      },
+      "ConsoleParticipant": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "userId",
+          "displayName"
+        ],
+        "type": "object"
+      },
+      "ConsolePresence": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ConsolePresence.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "driverSessionId": {
+            "type": "string"
+          },
+          "fence": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instanceId": {
+            "type": "string"
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/ConsoleParticipant"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "requestedSessionId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "sessionId",
+          "instanceId",
+          "resourceId",
+          "generation",
+          "participants",
+          "fence"
         ],
         "type": "object"
       },
@@ -5661,6 +5745,165 @@
           }
         },
         "summary": "Post access sessions by ID actions revoke"
+      }
+    },
+    "/access-sessions/{id}/console": {
+      "get": {
+        "operationId": "get-access-sessions-by-id-console",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolePresence"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get access sessions by ID console"
+      }
+    },
+    "/access-sessions/{id}/console/release-control": {
+      "post": {
+        "operationId": "post-access-sessions-by-id-console-release-control",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolePresence"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post access sessions by ID console release control"
+      }
+    },
+    "/access-sessions/{id}/console/take-control": {
+      "post": {
+        "operationId": "post-access-sessions-by-id-console-take-control",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolePresence"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Post access sessions by ID console take control"
       }
     },
     "/access-sessions/{id}/download": {

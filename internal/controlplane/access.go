@@ -134,6 +134,7 @@ func (s *Service) CreateAccessSession(ctx context.Context, command AccessSession
 	}
 	pending, err = s.store.BeginAccessSession(ctx, BeginAccessSessionRequest{GatewayGrantID: command.GatewayGrantID,
 		RecoverUncertainIssuance: slices.Contains(binding.Features, "access-issuance-recovery-v1"),
+		SharedConsole:            command.Method == "vnc" && slices.Contains(binding.Features, application.ConsoleControlFeature),
 		GovernanceRecordIDs:      recordIDs, ID: domain.AccessSessionID(sessionIDValue), SubjectID: command.SubjectID,
 		InstanceID: command.InstanceID, ResourceID: command.ResourceID, Method: command.Method,
 		AccessPluginID: binding.PluginID, AccessPluginVersion: binding.PluginVersion,
@@ -150,7 +151,11 @@ func (s *Service) CreateAccessSession(ctx context.Context, command AccessSession
 
 	expiresAt := earliestAccessExpiry(pending.ExpiresAt, discovered.ValidUntil)
 	createContext, cancelCreate := context.WithTimeout(ctx, 12*time.Second)
-	created, err := binding.Access.Create(createContext, application.AccessCreate{
+	controlVersion := uint32(0)
+	if pending.SharedConsole {
+		controlVersion = 1
+	}
+	created, err := binding.Access.Create(createContext, application.AccessCreate{ConsoleControlVersion: controlVersion,
 		Call: application.ProviderCall{
 			RequestID: "access-create", InvocationID: invocationValue, InstanceID: string(pending.InstanceID),
 			ResourceID: string(pending.ResourceID), TargetID: string(pending.TargetID),
@@ -273,7 +278,7 @@ func (s *Service) ExchangeAccessToken(ctx context.Context, identity application.
 	if !allowed {
 		return deniedAccessDecision(), nil
 	}
-	return application.AccessAuthorizationDecision{Granted: true, Lease: lease, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration / 2}, nil
+	return accessAuthorizationDecision(record, lease), nil
 }
 
 func (s *Service) RecheckAccessLease(ctx context.Context, identity application.AccessCallbackIdentity, sessionID, lease string) (application.AccessAuthorizationDecision, error) {
@@ -300,7 +305,7 @@ func (s *Service) RecheckAccessLease(ctx context.Context, identity application.A
 	if !allowed {
 		return deniedAccessDecision(), nil
 	}
-	return application.AccessAuthorizationDecision{Granted: true, Lease: next, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration / 2}, nil
+	return accessAuthorizationDecision(record, next), nil
 }
 
 func (s *Service) EndAccessLease(ctx context.Context, identity application.AccessCallbackIdentity, sessionID, lease, reason string) (bool, error) {
@@ -501,3 +506,11 @@ func deniedAccessDecision() application.AccessAuthorizationDecision {
 }
 
 var _ application.AccessAuthorizationHandler = (*Service)(nil)
+
+func accessAuthorizationDecision(record application.AccessSessionRecord, lease string) application.AccessAuthorizationDecision {
+	decision := application.AccessAuthorizationDecision{Granted: true, Lease: lease, ValidUntil: record.LeaseExpiresAt, RecheckAfter: DefaultAccessLeaseDuration / 2, SharedConsole: record.SharedConsole, InputLease: record.InputLease}
+	if record.SharedConsole {
+		decision.RecheckAfter = application.ConsoleControlPollInterval
+	}
+	return decision
+}

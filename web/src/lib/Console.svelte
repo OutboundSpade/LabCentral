@@ -18,6 +18,8 @@
     type AccessLaunch,
   } from "./api";
   import type RFB from "@novnc/novnc";
+  import type { components } from "./api.generated";
+  type Presence=components["schemas"]["ConsolePresence"];
   let { accessSessionId }: { accessSessionId: string } = $props();
   let consoleStatus = $state("Connecting to your lab…");
   let consoleTarget = $state<HTMLDivElement>();
@@ -27,12 +29,38 @@
   let connected = $state(false);
   let fullscreen = $state(false);
   let resizeMode = $state("fit");
+  let currentID = $state("");
   let viewOnly = $state(false);
+  let sharedConsole = $state(false);
+  let presence = $state<Presence>();
+  let controlBusy = $state(false);
+  let presenceTimer: ReturnType<typeof setTimeout> | undefined;
+  let hasControl = $derived(!!presence && presence.driverSessionId===currentID && presence.requestedSessionId===currentID);
+  let effectiveViewOnly = $derived(viewOnly || (sharedConsole && !hasControl));
+  $effect(() => { const only=effectiveViewOnly; const mode=resizeMode; if(consoleClient) {consoleClient.viewOnly=only;consoleClient.resizeSession=mode==="remote"&&!only;consoleClient.scaleViewport=mode!=="actual";} });
+  async function refreshPresence(id:string,mine:number) {
+    if(disposed || id!==currentID || mine!==generation || !connected || !sharedConsole)return;
+    try {
+      const result=await api<Presence>(`/access-sessions/${encodeURIComponent(id)}/console`,{fresh:true});
+      if(!disposed && id===currentID && mine===generation)presence=result;
+    } catch {if(id===currentID && mine===generation)presence=undefined;}
+    if(!disposed && id===currentID && mine===generation && connected)presenceTimer=setTimeout(()=>void refreshPresence(id,mine),1000);
+  }
+  async function changeControl(take:boolean) {
+    if(controlBusy || !connected)return;
+    const id=currentID,mine=generation;
+    controlBusy=true;controlError="";
+    try {
+      const result=await api<Presence>(`/access-sessions/${encodeURIComponent(id)}/console/${take?"take-control":"release-control"}`,{method:"POST",headers:mutationHeaders()});
+      if(id===currentID && mine===generation)presence=result;
+    } catch(e) {if(id===currentID && mine===generation)controlError=e instanceof Error?e.message:"Control could not be changed.";}
+    finally {controlBusy=false;}
+  }
   let specialKey = $state("escape");
   let controlError = $state("");
   function resize() {
     if (!consoleClient) return;
-    consoleClient.resizeSession = resizeMode === "remote";
+    consoleClient.resizeSession = resizeMode === "remote" && !effectiveViewOnly;
     consoleClient.scaleViewport = resizeMode !== "actual";
   }
   async function toggleFullscreen() {
@@ -45,7 +73,7 @@
     }
   }
   function sendSpecialKey() {
-    if (!connected || viewOnly || !consoleClient) return;
+    if (!connected || effectiveViewOnly || !consoleClient) return;
     if (specialKey === "ctrl-alt-delete") consoleClient.sendCtrlAltDel();
     else if (specialKey === "ctrl-c") {
       consoleClient.sendKey(0xffe3, "ControlLeft", true);
@@ -61,8 +89,12 @@
       const session = await api<AccessSession>(
         `/access-sessions/${encodeURIComponent(id)}`,
       );
+      if(disposed || id!==currentID)return;
+      sharedConsole=!!session.sharedConsole;
+      if(connected && sharedConsole){clearTimeout(presenceTimer);void refreshPresence(id,generation);}
       const instance = await api<Instance>(
         `/lab-instances/${encodeURIComponent(session.instanceId)}`,
+        { signal: request?.signal ?? AbortSignal.timeout(10000) },
       );
       if (disposed || id !== currentID) return;
       lab = instance;
@@ -72,7 +104,6 @@
     }
   }
   let disposed = false;
-  let currentID = "";
   let attempt = 0,
     generation = 0;
   let reconnecting = $state(false),
@@ -81,6 +112,8 @@
   let handshakeTimer: ReturnType<typeof setTimeout> | undefined;
   let request: AbortController | undefined;
   function closeTransport() {
+    clearTimeout(presenceTimer);
+    presence=undefined;
     clearTimeout(handshakeTimer);
     consoleClient?.disconnect();
     consoleClient = null;
@@ -231,16 +264,17 @@
           }
           try {
             const client = new ConsoleClient(consoleTarget!, socket, {
-              shared: false,
+              shared: true,
             });
             consoleClient = client;
             resize();
-            client.viewOnly = viewOnly;
+            client.viewOnly = effectiveViewOnly;
             client.addEventListener("connect", () => {
               if (disposed || mine !== generation) return;
               clearTimeout(handshakeTimer);
               consoleStatus = "Connected";
               connected = true;
+              if(sharedConsole)void refreshPresence(currentID,mine);
               reconnecting = false;
               client.focus();
             });
@@ -353,7 +387,7 @@
         aria-label="Special key"
         class="select select-sm w-40"
         bind:value={specialKey}
-        disabled={!connected || viewOnly}
+        disabled={!connected || effectiveViewOnly}
       >
         <option value="escape">Escape</option><option value="tab">Tab</option
         ><option value="ctrl-c">Ctrl-C</option><option value="ctrl-alt-delete"
@@ -362,7 +396,7 @@
       </select>
       <button
         class="btn btn-sm"
-        disabled={!connected || viewOnly}
+        disabled={!connected || effectiveViewOnly}
         onclick={sendSpecialKey}><Keyboard size={16} />Send key</button
       >
     </div>
@@ -371,9 +405,10 @@
         type="checkbox"
         class="checkbox checkbox-sm"
         aria-label="View only"
+        disabled={sharedConsole && !hasControl}
         bind:checked={viewOnly}
         onchange={() => {
-          if (consoleClient) consoleClient.viewOnly = viewOnly;
+          if (consoleClient) consoleClient.viewOnly = effectiveViewOnly;
         }}
       />View only</label
     >
@@ -387,6 +422,15 @@
         />Full screen{/if}
     </button>
   </div>
+  {#if sharedConsole}
+    <div class="flex flex-wrap items-center gap-3 text-sm" aria-label="Shared console">
+      <span aria-live="polite">{hasControl?"You have control":presence?.requestedSessionId===currentID?"Waiting for control…":"Watching"}</span>
+      <button class="btn btn-sm" disabled={!connected || controlBusy} onclick={()=>void changeControl(!hasControl)}>{hasControl?"Release control":"Take control"}</button>
+      {#if presence?.participants?.length}
+        <span>Connected: {presence.participants.map(p=>p.displayName+(p.sessionId===presence?.driverSessionId?" (driver)":"")).join(", ")}</span>
+      {/if}
+    </div>
+  {/if}
   {#if controlError}<p role="alert" class="text-sm text-error">
       {controlError}
     </p>{/if}

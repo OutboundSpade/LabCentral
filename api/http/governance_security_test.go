@@ -285,11 +285,13 @@ func TestAuthenticatedAuditAndEventAPIScopeAndFilters(t *testing.T) {
 }
 
 type governanceHTTPFixture struct {
-	service   *controlplane.Service
-	server    *Server
-	database  *localdb.Store
-	store     *governanceCountingStore
-	artifacts *governanceCountingArtifacts
+	sqlDB       *sql.DB
+	tokenHasher application.KeyedTokenHasher
+	service     *controlplane.Service
+	server      *Server
+	database    *localdb.Store
+	store       *governanceCountingStore
+	artifacts   *governanceCountingArtifacts
 }
 
 func newGovernanceHTTPFixture(t *testing.T, bindings ...controlplane.TargetBinding) *governanceHTTPFixture {
@@ -431,7 +433,7 @@ func newGovernanceHTTPFixture(t *testing.T, bindings ...controlplane.TargetBindi
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &governanceHTTPFixture{service: service, server: server, database: database, store: countingStore, artifacts: countingArtifacts}
+	return &governanceHTTPFixture{sqlDB: db, tokenHasher: keyring, service: service, server: server, database: database, store: countingStore, artifacts: countingArtifacts}
 }
 
 type governanceClient struct {

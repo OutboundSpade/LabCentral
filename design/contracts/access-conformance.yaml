@@ -118,3 +118,19 @@ cases:
       activeRevocationCloses: true
       managementOriginExposed: false
       sensitiveCanaryOccurrences: 0
+  - id: TEST-ACCESS-019
+    title: Shared console control serializes takeover and requires explicit reacquisition
+    goTest: TestSQLiteConsoleControl
+    postgresqlGoTest: TestPostgreSQLConsoleControl
+    setup: {independentSessions: 3, concurrentTakeovers: 2, resourceGenerationBound: true}
+    expect: {simultaneousDrivers: 1, activationBeforePriorExpiry: false, reconnectRestoresControl: false}
+  - id: TEST-ACCESS-020
+    title: Shared RFB rejects viewer mutations and unknown messages
+    goTest: TestSharedRFBFiltersEveryGuestMutation
+    setup: {fragmentedMessages: true, exclusiveClientInit: true}
+    expect: {forcedShared: true, viewerKeyboardWrites: 0, viewerPointerWrites: 0, viewerClipboardWrites: 0, viewerPowerWrites: 0}
+  - id: TEST-ACCESS-021
+    title: Authenticated shared bridges enforce input expiry during core outage
+    goTest: TestSharedBridgeEnforcesLeaseOnAuthenticatedStreams
+    setup: {independentSessions: 3, coreOutage: true}
+    expect: {viewerInputForwarded: false, inputLeaseExtendedByOutage: false}

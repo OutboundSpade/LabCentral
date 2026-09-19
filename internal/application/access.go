@@ -29,12 +29,14 @@ type AccessCallbackIdentity struct {
 }
 
 type AccessAuthorizationDecision struct {
-	Granted      bool
-	Lease        string
-	ValidUntil   time.Time
-	RecheckAfter time.Duration
-	Code         string
-	SafeMessage  string
+	SharedConsole bool
+	InputLease    *ConsoleInputLease
+	Granted       bool
+	Lease         string
+	ValidUntil    time.Time
+	RecheckAfter  time.Duration
+	Code          string
+	SafeMessage   string
 }
 
 type AccessAuthorizationHandler interface {

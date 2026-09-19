@@ -309,6 +309,8 @@ const (
 )
 
 type AccessSessionRecord struct {
+	SharedConsole        bool
+	InputLease           *ConsoleInputLease
 	ID                   domain.AccessSessionID
 	SubjectID            domain.UserID
 	OrganizationID       domain.OrganizationID
@@ -353,6 +355,7 @@ type AccessSessionRecord struct {
 }
 
 type BeginAccessSessionRequest struct {
+	SharedConsole            bool
 	GatewayGrantID           string
 	RecoverUncertainIssuance bool
 	GovernanceRecordIDs

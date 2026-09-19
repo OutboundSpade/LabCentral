@@ -107,4 +107,4 @@ ADR-0024 adds namespaced descriptors, workload/network targets and one-time cred
 
 ## Fenced shared-console control
 
-ADR-0029 adds independently authenticated shared viewing and a single core-fenced driver per VM generation, enforced by the access plugin. Existing individual-session authorization and closure bounds remain. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).
+ADR-0029 adds independently authenticated shared viewing and a single core-fenced driver per VM generation, enforced by the access plugin. Existing individual-session authorization and closure bounds remain. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md); the implemented negotiated protocol, API and lease timing are documented in [shared console control](../plugins/shared-console.md).

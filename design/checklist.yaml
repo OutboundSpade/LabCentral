@@ -66,7 +66,7 @@ tasks:
       - Preserve team-owned labs across departure, revoke access and recheck membership for explicit team-owned preparation and admission.
   - id: TASK-COLLAB-002
     title: Implement shared console presence and fenced driver control
-    status: in_progress
+    status: complete
     dependencies: [TASK-COLLAB-001]
     relatedAdrs: [ADR-0029]
     relatedDocuments: [docs/design/portable-template-collaboration.md]
@@ -75,7 +75,7 @@ tasks:
       - Enforce RFB input permissions in the access plugin and test takeover, departure, revocation, reconnect and outages without recording screen contents.
   - id: TASK-TEMPLATE-007
     title: Deliver independent Library Teams and Classroom packages
-    status: proposed
+    status: in_progress
     dependencies: [TASK-COLLAB-002]
     relatedAdrs: [ADR-0026, ADR-0027, ADR-0029]
     relatedDocuments: [docs/design/portable-template-collaboration.md]

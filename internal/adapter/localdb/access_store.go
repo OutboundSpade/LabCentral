@@ -129,6 +129,9 @@ func (s *Store) beginAccessSession(ctx context.Context, request application.Begi
 	if err := s.requireInstanceOwnerAuthorizationTx(ctx, tx, instance, request.SubjectID, now); err != nil {
 		return application.AccessSessionRecord{}, err
 	}
+	if err := s.beginConsoleControlTx(ctx, tx, request); err != nil {
+		return application.AccessSessionRecord{}, err
+	}
 	duration := request.RequestedDuration
 	if duration == 0 {
 		duration = application.DefaultAccessSessionDuration
@@ -162,12 +165,12 @@ func (s *Store) beginAccessSession(ctx context.Context, request application.Begi
 	err = tx.QueryRowContext(ctx, s.bind(`INSERT INTO labcentral_access_sessions
 		(access_session_id, subject_id, organization_id, project_id, instance_id, resource_id, method, target_id,
 		 access_plugin_id, access_plugin_version, access_plugin_instance_id, access_kind, audience,
-		 provider_state_digest, resource_generation, state, expires_at_us, closure_required, resource_version, created_at_us, updated_at_us)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 1, `+s.nowMicros()+`, `+s.nowMicros()+`)
+		 provider_state_digest, resource_generation, state, expires_at_us, closure_required, shared_console, resource_version, created_at_us, updated_at_us)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 1, `+s.nowMicros()+`, `+s.nowMicros()+`)
 		RETURNING created_at_us, updated_at_us`), request.ID, request.SubjectID, organizationID, instance.ProjectID,
 		request.InstanceID, request.ResourceID, request.Method, instance.ProviderTargetID, request.AccessPluginID,
 		request.AccessPluginVersion, request.AccessPluginInstance, request.AccessKind, request.Audience,
-		request.ProviderStateDigest.Hex(), request.ResourceGeneration, expiresAt.UnixMicro(), quotaBoolean(request.RecoverUncertainIssuance)).Scan(&createdAt, &updatedAt)
+		request.ProviderStateDigest.Hex(), request.ResourceGeneration, expiresAt.UnixMicro(), quotaBoolean(request.RecoverUncertainIssuance), quotaBoolean(request.SharedConsole)).Scan(&createdAt, &updatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return application.AccessSessionRecord{}, application.ErrAlreadyExists
@@ -179,7 +182,7 @@ func (s *Store) beginAccessSession(ctx context.Context, request application.Begi
 			return application.AccessSessionRecord{}, err
 		}
 	}
-	record := application.AccessSessionRecord{
+	record := application.AccessSessionRecord{SharedConsole: request.SharedConsole,
 		ID: request.ID, SubjectID: request.SubjectID, OrganizationID: organizationID, ProjectID: instance.ProjectID,
 		InstanceID: request.InstanceID, ResourceID: request.ResourceID, Method: request.Method, TargetID: instance.ProviderTargetID,
 		AccessPluginID: request.AccessPluginID, AccessPluginVersion: request.AccessPluginVersion,
@@ -417,6 +420,9 @@ func (s *Store) RecheckAccessLease(ctx context.Context, request application.Acce
 			return current, fmt.Errorf("renew access authorization lease: %w", err)
 		}
 		current, err = s.getAccessSessionTx(ctx, tx, current.ID, false)
+		if err == nil {
+			err = s.renewConsoleInputTx(ctx, tx, &current, now)
+		}
 		authorized = err == nil
 		return current, err
 	})
@@ -724,6 +730,15 @@ func accessCallbackMatches(record application.AccessSessionRecord, identity appl
 }
 
 func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, record application.AccessSessionRecord, now time.Time) (bool, error) {
+	if record.Method == "vnc" && !record.SharedConsole {
+		var count int
+		if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_console_control WHERE instance_id=? AND resource_id=? AND generation=?`), record.InstanceID, record.ResourceID, record.ResourceGeneration).Scan(&count); err != nil {
+			return false, err
+		}
+		if count != 0 {
+			return false, nil
+		}
+	}
 	var bound string
 	err := tx.QueryRowContext(ctx, s.bind(`SELECT grant_id FROM labcentral_gateway_access_sessions WHERE access_session_id=?`), record.ID).Scan(&bound)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -905,7 +920,7 @@ const accessSessionSelect = `SELECT access_session_id, subject_id, organization_
 	provider_state_digest, resource_generation, state, launch_token_key_id, launch_token_hash, launch_expires_at_us,
 	lease_key_id, lease_hash, lease_expires_at_us, last_authorized_at_us, expires_at_us,
 	revoked_at_us, revoked_by, revocation_reason, access_state_schema, access_state_major, access_state_minor,
-	access_state_digest, access_state, closure_required, resource_version, created_at_us, updated_at_us
+	access_state_digest, access_state, closure_required, resource_version, created_at_us, updated_at_us, shared_console
 	FROM labcentral_access_sessions`
 
 func (s *Store) getAccessSessionTx(ctx context.Context, tx *sql.Tx, id domain.AccessSessionID, lock bool) (application.AccessSessionRecord, error) {
@@ -920,7 +935,7 @@ func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQuery
 	var record application.AccessSessionRecord
 	var endpointDigest, providerDigest, accessStateDigest, state string
 	var endpointMajor, endpointMinor, generation, launchExpires, leaseExpires, lastAuthorized, expires, revokedAt int64
-	var accessStateMajor, accessStateMinor, closure, version, createdAt, updatedAt int64
+	var accessStateMajor, accessStateMinor, closure, version, createdAt, updatedAt, sharedConsole int64
 	err := queryer.QueryRowContext(ctx, s.bind(query), id).Scan(
 		&record.ID, &record.SubjectID, &record.OrganizationID, &record.ProjectID, &record.InstanceID, &record.ResourceID,
 		&record.Method, &record.TargetID, &record.AccessPluginID, &record.AccessPluginVersion, &record.AccessPluginInstance,
@@ -928,7 +943,7 @@ func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQuery
 		&providerDigest, &generation, &state, &record.LaunchTokenKeyID, &record.LaunchTokenHash, &launchExpires,
 		&record.LeaseKeyID, &record.LeaseHash, &leaseExpires, &lastAuthorized, &expires, &revokedAt, &record.RevokedBy,
 		&record.RevocationReason, &record.AccessStateSchema, &accessStateMajor, &accessStateMinor, &accessStateDigest,
-		&record.AccessState, &closure, &version, &createdAt, &updatedAt,
+		&record.AccessState, &closure, &version, &createdAt, &updatedAt, &sharedConsole,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return record, application.ErrNotFound
@@ -941,6 +956,7 @@ func (s *Store) getAccessSession(ctx context.Context, queryer accessSessionQuery
 	record.ResourceGeneration = domain.Generation(generation)
 	record.AccessStateMajor, record.AccessStateMinor = uint32(accessStateMajor), uint32(accessStateMinor)
 	record.ClosureRequired = closure != 0
+	record.SharedConsole = sharedConsole != 0
 	record.ResourceVersion = domain.ResourceVersion(version)
 	record.LaunchExpiresAt = accessTime(launchExpires)
 	record.LeaseExpiresAt = accessTime(leaseExpires)

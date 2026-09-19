@@ -54,6 +54,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/access-sessions/{id}/console": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get access sessions by ID console */
+        get: operations["get-access-sessions-by-id-console"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-sessions/{id}/console/release-control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post access sessions by ID console release control */
+        post: operations["post-access-sessions-by-id-console-release-control"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-sessions/{id}/console/take-control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post access sessions by ID console take control */
+        post: operations["post-access-sessions-by-id-console-take-control"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/access-sessions/{id}/download": {
         parameters: {
             query?: never;
@@ -1789,6 +1840,7 @@ export interface components {
             revocationReason?: string;
             /** Format: date-time */
             revokedAt?: string;
+            sharedConsole?: boolean;
             state: string;
             subjectId: string;
             /** Format: date-time */
@@ -1922,6 +1974,30 @@ export interface components {
              */
             readonly $schema?: string;
             userCode: string;
+        };
+        ConsoleParticipant: {
+            displayName: string;
+            sessionId: string;
+            userId: string;
+        };
+        ConsolePresence: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ConsolePresence.json
+             */
+            readonly $schema?: string;
+            apiVersion: string;
+            driverSessionId?: string;
+            /** Format: int64 */
+            fence: number;
+            /** Format: int64 */
+            generation: number;
+            instanceId: string;
+            participants: components["schemas"]["ConsoleParticipant"][] | null;
+            requestedSessionId?: string;
+            resourceId: string;
+            sessionId: string;
         };
         ContainerRuntimeImage: {
             agentSHA256: string;
@@ -3592,6 +3668,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccessSessionDTO"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-access-sessions-by-id-console": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsolePresence"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-access-sessions-by-id-console-release-control": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsolePresence"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "post-access-sessions-by-id-console-take-control": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsolePresence"];
                 };
             };
             /** @description Error */

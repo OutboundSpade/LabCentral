@@ -429,6 +429,7 @@ message CreateAccessRequest {
   string endpoint_digest = 8;
   string provider_state_digest = 9;
   string audience = 10;
+  uint32 console_control_version = 11;
 }
 
 message CreateAccessResponse {
@@ -459,11 +460,20 @@ message ExchangeAccessTokenRequest {
   string one_time_token = 4;
 }
 
+// A fenced input grant for one independently authenticated console. Plugins
+// measure valid_for from the monotonic start of their callback request.
+message ConsoleInputLease {
+  uint64 fence = 1;
+  google.protobuf.Duration valid_for = 2;
+}
+
 message ExchangeAccessTokenResponse {
   string authorization_lease = 1;
   google.protobuf.Timestamp valid_until = 2;
   google.protobuf.Duration recheck_after = 3;
   StructuredError error = 4;
+  bool shared_console = 5;
+  ConsoleInputLease input_lease = 6;
 }
 
 message RecheckAccessLeaseRequest {
@@ -478,6 +488,8 @@ message RecheckAccessLeaseResponse {
   google.protobuf.Timestamp valid_until = 2;
   google.protobuf.Duration recheck_after = 3;
   StructuredError error = 4;
+  bool shared_console = 5;
+  ConsoleInputLease input_lease = 6;
 }
 
 message EndAccessLeaseRequest {

@@ -33,7 +33,7 @@ func (a *Access) Create(ctx context.Context, r app.AccessCreate) (app.AccessCrea
 		return app.AccessCreated{}, fmt.Errorf("invalid access provider-state digest")
 	}
 	// Domain strings include the algorithm prefix; the plugin wire contract is raw hex.
-	v, err := a.Client.CreateAccess(ctx, &wire.CreateAccessRequest{Context: call(r.Call), AccessSessionId: r.SessionID, SubjectId: r.SubjectID, Method: r.Method, ExpiresAt: timestamppb.New(r.ExpiresAt), OpaqueConnectionData: r.Endpoint, EndpointSchema: schema(r.Schema), EndpointDigest: endpointDigest.Hex(), ProviderStateDigest: stateDigest.Hex(), Audience: r.Audience})
+	v, err := a.Client.CreateAccess(ctx, &wire.CreateAccessRequest{ConsoleControlVersion: r.ConsoleControlVersion, Context: call(r.Call), AccessSessionId: r.SessionID, SubjectId: r.SubjectID, Method: r.Method, ExpiresAt: timestamppb.New(r.ExpiresAt), OpaqueConnectionData: r.Endpoint, EndpointSchema: schema(r.Schema), EndpointDigest: endpointDigest.Hex(), ProviderStateDigest: stateDigest.Hex(), Audience: r.Audience})
 	if err != nil {
 		return app.AccessCreated{}, err
 	}

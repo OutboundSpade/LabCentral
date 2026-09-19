@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
 phase: phase_3_production_topology_in_progress
-lastUpdated: "2026-09-18"
+lastUpdated: "2026-09-19"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -244,6 +244,7 @@ milestones:
 completedTasks:
   - TASK-TEMPLATE-006
   - TASK-COLLAB-001
+  - TASK-COLLAB-002
   - TASK-TEMPLATE-005
   - TASK-TEMPLATE-004
   - TASK-TEMPLATE-003
@@ -309,7 +310,7 @@ completedTasks:
   - TASK-UI-009
   - TASK-UI-010
 currentTasks:
-  - TASK-COLLAB-002
+  - TASK-TEMPLATE-007
   - TASK-PROD-004
   - TASK-PROD-005
-nextRecommendedTasks: [TASK-TEMPLATE-007]
+nextRecommendedTasks: [TASK-TEMPLATE-008]

@@ -152,6 +152,7 @@ type InstanceDTO struct {
 }
 
 type AccessSessionDTO struct {
+	SharedConsole    bool       `json:"sharedConsole,omitempty"`
 	ID               string     `json:"id"`
 	SubjectID        string     `json:"subjectId"`
 	InstanceID       string     `json:"instanceId"`

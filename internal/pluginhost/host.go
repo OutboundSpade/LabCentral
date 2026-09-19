@@ -731,7 +731,7 @@ func (s *accessAuthorizationServer) RecheckAccessLease(ctx context.Context, requ
 	}
 	response := &pluginv1.RecheckAccessLeaseResponse{
 		AuthorizationLease: decision.Lease, ValidUntil: timestamppb.New(decision.ValidUntil),
-		RecheckAfter: durationpb.New(decision.RecheckAfter),
+		RecheckAfter: durationpb.New(decision.RecheckAfter), SharedConsole: decision.SharedConsole, InputLease: consoleInputLease(decision.InputLease),
 	}
 	if !decision.Granted {
 		response.AuthorizationLease = ""
@@ -757,7 +757,7 @@ func (s *accessAuthorizationServer) EndAccessLease(ctx context.Context, request 
 func exchangeDecision(decision application.AccessAuthorizationDecision) *pluginv1.ExchangeAccessTokenResponse {
 	response := &pluginv1.ExchangeAccessTokenResponse{
 		AuthorizationLease: decision.Lease, ValidUntil: timestamppb.New(decision.ValidUntil),
-		RecheckAfter: durationpb.New(decision.RecheckAfter),
+		RecheckAfter: durationpb.New(decision.RecheckAfter), SharedConsole: decision.SharedConsole, InputLease: consoleInputLease(decision.InputLease),
 	}
 	if !decision.Granted {
 		response.AuthorizationLease = ""
@@ -968,3 +968,10 @@ func (w *boundedWriter) String() string {
 
 var _ pluginv1.PluginRegistrationServiceServer = (*registrationServer)(nil)
 var _ pluginv1.AccessAuthorizationServiceServer = (*accessAuthorizationServer)(nil)
+
+func consoleInputLease(lease *application.ConsoleInputLease) *pluginv1.ConsoleInputLease {
+	if lease == nil {
+		return nil
+	}
+	return &pluginv1.ConsoleInputLease{Fence: lease.Fence, ValidFor: durationpb.New(lease.ValidFor)}
+}

@@ -651,7 +651,7 @@ def verify_contract_catalogs() -> None:
             )
     access = load_yaml(ROOT / "design/contracts/access-conformance.yaml")
     assert access["states"] == ["pending", "ready", "active", "expired", "revoked", "failed"]
-    assert len(access["cases"]) == 18, "access suite must retain all eighteen contract cases"
+    assert {case["id"] for case in access["cases"]} == {f"TEST-ACCESS-{n:03}" for n in range(1, 22)}, "access suite must retain its twenty-one stable contract cases"
     for case in access["cases"]:
         go_test = case.get("goTest")
         protected_test = case.get("protectedGoTest")

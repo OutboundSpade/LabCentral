@@ -3951,19 +3951,20 @@ func (x *ImportImageResponse) GetEvent() *InvocationEvent {
 }
 
 type CreateAccessRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Context              *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	AccessSessionId      string                 `protobuf:"bytes,2,opt,name=access_session_id,json=accessSessionId,proto3" json:"access_session_id,omitempty"`
-	SubjectId            string                 `protobuf:"bytes,3,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
-	Method               string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
-	ExpiresAt            *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	OpaqueConnectionData []byte                 `protobuf:"bytes,6,opt,name=opaque_connection_data,json=opaqueConnectionData,proto3" json:"opaque_connection_data,omitempty"`
-	EndpointSchema       *SchemaVersion         `protobuf:"bytes,7,opt,name=endpoint_schema,json=endpointSchema,proto3" json:"endpoint_schema,omitempty"`
-	EndpointDigest       string                 `protobuf:"bytes,8,opt,name=endpoint_digest,json=endpointDigest,proto3" json:"endpoint_digest,omitempty"`
-	ProviderStateDigest  string                 `protobuf:"bytes,9,opt,name=provider_state_digest,json=providerStateDigest,proto3" json:"provider_state_digest,omitempty"`
-	Audience             string                 `protobuf:"bytes,10,opt,name=audience,proto3" json:"audience,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Context               *CallContext           `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	AccessSessionId       string                 `protobuf:"bytes,2,opt,name=access_session_id,json=accessSessionId,proto3" json:"access_session_id,omitempty"`
+	SubjectId             string                 `protobuf:"bytes,3,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	Method                string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
+	ExpiresAt             *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	OpaqueConnectionData  []byte                 `protobuf:"bytes,6,opt,name=opaque_connection_data,json=opaqueConnectionData,proto3" json:"opaque_connection_data,omitempty"`
+	EndpointSchema        *SchemaVersion         `protobuf:"bytes,7,opt,name=endpoint_schema,json=endpointSchema,proto3" json:"endpoint_schema,omitempty"`
+	EndpointDigest        string                 `protobuf:"bytes,8,opt,name=endpoint_digest,json=endpointDigest,proto3" json:"endpoint_digest,omitempty"`
+	ProviderStateDigest   string                 `protobuf:"bytes,9,opt,name=provider_state_digest,json=providerStateDigest,proto3" json:"provider_state_digest,omitempty"`
+	Audience              string                 `protobuf:"bytes,10,opt,name=audience,proto3" json:"audience,omitempty"`
+	ConsoleControlVersion uint32                 `protobuf:"varint,11,opt,name=console_control_version,json=consoleControlVersion,proto3" json:"console_control_version,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *CreateAccessRequest) Reset() {
@@ -4064,6 +4065,13 @@ func (x *CreateAccessRequest) GetAudience() string {
 		return x.Audience
 	}
 	return ""
+}
+
+func (x *CreateAccessRequest) GetConsoleControlVersion() uint32 {
+	if x != nil {
+		return x.ConsoleControlVersion
+	}
+	return 0
 }
 
 type CreateAccessResponse struct {
@@ -4338,19 +4346,75 @@ func (x *ExchangeAccessTokenRequest) GetOneTimeToken() string {
 	return ""
 }
 
+// A fenced input grant for one independently authenticated console. Plugins
+// measure valid_for from the monotonic start of their callback request.
+type ConsoleInputLease struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Fence         uint64                 `protobuf:"varint,1,opt,name=fence,proto3" json:"fence,omitempty"`
+	ValidFor      *durationpb.Duration   `protobuf:"bytes,2,opt,name=valid_for,json=validFor,proto3" json:"valid_for,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleInputLease) Reset() {
+	*x = ConsoleInputLease{}
+	mi := &file_plugin_v1_plugin_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleInputLease) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleInputLease) ProtoMessage() {}
+
+func (x *ConsoleInputLease) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_plugin_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleInputLease.ProtoReflect.Descriptor instead.
+func (*ConsoleInputLease) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *ConsoleInputLease) GetFence() uint64 {
+	if x != nil {
+		return x.Fence
+	}
+	return 0
+}
+
+func (x *ConsoleInputLease) GetValidFor() *durationpb.Duration {
+	if x != nil {
+		return x.ValidFor
+	}
+	return nil
+}
+
 type ExchangeAccessTokenResponse struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	AuthorizationLease string                 `protobuf:"bytes,1,opt,name=authorization_lease,json=authorizationLease,proto3" json:"authorization_lease,omitempty"`
 	ValidUntil         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
 	RecheckAfter       *durationpb.Duration   `protobuf:"bytes,3,opt,name=recheck_after,json=recheckAfter,proto3" json:"recheck_after,omitempty"`
 	Error              *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	SharedConsole      bool                   `protobuf:"varint,5,opt,name=shared_console,json=sharedConsole,proto3" json:"shared_console,omitempty"`
+	InputLease         *ConsoleInputLease     `protobuf:"bytes,6,opt,name=input_lease,json=inputLease,proto3" json:"input_lease,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ExchangeAccessTokenResponse) Reset() {
 	*x = ExchangeAccessTokenResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[58]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4362,7 +4426,7 @@ func (x *ExchangeAccessTokenResponse) String() string {
 func (*ExchangeAccessTokenResponse) ProtoMessage() {}
 
 func (x *ExchangeAccessTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[58]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4375,7 +4439,7 @@ func (x *ExchangeAccessTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExchangeAccessTokenResponse.ProtoReflect.Descriptor instead.
 func (*ExchangeAccessTokenResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{58}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ExchangeAccessTokenResponse) GetAuthorizationLease() string {
@@ -4406,6 +4470,20 @@ func (x *ExchangeAccessTokenResponse) GetError() *StructuredError {
 	return nil
 }
 
+func (x *ExchangeAccessTokenResponse) GetSharedConsole() bool {
+	if x != nil {
+		return x.SharedConsole
+	}
+	return false
+}
+
+func (x *ExchangeAccessTokenResponse) GetInputLease() *ConsoleInputLease {
+	if x != nil {
+		return x.InputLease
+	}
+	return nil
+}
+
 type RecheckAccessLeaseRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	CallbackCredential string                 `protobuf:"bytes,1,opt,name=callback_credential,json=callbackCredential,proto3" json:"callback_credential,omitempty"`
@@ -4418,7 +4496,7 @@ type RecheckAccessLeaseRequest struct {
 
 func (x *RecheckAccessLeaseRequest) Reset() {
 	*x = RecheckAccessLeaseRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[59]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4430,7 +4508,7 @@ func (x *RecheckAccessLeaseRequest) String() string {
 func (*RecheckAccessLeaseRequest) ProtoMessage() {}
 
 func (x *RecheckAccessLeaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[59]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4443,7 +4521,7 @@ func (x *RecheckAccessLeaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecheckAccessLeaseRequest.ProtoReflect.Descriptor instead.
 func (*RecheckAccessLeaseRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{59}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *RecheckAccessLeaseRequest) GetCallbackCredential() string {
@@ -4480,13 +4558,15 @@ type RecheckAccessLeaseResponse struct {
 	ValidUntil         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
 	RecheckAfter       *durationpb.Duration   `protobuf:"bytes,3,opt,name=recheck_after,json=recheckAfter,proto3" json:"recheck_after,omitempty"`
 	Error              *StructuredError       `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	SharedConsole      bool                   `protobuf:"varint,5,opt,name=shared_console,json=sharedConsole,proto3" json:"shared_console,omitempty"`
+	InputLease         *ConsoleInputLease     `protobuf:"bytes,6,opt,name=input_lease,json=inputLease,proto3" json:"input_lease,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
 func (x *RecheckAccessLeaseResponse) Reset() {
 	*x = RecheckAccessLeaseResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[60]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4498,7 +4578,7 @@ func (x *RecheckAccessLeaseResponse) String() string {
 func (*RecheckAccessLeaseResponse) ProtoMessage() {}
 
 func (x *RecheckAccessLeaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[60]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4511,7 +4591,7 @@ func (x *RecheckAccessLeaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecheckAccessLeaseResponse.ProtoReflect.Descriptor instead.
 func (*RecheckAccessLeaseResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{60}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *RecheckAccessLeaseResponse) GetAuthorizationLease() string {
@@ -4542,6 +4622,20 @@ func (x *RecheckAccessLeaseResponse) GetError() *StructuredError {
 	return nil
 }
 
+func (x *RecheckAccessLeaseResponse) GetSharedConsole() bool {
+	if x != nil {
+		return x.SharedConsole
+	}
+	return false
+}
+
+func (x *RecheckAccessLeaseResponse) GetInputLease() *ConsoleInputLease {
+	if x != nil {
+		return x.InputLease
+	}
+	return nil
+}
+
 type EndAccessLeaseRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	CallbackCredential string                 `protobuf:"bytes,1,opt,name=callback_credential,json=callbackCredential,proto3" json:"callback_credential,omitempty"`
@@ -4555,7 +4649,7 @@ type EndAccessLeaseRequest struct {
 
 func (x *EndAccessLeaseRequest) Reset() {
 	*x = EndAccessLeaseRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[61]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4567,7 +4661,7 @@ func (x *EndAccessLeaseRequest) String() string {
 func (*EndAccessLeaseRequest) ProtoMessage() {}
 
 func (x *EndAccessLeaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[61]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4580,7 +4674,7 @@ func (x *EndAccessLeaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndAccessLeaseRequest.ProtoReflect.Descriptor instead.
 func (*EndAccessLeaseRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{61}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *EndAccessLeaseRequest) GetCallbackCredential() string {
@@ -4628,7 +4722,7 @@ type EndAccessLeaseResponse struct {
 
 func (x *EndAccessLeaseResponse) Reset() {
 	*x = EndAccessLeaseResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[62]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4640,7 +4734,7 @@ func (x *EndAccessLeaseResponse) String() string {
 func (*EndAccessLeaseResponse) ProtoMessage() {}
 
 func (x *EndAccessLeaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[62]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4653,7 +4747,7 @@ func (x *EndAccessLeaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndAccessLeaseResponse.ProtoReflect.Descriptor instead.
 func (*EndAccessLeaseResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{62}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *EndAccessLeaseResponse) GetEnded() bool {
@@ -4686,7 +4780,7 @@ type AccessDescriptor struct {
 
 func (x *AccessDescriptor) Reset() {
 	*x = AccessDescriptor{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[63]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4698,7 +4792,7 @@ func (x *AccessDescriptor) String() string {
 func (*AccessDescriptor) ProtoMessage() {}
 
 func (x *AccessDescriptor) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[63]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4711,7 +4805,7 @@ func (x *AccessDescriptor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccessDescriptor.ProtoReflect.Descriptor instead.
 func (*AccessDescriptor) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{63}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *AccessDescriptor) GetMethod() string {
@@ -4776,7 +4870,7 @@ type DownloadAccessRequest struct {
 
 func (x *DownloadAccessRequest) Reset() {
 	*x = DownloadAccessRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[64]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4788,7 +4882,7 @@ func (x *DownloadAccessRequest) String() string {
 func (*DownloadAccessRequest) ProtoMessage() {}
 
 func (x *DownloadAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[64]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4801,7 +4895,7 @@ func (x *DownloadAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadAccessRequest.ProtoReflect.Descriptor instead.
 func (*DownloadAccessRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{64}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *DownloadAccessRequest) GetContext() *CallContext {
@@ -4851,7 +4945,7 @@ type DownloadAccessResponse struct {
 
 func (x *DownloadAccessResponse) Reset() {
 	*x = DownloadAccessResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[65]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4863,7 +4957,7 @@ func (x *DownloadAccessResponse) String() string {
 func (*DownloadAccessResponse) ProtoMessage() {}
 
 func (x *DownloadAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[65]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4876,7 +4970,7 @@ func (x *DownloadAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadAccessResponse.ProtoReflect.Descriptor instead.
 func (*DownloadAccessResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{65}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *DownloadAccessResponse) GetContent() []byte {
@@ -4918,7 +5012,7 @@ type InspectAccessRequest struct {
 
 func (x *InspectAccessRequest) Reset() {
 	*x = InspectAccessRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[66]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4930,7 +5024,7 @@ func (x *InspectAccessRequest) String() string {
 func (*InspectAccessRequest) ProtoMessage() {}
 
 func (x *InspectAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[66]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4943,7 +5037,7 @@ func (x *InspectAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectAccessRequest.ProtoReflect.Descriptor instead.
 func (*InspectAccessRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{66}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *InspectAccessRequest) GetContext() *CallContext {
@@ -4979,7 +5073,7 @@ type InspectAccessResponse struct {
 
 func (x *InspectAccessResponse) Reset() {
 	*x = InspectAccessResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[67]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4991,7 +5085,7 @@ func (x *InspectAccessResponse) String() string {
 func (*InspectAccessResponse) ProtoMessage() {}
 
 func (x *InspectAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[67]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5004,7 +5098,7 @@ func (x *InspectAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectAccessResponse.ProtoReflect.Descriptor instead.
 func (*InspectAccessResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{67}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *InspectAccessResponse) GetState() string {
@@ -5047,7 +5141,7 @@ type ArtifactHandle struct {
 
 func (x *ArtifactHandle) Reset() {
 	*x = ArtifactHandle{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[68]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5059,7 +5153,7 @@ func (x *ArtifactHandle) String() string {
 func (*ArtifactHandle) ProtoMessage() {}
 
 func (x *ArtifactHandle) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[68]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5072,7 +5166,7 @@ func (x *ArtifactHandle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactHandle.ProtoReflect.Descriptor instead.
 func (*ArtifactHandle) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{68}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ArtifactHandle) GetDigest() string {
@@ -5113,7 +5207,7 @@ type ExtensionConfiguration struct {
 
 func (x *ExtensionConfiguration) Reset() {
 	*x = ExtensionConfiguration{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[69]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5125,7 +5219,7 @@ func (x *ExtensionConfiguration) String() string {
 func (*ExtensionConfiguration) ProtoMessage() {}
 
 func (x *ExtensionConfiguration) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[69]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5138,7 +5232,7 @@ func (x *ExtensionConfiguration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtensionConfiguration.ProtoReflect.Descriptor instead.
 func (*ExtensionConfiguration) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{69}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *ExtensionConfiguration) GetSchema() *SchemaVersion {
@@ -5169,7 +5263,7 @@ type SourceServiceResolveRequest struct {
 
 func (x *SourceServiceResolveRequest) Reset() {
 	*x = SourceServiceResolveRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[70]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5181,7 +5275,7 @@ func (x *SourceServiceResolveRequest) String() string {
 func (*SourceServiceResolveRequest) ProtoMessage() {}
 
 func (x *SourceServiceResolveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[70]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5194,7 +5288,7 @@ func (x *SourceServiceResolveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceServiceResolveRequest.ProtoReflect.Descriptor instead.
 func (*SourceServiceResolveRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{70}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *SourceServiceResolveRequest) GetContext() *CallContext {
@@ -5251,7 +5345,7 @@ type SourceServiceResolveResponse struct {
 
 func (x *SourceServiceResolveResponse) Reset() {
 	*x = SourceServiceResolveResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[71]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5263,7 +5357,7 @@ func (x *SourceServiceResolveResponse) String() string {
 func (*SourceServiceResolveResponse) ProtoMessage() {}
 
 func (x *SourceServiceResolveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[71]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5276,7 +5370,7 @@ func (x *SourceServiceResolveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceServiceResolveResponse.ProtoReflect.Descriptor instead.
 func (*SourceServiceResolveResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{71}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *SourceServiceResolveResponse) GetResolvedIdentity() string {
@@ -5316,7 +5410,7 @@ type SourceServiceGetInvocationRequest struct {
 
 func (x *SourceServiceGetInvocationRequest) Reset() {
 	*x = SourceServiceGetInvocationRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[72]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5328,7 +5422,7 @@ func (x *SourceServiceGetInvocationRequest) String() string {
 func (*SourceServiceGetInvocationRequest) ProtoMessage() {}
 
 func (x *SourceServiceGetInvocationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[72]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5341,7 +5435,7 @@ func (x *SourceServiceGetInvocationRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use SourceServiceGetInvocationRequest.ProtoReflect.Descriptor instead.
 func (*SourceServiceGetInvocationRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{72}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *SourceServiceGetInvocationRequest) GetContext() *CallContext {
@@ -5362,7 +5456,7 @@ type SourceServiceGetInvocationResponse struct {
 
 func (x *SourceServiceGetInvocationResponse) Reset() {
 	*x = SourceServiceGetInvocationResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[73]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5374,7 +5468,7 @@ func (x *SourceServiceGetInvocationResponse) String() string {
 func (*SourceServiceGetInvocationResponse) ProtoMessage() {}
 
 func (x *SourceServiceGetInvocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[73]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5387,7 +5481,7 @@ func (x *SourceServiceGetInvocationResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use SourceServiceGetInvocationResponse.ProtoReflect.Descriptor instead.
 func (*SourceServiceGetInvocationResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{73}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *SourceServiceGetInvocationResponse) GetState() string {
@@ -5420,7 +5514,7 @@ type SourceServiceCancelRequest struct {
 
 func (x *SourceServiceCancelRequest) Reset() {
 	*x = SourceServiceCancelRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[74]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5432,7 +5526,7 @@ func (x *SourceServiceCancelRequest) String() string {
 func (*SourceServiceCancelRequest) ProtoMessage() {}
 
 func (x *SourceServiceCancelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[74]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5445,7 +5539,7 @@ func (x *SourceServiceCancelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceServiceCancelRequest.ProtoReflect.Descriptor instead.
 func (*SourceServiceCancelRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{74}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *SourceServiceCancelRequest) GetContext() *CallContext {
@@ -5464,7 +5558,7 @@ type SourceServiceCancelResponse struct {
 
 func (x *SourceServiceCancelResponse) Reset() {
 	*x = SourceServiceCancelResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[75]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5476,7 +5570,7 @@ func (x *SourceServiceCancelResponse) String() string {
 func (*SourceServiceCancelResponse) ProtoMessage() {}
 
 func (x *SourceServiceCancelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[75]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5489,7 +5583,7 @@ func (x *SourceServiceCancelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceServiceCancelResponse.ProtoReflect.Descriptor instead.
 func (*SourceServiceCancelResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{75}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *SourceServiceCancelResponse) GetOutcome() string {
@@ -5512,7 +5606,7 @@ type SourceCollectionEntry struct {
 
 func (x *SourceCollectionEntry) Reset() {
 	*x = SourceCollectionEntry{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[76]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5524,7 +5618,7 @@ func (x *SourceCollectionEntry) String() string {
 func (*SourceCollectionEntry) ProtoMessage() {}
 
 func (x *SourceCollectionEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[76]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5537,7 +5631,7 @@ func (x *SourceCollectionEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SourceCollectionEntry.ProtoReflect.Descriptor instead.
 func (*SourceCollectionEntry) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{76}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *SourceCollectionEntry) GetKey() string {
@@ -5581,7 +5675,7 @@ type SourceServiceResolveCollectionRequest struct {
 
 func (x *SourceServiceResolveCollectionRequest) Reset() {
 	*x = SourceServiceResolveCollectionRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[77]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5593,7 +5687,7 @@ func (x *SourceServiceResolveCollectionRequest) String() string {
 func (*SourceServiceResolveCollectionRequest) ProtoMessage() {}
 
 func (x *SourceServiceResolveCollectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[77]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5606,7 +5700,7 @@ func (x *SourceServiceResolveCollectionRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use SourceServiceResolveCollectionRequest.ProtoReflect.Descriptor instead.
 func (*SourceServiceResolveCollectionRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{77}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *SourceServiceResolveCollectionRequest) GetContext() *CallContext {
@@ -5656,7 +5750,7 @@ type SourceServiceResolveCollectionResponse struct {
 
 func (x *SourceServiceResolveCollectionResponse) Reset() {
 	*x = SourceServiceResolveCollectionResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[78]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5668,7 +5762,7 @@ func (x *SourceServiceResolveCollectionResponse) String() string {
 func (*SourceServiceResolveCollectionResponse) ProtoMessage() {}
 
 func (x *SourceServiceResolveCollectionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[78]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5681,7 +5775,7 @@ func (x *SourceServiceResolveCollectionResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use SourceServiceResolveCollectionResponse.ProtoReflect.Descriptor instead.
 func (*SourceServiceResolveCollectionResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{78}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *SourceServiceResolveCollectionResponse) GetResolvedIdentity() string {
@@ -5726,7 +5820,7 @@ type BuildLimits struct {
 
 func (x *BuildLimits) Reset() {
 	*x = BuildLimits{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[79]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5738,7 +5832,7 @@ func (x *BuildLimits) String() string {
 func (*BuildLimits) ProtoMessage() {}
 
 func (x *BuildLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[79]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5751,7 +5845,7 @@ func (x *BuildLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildLimits.ProtoReflect.Descriptor instead.
 func (*BuildLimits) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{79}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *BuildLimits) GetTimeoutSeconds() uint32 {
@@ -5806,7 +5900,7 @@ type BuildDependency struct {
 
 func (x *BuildDependency) Reset() {
 	*x = BuildDependency{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[80]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5818,7 +5912,7 @@ func (x *BuildDependency) String() string {
 func (*BuildDependency) ProtoMessage() {}
 
 func (x *BuildDependency) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[80]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5831,7 +5925,7 @@ func (x *BuildDependency) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildDependency.ProtoReflect.Descriptor instead.
 func (*BuildDependency) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{80}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *BuildDependency) GetRecipeId() string {
@@ -5862,7 +5956,7 @@ type BuildRecipe struct {
 
 func (x *BuildRecipe) Reset() {
 	*x = BuildRecipe{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[81]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5874,7 +5968,7 @@ func (x *BuildRecipe) String() string {
 func (*BuildRecipe) ProtoMessage() {}
 
 func (x *BuildRecipe) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[81]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5887,7 +5981,7 @@ func (x *BuildRecipe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildRecipe.ProtoReflect.Descriptor instead.
 func (*BuildRecipe) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{81}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *BuildRecipe) GetDependencies() []*BuildDependency {
@@ -5942,7 +6036,7 @@ type BuilderServiceValidateRequest struct {
 
 func (x *BuilderServiceValidateRequest) Reset() {
 	*x = BuilderServiceValidateRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[82]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5954,7 +6048,7 @@ func (x *BuilderServiceValidateRequest) String() string {
 func (*BuilderServiceValidateRequest) ProtoMessage() {}
 
 func (x *BuilderServiceValidateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[82]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5967,7 +6061,7 @@ func (x *BuilderServiceValidateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuilderServiceValidateRequest.ProtoReflect.Descriptor instead.
 func (*BuilderServiceValidateRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{82}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *BuilderServiceValidateRequest) GetRecipe() *BuildRecipe {
@@ -5993,7 +6087,7 @@ type BuilderServiceValidateResponse struct {
 
 func (x *BuilderServiceValidateResponse) Reset() {
 	*x = BuilderServiceValidateResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[83]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6005,7 +6099,7 @@ func (x *BuilderServiceValidateResponse) String() string {
 func (*BuilderServiceValidateResponse) ProtoMessage() {}
 
 func (x *BuilderServiceValidateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[83]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6018,7 +6112,7 @@ func (x *BuilderServiceValidateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuilderServiceValidateResponse.ProtoReflect.Descriptor instead.
 func (*BuilderServiceValidateResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{83}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *BuilderServiceValidateResponse) GetErrors() []*StructuredError {
@@ -6042,7 +6136,7 @@ type BuilderServiceBuildRequest struct {
 
 func (x *BuilderServiceBuildRequest) Reset() {
 	*x = BuilderServiceBuildRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[84]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6054,7 +6148,7 @@ func (x *BuilderServiceBuildRequest) String() string {
 func (*BuilderServiceBuildRequest) ProtoMessage() {}
 
 func (x *BuilderServiceBuildRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[84]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6067,7 +6161,7 @@ func (x *BuilderServiceBuildRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuilderServiceBuildRequest.ProtoReflect.Descriptor instead.
 func (*BuilderServiceBuildRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{84}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *BuilderServiceBuildRequest) GetBindingConfiguration() *ExtensionConfiguration {
@@ -6125,7 +6219,7 @@ type BuilderServiceBuildResponse struct {
 
 func (x *BuilderServiceBuildResponse) Reset() {
 	*x = BuilderServiceBuildResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[85]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6137,7 +6231,7 @@ func (x *BuilderServiceBuildResponse) String() string {
 func (*BuilderServiceBuildResponse) ProtoMessage() {}
 
 func (x *BuilderServiceBuildResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[85]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6150,7 +6244,7 @@ func (x *BuilderServiceBuildResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuilderServiceBuildResponse.ProtoReflect.Descriptor instead.
 func (*BuilderServiceBuildResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{85}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *BuilderServiceBuildResponse) GetState() string {
@@ -6197,7 +6291,7 @@ type BuilderServiceGetInvocationRequest struct {
 
 func (x *BuilderServiceGetInvocationRequest) Reset() {
 	*x = BuilderServiceGetInvocationRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[86]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6209,7 +6303,7 @@ func (x *BuilderServiceGetInvocationRequest) String() string {
 func (*BuilderServiceGetInvocationRequest) ProtoMessage() {}
 
 func (x *BuilderServiceGetInvocationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[86]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6222,7 +6316,7 @@ func (x *BuilderServiceGetInvocationRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use BuilderServiceGetInvocationRequest.ProtoReflect.Descriptor instead.
 func (*BuilderServiceGetInvocationRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{86}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *BuilderServiceGetInvocationRequest) GetContext() *CallContext {
@@ -6241,7 +6335,7 @@ type BuilderServiceGetInvocationResponse struct {
 
 func (x *BuilderServiceGetInvocationResponse) Reset() {
 	*x = BuilderServiceGetInvocationResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[87]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6253,7 +6347,7 @@ func (x *BuilderServiceGetInvocationResponse) String() string {
 func (*BuilderServiceGetInvocationResponse) ProtoMessage() {}
 
 func (x *BuilderServiceGetInvocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[87]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6266,7 +6360,7 @@ func (x *BuilderServiceGetInvocationResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use BuilderServiceGetInvocationResponse.ProtoReflect.Descriptor instead.
 func (*BuilderServiceGetInvocationResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{87}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *BuilderServiceGetInvocationResponse) GetResult() *BuilderServiceBuildResponse {
@@ -6285,7 +6379,7 @@ type BuilderServiceCancelRequest struct {
 
 func (x *BuilderServiceCancelRequest) Reset() {
 	*x = BuilderServiceCancelRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[88]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6297,7 +6391,7 @@ func (x *BuilderServiceCancelRequest) String() string {
 func (*BuilderServiceCancelRequest) ProtoMessage() {}
 
 func (x *BuilderServiceCancelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[88]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6310,7 +6404,7 @@ func (x *BuilderServiceCancelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuilderServiceCancelRequest.ProtoReflect.Descriptor instead.
 func (*BuilderServiceCancelRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{88}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *BuilderServiceCancelRequest) GetContext() *CallContext {
@@ -6329,7 +6423,7 @@ type BuilderServiceCancelResponse struct {
 
 func (x *BuilderServiceCancelResponse) Reset() {
 	*x = BuilderServiceCancelResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[89]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6341,7 +6435,7 @@ func (x *BuilderServiceCancelResponse) String() string {
 func (*BuilderServiceCancelResponse) ProtoMessage() {}
 
 func (x *BuilderServiceCancelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[89]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6354,7 +6448,7 @@ func (x *BuilderServiceCancelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuilderServiceCancelResponse.ProtoReflect.Descriptor instead.
 func (*BuilderServiceCancelResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{89}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *BuilderServiceCancelResponse) GetOutcome() string {
@@ -6376,7 +6470,7 @@ type ArtifactTransferServiceReadRequest struct {
 
 func (x *ArtifactTransferServiceReadRequest) Reset() {
 	*x = ArtifactTransferServiceReadRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[90]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6388,7 +6482,7 @@ func (x *ArtifactTransferServiceReadRequest) String() string {
 func (*ArtifactTransferServiceReadRequest) ProtoMessage() {}
 
 func (x *ArtifactTransferServiceReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[90]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6401,7 +6495,7 @@ func (x *ArtifactTransferServiceReadRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ArtifactTransferServiceReadRequest.ProtoReflect.Descriptor instead.
 func (*ArtifactTransferServiceReadRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{90}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *ArtifactTransferServiceReadRequest) GetContext() *CallContext {
@@ -6427,7 +6521,7 @@ type ArtifactTransferServiceReadResponse struct {
 
 func (x *ArtifactTransferServiceReadResponse) Reset() {
 	*x = ArtifactTransferServiceReadResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[91]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6439,7 +6533,7 @@ func (x *ArtifactTransferServiceReadResponse) String() string {
 func (*ArtifactTransferServiceReadResponse) ProtoMessage() {}
 
 func (x *ArtifactTransferServiceReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[91]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6452,7 +6546,7 @@ func (x *ArtifactTransferServiceReadResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ArtifactTransferServiceReadResponse.ProtoReflect.Descriptor instead.
 func (*ArtifactTransferServiceReadResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{91}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ArtifactTransferServiceReadResponse) GetChunk() []byte {
@@ -6473,7 +6567,7 @@ type ArtifactTransferServiceWriteRequest struct {
 
 func (x *ArtifactTransferServiceWriteRequest) Reset() {
 	*x = ArtifactTransferServiceWriteRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[92]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6485,7 +6579,7 @@ func (x *ArtifactTransferServiceWriteRequest) String() string {
 func (*ArtifactTransferServiceWriteRequest) ProtoMessage() {}
 
 func (x *ArtifactTransferServiceWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[92]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6498,7 +6592,7 @@ func (x *ArtifactTransferServiceWriteRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ArtifactTransferServiceWriteRequest.ProtoReflect.Descriptor instead.
 func (*ArtifactTransferServiceWriteRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{92}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *ArtifactTransferServiceWriteRequest) GetContext() *CallContext {
@@ -6531,7 +6625,7 @@ type ArtifactTransferServiceWriteResponse struct {
 
 func (x *ArtifactTransferServiceWriteResponse) Reset() {
 	*x = ArtifactTransferServiceWriteResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[93]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6543,7 +6637,7 @@ func (x *ArtifactTransferServiceWriteResponse) String() string {
 func (*ArtifactTransferServiceWriteResponse) ProtoMessage() {}
 
 func (x *ArtifactTransferServiceWriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[93]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6556,7 +6650,7 @@ func (x *ArtifactTransferServiceWriteResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ArtifactTransferServiceWriteResponse.ProtoReflect.Descriptor instead.
 func (*ArtifactTransferServiceWriteResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{93}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *ArtifactTransferServiceWriteResponse) GetArtifact() *ArtifactHandle {
@@ -6583,7 +6677,7 @@ type ImageImportServiceImportRequest struct {
 
 func (x *ImageImportServiceImportRequest) Reset() {
 	*x = ImageImportServiceImportRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[94]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6595,7 +6689,7 @@ func (x *ImageImportServiceImportRequest) String() string {
 func (*ImageImportServiceImportRequest) ProtoMessage() {}
 
 func (x *ImageImportServiceImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[94]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6608,7 +6702,7 @@ func (x *ImageImportServiceImportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportServiceImportRequest.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceImportRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{94}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *ImageImportServiceImportRequest) GetContext() *CallContext {
@@ -6673,7 +6767,7 @@ type ImageImportPlan struct {
 
 func (x *ImageImportPlan) Reset() {
 	*x = ImageImportPlan{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[95]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6685,7 +6779,7 @@ func (x *ImageImportPlan) String() string {
 func (*ImageImportPlan) ProtoMessage() {}
 
 func (x *ImageImportPlan) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[95]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6698,7 +6792,7 @@ func (x *ImageImportPlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportPlan.ProtoReflect.Descriptor instead.
 func (*ImageImportPlan) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{95}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *ImageImportPlan) GetOpaque() []byte {
@@ -6732,7 +6826,7 @@ type ImageImportServicePlanRequest struct {
 
 func (x *ImageImportServicePlanRequest) Reset() {
 	*x = ImageImportServicePlanRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[96]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6744,7 +6838,7 @@ func (x *ImageImportServicePlanRequest) String() string {
 func (*ImageImportServicePlanRequest) ProtoMessage() {}
 
 func (x *ImageImportServicePlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[96]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6757,7 +6851,7 @@ func (x *ImageImportServicePlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportServicePlanRequest.ProtoReflect.Descriptor instead.
 func (*ImageImportServicePlanRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{96}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ImageImportServicePlanRequest) GetInput() *ImageImportServiceImportRequest {
@@ -6783,7 +6877,7 @@ type ImageImportServicePlanResponse struct {
 
 func (x *ImageImportServicePlanResponse) Reset() {
 	*x = ImageImportServicePlanResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[97]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6795,7 +6889,7 @@ func (x *ImageImportServicePlanResponse) String() string {
 func (*ImageImportServicePlanResponse) ProtoMessage() {}
 
 func (x *ImageImportServicePlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[97]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6808,7 +6902,7 @@ func (x *ImageImportServicePlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportServicePlanResponse.ProtoReflect.Descriptor instead.
 func (*ImageImportServicePlanResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{97}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *ImageImportServicePlanResponse) GetPlan() *ImageImportPlan {
@@ -6832,7 +6926,7 @@ type TargetImageBinding struct {
 
 func (x *TargetImageBinding) Reset() {
 	*x = TargetImageBinding{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[98]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6844,7 +6938,7 @@ func (x *TargetImageBinding) String() string {
 func (*TargetImageBinding) ProtoMessage() {}
 
 func (x *TargetImageBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[98]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6857,7 +6951,7 @@ func (x *TargetImageBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TargetImageBinding.ProtoReflect.Descriptor instead.
 func (*TargetImageBinding) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{98}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *TargetImageBinding) GetImageRef() string {
@@ -6913,7 +7007,7 @@ type ImageImportServiceImportResponse struct {
 
 func (x *ImageImportServiceImportResponse) Reset() {
 	*x = ImageImportServiceImportResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[99]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6925,7 +7019,7 @@ func (x *ImageImportServiceImportResponse) String() string {
 func (*ImageImportServiceImportResponse) ProtoMessage() {}
 
 func (x *ImageImportServiceImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[99]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6938,7 +7032,7 @@ func (x *ImageImportServiceImportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportServiceImportResponse.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceImportResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{99}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *ImageImportServiceImportResponse) GetState() string {
@@ -6972,7 +7066,7 @@ type ImageImportServiceGetInvocationRequest struct {
 
 func (x *ImageImportServiceGetInvocationRequest) Reset() {
 	*x = ImageImportServiceGetInvocationRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[100]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6984,7 +7078,7 @@ func (x *ImageImportServiceGetInvocationRequest) String() string {
 func (*ImageImportServiceGetInvocationRequest) ProtoMessage() {}
 
 func (x *ImageImportServiceGetInvocationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[100]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6997,7 +7091,7 @@ func (x *ImageImportServiceGetInvocationRequest) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use ImageImportServiceGetInvocationRequest.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceGetInvocationRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{100}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *ImageImportServiceGetInvocationRequest) GetContext() *CallContext {
@@ -7023,7 +7117,7 @@ type ImageImportServiceGetInvocationResponse struct {
 
 func (x *ImageImportServiceGetInvocationResponse) Reset() {
 	*x = ImageImportServiceGetInvocationResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[101]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7035,7 +7129,7 @@ func (x *ImageImportServiceGetInvocationResponse) String() string {
 func (*ImageImportServiceGetInvocationResponse) ProtoMessage() {}
 
 func (x *ImageImportServiceGetInvocationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[101]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7048,7 +7142,7 @@ func (x *ImageImportServiceGetInvocationResponse) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use ImageImportServiceGetInvocationResponse.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceGetInvocationResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{101}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *ImageImportServiceGetInvocationResponse) GetResult() *ImageImportServiceImportResponse {
@@ -7069,7 +7163,7 @@ type ImageImportServiceValidateBindingRequest struct {
 
 func (x *ImageImportServiceValidateBindingRequest) Reset() {
 	*x = ImageImportServiceValidateBindingRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[102]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7081,7 +7175,7 @@ func (x *ImageImportServiceValidateBindingRequest) String() string {
 func (*ImageImportServiceValidateBindingRequest) ProtoMessage() {}
 
 func (x *ImageImportServiceValidateBindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[102]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7094,7 +7188,7 @@ func (x *ImageImportServiceValidateBindingRequest) ProtoReflect() protoreflect.M
 
 // Deprecated: Use ImageImportServiceValidateBindingRequest.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceValidateBindingRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{102}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *ImageImportServiceValidateBindingRequest) GetContext() *CallContext {
@@ -7128,7 +7222,7 @@ type ImageImportServiceValidateBindingResponse struct {
 
 func (x *ImageImportServiceValidateBindingResponse) Reset() {
 	*x = ImageImportServiceValidateBindingResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[103]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7140,7 +7234,7 @@ func (x *ImageImportServiceValidateBindingResponse) String() string {
 func (*ImageImportServiceValidateBindingResponse) ProtoMessage() {}
 
 func (x *ImageImportServiceValidateBindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[103]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7153,7 +7247,7 @@ func (x *ImageImportServiceValidateBindingResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use ImageImportServiceValidateBindingResponse.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceValidateBindingResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{103}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *ImageImportServiceValidateBindingResponse) GetValid() bool {
@@ -7183,7 +7277,7 @@ type ImageImportServiceRetireRequest struct {
 
 func (x *ImageImportServiceRetireRequest) Reset() {
 	*x = ImageImportServiceRetireRequest{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[104]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7195,7 +7289,7 @@ func (x *ImageImportServiceRetireRequest) String() string {
 func (*ImageImportServiceRetireRequest) ProtoMessage() {}
 
 func (x *ImageImportServiceRetireRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[104]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7208,7 +7302,7 @@ func (x *ImageImportServiceRetireRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportServiceRetireRequest.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceRetireRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{104}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *ImageImportServiceRetireRequest) GetContext() *CallContext {
@@ -7241,7 +7335,7 @@ type ImageImportServiceRetireResponse struct {
 
 func (x *ImageImportServiceRetireResponse) Reset() {
 	*x = ImageImportServiceRetireResponse{}
-	mi := &file_plugin_v1_plugin_proto_msgTypes[105]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7253,7 +7347,7 @@ func (x *ImageImportServiceRetireResponse) String() string {
 func (*ImageImportServiceRetireResponse) ProtoMessage() {}
 
 func (x *ImageImportServiceRetireResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_plugin_proto_msgTypes[105]
+	mi := &file_plugin_v1_plugin_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7266,7 +7360,7 @@ func (x *ImageImportServiceRetireResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageImportServiceRetireResponse.ProtoReflect.Descriptor instead.
 func (*ImageImportServiceRetireResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{105}
+	return file_plugin_v1_plugin_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *ImageImportServiceRetireResponse) GetState() string {
@@ -7596,7 +7690,7 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x18source_provenance_digest\x18\x04 \x01(\tR\x16sourceProvenanceDigest\x124\n" +
 	"\x16import_parameters_json\x18\x05 \x01(\fR\x14importParametersJson\"R\n" +
 	"\x13ImportImageResponse\x12;\n" +
-	"\x05event\x18\x01 \x01(\v2%.labcentral.plugin.v1.InvocationEventR\x05event\"\xed\x03\n" +
+	"\x05event\x18\x01 \x01(\v2%.labcentral.plugin.v1.InvocationEventR\x05event\"\xa5\x04\n" +
 	"\x13CreateAccessRequest\x12;\n" +
 	"\acontext\x18\x01 \x01(\v2!.labcentral.plugin.v1.CallContextR\acontext\x12*\n" +
 	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1d\n" +
@@ -7610,7 +7704,8 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x0fendpoint_digest\x18\b \x01(\tR\x0eendpointDigest\x122\n" +
 	"\x15provider_state_digest\x18\t \x01(\tR\x13providerStateDigest\x12\x1a\n" +
 	"\baudience\x18\n" +
-	" \x01(\tR\baudience\"\x8a\x03\n" +
+	" \x01(\tR\baudience\x126\n" +
+	"\x17console_control_version\x18\v \x01(\rR\x15consoleControlVersion\"\x8a\x03\n" +
 	"\x14CreateAccessResponse\x12.\n" +
 	"\x13opaque_access_state\x18\x01 \x01(\fR\x11opaqueAccessState\x12\x1d\n" +
 	"\n" +
@@ -7632,24 +7727,33 @@ const file_plugin_v1_plugin_proto_rawDesc = "" +
 	"\x13callback_credential\x18\x01 \x01(\tR\x12callbackCredential\x12*\n" +
 	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1a\n" +
 	"\baudience\x18\x03 \x01(\tR\baudience\x12$\n" +
-	"\x0eone_time_token\x18\x04 \x01(\tR\foneTimeToken\"\x88\x02\n" +
+	"\x0eone_time_token\x18\x04 \x01(\tR\foneTimeToken\"a\n" +
+	"\x11ConsoleInputLease\x12\x14\n" +
+	"\x05fence\x18\x01 \x01(\x04R\x05fence\x126\n" +
+	"\tvalid_for\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bvalidFor\"\xf9\x02\n" +
 	"\x1bExchangeAccessTokenResponse\x12/\n" +
 	"\x13authorization_lease\x18\x01 \x01(\tR\x12authorizationLease\x12;\n" +
 	"\vvalid_until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"validUntil\x12>\n" +
 	"\rrecheck_after\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\frecheckAfter\x12;\n" +
-	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xc5\x01\n" +
+	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\x12%\n" +
+	"\x0eshared_console\x18\x05 \x01(\bR\rsharedConsole\x12H\n" +
+	"\vinput_lease\x18\x06 \x01(\v2'.labcentral.plugin.v1.ConsoleInputLeaseR\n" +
+	"inputLease\"\xc5\x01\n" +
 	"\x19RecheckAccessLeaseRequest\x12/\n" +
 	"\x13callback_credential\x18\x01 \x01(\tR\x12callbackCredential\x12*\n" +
 	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1a\n" +
 	"\baudience\x18\x03 \x01(\tR\baudience\x12/\n" +
-	"\x13authorization_lease\x18\x04 \x01(\tR\x12authorizationLease\"\x87\x02\n" +
+	"\x13authorization_lease\x18\x04 \x01(\tR\x12authorizationLease\"\xf8\x02\n" +
 	"\x1aRecheckAccessLeaseResponse\x12/\n" +
 	"\x13authorization_lease\x18\x01 \x01(\tR\x12authorizationLease\x12;\n" +
 	"\vvalid_until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"validUntil\x12>\n" +
 	"\rrecheck_after\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\frecheckAfter\x12;\n" +
-	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\"\xd9\x01\n" +
+	"\x05error\x18\x04 \x01(\v2%.labcentral.plugin.v1.StructuredErrorR\x05error\x12%\n" +
+	"\x0eshared_console\x18\x05 \x01(\bR\rsharedConsole\x12H\n" +
+	"\vinput_lease\x18\x06 \x01(\v2'.labcentral.plugin.v1.ConsoleInputLeaseR\n" +
+	"inputLease\"\xd9\x01\n" +
 	"\x15EndAccessLeaseRequest\x12/\n" +
 	"\x13callback_credential\x18\x01 \x01(\tR\x12callbackCredential\x12*\n" +
 	"\x11access_session_id\x18\x02 \x01(\tR\x0faccessSessionId\x12\x1a\n" +
@@ -7915,7 +8019,7 @@ func file_plugin_v1_plugin_proto_rawDescGZIP() []byte {
 }
 
 var file_plugin_v1_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 106)
+var file_plugin_v1_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 107)
 var file_plugin_v1_plugin_proto_goTypes = []any{
 	(LifecycleAction)(0),                              // 0: labcentral.plugin.v1.LifecycleAction
 	(HealthResponse_Status)(0),                        // 1: labcentral.plugin.v1.HealthResponse.Status
@@ -7979,56 +8083,57 @@ var file_plugin_v1_plugin_proto_goTypes = []any{
 	(*RevokeAccessRequest)(nil),                       // 59: labcentral.plugin.v1.RevokeAccessRequest
 	(*RevokeAccessResponse)(nil),                      // 60: labcentral.plugin.v1.RevokeAccessResponse
 	(*ExchangeAccessTokenRequest)(nil),                // 61: labcentral.plugin.v1.ExchangeAccessTokenRequest
-	(*ExchangeAccessTokenResponse)(nil),               // 62: labcentral.plugin.v1.ExchangeAccessTokenResponse
-	(*RecheckAccessLeaseRequest)(nil),                 // 63: labcentral.plugin.v1.RecheckAccessLeaseRequest
-	(*RecheckAccessLeaseResponse)(nil),                // 64: labcentral.plugin.v1.RecheckAccessLeaseResponse
-	(*EndAccessLeaseRequest)(nil),                     // 65: labcentral.plugin.v1.EndAccessLeaseRequest
-	(*EndAccessLeaseResponse)(nil),                    // 66: labcentral.plugin.v1.EndAccessLeaseResponse
-	(*AccessDescriptor)(nil),                          // 67: labcentral.plugin.v1.AccessDescriptor
-	(*DownloadAccessRequest)(nil),                     // 68: labcentral.plugin.v1.DownloadAccessRequest
-	(*DownloadAccessResponse)(nil),                    // 69: labcentral.plugin.v1.DownloadAccessResponse
-	(*InspectAccessRequest)(nil),                      // 70: labcentral.plugin.v1.InspectAccessRequest
-	(*InspectAccessResponse)(nil),                     // 71: labcentral.plugin.v1.InspectAccessResponse
-	(*ArtifactHandle)(nil),                            // 72: labcentral.plugin.v1.ArtifactHandle
-	(*ExtensionConfiguration)(nil),                    // 73: labcentral.plugin.v1.ExtensionConfiguration
-	(*SourceServiceResolveRequest)(nil),               // 74: labcentral.plugin.v1.SourceServiceResolveRequest
-	(*SourceServiceResolveResponse)(nil),              // 75: labcentral.plugin.v1.SourceServiceResolveResponse
-	(*SourceServiceGetInvocationRequest)(nil),         // 76: labcentral.plugin.v1.SourceServiceGetInvocationRequest
-	(*SourceServiceGetInvocationResponse)(nil),        // 77: labcentral.plugin.v1.SourceServiceGetInvocationResponse
-	(*SourceServiceCancelRequest)(nil),                // 78: labcentral.plugin.v1.SourceServiceCancelRequest
-	(*SourceServiceCancelResponse)(nil),               // 79: labcentral.plugin.v1.SourceServiceCancelResponse
-	(*SourceCollectionEntry)(nil),                     // 80: labcentral.plugin.v1.SourceCollectionEntry
-	(*SourceServiceResolveCollectionRequest)(nil),     // 81: labcentral.plugin.v1.SourceServiceResolveCollectionRequest
-	(*SourceServiceResolveCollectionResponse)(nil),    // 82: labcentral.plugin.v1.SourceServiceResolveCollectionResponse
-	(*BuildLimits)(nil),                               // 83: labcentral.plugin.v1.BuildLimits
-	(*BuildDependency)(nil),                           // 84: labcentral.plugin.v1.BuildDependency
-	(*BuildRecipe)(nil),                               // 85: labcentral.plugin.v1.BuildRecipe
-	(*BuilderServiceValidateRequest)(nil),             // 86: labcentral.plugin.v1.BuilderServiceValidateRequest
-	(*BuilderServiceValidateResponse)(nil),            // 87: labcentral.plugin.v1.BuilderServiceValidateResponse
-	(*BuilderServiceBuildRequest)(nil),                // 88: labcentral.plugin.v1.BuilderServiceBuildRequest
-	(*BuilderServiceBuildResponse)(nil),               // 89: labcentral.plugin.v1.BuilderServiceBuildResponse
-	(*BuilderServiceGetInvocationRequest)(nil),        // 90: labcentral.plugin.v1.BuilderServiceGetInvocationRequest
-	(*BuilderServiceGetInvocationResponse)(nil),       // 91: labcentral.plugin.v1.BuilderServiceGetInvocationResponse
-	(*BuilderServiceCancelRequest)(nil),               // 92: labcentral.plugin.v1.BuilderServiceCancelRequest
-	(*BuilderServiceCancelResponse)(nil),              // 93: labcentral.plugin.v1.BuilderServiceCancelResponse
-	(*ArtifactTransferServiceReadRequest)(nil),        // 94: labcentral.plugin.v1.ArtifactTransferServiceReadRequest
-	(*ArtifactTransferServiceReadResponse)(nil),       // 95: labcentral.plugin.v1.ArtifactTransferServiceReadResponse
-	(*ArtifactTransferServiceWriteRequest)(nil),       // 96: labcentral.plugin.v1.ArtifactTransferServiceWriteRequest
-	(*ArtifactTransferServiceWriteResponse)(nil),      // 97: labcentral.plugin.v1.ArtifactTransferServiceWriteResponse
-	(*ImageImportServiceImportRequest)(nil),           // 98: labcentral.plugin.v1.ImageImportServiceImportRequest
-	(*ImageImportPlan)(nil),                           // 99: labcentral.plugin.v1.ImageImportPlan
-	(*ImageImportServicePlanRequest)(nil),             // 100: labcentral.plugin.v1.ImageImportServicePlanRequest
-	(*ImageImportServicePlanResponse)(nil),            // 101: labcentral.plugin.v1.ImageImportServicePlanResponse
-	(*TargetImageBinding)(nil),                        // 102: labcentral.plugin.v1.TargetImageBinding
-	(*ImageImportServiceImportResponse)(nil),          // 103: labcentral.plugin.v1.ImageImportServiceImportResponse
-	(*ImageImportServiceGetInvocationRequest)(nil),    // 104: labcentral.plugin.v1.ImageImportServiceGetInvocationRequest
-	(*ImageImportServiceGetInvocationResponse)(nil),   // 105: labcentral.plugin.v1.ImageImportServiceGetInvocationResponse
-	(*ImageImportServiceValidateBindingRequest)(nil),  // 106: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest
-	(*ImageImportServiceValidateBindingResponse)(nil), // 107: labcentral.plugin.v1.ImageImportServiceValidateBindingResponse
-	(*ImageImportServiceRetireRequest)(nil),           // 108: labcentral.plugin.v1.ImageImportServiceRetireRequest
-	(*ImageImportServiceRetireResponse)(nil),          // 109: labcentral.plugin.v1.ImageImportServiceRetireResponse
-	(*durationpb.Duration)(nil),                       // 110: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),                     // 111: google.protobuf.Timestamp
+	(*ConsoleInputLease)(nil),                         // 62: labcentral.plugin.v1.ConsoleInputLease
+	(*ExchangeAccessTokenResponse)(nil),               // 63: labcentral.plugin.v1.ExchangeAccessTokenResponse
+	(*RecheckAccessLeaseRequest)(nil),                 // 64: labcentral.plugin.v1.RecheckAccessLeaseRequest
+	(*RecheckAccessLeaseResponse)(nil),                // 65: labcentral.plugin.v1.RecheckAccessLeaseResponse
+	(*EndAccessLeaseRequest)(nil),                     // 66: labcentral.plugin.v1.EndAccessLeaseRequest
+	(*EndAccessLeaseResponse)(nil),                    // 67: labcentral.plugin.v1.EndAccessLeaseResponse
+	(*AccessDescriptor)(nil),                          // 68: labcentral.plugin.v1.AccessDescriptor
+	(*DownloadAccessRequest)(nil),                     // 69: labcentral.plugin.v1.DownloadAccessRequest
+	(*DownloadAccessResponse)(nil),                    // 70: labcentral.plugin.v1.DownloadAccessResponse
+	(*InspectAccessRequest)(nil),                      // 71: labcentral.plugin.v1.InspectAccessRequest
+	(*InspectAccessResponse)(nil),                     // 72: labcentral.plugin.v1.InspectAccessResponse
+	(*ArtifactHandle)(nil),                            // 73: labcentral.plugin.v1.ArtifactHandle
+	(*ExtensionConfiguration)(nil),                    // 74: labcentral.plugin.v1.ExtensionConfiguration
+	(*SourceServiceResolveRequest)(nil),               // 75: labcentral.plugin.v1.SourceServiceResolveRequest
+	(*SourceServiceResolveResponse)(nil),              // 76: labcentral.plugin.v1.SourceServiceResolveResponse
+	(*SourceServiceGetInvocationRequest)(nil),         // 77: labcentral.plugin.v1.SourceServiceGetInvocationRequest
+	(*SourceServiceGetInvocationResponse)(nil),        // 78: labcentral.plugin.v1.SourceServiceGetInvocationResponse
+	(*SourceServiceCancelRequest)(nil),                // 79: labcentral.plugin.v1.SourceServiceCancelRequest
+	(*SourceServiceCancelResponse)(nil),               // 80: labcentral.plugin.v1.SourceServiceCancelResponse
+	(*SourceCollectionEntry)(nil),                     // 81: labcentral.plugin.v1.SourceCollectionEntry
+	(*SourceServiceResolveCollectionRequest)(nil),     // 82: labcentral.plugin.v1.SourceServiceResolveCollectionRequest
+	(*SourceServiceResolveCollectionResponse)(nil),    // 83: labcentral.plugin.v1.SourceServiceResolveCollectionResponse
+	(*BuildLimits)(nil),                               // 84: labcentral.plugin.v1.BuildLimits
+	(*BuildDependency)(nil),                           // 85: labcentral.plugin.v1.BuildDependency
+	(*BuildRecipe)(nil),                               // 86: labcentral.plugin.v1.BuildRecipe
+	(*BuilderServiceValidateRequest)(nil),             // 87: labcentral.plugin.v1.BuilderServiceValidateRequest
+	(*BuilderServiceValidateResponse)(nil),            // 88: labcentral.plugin.v1.BuilderServiceValidateResponse
+	(*BuilderServiceBuildRequest)(nil),                // 89: labcentral.plugin.v1.BuilderServiceBuildRequest
+	(*BuilderServiceBuildResponse)(nil),               // 90: labcentral.plugin.v1.BuilderServiceBuildResponse
+	(*BuilderServiceGetInvocationRequest)(nil),        // 91: labcentral.plugin.v1.BuilderServiceGetInvocationRequest
+	(*BuilderServiceGetInvocationResponse)(nil),       // 92: labcentral.plugin.v1.BuilderServiceGetInvocationResponse
+	(*BuilderServiceCancelRequest)(nil),               // 93: labcentral.plugin.v1.BuilderServiceCancelRequest
+	(*BuilderServiceCancelResponse)(nil),              // 94: labcentral.plugin.v1.BuilderServiceCancelResponse
+	(*ArtifactTransferServiceReadRequest)(nil),        // 95: labcentral.plugin.v1.ArtifactTransferServiceReadRequest
+	(*ArtifactTransferServiceReadResponse)(nil),       // 96: labcentral.plugin.v1.ArtifactTransferServiceReadResponse
+	(*ArtifactTransferServiceWriteRequest)(nil),       // 97: labcentral.plugin.v1.ArtifactTransferServiceWriteRequest
+	(*ArtifactTransferServiceWriteResponse)(nil),      // 98: labcentral.plugin.v1.ArtifactTransferServiceWriteResponse
+	(*ImageImportServiceImportRequest)(nil),           // 99: labcentral.plugin.v1.ImageImportServiceImportRequest
+	(*ImageImportPlan)(nil),                           // 100: labcentral.plugin.v1.ImageImportPlan
+	(*ImageImportServicePlanRequest)(nil),             // 101: labcentral.plugin.v1.ImageImportServicePlanRequest
+	(*ImageImportServicePlanResponse)(nil),            // 102: labcentral.plugin.v1.ImageImportServicePlanResponse
+	(*TargetImageBinding)(nil),                        // 103: labcentral.plugin.v1.TargetImageBinding
+	(*ImageImportServiceImportResponse)(nil),          // 104: labcentral.plugin.v1.ImageImportServiceImportResponse
+	(*ImageImportServiceGetInvocationRequest)(nil),    // 105: labcentral.plugin.v1.ImageImportServiceGetInvocationRequest
+	(*ImageImportServiceGetInvocationResponse)(nil),   // 106: labcentral.plugin.v1.ImageImportServiceGetInvocationResponse
+	(*ImageImportServiceValidateBindingRequest)(nil),  // 107: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest
+	(*ImageImportServiceValidateBindingResponse)(nil), // 108: labcentral.plugin.v1.ImageImportServiceValidateBindingResponse
+	(*ImageImportServiceRetireRequest)(nil),           // 109: labcentral.plugin.v1.ImageImportServiceRetireRequest
+	(*ImageImportServiceRetireResponse)(nil),          // 110: labcentral.plugin.v1.ImageImportServiceRetireResponse
+	(*durationpb.Duration)(nil),                       // 111: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),                     // 112: google.protobuf.Timestamp
 }
 var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	5,   // 0: labcentral.plugin.v1.PluginInfo.supported_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
@@ -8038,16 +8143,16 @@ var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	6,   // 4: labcentral.plugin.v1.PluginInfo.accepted_access_endpoint_schemas:type_name -> labcentral.plugin.v1.SchemaVersion
 	5,   // 5: labcentral.plugin.v1.PluginInfo.supported_source_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
 	5,   // 6: labcentral.plugin.v1.PluginInfo.supported_builder_protocols:type_name -> labcentral.plugin.v1.ProtocolVersionRange
-	67,  // 7: labcentral.plugin.v1.PluginInfo.access_descriptors:type_name -> labcentral.plugin.v1.AccessDescriptor
+	68,  // 7: labcentral.plugin.v1.PluginInfo.access_descriptors:type_name -> labcentral.plugin.v1.AccessDescriptor
 	7,   // 8: labcentral.plugin.v1.RegisterPluginRequest.plugin:type_name -> labcentral.plugin.v1.PluginInfo
 	4,   // 9: labcentral.plugin.v1.RegisterPluginResponse.selected_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
-	110, // 10: labcentral.plugin.v1.RegisterPluginResponse.heartbeat_interval:type_name -> google.protobuf.Duration
+	111, // 10: labcentral.plugin.v1.RegisterPluginResponse.heartbeat_interval:type_name -> google.protobuf.Duration
 	4,   // 11: labcentral.plugin.v1.RegisterPluginResponse.selected_provider_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
 	4,   // 12: labcentral.plugin.v1.RegisterPluginResponse.selected_access_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
 	4,   // 13: labcentral.plugin.v1.RegisterPluginResponse.selected_source_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
 	4,   // 14: labcentral.plugin.v1.RegisterPluginResponse.selected_builder_protocol:type_name -> labcentral.plugin.v1.ProtocolVersion
-	111, // 15: labcentral.plugin.v1.HeartbeatRequest.sent_at:type_name -> google.protobuf.Timestamp
-	111, // 16: labcentral.plugin.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
+	112, // 15: labcentral.plugin.v1.HeartbeatRequest.sent_at:type_name -> google.protobuf.Timestamp
+	112, // 16: labcentral.plugin.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
 	1,   // 17: labcentral.plugin.v1.HealthResponse.status:type_name -> labcentral.plugin.v1.HealthResponse.Status
 	14,  // 18: labcentral.plugin.v1.Parameter.string_list:type_name -> labcentral.plugin.v1.StringList
 	15,  // 19: labcentral.plugin.v1.Parameter.int_list:type_name -> labcentral.plugin.v1.IntList
@@ -8055,12 +8160,12 @@ var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	16,  // 21: labcentral.plugin.v1.Capability.parameters:type_name -> labcentral.plugin.v1.Parameter
 	18,  // 22: labcentral.plugin.v1.DiscoverTargetRequest.target:type_name -> labcentral.plugin.v1.TargetContext
 	17,  // 23: labcentral.plugin.v1.DiscoverTargetResponse.capabilities:type_name -> labcentral.plugin.v1.Capability
-	111, // 24: labcentral.plugin.v1.DiscoverTargetResponse.discovered_at:type_name -> google.protobuf.Timestamp
-	111, // 25: labcentral.plugin.v1.DiscoverTargetResponse.valid_until:type_name -> google.protobuf.Timestamp
+	112, // 24: labcentral.plugin.v1.DiscoverTargetResponse.discovered_at:type_name -> google.protobuf.Timestamp
+	112, // 25: labcentral.plugin.v1.DiscoverTargetResponse.valid_until:type_name -> google.protobuf.Timestamp
 	6,   // 26: labcentral.plugin.v1.ProviderState.schema:type_name -> labcentral.plugin.v1.SchemaVersion
 	22,  // 27: labcentral.plugin.v1.ResourceDependency.provider_state:type_name -> labcentral.plugin.v1.ProviderState
 	23,  // 28: labcentral.plugin.v1.ResourceDependency.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	110, // 29: labcentral.plugin.v1.StructuredError.retry_after:type_name -> google.protobuf.Duration
+	111, // 29: labcentral.plugin.v1.StructuredError.retry_after:type_name -> google.protobuf.Duration
 	25,  // 30: labcentral.plugin.v1.StructuredError.causes:type_name -> labcentral.plugin.v1.StructuredError
 	21,  // 31: labcentral.plugin.v1.ValidateLabRequest.context:type_name -> labcentral.plugin.v1.CallContext
 	18,  // 32: labcentral.plugin.v1.ValidateLabRequest.target:type_name -> labcentral.plugin.v1.TargetContext
@@ -8071,8 +8176,8 @@ var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	22,  // 37: labcentral.plugin.v1.ResourceMutationInput.prior_state:type_name -> labcentral.plugin.v1.ProviderState
 	24,  // 38: labcentral.plugin.v1.ResourceMutationInput.dependencies:type_name -> labcentral.plugin.v1.ResourceDependency
 	23,  // 39: labcentral.plugin.v1.ResourceMutationInput.committed_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	111, // 40: labcentral.plugin.v1.Progress.occurred_at:type_name -> google.protobuf.Timestamp
-	111, // 41: labcentral.plugin.v1.ResourceUsage.sampled_at:type_name -> google.protobuf.Timestamp
+	112, // 40: labcentral.plugin.v1.Progress.occurred_at:type_name -> google.protobuf.Timestamp
+	112, // 41: labcentral.plugin.v1.ResourceUsage.sampled_at:type_name -> google.protobuf.Timestamp
 	22,  // 42: labcentral.plugin.v1.ResourceResult.provider_state:type_name -> labcentral.plugin.v1.ProviderState
 	26,  // 43: labcentral.plugin.v1.ResourceResult.warnings:type_name -> labcentral.plugin.v1.Warning
 	25,  // 44: labcentral.plugin.v1.ResourceResult.error:type_name -> labcentral.plugin.v1.StructuredError
@@ -8111,7 +8216,7 @@ var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	21,  // 77: labcentral.plugin.v1.DiscoverAccessEndpointRequest.context:type_name -> labcentral.plugin.v1.CallContext
 	18,  // 78: labcentral.plugin.v1.DiscoverAccessEndpointRequest.target:type_name -> labcentral.plugin.v1.TargetContext
 	22,  // 79: labcentral.plugin.v1.DiscoverAccessEndpointRequest.resource_state:type_name -> labcentral.plugin.v1.ProviderState
-	111, // 80: labcentral.plugin.v1.DiscoverAccessEndpointResponse.valid_until:type_name -> google.protobuf.Timestamp
+	112, // 80: labcentral.plugin.v1.DiscoverAccessEndpointResponse.valid_until:type_name -> google.protobuf.Timestamp
 	26,  // 81: labcentral.plugin.v1.DiscoverAccessEndpointResponse.warnings:type_name -> labcentral.plugin.v1.Warning
 	25,  // 82: labcentral.plugin.v1.DiscoverAccessEndpointResponse.error:type_name -> labcentral.plugin.v1.StructuredError
 	6,   // 83: labcentral.plugin.v1.DiscoverAccessEndpointResponse.endpoint_schema:type_name -> labcentral.plugin.v1.SchemaVersion
@@ -8122,164 +8227,167 @@ var file_plugin_v1_plugin_proto_depIdxs = []int32{
 	18,  // 88: labcentral.plugin.v1.ImportImageRequest.target:type_name -> labcentral.plugin.v1.TargetContext
 	33,  // 89: labcentral.plugin.v1.ImportImageResponse.event:type_name -> labcentral.plugin.v1.InvocationEvent
 	21,  // 90: labcentral.plugin.v1.CreateAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	111, // 91: labcentral.plugin.v1.CreateAccessRequest.expires_at:type_name -> google.protobuf.Timestamp
+	112, // 91: labcentral.plugin.v1.CreateAccessRequest.expires_at:type_name -> google.protobuf.Timestamp
 	6,   // 92: labcentral.plugin.v1.CreateAccessRequest.endpoint_schema:type_name -> labcentral.plugin.v1.SchemaVersion
-	111, // 93: labcentral.plugin.v1.CreateAccessResponse.valid_until:type_name -> google.protobuf.Timestamp
+	112, // 93: labcentral.plugin.v1.CreateAccessResponse.valid_until:type_name -> google.protobuf.Timestamp
 	25,  // 94: labcentral.plugin.v1.CreateAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
 	6,   // 95: labcentral.plugin.v1.CreateAccessResponse.access_state_schema:type_name -> labcentral.plugin.v1.SchemaVersion
 	21,  // 96: labcentral.plugin.v1.RevokeAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
 	25,  // 97: labcentral.plugin.v1.RevokeAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	111, // 98: labcentral.plugin.v1.ExchangeAccessTokenResponse.valid_until:type_name -> google.protobuf.Timestamp
-	110, // 99: labcentral.plugin.v1.ExchangeAccessTokenResponse.recheck_after:type_name -> google.protobuf.Duration
-	25,  // 100: labcentral.plugin.v1.ExchangeAccessTokenResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	111, // 101: labcentral.plugin.v1.RecheckAccessLeaseResponse.valid_until:type_name -> google.protobuf.Timestamp
-	110, // 102: labcentral.plugin.v1.RecheckAccessLeaseResponse.recheck_after:type_name -> google.protobuf.Duration
-	25,  // 103: labcentral.plugin.v1.RecheckAccessLeaseResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	25,  // 104: labcentral.plugin.v1.EndAccessLeaseResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	6,   // 105: labcentral.plugin.v1.AccessDescriptor.endpoint_schemas:type_name -> labcentral.plugin.v1.SchemaVersion
-	21,  // 106: labcentral.plugin.v1.DownloadAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	25,  // 107: labcentral.plugin.v1.DownloadAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 108: labcentral.plugin.v1.InspectAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	111, // 109: labcentral.plugin.v1.InspectAccessResponse.enforced_until:type_name -> google.protobuf.Timestamp
-	25,  // 110: labcentral.plugin.v1.InspectAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	6,   // 111: labcentral.plugin.v1.ExtensionConfiguration.schema:type_name -> labcentral.plugin.v1.SchemaVersion
-	21,  // 112: labcentral.plugin.v1.SourceServiceResolveRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	73,  // 113: labcentral.plugin.v1.SourceServiceResolveRequest.configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
-	72,  // 114: labcentral.plugin.v1.SourceServiceResolveRequest.output:type_name -> labcentral.plugin.v1.ArtifactHandle
-	72,  // 115: labcentral.plugin.v1.SourceServiceResolveResponse.bundle:type_name -> labcentral.plugin.v1.ArtifactHandle
-	25,  // 116: labcentral.plugin.v1.SourceServiceResolveResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 117: labcentral.plugin.v1.SourceServiceGetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	75,  // 118: labcentral.plugin.v1.SourceServiceGetInvocationResponse.result:type_name -> labcentral.plugin.v1.SourceServiceResolveResponse
-	82,  // 119: labcentral.plugin.v1.SourceServiceGetInvocationResponse.collection:type_name -> labcentral.plugin.v1.SourceServiceResolveCollectionResponse
-	21,  // 120: labcentral.plugin.v1.SourceServiceCancelRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	72,  // 121: labcentral.plugin.v1.SourceCollectionEntry.bundle:type_name -> labcentral.plugin.v1.ArtifactHandle
-	21,  // 122: labcentral.plugin.v1.SourceServiceResolveCollectionRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	73,  // 123: labcentral.plugin.v1.SourceServiceResolveCollectionRequest.configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
-	80,  // 124: labcentral.plugin.v1.SourceServiceResolveCollectionResponse.entries:type_name -> labcentral.plugin.v1.SourceCollectionEntry
-	25,  // 125: labcentral.plugin.v1.SourceServiceResolveCollectionResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	72,  // 126: labcentral.plugin.v1.BuildDependency.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
-	84,  // 127: labcentral.plugin.v1.BuildRecipe.dependencies:type_name -> labcentral.plugin.v1.BuildDependency
-	73,  // 128: labcentral.plugin.v1.BuildRecipe.configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
-	72,  // 129: labcentral.plugin.v1.BuildRecipe.inputs:type_name -> labcentral.plugin.v1.ArtifactHandle
-	85,  // 130: labcentral.plugin.v1.BuilderServiceValidateRequest.recipe:type_name -> labcentral.plugin.v1.BuildRecipe
-	83,  // 131: labcentral.plugin.v1.BuilderServiceValidateRequest.limits:type_name -> labcentral.plugin.v1.BuildLimits
-	25,  // 132: labcentral.plugin.v1.BuilderServiceValidateResponse.errors:type_name -> labcentral.plugin.v1.StructuredError
-	73,  // 133: labcentral.plugin.v1.BuilderServiceBuildRequest.binding_configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
-	21,  // 134: labcentral.plugin.v1.BuilderServiceBuildRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	85,  // 135: labcentral.plugin.v1.BuilderServiceBuildRequest.recipe:type_name -> labcentral.plugin.v1.BuildRecipe
-	83,  // 136: labcentral.plugin.v1.BuilderServiceBuildRequest.limits:type_name -> labcentral.plugin.v1.BuildLimits
-	72,  // 137: labcentral.plugin.v1.BuilderServiceBuildRequest.output:type_name -> labcentral.plugin.v1.ArtifactHandle
-	72,  // 138: labcentral.plugin.v1.BuilderServiceBuildResponse.image:type_name -> labcentral.plugin.v1.ArtifactHandle
-	25,  // 139: labcentral.plugin.v1.BuilderServiceBuildResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 140: labcentral.plugin.v1.BuilderServiceGetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	89,  // 141: labcentral.plugin.v1.BuilderServiceGetInvocationResponse.result:type_name -> labcentral.plugin.v1.BuilderServiceBuildResponse
-	21,  // 142: labcentral.plugin.v1.BuilderServiceCancelRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	21,  // 143: labcentral.plugin.v1.ArtifactTransferServiceReadRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	72,  // 144: labcentral.plugin.v1.ArtifactTransferServiceReadRequest.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
-	21,  // 145: labcentral.plugin.v1.ArtifactTransferServiceWriteRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	72,  // 146: labcentral.plugin.v1.ArtifactTransferServiceWriteRequest.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
-	72,  // 147: labcentral.plugin.v1.ArtifactTransferServiceWriteResponse.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
-	21,  // 148: labcentral.plugin.v1.ImageImportServiceImportRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 149: labcentral.plugin.v1.ImageImportServiceImportRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	72,  // 150: labcentral.plugin.v1.ImageImportServiceImportRequest.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
-	99,  // 151: labcentral.plugin.v1.ImageImportServiceImportRequest.reserved_plan:type_name -> labcentral.plugin.v1.ImageImportPlan
-	23,  // 152: labcentral.plugin.v1.ImageImportPlan.claims:type_name -> labcentral.plugin.v1.AllocationClaim
-	98,  // 153: labcentral.plugin.v1.ImageImportServicePlanRequest.input:type_name -> labcentral.plugin.v1.ImageImportServiceImportRequest
-	23,  // 154: labcentral.plugin.v1.ImageImportServicePlanRequest.excluded_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
-	99,  // 155: labcentral.plugin.v1.ImageImportServicePlanResponse.plan:type_name -> labcentral.plugin.v1.ImageImportPlan
-	102, // 156: labcentral.plugin.v1.ImageImportServiceImportResponse.binding:type_name -> labcentral.plugin.v1.TargetImageBinding
-	25,  // 157: labcentral.plugin.v1.ImageImportServiceImportResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 158: labcentral.plugin.v1.ImageImportServiceGetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 159: labcentral.plugin.v1.ImageImportServiceGetInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	103, // 160: labcentral.plugin.v1.ImageImportServiceGetInvocationResponse.result:type_name -> labcentral.plugin.v1.ImageImportServiceImportResponse
-	21,  // 161: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 162: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	102, // 163: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest.binding:type_name -> labcentral.plugin.v1.TargetImageBinding
-	25,  // 164: labcentral.plugin.v1.ImageImportServiceValidateBindingResponse.error:type_name -> labcentral.plugin.v1.StructuredError
-	21,  // 165: labcentral.plugin.v1.ImageImportServiceRetireRequest.context:type_name -> labcentral.plugin.v1.CallContext
-	18,  // 166: labcentral.plugin.v1.ImageImportServiceRetireRequest.target:type_name -> labcentral.plugin.v1.TargetContext
-	102, // 167: labcentral.plugin.v1.ImageImportServiceRetireRequest.binding:type_name -> labcentral.plugin.v1.TargetImageBinding
-	8,   // 168: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:input_type -> labcentral.plugin.v1.RegisterPluginRequest
-	10,  // 169: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:input_type -> labcentral.plugin.v1.HeartbeatRequest
-	12,  // 170: labcentral.plugin.v1.PluginRuntimeService.Health:input_type -> labcentral.plugin.v1.HealthRequest
-	19,  // 171: labcentral.plugin.v1.ProviderService.DiscoverTarget:input_type -> labcentral.plugin.v1.DiscoverTargetRequest
-	27,  // 172: labcentral.plugin.v1.ProviderService.ValidateLab:input_type -> labcentral.plugin.v1.ValidateLabRequest
-	34,  // 173: labcentral.plugin.v1.ProviderService.PlanResource:input_type -> labcentral.plugin.v1.PlanResourceRequest
-	36,  // 174: labcentral.plugin.v1.ProviderService.ApplyResource:input_type -> labcentral.plugin.v1.ApplyResourceRequest
-	38,  // 175: labcentral.plugin.v1.ProviderService.ReadResource:input_type -> labcentral.plugin.v1.ReadResourceRequest
-	40,  // 176: labcentral.plugin.v1.ProviderService.DestroyResource:input_type -> labcentral.plugin.v1.DestroyResourceRequest
-	42,  // 177: labcentral.plugin.v1.ProviderService.Lifecycle:input_type -> labcentral.plugin.v1.LifecycleRequest
-	44,  // 178: labcentral.plugin.v1.ProviderService.GetInvocation:input_type -> labcentral.plugin.v1.GetInvocationRequest
-	46,  // 179: labcentral.plugin.v1.ProviderService.CancelInvocation:input_type -> labcentral.plugin.v1.CancelInvocationRequest
-	48,  // 180: labcentral.plugin.v1.ProviderService.MigrateState:input_type -> labcentral.plugin.v1.MigrateStateRequest
-	50,  // 181: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:input_type -> labcentral.plugin.v1.DiscoverAccessEndpointRequest
-	52,  // 182: labcentral.plugin.v1.ProviderService.ListImages:input_type -> labcentral.plugin.v1.ListImagesRequest
-	55,  // 183: labcentral.plugin.v1.ProviderService.ImportImage:input_type -> labcentral.plugin.v1.ImportImageRequest
-	68,  // 184: labcentral.plugin.v1.AccessService.DownloadAccess:input_type -> labcentral.plugin.v1.DownloadAccessRequest
-	70,  // 185: labcentral.plugin.v1.AccessService.InspectAccess:input_type -> labcentral.plugin.v1.InspectAccessRequest
-	57,  // 186: labcentral.plugin.v1.AccessService.CreateAccess:input_type -> labcentral.plugin.v1.CreateAccessRequest
-	59,  // 187: labcentral.plugin.v1.AccessService.RevokeAccess:input_type -> labcentral.plugin.v1.RevokeAccessRequest
-	61,  // 188: labcentral.plugin.v1.AccessAuthorizationService.ExchangeAccessToken:input_type -> labcentral.plugin.v1.ExchangeAccessTokenRequest
-	63,  // 189: labcentral.plugin.v1.AccessAuthorizationService.RecheckAccessLease:input_type -> labcentral.plugin.v1.RecheckAccessLeaseRequest
-	65,  // 190: labcentral.plugin.v1.AccessAuthorizationService.EndAccessLease:input_type -> labcentral.plugin.v1.EndAccessLeaseRequest
-	81,  // 191: labcentral.plugin.v1.SourceService.ResolveCollection:input_type -> labcentral.plugin.v1.SourceServiceResolveCollectionRequest
-	74,  // 192: labcentral.plugin.v1.SourceService.Resolve:input_type -> labcentral.plugin.v1.SourceServiceResolveRequest
-	76,  // 193: labcentral.plugin.v1.SourceService.GetInvocation:input_type -> labcentral.plugin.v1.SourceServiceGetInvocationRequest
-	78,  // 194: labcentral.plugin.v1.SourceService.Cancel:input_type -> labcentral.plugin.v1.SourceServiceCancelRequest
-	86,  // 195: labcentral.plugin.v1.BuilderService.Validate:input_type -> labcentral.plugin.v1.BuilderServiceValidateRequest
-	88,  // 196: labcentral.plugin.v1.BuilderService.Build:input_type -> labcentral.plugin.v1.BuilderServiceBuildRequest
-	90,  // 197: labcentral.plugin.v1.BuilderService.GetInvocation:input_type -> labcentral.plugin.v1.BuilderServiceGetInvocationRequest
-	92,  // 198: labcentral.plugin.v1.BuilderService.Cancel:input_type -> labcentral.plugin.v1.BuilderServiceCancelRequest
-	94,  // 199: labcentral.plugin.v1.ArtifactTransferService.Read:input_type -> labcentral.plugin.v1.ArtifactTransferServiceReadRequest
-	96,  // 200: labcentral.plugin.v1.ArtifactTransferService.Write:input_type -> labcentral.plugin.v1.ArtifactTransferServiceWriteRequest
-	108, // 201: labcentral.plugin.v1.ImageImportService.Retire:input_type -> labcentral.plugin.v1.ImageImportServiceRetireRequest
-	100, // 202: labcentral.plugin.v1.ImageImportService.Plan:input_type -> labcentral.plugin.v1.ImageImportServicePlanRequest
-	98,  // 203: labcentral.plugin.v1.ImageImportService.Import:input_type -> labcentral.plugin.v1.ImageImportServiceImportRequest
-	104, // 204: labcentral.plugin.v1.ImageImportService.GetInvocation:input_type -> labcentral.plugin.v1.ImageImportServiceGetInvocationRequest
-	106, // 205: labcentral.plugin.v1.ImageImportService.ValidateBinding:input_type -> labcentral.plugin.v1.ImageImportServiceValidateBindingRequest
-	9,   // 206: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:output_type -> labcentral.plugin.v1.RegisterPluginResponse
-	11,  // 207: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:output_type -> labcentral.plugin.v1.HeartbeatResponse
-	13,  // 208: labcentral.plugin.v1.PluginRuntimeService.Health:output_type -> labcentral.plugin.v1.HealthResponse
-	20,  // 209: labcentral.plugin.v1.ProviderService.DiscoverTarget:output_type -> labcentral.plugin.v1.DiscoverTargetResponse
-	28,  // 210: labcentral.plugin.v1.ProviderService.ValidateLab:output_type -> labcentral.plugin.v1.ValidateLabResponse
-	35,  // 211: labcentral.plugin.v1.ProviderService.PlanResource:output_type -> labcentral.plugin.v1.PlanResourceResponse
-	37,  // 212: labcentral.plugin.v1.ProviderService.ApplyResource:output_type -> labcentral.plugin.v1.ApplyResourceResponse
-	39,  // 213: labcentral.plugin.v1.ProviderService.ReadResource:output_type -> labcentral.plugin.v1.ReadResourceResponse
-	41,  // 214: labcentral.plugin.v1.ProviderService.DestroyResource:output_type -> labcentral.plugin.v1.DestroyResourceResponse
-	43,  // 215: labcentral.plugin.v1.ProviderService.Lifecycle:output_type -> labcentral.plugin.v1.LifecycleResponse
-	45,  // 216: labcentral.plugin.v1.ProviderService.GetInvocation:output_type -> labcentral.plugin.v1.GetInvocationResponse
-	47,  // 217: labcentral.plugin.v1.ProviderService.CancelInvocation:output_type -> labcentral.plugin.v1.CancelInvocationResponse
-	49,  // 218: labcentral.plugin.v1.ProviderService.MigrateState:output_type -> labcentral.plugin.v1.MigrateStateResponse
-	51,  // 219: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:output_type -> labcentral.plugin.v1.DiscoverAccessEndpointResponse
-	54,  // 220: labcentral.plugin.v1.ProviderService.ListImages:output_type -> labcentral.plugin.v1.ListImagesResponse
-	56,  // 221: labcentral.plugin.v1.ProviderService.ImportImage:output_type -> labcentral.plugin.v1.ImportImageResponse
-	69,  // 222: labcentral.plugin.v1.AccessService.DownloadAccess:output_type -> labcentral.plugin.v1.DownloadAccessResponse
-	71,  // 223: labcentral.plugin.v1.AccessService.InspectAccess:output_type -> labcentral.plugin.v1.InspectAccessResponse
-	58,  // 224: labcentral.plugin.v1.AccessService.CreateAccess:output_type -> labcentral.plugin.v1.CreateAccessResponse
-	60,  // 225: labcentral.plugin.v1.AccessService.RevokeAccess:output_type -> labcentral.plugin.v1.RevokeAccessResponse
-	62,  // 226: labcentral.plugin.v1.AccessAuthorizationService.ExchangeAccessToken:output_type -> labcentral.plugin.v1.ExchangeAccessTokenResponse
-	64,  // 227: labcentral.plugin.v1.AccessAuthorizationService.RecheckAccessLease:output_type -> labcentral.plugin.v1.RecheckAccessLeaseResponse
-	66,  // 228: labcentral.plugin.v1.AccessAuthorizationService.EndAccessLease:output_type -> labcentral.plugin.v1.EndAccessLeaseResponse
-	82,  // 229: labcentral.plugin.v1.SourceService.ResolveCollection:output_type -> labcentral.plugin.v1.SourceServiceResolveCollectionResponse
-	75,  // 230: labcentral.plugin.v1.SourceService.Resolve:output_type -> labcentral.plugin.v1.SourceServiceResolveResponse
-	77,  // 231: labcentral.plugin.v1.SourceService.GetInvocation:output_type -> labcentral.plugin.v1.SourceServiceGetInvocationResponse
-	79,  // 232: labcentral.plugin.v1.SourceService.Cancel:output_type -> labcentral.plugin.v1.SourceServiceCancelResponse
-	87,  // 233: labcentral.plugin.v1.BuilderService.Validate:output_type -> labcentral.plugin.v1.BuilderServiceValidateResponse
-	89,  // 234: labcentral.plugin.v1.BuilderService.Build:output_type -> labcentral.plugin.v1.BuilderServiceBuildResponse
-	91,  // 235: labcentral.plugin.v1.BuilderService.GetInvocation:output_type -> labcentral.plugin.v1.BuilderServiceGetInvocationResponse
-	93,  // 236: labcentral.plugin.v1.BuilderService.Cancel:output_type -> labcentral.plugin.v1.BuilderServiceCancelResponse
-	95,  // 237: labcentral.plugin.v1.ArtifactTransferService.Read:output_type -> labcentral.plugin.v1.ArtifactTransferServiceReadResponse
-	97,  // 238: labcentral.plugin.v1.ArtifactTransferService.Write:output_type -> labcentral.plugin.v1.ArtifactTransferServiceWriteResponse
-	109, // 239: labcentral.plugin.v1.ImageImportService.Retire:output_type -> labcentral.plugin.v1.ImageImportServiceRetireResponse
-	101, // 240: labcentral.plugin.v1.ImageImportService.Plan:output_type -> labcentral.plugin.v1.ImageImportServicePlanResponse
-	103, // 241: labcentral.plugin.v1.ImageImportService.Import:output_type -> labcentral.plugin.v1.ImageImportServiceImportResponse
-	105, // 242: labcentral.plugin.v1.ImageImportService.GetInvocation:output_type -> labcentral.plugin.v1.ImageImportServiceGetInvocationResponse
-	107, // 243: labcentral.plugin.v1.ImageImportService.ValidateBinding:output_type -> labcentral.plugin.v1.ImageImportServiceValidateBindingResponse
-	206, // [206:244] is the sub-list for method output_type
-	168, // [168:206] is the sub-list for method input_type
-	168, // [168:168] is the sub-list for extension type_name
-	168, // [168:168] is the sub-list for extension extendee
-	0,   // [0:168] is the sub-list for field type_name
+	111, // 98: labcentral.plugin.v1.ConsoleInputLease.valid_for:type_name -> google.protobuf.Duration
+	112, // 99: labcentral.plugin.v1.ExchangeAccessTokenResponse.valid_until:type_name -> google.protobuf.Timestamp
+	111, // 100: labcentral.plugin.v1.ExchangeAccessTokenResponse.recheck_after:type_name -> google.protobuf.Duration
+	25,  // 101: labcentral.plugin.v1.ExchangeAccessTokenResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	62,  // 102: labcentral.plugin.v1.ExchangeAccessTokenResponse.input_lease:type_name -> labcentral.plugin.v1.ConsoleInputLease
+	112, // 103: labcentral.plugin.v1.RecheckAccessLeaseResponse.valid_until:type_name -> google.protobuf.Timestamp
+	111, // 104: labcentral.plugin.v1.RecheckAccessLeaseResponse.recheck_after:type_name -> google.protobuf.Duration
+	25,  // 105: labcentral.plugin.v1.RecheckAccessLeaseResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	62,  // 106: labcentral.plugin.v1.RecheckAccessLeaseResponse.input_lease:type_name -> labcentral.plugin.v1.ConsoleInputLease
+	25,  // 107: labcentral.plugin.v1.EndAccessLeaseResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	6,   // 108: labcentral.plugin.v1.AccessDescriptor.endpoint_schemas:type_name -> labcentral.plugin.v1.SchemaVersion
+	21,  // 109: labcentral.plugin.v1.DownloadAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	25,  // 110: labcentral.plugin.v1.DownloadAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 111: labcentral.plugin.v1.InspectAccessRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	112, // 112: labcentral.plugin.v1.InspectAccessResponse.enforced_until:type_name -> google.protobuf.Timestamp
+	25,  // 113: labcentral.plugin.v1.InspectAccessResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	6,   // 114: labcentral.plugin.v1.ExtensionConfiguration.schema:type_name -> labcentral.plugin.v1.SchemaVersion
+	21,  // 115: labcentral.plugin.v1.SourceServiceResolveRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	74,  // 116: labcentral.plugin.v1.SourceServiceResolveRequest.configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
+	73,  // 117: labcentral.plugin.v1.SourceServiceResolveRequest.output:type_name -> labcentral.plugin.v1.ArtifactHandle
+	73,  // 118: labcentral.plugin.v1.SourceServiceResolveResponse.bundle:type_name -> labcentral.plugin.v1.ArtifactHandle
+	25,  // 119: labcentral.plugin.v1.SourceServiceResolveResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 120: labcentral.plugin.v1.SourceServiceGetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	76,  // 121: labcentral.plugin.v1.SourceServiceGetInvocationResponse.result:type_name -> labcentral.plugin.v1.SourceServiceResolveResponse
+	83,  // 122: labcentral.plugin.v1.SourceServiceGetInvocationResponse.collection:type_name -> labcentral.plugin.v1.SourceServiceResolveCollectionResponse
+	21,  // 123: labcentral.plugin.v1.SourceServiceCancelRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	73,  // 124: labcentral.plugin.v1.SourceCollectionEntry.bundle:type_name -> labcentral.plugin.v1.ArtifactHandle
+	21,  // 125: labcentral.plugin.v1.SourceServiceResolveCollectionRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	74,  // 126: labcentral.plugin.v1.SourceServiceResolveCollectionRequest.configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
+	81,  // 127: labcentral.plugin.v1.SourceServiceResolveCollectionResponse.entries:type_name -> labcentral.plugin.v1.SourceCollectionEntry
+	25,  // 128: labcentral.plugin.v1.SourceServiceResolveCollectionResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	73,  // 129: labcentral.plugin.v1.BuildDependency.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
+	85,  // 130: labcentral.plugin.v1.BuildRecipe.dependencies:type_name -> labcentral.plugin.v1.BuildDependency
+	74,  // 131: labcentral.plugin.v1.BuildRecipe.configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
+	73,  // 132: labcentral.plugin.v1.BuildRecipe.inputs:type_name -> labcentral.plugin.v1.ArtifactHandle
+	86,  // 133: labcentral.plugin.v1.BuilderServiceValidateRequest.recipe:type_name -> labcentral.plugin.v1.BuildRecipe
+	84,  // 134: labcentral.plugin.v1.BuilderServiceValidateRequest.limits:type_name -> labcentral.plugin.v1.BuildLimits
+	25,  // 135: labcentral.plugin.v1.BuilderServiceValidateResponse.errors:type_name -> labcentral.plugin.v1.StructuredError
+	74,  // 136: labcentral.plugin.v1.BuilderServiceBuildRequest.binding_configuration:type_name -> labcentral.plugin.v1.ExtensionConfiguration
+	21,  // 137: labcentral.plugin.v1.BuilderServiceBuildRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	86,  // 138: labcentral.plugin.v1.BuilderServiceBuildRequest.recipe:type_name -> labcentral.plugin.v1.BuildRecipe
+	84,  // 139: labcentral.plugin.v1.BuilderServiceBuildRequest.limits:type_name -> labcentral.plugin.v1.BuildLimits
+	73,  // 140: labcentral.plugin.v1.BuilderServiceBuildRequest.output:type_name -> labcentral.plugin.v1.ArtifactHandle
+	73,  // 141: labcentral.plugin.v1.BuilderServiceBuildResponse.image:type_name -> labcentral.plugin.v1.ArtifactHandle
+	25,  // 142: labcentral.plugin.v1.BuilderServiceBuildResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 143: labcentral.plugin.v1.BuilderServiceGetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	90,  // 144: labcentral.plugin.v1.BuilderServiceGetInvocationResponse.result:type_name -> labcentral.plugin.v1.BuilderServiceBuildResponse
+	21,  // 145: labcentral.plugin.v1.BuilderServiceCancelRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	21,  // 146: labcentral.plugin.v1.ArtifactTransferServiceReadRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	73,  // 147: labcentral.plugin.v1.ArtifactTransferServiceReadRequest.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
+	21,  // 148: labcentral.plugin.v1.ArtifactTransferServiceWriteRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	73,  // 149: labcentral.plugin.v1.ArtifactTransferServiceWriteRequest.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
+	73,  // 150: labcentral.plugin.v1.ArtifactTransferServiceWriteResponse.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
+	21,  // 151: labcentral.plugin.v1.ImageImportServiceImportRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 152: labcentral.plugin.v1.ImageImportServiceImportRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	73,  // 153: labcentral.plugin.v1.ImageImportServiceImportRequest.artifact:type_name -> labcentral.plugin.v1.ArtifactHandle
+	100, // 154: labcentral.plugin.v1.ImageImportServiceImportRequest.reserved_plan:type_name -> labcentral.plugin.v1.ImageImportPlan
+	23,  // 155: labcentral.plugin.v1.ImageImportPlan.claims:type_name -> labcentral.plugin.v1.AllocationClaim
+	99,  // 156: labcentral.plugin.v1.ImageImportServicePlanRequest.input:type_name -> labcentral.plugin.v1.ImageImportServiceImportRequest
+	23,  // 157: labcentral.plugin.v1.ImageImportServicePlanRequest.excluded_allocations:type_name -> labcentral.plugin.v1.AllocationClaim
+	100, // 158: labcentral.plugin.v1.ImageImportServicePlanResponse.plan:type_name -> labcentral.plugin.v1.ImageImportPlan
+	103, // 159: labcentral.plugin.v1.ImageImportServiceImportResponse.binding:type_name -> labcentral.plugin.v1.TargetImageBinding
+	25,  // 160: labcentral.plugin.v1.ImageImportServiceImportResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 161: labcentral.plugin.v1.ImageImportServiceGetInvocationRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 162: labcentral.plugin.v1.ImageImportServiceGetInvocationRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	104, // 163: labcentral.plugin.v1.ImageImportServiceGetInvocationResponse.result:type_name -> labcentral.plugin.v1.ImageImportServiceImportResponse
+	21,  // 164: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 165: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	103, // 166: labcentral.plugin.v1.ImageImportServiceValidateBindingRequest.binding:type_name -> labcentral.plugin.v1.TargetImageBinding
+	25,  // 167: labcentral.plugin.v1.ImageImportServiceValidateBindingResponse.error:type_name -> labcentral.plugin.v1.StructuredError
+	21,  // 168: labcentral.plugin.v1.ImageImportServiceRetireRequest.context:type_name -> labcentral.plugin.v1.CallContext
+	18,  // 169: labcentral.plugin.v1.ImageImportServiceRetireRequest.target:type_name -> labcentral.plugin.v1.TargetContext
+	103, // 170: labcentral.plugin.v1.ImageImportServiceRetireRequest.binding:type_name -> labcentral.plugin.v1.TargetImageBinding
+	8,   // 171: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:input_type -> labcentral.plugin.v1.RegisterPluginRequest
+	10,  // 172: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:input_type -> labcentral.plugin.v1.HeartbeatRequest
+	12,  // 173: labcentral.plugin.v1.PluginRuntimeService.Health:input_type -> labcentral.plugin.v1.HealthRequest
+	19,  // 174: labcentral.plugin.v1.ProviderService.DiscoverTarget:input_type -> labcentral.plugin.v1.DiscoverTargetRequest
+	27,  // 175: labcentral.plugin.v1.ProviderService.ValidateLab:input_type -> labcentral.plugin.v1.ValidateLabRequest
+	34,  // 176: labcentral.plugin.v1.ProviderService.PlanResource:input_type -> labcentral.plugin.v1.PlanResourceRequest
+	36,  // 177: labcentral.plugin.v1.ProviderService.ApplyResource:input_type -> labcentral.plugin.v1.ApplyResourceRequest
+	38,  // 178: labcentral.plugin.v1.ProviderService.ReadResource:input_type -> labcentral.plugin.v1.ReadResourceRequest
+	40,  // 179: labcentral.plugin.v1.ProviderService.DestroyResource:input_type -> labcentral.plugin.v1.DestroyResourceRequest
+	42,  // 180: labcentral.plugin.v1.ProviderService.Lifecycle:input_type -> labcentral.plugin.v1.LifecycleRequest
+	44,  // 181: labcentral.plugin.v1.ProviderService.GetInvocation:input_type -> labcentral.plugin.v1.GetInvocationRequest
+	46,  // 182: labcentral.plugin.v1.ProviderService.CancelInvocation:input_type -> labcentral.plugin.v1.CancelInvocationRequest
+	48,  // 183: labcentral.plugin.v1.ProviderService.MigrateState:input_type -> labcentral.plugin.v1.MigrateStateRequest
+	50,  // 184: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:input_type -> labcentral.plugin.v1.DiscoverAccessEndpointRequest
+	52,  // 185: labcentral.plugin.v1.ProviderService.ListImages:input_type -> labcentral.plugin.v1.ListImagesRequest
+	55,  // 186: labcentral.plugin.v1.ProviderService.ImportImage:input_type -> labcentral.plugin.v1.ImportImageRequest
+	69,  // 187: labcentral.plugin.v1.AccessService.DownloadAccess:input_type -> labcentral.plugin.v1.DownloadAccessRequest
+	71,  // 188: labcentral.plugin.v1.AccessService.InspectAccess:input_type -> labcentral.plugin.v1.InspectAccessRequest
+	57,  // 189: labcentral.plugin.v1.AccessService.CreateAccess:input_type -> labcentral.plugin.v1.CreateAccessRequest
+	59,  // 190: labcentral.plugin.v1.AccessService.RevokeAccess:input_type -> labcentral.plugin.v1.RevokeAccessRequest
+	61,  // 191: labcentral.plugin.v1.AccessAuthorizationService.ExchangeAccessToken:input_type -> labcentral.plugin.v1.ExchangeAccessTokenRequest
+	64,  // 192: labcentral.plugin.v1.AccessAuthorizationService.RecheckAccessLease:input_type -> labcentral.plugin.v1.RecheckAccessLeaseRequest
+	66,  // 193: labcentral.plugin.v1.AccessAuthorizationService.EndAccessLease:input_type -> labcentral.plugin.v1.EndAccessLeaseRequest
+	82,  // 194: labcentral.plugin.v1.SourceService.ResolveCollection:input_type -> labcentral.plugin.v1.SourceServiceResolveCollectionRequest
+	75,  // 195: labcentral.plugin.v1.SourceService.Resolve:input_type -> labcentral.plugin.v1.SourceServiceResolveRequest
+	77,  // 196: labcentral.plugin.v1.SourceService.GetInvocation:input_type -> labcentral.plugin.v1.SourceServiceGetInvocationRequest
+	79,  // 197: labcentral.plugin.v1.SourceService.Cancel:input_type -> labcentral.plugin.v1.SourceServiceCancelRequest
+	87,  // 198: labcentral.plugin.v1.BuilderService.Validate:input_type -> labcentral.plugin.v1.BuilderServiceValidateRequest
+	89,  // 199: labcentral.plugin.v1.BuilderService.Build:input_type -> labcentral.plugin.v1.BuilderServiceBuildRequest
+	91,  // 200: labcentral.plugin.v1.BuilderService.GetInvocation:input_type -> labcentral.plugin.v1.BuilderServiceGetInvocationRequest
+	93,  // 201: labcentral.plugin.v1.BuilderService.Cancel:input_type -> labcentral.plugin.v1.BuilderServiceCancelRequest
+	95,  // 202: labcentral.plugin.v1.ArtifactTransferService.Read:input_type -> labcentral.plugin.v1.ArtifactTransferServiceReadRequest
+	97,  // 203: labcentral.plugin.v1.ArtifactTransferService.Write:input_type -> labcentral.plugin.v1.ArtifactTransferServiceWriteRequest
+	109, // 204: labcentral.plugin.v1.ImageImportService.Retire:input_type -> labcentral.plugin.v1.ImageImportServiceRetireRequest
+	101, // 205: labcentral.plugin.v1.ImageImportService.Plan:input_type -> labcentral.plugin.v1.ImageImportServicePlanRequest
+	99,  // 206: labcentral.plugin.v1.ImageImportService.Import:input_type -> labcentral.plugin.v1.ImageImportServiceImportRequest
+	105, // 207: labcentral.plugin.v1.ImageImportService.GetInvocation:input_type -> labcentral.plugin.v1.ImageImportServiceGetInvocationRequest
+	107, // 208: labcentral.plugin.v1.ImageImportService.ValidateBinding:input_type -> labcentral.plugin.v1.ImageImportServiceValidateBindingRequest
+	9,   // 209: labcentral.plugin.v1.PluginRegistrationService.RegisterPlugin:output_type -> labcentral.plugin.v1.RegisterPluginResponse
+	11,  // 210: labcentral.plugin.v1.PluginRegistrationService.Heartbeat:output_type -> labcentral.plugin.v1.HeartbeatResponse
+	13,  // 211: labcentral.plugin.v1.PluginRuntimeService.Health:output_type -> labcentral.plugin.v1.HealthResponse
+	20,  // 212: labcentral.plugin.v1.ProviderService.DiscoverTarget:output_type -> labcentral.plugin.v1.DiscoverTargetResponse
+	28,  // 213: labcentral.plugin.v1.ProviderService.ValidateLab:output_type -> labcentral.plugin.v1.ValidateLabResponse
+	35,  // 214: labcentral.plugin.v1.ProviderService.PlanResource:output_type -> labcentral.plugin.v1.PlanResourceResponse
+	37,  // 215: labcentral.plugin.v1.ProviderService.ApplyResource:output_type -> labcentral.plugin.v1.ApplyResourceResponse
+	39,  // 216: labcentral.plugin.v1.ProviderService.ReadResource:output_type -> labcentral.plugin.v1.ReadResourceResponse
+	41,  // 217: labcentral.plugin.v1.ProviderService.DestroyResource:output_type -> labcentral.plugin.v1.DestroyResourceResponse
+	43,  // 218: labcentral.plugin.v1.ProviderService.Lifecycle:output_type -> labcentral.plugin.v1.LifecycleResponse
+	45,  // 219: labcentral.plugin.v1.ProviderService.GetInvocation:output_type -> labcentral.plugin.v1.GetInvocationResponse
+	47,  // 220: labcentral.plugin.v1.ProviderService.CancelInvocation:output_type -> labcentral.plugin.v1.CancelInvocationResponse
+	49,  // 221: labcentral.plugin.v1.ProviderService.MigrateState:output_type -> labcentral.plugin.v1.MigrateStateResponse
+	51,  // 222: labcentral.plugin.v1.ProviderService.DiscoverAccessEndpoint:output_type -> labcentral.plugin.v1.DiscoverAccessEndpointResponse
+	54,  // 223: labcentral.plugin.v1.ProviderService.ListImages:output_type -> labcentral.plugin.v1.ListImagesResponse
+	56,  // 224: labcentral.plugin.v1.ProviderService.ImportImage:output_type -> labcentral.plugin.v1.ImportImageResponse
+	70,  // 225: labcentral.plugin.v1.AccessService.DownloadAccess:output_type -> labcentral.plugin.v1.DownloadAccessResponse
+	72,  // 226: labcentral.plugin.v1.AccessService.InspectAccess:output_type -> labcentral.plugin.v1.InspectAccessResponse
+	58,  // 227: labcentral.plugin.v1.AccessService.CreateAccess:output_type -> labcentral.plugin.v1.CreateAccessResponse
+	60,  // 228: labcentral.plugin.v1.AccessService.RevokeAccess:output_type -> labcentral.plugin.v1.RevokeAccessResponse
+	63,  // 229: labcentral.plugin.v1.AccessAuthorizationService.ExchangeAccessToken:output_type -> labcentral.plugin.v1.ExchangeAccessTokenResponse
+	65,  // 230: labcentral.plugin.v1.AccessAuthorizationService.RecheckAccessLease:output_type -> labcentral.plugin.v1.RecheckAccessLeaseResponse
+	67,  // 231: labcentral.plugin.v1.AccessAuthorizationService.EndAccessLease:output_type -> labcentral.plugin.v1.EndAccessLeaseResponse
+	83,  // 232: labcentral.plugin.v1.SourceService.ResolveCollection:output_type -> labcentral.plugin.v1.SourceServiceResolveCollectionResponse
+	76,  // 233: labcentral.plugin.v1.SourceService.Resolve:output_type -> labcentral.plugin.v1.SourceServiceResolveResponse
+	78,  // 234: labcentral.plugin.v1.SourceService.GetInvocation:output_type -> labcentral.plugin.v1.SourceServiceGetInvocationResponse
+	80,  // 235: labcentral.plugin.v1.SourceService.Cancel:output_type -> labcentral.plugin.v1.SourceServiceCancelResponse
+	88,  // 236: labcentral.plugin.v1.BuilderService.Validate:output_type -> labcentral.plugin.v1.BuilderServiceValidateResponse
+	90,  // 237: labcentral.plugin.v1.BuilderService.Build:output_type -> labcentral.plugin.v1.BuilderServiceBuildResponse
+	92,  // 238: labcentral.plugin.v1.BuilderService.GetInvocation:output_type -> labcentral.plugin.v1.BuilderServiceGetInvocationResponse
+	94,  // 239: labcentral.plugin.v1.BuilderService.Cancel:output_type -> labcentral.plugin.v1.BuilderServiceCancelResponse
+	96,  // 240: labcentral.plugin.v1.ArtifactTransferService.Read:output_type -> labcentral.plugin.v1.ArtifactTransferServiceReadResponse
+	98,  // 241: labcentral.plugin.v1.ArtifactTransferService.Write:output_type -> labcentral.plugin.v1.ArtifactTransferServiceWriteResponse
+	110, // 242: labcentral.plugin.v1.ImageImportService.Retire:output_type -> labcentral.plugin.v1.ImageImportServiceRetireResponse
+	102, // 243: labcentral.plugin.v1.ImageImportService.Plan:output_type -> labcentral.plugin.v1.ImageImportServicePlanResponse
+	104, // 244: labcentral.plugin.v1.ImageImportService.Import:output_type -> labcentral.plugin.v1.ImageImportServiceImportResponse
+	106, // 245: labcentral.plugin.v1.ImageImportService.GetInvocation:output_type -> labcentral.plugin.v1.ImageImportServiceGetInvocationResponse
+	108, // 246: labcentral.plugin.v1.ImageImportService.ValidateBinding:output_type -> labcentral.plugin.v1.ImageImportServiceValidateBindingResponse
+	209, // [209:247] is the sub-list for method output_type
+	171, // [171:209] is the sub-list for method input_type
+	171, // [171:171] is the sub-list for extension type_name
+	171, // [171:171] is the sub-list for extension extendee
+	0,   // [0:171] is the sub-list for field type_name
 }
 
 func init() { file_plugin_v1_plugin_proto_init() }
@@ -8307,7 +8415,7 @@ func file_plugin_v1_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_v1_plugin_proto_rawDesc), len(file_plugin_v1_plugin_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   106,
+			NumMessages:   107,
 			NumExtensions: 0,
 			NumServices:   9,
 		},

@@ -227,6 +227,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, "0020_project_groups", projectGroupMigration()); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, "0021_console_control", consoleControlMigration()); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 

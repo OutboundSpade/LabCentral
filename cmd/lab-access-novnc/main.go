@@ -60,7 +60,7 @@ func main() {
 		SupportedAccessMethods:        []string{"vnc"},
 		AcceptedAccessEndpointSchemas: []*pluginv1.SchemaVersion{{Name: "proxmox.vnc-endpoint", Major: 1, Minor: 0}},
 		Schemas:                       []*pluginv1.SchemaVersion{{Name: "novnc.access-state", Major: 1, Minor: 0}},
-		Features:                      []string{"access-authorization-recheck-v1"},
+		Features:                      []string{"access-authorization-recheck-v1", "shared-console-control-v1"},
 	}
 	pluginDone := make(chan error, 1)
 	go func() {

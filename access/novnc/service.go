@@ -65,15 +65,18 @@ type Service struct {
 }
 
 type session struct {
-	id       string
-	handle   string
-	token    string
-	expires  time.Time
-	upstream net.Conn
-	mu       sync.Mutex
-	lease    string
-	consumed bool
-	closed   bool
+	shared     bool
+	inputFence uint64
+	inputUntil time.Time
+	id         string
+	handle     string
+	token      string
+	expires    time.Time
+	upstream   net.Conn
+	mu         sync.Mutex
+	lease      string
+	consumed   bool
+	closed     bool
 }
 
 type accessState struct {
@@ -145,7 +148,7 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 		slog.Warn("VNC access request rejected", "code", code)
 		return &pluginv1.CreateAccessResponse{Error: &pluginv1.StructuredError{Code: code, ErrorClass: "permanent", SafeMessage: message}}, nil
 	}
-	if request == nil || request.GetContext() == nil || !identifierPattern.MatchString(request.GetAccessSessionId()) ||
+	if request == nil || request.GetContext() == nil || request.GetConsoleControlVersion() > 1 || !identifierPattern.MatchString(request.GetAccessSessionId()) ||
 		!identifierPattern.MatchString(request.GetSubjectId()) || request.GetMethod() != "vnc" || request.GetAudience() != service.origin.String() ||
 		request.GetEndpointSchema().GetName() != "proxmox.vnc-endpoint" || request.GetEndpointSchema().GetMajor() != 1 || request.GetEndpointSchema().GetMinor() != 0 ||
 		len(request.GetOpaqueConnectionData()) == 0 || len(request.GetOpaqueConnectionData()) > 64<<10 || !validSHA256(request.GetEndpointDigest()) ||
@@ -198,7 +201,7 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 		_ = upstream.Close()
 		return nil, err
 	}
-	created := &session{id: request.GetAccessSessionId(), handle: handle, token: token, expires: expires, upstream: upstream}
+	created := &session{shared: request.GetConsoleControlVersion() == 1, id: request.GetAccessSessionId(), handle: handle, token: token, expires: expires, upstream: upstream}
 	service.mu.Lock()
 	if len(service.sessions) >= maxSessions && service.sessions[created.id] == nil {
 		service.mu.Unlock()
@@ -366,6 +369,10 @@ func (service *Service) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		_ = connection.Close(websocket.StatusPolicyViolation, "authorization denied")
 		return
 	}
+	if decision.GetSharedConsole() != current.shared {
+		current.close()
+		return
+	}
 	current.mu.Lock()
 	current.lease = decision.GetAuthorizationLease()
 	current.mu.Unlock()
@@ -422,7 +429,7 @@ func (service *Service) bridge(connection *websocket.Conn, current *session, cal
 		return
 	}
 	streamDone := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(current.upstream, downstream); streamDone <- struct{}{} }()
+	go func() { _ = current.forwardClient(downstream); streamDone <- struct{}{} }()
 	go func() { _, _ = io.Copy(downstream, current.upstream); streamDone <- struct{}{} }()
 	authorizationLost := make(chan struct{}, 1)
 	go service.recheckLoop(ctx, current, callbacks, initial, authorizationLost, func(until time.Time) {
@@ -475,6 +482,7 @@ func (service *Service) recheckLoop(ctx context.Context, current *session, callb
 		if closed {
 			return
 		}
+		requestStarted := time.Now()
 		callContext, cancel := context.WithTimeout(ctx, 5*time.Second)
 		decision, err := callbacks.Authorization.RecheckAccessLease(callContext, &pluginv1.RecheckAccessLeaseRequest{
 			CallbackCredential: callbacks.Credential, AccessSessionId: current.id, Audience: callbacks.Audience, AuthorizationLease: lease,
@@ -496,6 +504,16 @@ func (service *Service) recheckLoop(ctx context.Context, current *session, callb
 		if delay <= 0 || delay > 15*time.Second || !decision.GetValidUntil().AsTime().After(service.now().UTC()) {
 			lost <- struct{}{}
 			return
+		}
+		if decision.GetSharedConsole() != current.shared {
+			lost <- struct{}{}
+			return
+		}
+		if current.shared {
+			if err := current.setInputLease(decision.GetInputLease(), requestStarted); err != nil {
+				lost <- struct{}{}
+				return
+			}
 		}
 		current.mu.Lock()
 		current.lease = decision.GetAuthorizationLease()

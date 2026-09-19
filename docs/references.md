@@ -178,3 +178,5 @@ Retrieved 2026-09-18. These sources inform ADR-0027–ADR-0029; live target capa
 
 - [OCI image layout](https://github.com/opencontainers/image-spec/blob/main/image-layout.md), [image manifest](https://github.com/opencontainers/image-spec/blob/main/manifest.md), and [configuration](https://github.com/opencontainers/image-spec/blob/main/config.md): indexes address manifests; manifests address configuration and layer blobs. Configuration identity includes uncompressed layer identities and is distinct from the archive and manifest digests.
 - [Podman load](https://docs.podman.io/en/latest/markdown/podman-load.1.html): OCI archives can be loaded into local container storage. LabCentral performs that operation as the rootless runtime user inside a disposable VM, then starts the verified local image ID using the existing offline pull policy.
+
+- [RFB protocol extensions](https://github.com/rfbproto/rfbproto/blob/master/rfbproto.rst), retrieved 2026-09-18: client message framing, extended pointer and clipboard, Fence, XVP, desktop resize and QEMU extended key messages inform the bounded noVNC input filter.

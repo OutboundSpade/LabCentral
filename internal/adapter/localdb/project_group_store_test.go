@@ -141,11 +141,23 @@ func projectGroupContract(t *testing.T, s *Store) {
 	}
 	access := accessBeginTestRequest(instance, digest, "access.group", "group")
 	access.SubjectID = user
+	access.SharedConsole = true
 	pending, err := s.BeginAccessSession(ctx, access)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ready := finalizeAccessTestSession(t, s, pending, digest, accessTestHash("group-launch"), "group")
+	active, ok, err := s.ExchangeAccessToken(ctx, app.AccessExchangeRequest{GovernanceRecordIDs: governanceIDs("group-console-exchange"), ID: ready.ID, Identity: accessTestIdentity(), TokenHashes: []app.KeyedTokenHash{accessTestHash("group-launch")}, NewLease: accessTestHash("group-console-lease"), LeaseDuration: app.DefaultAccessLeaseDuration})
+	if err != nil || !ok {
+		t.Fatal("group console activation", err)
+	}
+	if _, err = s.ChangeConsoleControl(ctx, app.ChangeConsoleControl{ActorID: user, SessionID: active.ID, Take: true, IdempotencyKey: "group-console-take", RequestDigest: testRequestDigest("group-console-take")}); err != nil {
+		t.Fatal(err)
+	}
+	driving, ok, err := s.RecheckAccessLease(ctx, app.AccessLeaseRecheckRequest{GovernanceRecordIDs: governanceIDs("group-console-drive"), ID: active.ID, Identity: accessTestIdentity(), LeaseHashes: []app.KeyedTokenHash{accessTestHash("group-console-lease")}, NewLease: accessTestHash("group-driver-lease"), LeaseDuration: app.DefaultAccessLeaseDuration})
+	if err != nil || !ok || driving.InputLease == nil {
+		t.Fatal("group driver", err)
+	}
 	// Multiple launches use the same team owner, retain the initiating actor,
 	// and replay without consuming quota twice.
 	for i := 0; i < 2; i++ {
@@ -208,6 +220,12 @@ func projectGroupContract(t *testing.T, s *Store) {
 	prepared.WorkFence = &app.Fence{OperationID: claim.Work.ID, LeaseOwner: claim.LeaseOwner, Token: claim.Operation.FencingToken, Attempt: claim.Operation.Attempt, Generation: 1}
 	if _, err = s.CreateInstance(ctx, prepared); !errors.Is(err, app.ErrAuthorityChanged) {
 		t.Fatal("pending preparation admitted after departure", err)
+	}
+	if _, ok, err := s.RecheckAccessLease(ctx, app.AccessLeaseRecheckRequest{GovernanceRecordIDs: governanceIDs("group-departed-driver"), ID: active.ID, Identity: accessTestIdentity(), LeaseHashes: []app.KeyedTokenHash{accessTestHash("group-driver-lease")}, NewLease: accessTestHash("group-denied-lease"), LeaseDuration: app.DefaultAccessLeaseDuration}); err != nil || ok {
+		t.Fatal("departed driver renewed input", err)
+	}
+	if _, err = s.ConsolePresence(ctx, user, active.ID); !errors.Is(err, app.ErrAuthorityChanged) {
+		t.Fatal("departed member saw console presence", err)
 	}
 	var state string
 	var closure int

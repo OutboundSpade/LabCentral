@@ -92,6 +92,7 @@ type AccessPlugin interface {
 	Revoke(context.Context, AccessRevoke) (AccessRevoked, error)
 }
 type AccessCreate struct {
+	ConsoleControlVersion                                               uint32
 	Call                                                                ProviderCall
 	SessionID, SubjectID, Method, EndpointDigest, StateDigest, Audience string
 	ExpiresAt                                                           time.Time
