@@ -3,7 +3,7 @@ package:
     dependencies:
         - id: shared-base
           root: deps/base
-          sha256: 3175ffcee8ff5b72e58f9f33bf4d13f424c965440136519732471b5768a05b6d
+          sha256: 2c605dc07d347f147bcc1c2fd9e820d2801cd6c59a82a7ae1fa49a65832d8031
     recipes:
         - name: base
           path: deps/base/base.json
@@ -22,8 +22,8 @@ files:
       sha256: 64ca1e363e52d5e3fb9e7312e0a39f80259de67ffae2f1ea4381f8a24f46f455
       mediaType: text/plain
     - path: deps/base/base.yaml
-      size: 229
-      sha256: ef1dad3db7e94110158686a683831196c2e20a3bc41358d608530066b0ad7932
+      size: 790
+      sha256: 36db05333a4e88ee99623946f06a53a167e4af4b814eeae691ed8f90d4b0d4d9
       mediaType: text/plain
     - path: lab.yaml
       size: 605
@@ -37,4 +37,4 @@ files:
       size: 245
       sha256: 4813c77015e1b9be917efc463e089e1a16a854209561dc054dd5ea29b10390d1
       mediaType: text/plain
-totalBytes: 1981
+totalBytes: 2542

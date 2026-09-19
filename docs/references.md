@@ -184,3 +184,5 @@ Retrieved 2026-09-18. These sources inform ADR-0027–ADR-0029; live target capa
 - [Proxmox streaming upload parser](https://github.com/proxmox/pve-http-server/blob/master/src/PVE/APIServer/AnyEvent.pm), retrieved 2026-09-19: multipart upload fields must precede the file in parser order: content, checksum-algorithm, checksum, filename. A standards-compliant multipart encoder alone does not establish compatibility with this streaming parser.
 
 - [Proxmox storage volume deletion](https://github.com/proxmox/pve-storage/blob/master/src/PVE/API2/Storage/Content.pm), retrieved 2026-09-19: deleting import staging volumes requires `Datastore.Allocate` on the storage. Upload permission alone cannot complete import cleanup.
+
+- [Pinned Debian 13 genericcloud package manifest](https://cloud.debian.org/images/cloud/trixie/20260831-2587/debian-13-genericcloud-amd64-20260831-2587.json), retrieved 2026-09-19: the example's pinned base includes cloud-init but omits `qemu-guest-agent`; the reusable Ansible recipe installs the agent required by Proxmox guest readiness.

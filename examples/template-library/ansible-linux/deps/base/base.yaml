@@ -2,6 +2,20 @@
   hosts: all
   become: true
   tasks:
+    - name: Install the agent required by Proxmox guest readiness
+      ansible.builtin.apt:
+        name: qemu-guest-agent
+        state: present
+        update_cache: true
+        policy_rc_d: 101
+      environment:
+        http_proxy: "{{ lookup('ansible.builtin.env', 'http_proxy') }}"
+        https_proxy: "{{ lookup('ansible.builtin.env', 'https_proxy') }}"
+    - name: Enable the agent when the deployment supplies its virtio channel
+      ansible.builtin.systemd_service:
+        name: qemu-guest-agent
+        enabled: true
+        daemon_reload: true
     - name: Record the reusable base
       ansible.builtin.copy:
         dest: /etc/labcentral-base

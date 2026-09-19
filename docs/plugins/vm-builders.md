@@ -29,6 +29,13 @@ SSH host/user keys, machine identity, cloud-init state and temporary files
 removed before publication. Repositories used by authored tasks can change;
 portability does not promise byte-identical package installation results.
 
+Proxmox deployments also require `qemu-guest-agent` installed and enabled in the
+built image. The example's reusable Ansible base installs it during construction,
+using the builder's bounded proxy for package downloads. The pinned Debian cloud
+image alone does not include this agent. Do not start the service during an image
+build that lacks the deployment's guest-agent channel; enable it for the deployed
+VM. A running VM without its agent does not pass Proxmox readiness.
+
 Dockerfile settings identify the Dockerfile and optionally its final stage.
 Declare every external image digest in `baseImageDigests`; image references
 must include `@sha256:...`. Stages, `COPY --from` and `RUN --mount=from` are checked
