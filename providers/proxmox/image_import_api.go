@@ -63,7 +63,9 @@ func (client *Client) UploadImage(ctx context.Context, r ImageUpload, src io.Rea
 	// Content-Length avoids unbounded buffering by intermediate HTTP handlers.
 	var prefix bytes.Buffer
 	writer := multipart.NewWriter(&prefix)
-	for _, v := range [][2]string{{"content", "import"}, {"checksum", r.Digest}, {"checksum-algorithm", "sha256"}} {
+	// Proxmox's streaming multipart parser consumes these fields in this order.
+	// In particular checksum-algorithm must precede checksum and the file part.
+	for _, v := range [][2]string{{"content", "import"}, {"checksum-algorithm", "sha256"}, {"checksum", r.Digest}} {
 		if err := writer.WriteField(v[0], v[1]); err != nil {
 			return UPID{}, err
 		}

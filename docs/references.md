@@ -180,3 +180,5 @@ Retrieved 2026-09-18. These sources inform ADR-0027–ADR-0029; live target capa
 - [Podman load](https://docs.podman.io/en/latest/markdown/podman-load.1.html): OCI archives can be loaded into local container storage. LabCentral performs that operation as the rootless runtime user inside a disposable VM, then starts the verified local image ID using the existing offline pull policy.
 
 - [RFB protocol extensions](https://github.com/rfbproto/rfbproto/blob/master/rfbproto.rst), retrieved 2026-09-18: client message framing, extended pointer and clipboard, Fence, XVP, desktop resize and QEMU extended key messages inform the bounded noVNC input filter.
+
+- [Proxmox streaming upload parser](https://github.com/proxmox/pve-http-server/blob/master/src/PVE/APIServer/AnyEvent.pm), retrieved 2026-09-19: multipart upload fields must precede the file in parser order: content, checksum-algorithm, checksum, filename. A standards-compliant multipart encoder alone does not establish compatibility with this streaming parser.

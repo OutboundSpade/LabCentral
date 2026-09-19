@@ -26,6 +26,7 @@ func TestImageUploadAPIStreamsChecksumAndPollsTask(t *testing.T) {
 				t.Fatal(err)
 			}
 			fields := map[string]string{}
+			var order []string
 			for {
 				part, err := multipart.NextPart()
 				if err == io.EOF {
@@ -39,9 +40,13 @@ func TestImageUploadAPIStreamsChecksumAndPollsTask(t *testing.T) {
 					t.Fatal(err)
 				}
 				fields[part.FormName()] = string(raw)
+				order = append(order, part.FormName())
 				if part.FormName() == "filename" && part.FileName() != filename {
 					t.Error("wrong owned filename")
 				}
+			}
+			if strings.Join(order, ",") != "content,checksum-algorithm,checksum,filename" {
+				t.Error("multipart field order is incompatible with Proxmox's streaming parser", order)
 			}
 			if fields["content"] != "import" || fields["checksum-algorithm"] != "sha256" || fields["checksum"] != digest || fields["filename"] != string(data) {
 				t.Fatal("multipart identity mismatch", fields)
