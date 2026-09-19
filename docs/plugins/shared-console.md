@@ -1,5 +1,11 @@
 # Shared console control
 
+For the native deployment, retain `Restart=always` in the noVNC systemd unit.
+Heartbeat loss closes existing sessions and can end the process with a clean
+exit status; the service manager must restart it so core can reattach after an
+outage. An explicit service stop still remains stopped. Reconnected users begin
+as viewers and must request control again.
+
 `shared-console-control-v1` is an optional negotiated access-plugin feature under
 ADR-0029. `CreateAccessRequest.console_control_version = 1` selects its semantics.
 Core selects it for VNC when the configured plugin advertises support. Project
