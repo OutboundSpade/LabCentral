@@ -11,11 +11,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/OutboundSpade/LabCentral/internal/adapter/localsecret"
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"github.com/OutboundSpade/LabCentral/internal/controlplane"
 	"github.com/OutboundSpade/LabCentral/internal/domain"
@@ -66,7 +68,7 @@ func (*runtimePipelineProvider) WriteArtifact(_ context.Context, _ app.ProviderC
 	return a, nil
 }
 func (p *runtimePipelineProvider) ImportImage(_ context.Context, r app.ImportRequest) (string, app.ImageBinding, error) {
-	if r.ContainerRuntime == nil || r.ContainerRuntime.Validate() != nil || r.Artifact.MediaType != "application/x-qemu-disk" {
+	if string(r.Target.Credential) != "pipeline-credential" || r.ContainerRuntime == nil || r.ContainerRuntime.Validate() != nil || r.Artifact.MediaType != "application/x-qemu-disk" {
 		return "", app.ImageBinding{}, fmt.Errorf("raw OCI import forbidden")
 	}
 	p.mu.Lock()
@@ -107,7 +109,15 @@ func pipelineOCI(t *testing.T) []byte {
 }
 func TestParticipantRuntimePreparationWaitsForApprovalAndRechecksAuthority(t *testing.T) {
 	provider := &runtimePipelineProvider{}
-	f := newGovernanceHTTPFixture(t, controlplane.TargetBinding{ID: controlplane.LocalDockerTarget, ProviderKind: "proxmox", Provider: provider, ProtocolMajor: 1, Features: []string{"image-import-v1", "artifact-transfer-v1", "container-image-import-v1"}})
+	credentialPath := filepath.Join(t.TempDir(), "provider-secret")
+	if err := os.WriteFile(credentialPath, []byte("pipeline-credential"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := localsecret.NewFileResolver([]string{credentialPath}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newGovernanceHTTPFixture(t, controlplane.TargetBinding{ID: controlplane.LocalDockerTarget, ProviderKind: "proxmox", Provider: provider, ProtocolMajor: 1, Features: []string{"image-import-v1", "artifact-transfer-v1", "container-image-import-v1"}, CredentialRef: &domain.SecretRef{Source: "file", Name: credentialPath, Key: "value"}, CredentialResolver: resolver})
 	ctx := context.Background()
 	author := f.client(t, "author", "an-author-production-password")
 	if err := f.database.PutRoleAssignment(ctx, app.RoleAssignmentRecord{ID: "role.runtime-participant", SubjectKind: app.SubjectUser, SubjectID: "user.auditor", ScopeKind: app.ScopeProject, ScopeID: "project.alpha", Role: app.RoleParticipant, ValidFrom: time.Now().Add(-time.Hour)}); err != nil {
@@ -164,6 +174,10 @@ func TestParticipantRuntimePreparationWaitsForApprovalAndRechecksAuthority(t *te
 		time.Sleep(20 * time.Millisecond)
 	}
 	if progress.Stage != "awaiting-approval" || len(progress.BuildIDs) != 2 || len(progress.ImportIDs) != 1 {
+		items, _ := f.database.ListExtensionWork(ctx, "project.alpha")
+		for _, item := range items {
+			t.Logf("pipeline work: %+v", item)
+		}
 		t.Fatalf("missing approval wait: %+v %+v", preparation, progress)
 	}
 	binding, err := f.database.GetImageBinding(ctx, string(progress.ImportIDs[0]))

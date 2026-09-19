@@ -117,12 +117,7 @@ func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent strin
 			if !slices.Contains(client.Info.GetProviderKinds(), target.Kind) {
 				return fail(fmt.Errorf("plugin did not advertise configured target kind"))
 			}
-			provider := providergrpc.NewLive(client.Provider, client.Available)
-			provider.BuildDigest = client.Info.GetBuildDigest()
-			if slices.Contains(client.Info.GetFeatures(), "image-import-v1") && slices.Contains(client.Info.GetFeatures(), "artifact-transfer-v1") {
-				provider.Artifacts = client.Artifacts
-				provider.ImageImports = client.ImageImports
-			}
+			provider := boundProvider(client)
 			binding := controlplane.TargetBinding{ID: domain.ProviderTargetID(target.ID), ProviderKind: target.Kind, Provider: provider, Policy: target.Policy, ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures()}
 			if target.ConfigFile != "" {
 				if !filepath.IsAbs(target.ConfigFile) {
@@ -148,4 +143,16 @@ func loadInstalledProviders(ctx context.Context, cfg config, runtimeParent strin
 		return fail(err)
 	}
 	return bindings, clients, inventory, nil
+}
+
+// Native and independently installed registrations must expose the same
+// negotiated image services and immutable provider identity.
+func boundProvider(client *pluginhost.Client) *providergrpc.Provider {
+	provider := providergrpc.NewLive(client.Provider, client.Available)
+	provider.BuildDigest = client.Info.GetBuildDigest()
+	if slices.Contains(client.Info.GetFeatures(), "image-import-v1") && slices.Contains(client.Info.GetFeatures(), "artifact-transfer-v1") {
+		provider.Artifacts = client.Artifacts
+		provider.ImageImports = client.ImageImports
+	}
+	return provider
 }

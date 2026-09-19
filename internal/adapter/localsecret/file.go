@@ -67,7 +67,7 @@ func (resolver *FileResolver) Resolve(ctx context.Context, request application.A
 	if _, allowed := resolver.allowed[path]; !allowed {
 		return nil, fmt.Errorf("local secret reference is not allowlisted")
 	}
-	if scope.InvocationID == "" || scope.InstanceID == "" || scope.ResourceID == "" || scope.ExpiresAt.IsZero() || !scope.ExpiresAt.After(time.Now()) {
+	if scope.Validate(time.Now()) != nil {
 		return nil, fmt.Errorf("local secret invocation scope is invalid")
 	}
 	before, err := os.Lstat(path)

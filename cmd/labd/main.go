@@ -1355,7 +1355,7 @@ func launchProxmoxTarget(ctx context.Context, configuration config, runtimeParen
 		return controlplane.TargetBinding{}, nil, httpapi.ProviderExample{}, err
 	}
 	return controlplane.TargetBinding{
-		ID: targetID, ProviderKind: "proxmox", Policy: controlplane.TargetPolicy{MinimumMinor: 1, RequiredFeatures: []string{"opaque-allocation-claims-v1", "dependency-resource-input-v1"}, NativeCapabilities: []string{"workload.vm"}}, Provider: providergrpc.NewLive(client.Provider, client.Available), ConfigEnvelope: configEnvelope,
+		ID: targetID, ProviderKind: "proxmox", Policy: controlplane.TargetPolicy{MinimumMinor: 1, RequiredFeatures: []string{"opaque-allocation-claims-v1", "dependency-resource-input-v1"}, NativeCapabilities: []string{"workload.vm"}}, Provider: boundProvider(client), ConfigEnvelope: configEnvelope,
 		CredentialRef: &domain.SecretRef{Source: "file", Name: credentialPath, Key: "value"}, CredentialResolver: resolver,
 		ProtocolMajor: client.SelectedProtocol.GetMajor(), ProtocolMinor: client.SelectedProtocol.GetMinor(), Features: client.Info.GetFeatures(),
 	}, client, example, nil

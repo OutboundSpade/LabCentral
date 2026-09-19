@@ -137,10 +137,32 @@ type AuthorizedSecretRef struct {
 }
 
 type InvocationScope struct {
+	// WorkSubject scopes image preparation before a lab/resource exists. It is
+	// mutually exclusive with the legacy instance/resource scope.
+	WorkSubject  *domain.WorkSubject
 	InvocationID domain.InvocationID
 	InstanceID   domain.InstanceID
 	ResourceID   domain.LogicalResourceID
 	ExpiresAt    time.Time
+}
+
+func (s InvocationScope) Validate(now time.Time) error {
+	if s.InvocationID == "" || s.ExpiresAt.IsZero() || !s.ExpiresAt.After(now) {
+		return fmt.Errorf("invalid invocation lifetime")
+	}
+	if s.WorkSubject == nil {
+		if s.InstanceID == "" || s.ResourceID == "" {
+			return fmt.Errorf("instance and resource scope required")
+		}
+		return nil
+	}
+	if s.InstanceID != "" || s.ResourceID != "" {
+		return fmt.Errorf("ambiguous invocation scope")
+	}
+	if s.WorkSubject.Kind != domain.WorkImageImport && s.WorkSubject.Kind != domain.WorkPreparation {
+		return fmt.Errorf("unsupported credential work subject")
+	}
+	return s.WorkSubject.Validate()
 }
 
 type EphemeralSecret struct {

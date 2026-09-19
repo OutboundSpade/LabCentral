@@ -180,7 +180,7 @@ func (registry *TargetRegistry) AcquireForSubject(ctx context.Context, targetID 
 	if binding.credentialResolver == nil || binding.credentialRef == nil {
 		return session, nil
 	}
-	if scope.InvocationID == "" || scope.InstanceID == "" || scope.ResourceID == "" || scope.ExpiresAt.IsZero() || !scope.ExpiresAt.After(time.Now()) {
+	if scope.Validate(time.Now()) != nil {
 		return nil, fmt.Errorf("provider target %s credential scope is invalid", targetID)
 	}
 	secret, err := binding.credentialResolver.Resolve(ctx, application.AuthorizedSecretRef{Reference: *binding.credentialRef, SubjectID: subjectID}, scope)

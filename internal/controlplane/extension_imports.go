@@ -108,7 +108,7 @@ func (s *Service) executeImport(parent context.Context, c app.ExtensionWorkClaim
 			return s.finishWork(ctx, c, domain.OperationCanceled, nil, "authority_changed")
 		}
 	}
-	session, e := s.targets.AcquireForSubject(ctx, r.TargetID, actor, app.InvocationScope{InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(15 * time.Minute)}, true)
+	session, e := s.targets.AcquireForSubject(ctx, r.TargetID, actor, app.InvocationScope{WorkSubject: &domain.WorkSubject{Kind: c.Work.Request.Kind, ID: string(c.Work.ID)}, InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(15 * time.Minute)}, true)
 	if e != nil {
 		return e
 	}
@@ -381,7 +381,7 @@ func (s *Service) executePreparation(parent context.Context, c app.ExtensionWork
 				result.Stage = "awaiting-approval"
 				return s.yieldWorkProgress(ctx, c, result)
 			}
-			session, e := s.targets.AcquireForSubject(ctx, r.TargetID, c.Work.ActorID, app.InvocationScope{InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(time.Minute)}, true)
+			session, e := s.targets.AcquireForSubject(ctx, r.TargetID, c.Work.ActorID, app.InvocationScope{WorkSubject: &domain.WorkSubject{Kind: c.Work.Request.Kind, ID: string(c.Work.ID)}, InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(time.Minute)}, true)
 			if e != nil {
 				return e
 			}

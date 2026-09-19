@@ -66,7 +66,7 @@ func (s *Service) executeImageRetirement(ctx context.Context, c app.ExtensionWor
 	if err != nil {
 		return err
 	}
-	session, err := s.targets.AcquireForSubject(ctx, r.TargetID, c.Work.ActorID, app.InvocationScope{InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(15 * time.Minute)}, true)
+	session, err := s.targets.AcquireForSubject(ctx, r.TargetID, c.Work.ActorID, app.InvocationScope{WorkSubject: &domain.WorkSubject{Kind: c.Work.Request.Kind, ID: string(c.Work.ID)}, InvocationID: c.Work.InvocationID, ExpiresAt: time.Now().Add(15 * time.Minute)}, true)
 	if err != nil {
 		return err
 	}
