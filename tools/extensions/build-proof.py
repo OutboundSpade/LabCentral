@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix='labcentral-build-proof-') as temporary:
     manifests.append(('access.json',dict(apiVersion='labcentral.io/plugin-manifest/v2',id='org.example.access',version='0.1.0',categories=['access'],executable='access',sha256=digest(executable),protocolMajor=1,minimumProtocolMinor=2,maximumProtocolMinor=2,operatingSystems=['linux'],architectures=['amd64'],requestedPermissions=[],accessKinds=['fixture'],accessMethods=methods,endpointSchemas=['fixture.endpoint'])))
     extensions.append(dict(manifest='access.json',instanceId='fixture.access',mode='local',kind='fixture',args=['--state',str(root/'access-journal'),'--listen','127.0.0.1:'+str(stream_port)],grantedPermissions=[],methods=methods,targetIds=['target.fixture'],streamEndpoint='http://127.0.0.1:'+str(stream_port)))
     subprocess.run(['node','examples/external-browser/package.mjs',str(package/'browser')],cwd=SDK,check=True,stdout=subprocess.DEVNULL)
-    extensions.append(dict(manifest='browser/plugin.json',instanceId='fixture.browser',grantedPermissions=['context.read','topology.read','access.create','access.stream']))
+    extensions.append(dict(manifest='browser/plugin.json',instanceId='fixture.browser',grantedPermissions=['context.read','topology.read','access.create','access.stream','templates.read','templates.write']))
     installation=dict(apiVersion='labcentral.io/installation/v2',pluginRoot=str(package),providers=providers,extensions=extensions)
     for name,value in manifests+[('installation.json',installation)]:
         p=package/name;p.write_text(json.dumps(value));p.chmod(0o600)

@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -43,5 +44,25 @@ func TestInfrastructureQualificationSeparatesImportedImages(t *testing.T) {
 	after, _ = changed.MutationDigestForConfig(config)
 	if before == after {
 		t.Fatal("missing static template ignored")
+	}
+}
+
+func TestImageImportRequiresStagingDeletionPermission(t *testing.T) {
+	_, _, request, _ := imageFixture(t)
+	var config TargetConfig
+	if err := json.Unmarshal(request.Target.ConfigEnvelope, &config); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.validateMutation(); err != nil {
+		t.Fatal(err)
+	}
+	for i := range config.PermissionScopes {
+		scope := &config.PermissionScopes[i]
+		if scope.Path == "/storage/"+config.ImageImport.StagingStorage {
+			scope.Privileges = slices.DeleteFunc(scope.Privileges, func(p string) bool { return p == "Datastore.Allocate" })
+		}
+	}
+	if err := config.validateMutation(); err == nil {
+		t.Fatal("upload-only permission permits import whose staging cannot be retired")
 	}
 }

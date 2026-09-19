@@ -19,7 +19,9 @@ records. ADR-0028 governs this boundary.
 This fragment belongs in an otherwise qualified target configuration. A destination
 pool and configured VM-image storage profile are required. The staging store must
 report active, enabled, file-backed `import` content. Its scoped credentials need
-`Datastore.AllocateTemplate` and `Datastore.Audit`; the destination pool adds
+`Datastore.AllocateTemplate`, `Datastore.Allocate` and `Datastore.Audit` on the
+staging store. Proxmox requires `Datastore.Allocate` to remove uploaded import
+volumes; use a dedicated staging store to narrow that permission. The destination pool adds
 `VM.Clone`, `VM.Config.Disk` and `VM.Config.HWType` to its existing scoped rights.
 The provider initializes its protected journal with the existing
 `--initialize-journal-directory` option. Configuration never creates qualification

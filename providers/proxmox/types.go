@@ -345,7 +345,7 @@ func expectedPermissionScopes(config TargetConfig) map[string]map[string]bool {
 	add(destinationPath, "VM.Allocate", "VM.Audit", "VM.Config.CPU", "VM.Config.Cloudinit", "VM.Config.Memory", "VM.Config.Network", "VM.Config.Options", "VM.GuestAgent.Audit", "VM.PowerMgmt")
 	if config.ImageImport != nil {
 		add(destinationPath, "VM.Clone", "VM.Config.Disk", "VM.Config.HWType")
-		add("/storage/"+config.ImageImport.StagingStorage, "Datastore.AllocateTemplate", "Datastore.Audit")
+		add("/storage/"+config.ImageImport.StagingStorage, "Datastore.Allocate", "Datastore.AllocateTemplate", "Datastore.Audit")
 	}
 	if config.ContainerRuntime != nil {
 		add(destinationPath, "VM.GuestAgent.Unrestricted")
