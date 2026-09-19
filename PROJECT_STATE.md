@@ -66,8 +66,12 @@ See [the implementation contract](docs/design/portable-template-collaboration.md
 theme, task-focused tabs, draft protection, accessible feedback and confirmations,
 authorized group rosters and administrator oversight. Additive host version 4
 provides permission-declared draft/navigation operations; older contributions
-retain their host semantics. Final release verification and private-testbed
-deployment are in progress. See [the UI contract](docs/design/classroom-ui.md).
+retain their host semantics. The reproducible release is deployed on the authorized private testbed.
+Affected normal/race SQLite/PostgreSQL, API/architecture, three-browser,
+independent-package and live role/enrollment checks passed. Consistent backups
+and prior packages are retained, with qualified backend identities unchanged.
+All existing lab, membership and role records were preserved; temporary
+enrollment and browser sessions were cleaned up. See [the UI contract](docs/design/classroom-ui.md).
 
 ## Independently installed extensions
 

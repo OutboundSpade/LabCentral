@@ -3,7 +3,7 @@ lastUpdated: "2026-09-19"
 tasks:
   - id: TASK-UI-011
     title: Repair independent feature page usability and deploy
-    status: in_progress
+    status: complete
     dependencies: [TASK-TEMPLATE-008, TASK-UI-010]
     relatedAdrs: [ADR-0026, ADR-0027, ADR-0029]
     relatedDocuments: [docs/design/classroom-ui.md, docs/plugins/feature-packages.md]

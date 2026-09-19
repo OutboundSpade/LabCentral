@@ -311,8 +311,8 @@ completedTasks:
   - TASK-EXT-009
   - TASK-UI-009
   - TASK-UI-010
-currentTasks:
   - TASK-UI-011
+currentTasks:
   - TASK-PROD-004
   - TASK-PROD-005
 # Template/collaboration rollout passed; GitHub repository binding is owner-deferred.

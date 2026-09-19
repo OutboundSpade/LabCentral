@@ -99,7 +99,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await page.waitForLoadState("networkidle");await page.goto(origin);outage=true;await page.getByRole('button',{name:'Refresh labs'}).click();await page.getByText('Updates are paused. Showing the last known state.').waitFor();outage=false;await page.getByRole('button',{name:'Retry',exact:true}).click();
   await page.waitForLoadState("networkidle");await page.goto(origin+'/people');await page.getByRole('heading',{name:'This view needs additional access'}).waitFor();role='platform-administrator';
   for(const route of ['classroom','templates','people','settings']){
-   await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{name:route[0].toUpperCase()+route.slice(1),exact:true}).waitFor();await page.waitForTimeout(200);if(name==='chromium')await page.screenshot({path:new URL(`desktop-${route}.png`,shots).pathname,fullPage:true});
+   await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{name:route[0].toUpperCase()+route.slice(1),exact:true}).waitFor();if(route==='classroom')await page.frameLocator('iframe[title="Classroom"]').getByLabel('Alex Morgan',{exact:true}).waitFor();await page.waitForTimeout(200);if(name==='chromium')await page.screenshot({path:new URL(`desktop-${route}.png`,shots).pathname,fullPage:true});
   }
   await page.getByRole('button',{name:'Save limits'}).click();
   await page.getByText('Project limits saved. Existing lab expiry times are unchanged.').waitFor();
@@ -107,7 +107,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   assert.equal(mutations.find(m=>m.path==='/lifetime-policies/project/project.class').body.defaultTtlSeconds,14400);
   await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');
   const classroom=page.frameLocator('iframe[title="Classroom"]');
-  await classroom.getByRole('heading',{name:'Students & labs'}).waitFor();await page.screenshot({path:new URL(`${name}-classroom-ready.png`,shots).pathname,fullPage:true});
+  await classroom.getByLabel('Alex Morgan',{exact:true}).waitFor();await page.screenshot({path:new URL(`${name}-classroom-ready.png`,shots).pathname,fullPage:true});
   await classroom.getByLabel('Alex Morgan',{exact:true}).check();
   await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).click();
   await classroom.getByLabel('Template',{exact:true}).selectOption(template.id);
@@ -129,7 +129,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-b/actions/destroy'));
   await page.setViewportSize({width:390,height:844});
   for(const route of ['','launch','classroom','people','settings']){
-   await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{level:1}).waitFor();if(route==='classroom')await page.frameLocator('iframe[title="Classroom"]').getByRole('heading',{name:'Students & labs'}).waitFor();await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} ${route} mobile overflow`);if(name==='chromium')await page.screenshot({path:new URL(`mobile-${route||'labs'}.png`,shots).pathname,fullPage:true});
+   await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{level:1}).waitFor();if(route==='classroom')await page.frameLocator('iframe[title="Classroom"]').getByLabel('Alex Morgan',{exact:true}).waitFor();await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} ${route} mobile overflow`);if(name==='chromium')await page.screenshot({path:new URL(`mobile-${route||'labs'}.png`,shots).pathname,fullPage:true});
   }
   subjectId='user.other';noProjects=true;await page.evaluate(()=>document.querySelector('a[href="/"]').click());await page.getByRole('heading',{name:'No projects assigned yet',exact:true}).waitFor();
   sessionDenied=true;await page.evaluate(()=>document.querySelector('a[href="/launch/"]').click());await page.getByRole('heading',{name:'Sign in to LabCentral',exact:true}).waitFor();assert.equal(await page.locator('.drawer').count(),0);sessionDenied=false;
