@@ -10,7 +10,7 @@
     "test:extensions": "node tests/extensions.mjs",
     "test:browser": "node tests/startup.mjs && node tests/classroom.mjs && node tests/features.mjs && node tests/operations.mjs && node tests/shared-console.mjs && node tests/administration.mjs",
     "generate:api": "cd .. && go run ./tools/openapi && cd web && openapi-typescript ../api/http/openapi.json -o src/lib/api.generated.ts",
-    "test:cache": "bun test tests/query.test.ts tests/schema.test.ts"
+    "test:cache": "bun test tests/query.test.ts tests/schema.test.ts tests/extension-bridge.test.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "3.0.10",
