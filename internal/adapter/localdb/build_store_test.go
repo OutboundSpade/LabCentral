@@ -152,6 +152,11 @@ func preparedBatchContract(t *testing.T, s *Store) {
 		id := fmt.Sprintf("import.%d", i)
 		c := create(id, domain.WorkImageImport, id)
 		b := app.StoredImageBinding{ID: id, ProjectID: "project.alpha", TargetID: "target.quota", ProviderDigest: "fixture", ImportOperationID: c.Work.ID, Binding: app.ImageBinding{ImageRef: "labcentral.local/images/img-fixture-" + fmt.Sprint(i) + "@sha256:" + testRequestDigest(id).Hex(), ArtifactDigest: testRequestDigest(id), OpaqueBinding: []byte("fixture")}}
+		if i == 1 {
+			// A packaged container's manifest and containing VM disk have distinct
+			// identities; admission must match the approved image reference.
+			b.Binding.ArtifactDigest = testRequestDigest("container-qcow2")
+		}
 		if e := s.PutImageBinding(ctx, c, b); e != nil {
 			t.Fatal(e)
 		}
@@ -165,7 +170,11 @@ func preparedBatchContract(t *testing.T, s *Store) {
 	for i := range request.Instances {
 		request.Instances[i].WorkFence = fence
 		// Deliberately omit ImageBindingIDs, as a direct YAML client would.
-		request.Instances[i].CanonicalJSON = []byte(fmt.Sprintf(`{"resources":[{"kind":"VM","spec":{"image":{"repository":"labcentral.local/images/img-fixture-%d","digest":"sha256:%s"}}}]}`, i, testRequestDigest(fmt.Sprintf("import.%d", i)).Hex()))
+		kind := "VM"
+		if i == 1 {
+			kind = "Container"
+		}
+		request.Instances[i].CanonicalJSON = []byte(fmt.Sprintf(`{"resources":[{"kind":%q,"spec":{"image":{"repository":"labcentral.local/images/img-fixture-%d","digest":"sha256:%s"}}}]}`, kind, i, testRequestDigest(fmt.Sprintf("import.%d", i)).Hex()))
 	}
 	if _, e := s.CreateInstanceBatch(ctx, request); e == nil {
 		t.Fatal("batch admitted an unapproved image")

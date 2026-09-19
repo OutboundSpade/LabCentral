@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,6 +22,28 @@ import (
 func TestResolvePinsOneCommitAndChecksCompleteSource(t *testing.T) {
 	root := "../../examples/template-library"
 	paths := []string{"index.yaml", "composed-network/bundle.yaml", "composed-network/lab.yaml", "composed-network/deps/base/network.yaml"}
+	seen := map[string]bool{}
+	for _, p := range paths {
+		seen[p] = true
+	}
+	if err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		if !seen[relative] {
+			paths = append(paths, relative)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	blobs := map[string][]byte{}
 	entries := []treeEntry{}
 	for _, p := range paths {
@@ -80,12 +103,14 @@ func TestResolvePinsOneCommitAndChecksCompleteSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if collection.Commit != commit || len(collection.Entries) != 1 {
+	if collection.Commit != commit || len(collection.Entries) != 3 {
 		t.Fatal("collection identity lost")
 	}
-	bundle, err := labbundle.Read(collection.Entries[0].Archive)
-	if err != nil || bundle.Manifest.Package == nil {
-		t.Fatal("invalid portable result")
+	for _, entry := range collection.Entries {
+		bundle, err := labbundle.Read(entry.Archive)
+		if err != nil || bundle.Manifest.Package == nil {
+			t.Fatal("invalid portable result", entry.Entry.Key, err)
+		}
 	}
 	again, err := resolver.resolve(context.Background(), config, pinned, func(string) error { t.Fatal("repinned known invocation"); return nil })
 	if err != nil || commits != 1 || string(again.Entries[0].Archive) != string(collection.Entries[0].Archive) {

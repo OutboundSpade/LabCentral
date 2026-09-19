@@ -364,7 +364,7 @@ func run(ctx context.Context, args []string) error {
 		}
 	}
 	// Ship the independently usable SDK/protocol surface and author examples.
-	for _, directory := range []string{"pkg/plugin-sdk-go", "pkg/plugin-sdk-browser", "pkg/labbundle", "api/plugin", "examples/external-source", "examples/external-builder", "examples/external-lifecycle-provider", "examples/external-access", "examples/external-browser", "examples/external-gateway", "examples/template-library", "tools/builders", "features"} {
+	for _, directory := range []string{"pkg/plugin-sdk-go", "pkg/plugin-sdk-browser", "pkg/labbundle", "api/plugin", "examples/external-source", "examples/external-builder", "examples/external-lifecycle-provider", "examples/external-access", "examples/external-browser", "examples/external-gateway", "examples/template-library", "tools/builders", "features", "schemas"} {
 		if err := filepath.WalkDir(directory, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -380,7 +380,7 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	for _, path := range []string{"go.mod", "go.sum", "docs/plugins/README.md", "docs/plugins/extensions.md", "docs/plugins/feature-packages.md", "docs/plugins/github-library.md", "docs/plugins/portable-templates.md", "docs/plugins/vm-builders.md", "docs/plugins/proxmox-image-import.md", "docs/plugins/shared-console.md", "docs/users/project-groups.md", "schemas/vm-builder-binding-v1.schema.json", "docs/design/extensions.md", "docs/operations/container-vm-runtime.md", "design/contracts/extension-package.schema.json", "design/contracts/extension-manifest.schema.json", "design/contracts/extension-installation.schema.json"} {
+	for _, path := range []string{"go.mod", "go.sum", "web/src/lib/extension-bridge.ts", "docs/plugins/README.md", "docs/plugins/extensions.md", "docs/plugins/feature-packages.md", "docs/plugins/github-library.md", "docs/plugins/portable-templates.md", "docs/plugins/vm-builders.md", "docs/plugins/proxmox-image-import.md", "docs/plugins/shared-console.md", "docs/users/project-groups.md", "schemas/vm-builder-binding-v1.schema.json", "docs/design/extensions.md", "docs/operations/container-vm-runtime.md", "design/contracts/extension-package.schema.json", "design/contracts/extension-manifest.schema.json", "design/contracts/extension-installation.schema.json"} {
 		if err := copyReleaseFile(path, filepath.Join(root, path)); err != nil {
 			return err
 		}

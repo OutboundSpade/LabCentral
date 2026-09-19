@@ -36,6 +36,8 @@ var artifactReferenceSchemaMigrations = []string{
 	"0014_extensible_access",
 	"0015_extension_work",
 	"0016_gateway_delegation", "0017_build_orchestration",
+	"0018_template_libraries", "0019_image_import_reservations",
+	"0020_project_groups", "0021_console_control",
 }
 
 type artifactGCConfig struct {

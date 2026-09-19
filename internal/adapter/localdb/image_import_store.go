@@ -105,8 +105,16 @@ func (s *Store) validateImportedImagesTx(ctx context.Context, tx *sql.Tx, reques
 			rows.Close()
 			return nil, err
 		}
-		if strings.HasPrefix(binding.ImageRef, domain.ImportedImageRepository+"/") && strings.HasSuffix(binding.ImageRef, "@sha256:"+binding.ArtifactDigest.Hex()) {
-			matches[domain.ImageRef(binding.ImageRef)] = id
+		// Import validation has already bound this immutable reference to its
+		// provider evidence. For packaged containers it names the OCI manifest,
+		// while ArtifactDigest identifies the containing qcow2 disk.
+		if strings.HasPrefix(binding.ImageRef, domain.ImportedImageRepository+"/") {
+			ref, err := domain.NewImageRef(binding.ImageRef)
+			if err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("invalid stored image reference")
+			}
+			matches[ref] = id
 		}
 	}
 	err = rows.Err()

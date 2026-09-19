@@ -296,7 +296,7 @@ try {
         .getByRole("button", { name: "Grant access", exact: true })
         .click();
       await page
-        .getByText("Environment access granted.", { exact: false })
+        .getByText("Environment access granted to this workspace.", { exact: true })
         .waitFor();
       const count = mutations.filter(
         (m) => m.path === "/provider-target-grants",
@@ -364,7 +364,7 @@ try {
         .getByRole("button", { name: "Grant access", exact: true })
         .click();
       await page
-        .getByText("Environment access granted.", { exact: false })
+        .getByText("Environment access granted to this workspace.", { exact: true })
         .waitFor();
       assert.equal(grants.length, 1);
       assert(!grants[0].validUntil);

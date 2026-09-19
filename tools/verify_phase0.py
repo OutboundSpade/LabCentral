@@ -1034,11 +1034,14 @@ def verify_release_supply_chain() -> None:
 
 def verify_markdown_links_and_state() -> None:
     link_pattern = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-    for markdown in ROOT.rglob("*.md"):
-        # Generated dependency/build trees are not repository documentation and
-        # may contain package-relative links whose source files are not shipped.
-        if {".git", "node_modules", ".svelte-kit"}.intersection(markdown.relative_to(ROOT).parts):
-            continue
+    # Check authored files, including new untracked documentation, without
+    # following ignored release extractions, operator records or dependencies.
+    authored = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.md"],
+        cwd=ROOT,
+    ).decode().split("\0")
+    for name in filter(None, authored):
+        markdown = ROOT / name
         for raw_target in link_pattern.findall(markdown.read_text(encoding="utf-8")):
             target = raw_target.split("#", 1)[0]
             if not target or "://" in target or target.startswith("mailto:"):

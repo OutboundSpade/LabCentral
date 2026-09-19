@@ -9,6 +9,7 @@ import (
 
 	wire "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	"github.com/OutboundSpade/LabCentral/pkg/containervm"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestContainerImageImportKeepsDiskAndOCIIdentitiesSeparate(t *testing.T) {
@@ -41,9 +42,9 @@ func TestContainerImageImportKeepsDiskAndOCIIdentitiesSeparate(t *testing.T) {
 	if document.Version != imageImportPlanV11 || document.ContainerRuntime == nil || *document.ContainerRuntime != evidence {
 		t.Fatal("runtime evidence not bound to reserved plan")
 	}
-	changed := *r
+	changed := proto.Clone(r).(*wire.ImageImportServiceImportRequest)
 	changed.ConfigurationJson = bytes.ReplaceAll(r.ConfigurationJson, []byte(evidence.ManifestDigest), []byte(sha("f")))
-	if _, err = s.Import(ctx, &changed); err == nil {
+	if _, err = s.Import(ctx, changed); err == nil {
 		t.Fatal("changed OCI identity reused reserved disk plan")
 	}
 	uploadImageFixture(t, s, r, data)

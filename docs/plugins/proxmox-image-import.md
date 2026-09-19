@@ -80,6 +80,18 @@ approval.
 
 `TASK-TEMPLATE-006` implements these paths. Exact-target live qualification remains a `TASK-TEMPLATE-008` gate before using the changed artifacts on infrastructure. These implementation contracts do not claim production deployment.
 
+The opt-in `TestCredentialedProxmoxT3ImageImport` qualification harness requires
+`LABCENTRAL_PROXMOX_T3_IMAGE_EXECUTE=I_ACKNOWLEDGE_LABCENTRAL_PROXMOX_T3_DESTRUCTIVE`
+and the same prefix with `TARGET_CONFIG`, `CREDENTIAL_FILE`, `CONFIRM_TARGET`,
+`RUN_ID`, `VMID`, and `ARTIFACT`. Supply an initially absent, reserved test VMID,
+a unique invocation ID, and a standalone qcow2 no larger than 64 MiB. Run it
+only in the isolated qualification runner against the exact candidate target.
+It verifies bounded transfer, an accepted create whose response is withheld,
+restart recovery, binding validation, replay, owned retirement, and absence.
+Failures retain the journal and any uncertain resources for ownership-checked
+operator reconciliation. This supplements the infrastructure T3 matrix and
+does not enable production mutation by itself.
+
 ## Participant preparation
 
 `POST /deployment-preparations` accepts `preparation.version: 2` for a single
