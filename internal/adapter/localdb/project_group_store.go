@@ -308,3 +308,47 @@ func (s *Store) ChangeProjectGroupMembership(ctx context.Context, r app.ChangePr
 }
 
 var _ app.ProjectGroupStore = (*Store)(nil)
+
+func (s *Store) ListProjectGroupMembers(ctx context.Context, project domain.ProjectID, group domain.TeamID, actor domain.UserID, after string, limit uint32) (out app.ProjectGroupMemberPage, err error) {
+	if limit == 0 || limit > 200 || len(after) > 128 {
+		return out, fmt.Errorf("member list bounds")
+	}
+	err = s.workTx(ctx, func(tx *sql.Tx) error {
+		if e := s.requireGroupProjectAuthorityTx(ctx, tx, project, actor, false); e != nil {
+			return e
+		}
+		g, e := s.groupTx(ctx, tx, project, group, actor, false)
+		if e != nil {
+			return e
+		}
+		// A project user may discover groups, but member identities require current
+		// enrollment or project administration. Check both in this read transaction.
+		if !g.Joined {
+			if e = s.requireGroupProjectAuthorityTx(ctx, tx, project, actor, true); e != nil {
+				return e
+			}
+		}
+		rows, e := tx.QueryContext(ctx, s.bind(`SELECT u.user_id,u.display_name FROM labcentral_project_enrollments e JOIN labcentral_users u ON u.user_id=e.user_id WHERE e.project_id=? AND e.team_id=? AND e.user_id>? ORDER BY e.user_id LIMIT ?`), project, group, after, limit+1)
+		if e != nil {
+			return e
+		}
+		defer rows.Close()
+		out = app.ProjectGroupMemberPage{Items: []app.ProjectGroupMember{}}
+		for rows.Next() {
+			var m app.ProjectGroupMember
+			if e = rows.Scan(&m.ID, &m.DisplayName); e != nil {
+				return e
+			}
+			out.Items = append(out.Items, m)
+		}
+		if e = rows.Err(); e != nil {
+			return e
+		}
+		if len(out.Items) > int(limit) {
+			out.Items = out.Items[:limit]
+			out.NextCursor = string(out.Items[len(out.Items)-1].ID)
+		}
+		return nil
+	})
+	return
+}

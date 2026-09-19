@@ -1297,6 +1297,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/groups/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get projects by project ID groups by ID members */
+        get: operations["get-projects-by-project-id-groups-by-id-members"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/provider-target-grants": {
         parameters: {
             query?: never;
@@ -3072,6 +3089,20 @@ export interface components {
             /** Format: int64 */
             resourceVersion: number;
         };
+        ProjectGroupMember: {
+            displayName: string;
+            id: string;
+        };
+        ProjectGroupMemberPage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/ProjectGroupMemberPage.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["ProjectGroupMember"][] | null;
+            nextCursor?: string;
+        };
         ProjectGroupPage: {
             /**
              * Format: uri
@@ -3397,7 +3428,9 @@ export interface components {
              */
             readonly $schema?: string;
             parameters: components["schemas"]["TemplateParameterDTO"][] | null;
+            recipes: components["schemas"]["TemplateRecipeSummary"][] | null;
             source: string;
+            sourceArchive: boolean;
         };
         TemplateLibrary: {
             /**
@@ -3432,6 +3465,13 @@ export interface components {
             pattern?: string;
             required?: boolean;
             type: string;
+        };
+        TemplateRecipeSummary: {
+            architecture: string;
+            available: boolean;
+            builder: string;
+            dependsOn: string[] | null;
+            id: string;
         };
         TemplateRevisionDTO: {
             /**
@@ -6579,6 +6619,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectGroup"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-projects-by-project-id-groups-by-id-members": {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                projectId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectGroupMemberPage"];
                 };
             };
             /** @description Error */

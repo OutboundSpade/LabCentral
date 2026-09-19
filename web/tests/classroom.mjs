@@ -107,14 +107,14 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   assert.equal(mutations.find(m=>m.path==='/lifetime-policies/project/project.class').body.defaultTtlSeconds,14400);
   await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');
   const classroom=page.frameLocator('iframe[title="Classroom"]');
-  await classroom.getByRole('heading',{name:'Students & labs'}).waitFor();
+  await classroom.getByRole('heading',{name:'Students & labs'}).waitFor();await page.screenshot({path:new URL(`${name}-classroom-ready.png`,shots).pathname,fullPage:true});
   await classroom.getByLabel('Alex Morgan',{exact:true}).check();
-  await classroom.getByText('Launch classroom labs',{exact:true}).click();
+  await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).click();
   await classroom.getByLabel('Template',{exact:true}).selectOption(template.id);
   await classroom.getByLabel('Workstation name',{exact:true}).fill('classroom');
   await classroom.getByLabel('Lab lifetime (minutes)',{exact:true}).fill('90');
-  await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).click();
-  await classroom.locator('.status').filter({hasText:'Classroom launch accepted.'}).waitFor();
+  await classroom.getByRole('dialog').getByRole('button',{name:'Launch selected labs',exact:true}).click();
+  await classroom.locator('[data-feedback]').filter({hasText:'Classroom launch accepted.'}).waitFor();
   assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.owners[0].ownerId,'user.student');
   assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.ttlSeconds,5400);
   labs=[{...lab,id:'instance.bulk-a'},{...lab,id:'instance.bulk-b'}];
@@ -123,13 +123,13 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await classroom.getByLabel('Select lab instance.bulk-b',{exact:true}).check();
   await classroom.getByRole('button',{name:'End selected labs'}).click();
   await classroom.getByRole('heading',{name:'End 2 labs?'}).waitFor();
-  await classroom.getByRole('button',{name:'Confirm',exact:true}).click();
+  await classroom.getByRole('dialog').getByRole('button',{name:'End selected labs',exact:true}).click();
   await classroom.getByText('2 deletions queued.',{exact:true}).waitFor();
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-a/actions/destroy'));
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-b/actions/destroy'));
   await page.setViewportSize({width:390,height:844});
   for(const route of ['','launch','classroom','people','settings']){
-   await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{level:1}).waitFor();await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} ${route} mobile overflow`);if(name==='chromium')await page.screenshot({path:new URL(`mobile-${route||'labs'}.png`,shots).pathname,fullPage:true});
+   await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{level:1}).waitFor();if(route==='classroom')await page.frameLocator('iframe[title="Classroom"]').getByRole('heading',{name:'Students & labs'}).waitFor();await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} ${route} mobile overflow`);if(name==='chromium')await page.screenshot({path:new URL(`mobile-${route||'labs'}.png`,shots).pathname,fullPage:true});
   }
   subjectId='user.other';noProjects=true;await page.evaluate(()=>document.querySelector('a[href="/"]').click());await page.getByRole('heading',{name:'No projects assigned yet',exact:true}).waitFor();
   sessionDenied=true;await page.evaluate(()=>document.querySelector('a[href="/launch/"]').click());await page.getByRole('heading',{name:'Sign in to LabCentral',exact:true}).waitFor();assert.equal(await page.locator('.drawer').count(),0);sessionDenied=false;

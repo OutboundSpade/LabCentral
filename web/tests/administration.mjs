@@ -431,13 +431,13 @@ try {
         path: new URL(`${engineName}-plugins.png`, shots).pathname,
         fullPage: true,
       });
-      await page.goto(origin+'/templates/');const library=page.frameLocator('iframe[title="Template Library"]');await library.getByText('Author a template',{exact:true}).click();await library.getByRole('button',{name:'Form',exact:true}).click();
+      await page.goto(origin+'/templates/');const library=page.frameLocator('iframe[title="Template Library"]');await library.getByRole('tab',{name:'Author',exact:true}).click();await library.getByRole('button',{name:'Form',exact:true}).click();
       await library.getByRole('group',{name:'metadata',exact:true}).getByRole('textbox',{name:'name *',exact:true}).fill('generated-lab');
       await library.getByRole('button',{name:'Add vms',exact:true}).click();await library.getByRole('button',{name:'Add vms item',exact:true}).click();
       const vm=library.getByRole('group',{name:'vms 1',exact:true});await vm.getByRole('textbox',{name:'name *',exact:true}).fill('workstation');await vm.getByRole('textbox',{name:'imageRef *',exact:true}).fill('example@sha256:test');await vm.getByRole('spinbutton',{name:'cpu *',exact:true}).fill('2');await vm.getByRole('textbox',{name:'memory *',exact:true}).fill('512Mi');
       await library.getByRole('button',{name:'Source',exact:true}).click();const built=JSON.parse(await library.getByLabel('Lab YAML',{exact:true}).inputValue());assert.equal(built.metadata.name,'generated-lab');assert.equal(built.spec.resources.vms[0].compute.cpu,2);
       await library.getByRole('button',{name:'Form',exact:true}).click();await library.getByRole('group',{name:'vms 1',exact:true}).waitFor();
-      await page.goto(origin+'/plugins/');
+      page.once('dialog', dialog => dialog.accept());await page.goto(origin+'/plugins/');
       await page.setViewportSize({ width: 390, height: 844 });
       await page.waitForTimeout(200);
       assert(

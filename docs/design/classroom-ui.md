@@ -238,3 +238,28 @@ see [template requirements](../users/templates.md).
 ## Optional classroom package
 
 ADR-0026 makes Classroom an independently installed feature package; generic project teams and collaboration work without it. Existing classroom workflows and URLs retain compatibility when installed. The target contract is defined in [portable templates and collaboration](portable-template-collaboration.md).
+
+## Independent feature usability (TASK-UI-011)
+
+Feature packages use the published browser SDK's charcoal/purple theme and the
+same DaisyUI controls as core. The theme source is shared at packaging time;
+packages remain independently installable. Top-level frames use the remaining
+viewport with task tabs and anchored actions; opaque sandbox isolation is retained.
+
+Library separates Browse, Author, Import, Libraries, Images and Activity. Browse
+owns one template/revision selection used by launch and recipe discovery. Refresh
+preserves draft edits; changing documents or leaving the page/workspace requires
+an explicit discard decision. Multi-file source packages are exported for local
+editing and reimported; the YAML/form editor cannot silently strip their closure.
+Image actions use current binding approval/retirement state and administrator
+hints, with core authorization on every request. Unconfigured sources explain the
+operator prerequisite and disable sync setup commands.
+
+Teams separates the current team, group discovery and administrative oversight.
+A paginated member-display API is available only to currently enrolled project
+members or project administrators, with project authority and enrollment checked
+in the read transaction. It exposes IDs and display names, not account credentials
+or unrelated organization membership. Classroom uses searchable compact student
+rows, selected counts, a launch dialog and separate group-lab presentation. Recent
+preparation updates preserve keyboard focus and do not offer known-inaccessible
+or ended labs as current destinations. Destructive dialogs name their action.

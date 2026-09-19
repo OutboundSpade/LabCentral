@@ -225,6 +225,10 @@ export function editor(parent, source) {
   };
   actions.append(
     button("Form", async () => {
+      if (source.readOnly)
+        throw new Error(
+          "Edit the complete source archive locally, then import it. Form editing is for single-file templates.",
+        );
       schema ??= await request("templates.authoringSchema");
       const document = source.value.trim()
         ? await request("templates.authoringDocument", { source: source.value })
@@ -237,15 +241,10 @@ export function editor(parent, source) {
       );
       const fields = el("div");
       form.append(fields);
-      render(
-        fields,
-        schema,
-        schema,
-        document,
-        "Lab",
-        false,
-        (value) => (source.value = JSON.stringify(value, null, 2)),
-      );
+      render(fields, schema, schema, document, "Lab", false, (value) => {
+        source.value = JSON.stringify(value, null, 2);
+        source.dispatchEvent(new Event("input", { bubbles: true }));
+      });
       form.hidden = false;
       source.parentElement.hidden = true;
     }),

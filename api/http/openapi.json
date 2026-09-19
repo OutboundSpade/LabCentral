@@ -4025,6 +4025,52 @@
         ],
         "type": "object"
       },
+      "ProjectGroupMember": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "type": "object"
+      },
+      "ProjectGroupMemberPage": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/ProjectGroupMemberPage.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectGroupMember"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "ProjectGroupPage": {
         "additionalProperties": false,
         "properties": {
@@ -5011,11 +5057,25 @@
               "null"
             ]
           },
+          "recipes": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateRecipeSummary"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "source": {
             "type": "string"
+          },
+          "sourceArchive": {
+            "type": "boolean"
           }
         },
         "required": [
+          "recipes",
+          "sourceArchive",
           "source",
           "parameters"
         ],
@@ -5120,6 +5180,40 @@
         "required": [
           "name",
           "type"
+        ],
+        "type": "object"
+      },
+      "TemplateRecipeSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "builder": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "builder",
+          "architecture",
+          "dependsOn",
+          "available"
         ],
         "type": "object"
       },
@@ -10382,6 +10476,77 @@
           }
         },
         "summary": "Post projects by project ID groups by ID leave"
+      }
+    },
+    "/projects/{projectId}/groups/{id}/members": {
+      "get": {
+        "operationId": "get-projects-by-project-id-groups-by-id-members",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "format": "int32",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectGroupMemberPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get projects by project ID groups by ID members"
       }
     },
     "/provider-target-grants": {

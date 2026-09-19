@@ -28,7 +28,7 @@ type BrowserContribution struct {
 	Permissions []string `json:"permissions"`
 }
 
-const BrowserHostVersion = 3
+const BrowserHostVersion = 4
 
 type BrowserPackage struct {
 	MinimumHostVersion uint32                `json:"minimumHostVersion,omitempty"`
@@ -100,7 +100,7 @@ func SnapshotBrowser(root, manifestPath string, m Manifest) (map[string]AssetSna
 		}
 		seen := map[string]bool{}
 		for _, permission := range c.Permissions {
-			if !slices.Contains(m.RequestedPermissions, permission) || seen[permission] || !slices.Contains([]string{"context.read", "topology.read", "status.read", "access.create", "access.stream", "navigation.lab", "templates.read", "templates.write", "builds.read", "builds.create", "images.manage", "sources.read", "sources.resolve", "labs.read", "labs.create", "labs.manage", "members.read", "groups.read", "groups.enroll", "groups.manage"}, permission) {
+			if !slices.Contains(m.RequestedPermissions, permission) || seen[permission] || !slices.Contains([]string{"page.presentation", "context.read", "topology.read", "status.read", "access.create", "access.stream", "navigation.lab", "templates.read", "templates.write", "builds.read", "builds.create", "images.manage", "sources.read", "sources.resolve", "labs.read", "labs.create", "labs.manage", "members.read", "groups.read", "groups.enroll", "groups.manage"}, permission) {
 				return nil, fmt.Errorf("invalid browser permission")
 			}
 			seen[permission] = true

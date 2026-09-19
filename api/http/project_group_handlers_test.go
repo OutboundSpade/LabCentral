@@ -32,6 +32,8 @@ func TestProjectGroupAPIEnrollmentIsSelfScoped(t *testing.T) {
 	requireGovernanceStatus(t, response, 200)
 	response = member.request(http.MethodGet, "/api/v1/projects/project.beta/groups", nil, "", "")
 	requireGovernanceStatus(t, response, 403)
+	requireGovernanceStatus(t, member.request(http.MethodGet, first+"/members", nil, "", ""), 404)
+	requireGovernanceStatus(t, admin.request(http.MethodGet, first+"/members", nil, "", ""), 200)
 	response = member.request(http.MethodPost, first+"/join", nil, "", "group-self-join")
 	requireGovernanceStatus(t, response, 200)
 	var joined app.ProjectGroup
@@ -39,6 +41,15 @@ func TestProjectGroupAPIEnrollmentIsSelfScoped(t *testing.T) {
 	if !joined.Joined || joined.MemberCount != 1 {
 		t.Fatal("joined projection")
 	}
+	var roster app.ProjectGroupMemberPage
+	response = member.request(http.MethodGet, first+"/members", nil, "", "")
+	requireGovernanceStatus(t, response, 200)
+	decodeGovernanceResponse(t, response, &roster)
+	if len(roster.Items) != 1 || roster.Items[0].ID != "user.auditor" {
+		t.Fatal("unexpected roster", roster)
+	}
+	requireGovernanceStatus(t, member.request(http.MethodGet, second+"/members", nil, "", ""), 404)
+	requireGovernanceStatus(t, member.request(http.MethodGet, "/api/v1/projects/project.beta/groups/"+string(page.Items[0].ID)+"/members", nil, "", ""), 403)
 	response = member.request(http.MethodPost, second+"/join", nil, "", "group-conflict-join")
 	requireGovernanceStatus(t, response, 409)
 	response = member.request(http.MethodPut, first+"/enrollment", map[string]bool{"open": false}, `"1"`, "group-close-denied")
@@ -51,6 +62,7 @@ func TestProjectGroupAPIEnrollmentIsSelfScoped(t *testing.T) {
 	requireGovernanceStatus(t, response, 200)
 	response = member.request(http.MethodPost, first+"/join", nil, "", "group-closed-join")
 	requireGovernanceStatus(t, response, 409)
+	requireGovernanceStatus(t, member.request(http.MethodGet, first+"/members", nil, "", ""), 404)
 	// The enrolled viewer has not gained deployment or administrator roles.
 	snapshot, err := f.database.AuthorizationSnapshot(context.Background(), "user.auditor", time.Now())
 	if err != nil || len(snapshot.Assignments) != 1 || snapshot.Assignments[0].Role != app.RoleViewer {

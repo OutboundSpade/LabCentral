@@ -16,19 +16,75 @@ import {
   confirm,
   inspect,
   context,
+  tabs,
+  modal,
+  setDirty,
+  stableList,
 } from "./ui.js";
 import { launchForm, preparations } from "./launch.js";
 import { editor as sourceEditor } from "./editor.js";
 import { initialize } from "./ui.js";
 await initialize(async () => {
-  const author = can("template.create");
+  const author = can("template.create"),
+    imageAdmin = !!context.imageAdministrator;
+  const views = tabs([
+    "Browse",
+    ...(author ? ["Author", "Import", "Libraries"] : []),
+    ...(author || imageAdmin ? ["Images"] : []),
+    "Activity",
+  ]);
+  const panels = views.panels;
+  let baseline = "",
+    dirty = false,
+    metadata = {},
+    recipesControl,
+    recipeInfo,
+    publishButton;
+  const draftValue = () =>
+    JSON.stringify([name?.value, descriptionInput?.value, source?.value]);
+  async function markDraft() {
+    const next = draftValue() !== baseline;
+    if (dirty !== next) {
+      dirty = next;
+      await setDirty(dirty);
+    }
+  }
+  async function cleanDraft() {
+    baseline = draftValue();
+    dirty = false;
+    await setDirty(false);
+  }
+  async function discardDraft() {
+    if (!dirty) return true;
+    return confirm(
+      "Discard unsaved changes?",
+      "Your unpublished edits will be lost.",
+      [],
+      "Discard changes",
+    );
+  }
+
   app.prepend(
     el(
       "p",
       "Reusable lab sources, build recipes, and pinned dependencies. Portable exports contain source files needed to recreate images.",
     ),
   );
-  const browse = section("Published templates");
+  const browse = section("Published templates", panels.Browse);
+  const search = field(browse, "Search templates", "input", {
+    type: "search",
+    placeholder: "Search by name or description",
+  });
+  search.oninput = () => {
+    const matched = templates.filter((t) =>
+      (t.name + " " + t.description)
+        .toLowerCase()
+        .includes(search.value.toLowerCase()),
+    );
+    if (selected && !matched.some((t) => t.id === selected.id))
+      matched.unshift(selected);
+    options(selection, matched, "Choose a template");
+  };
   const selection = field(browse, "Template", "select"),
     revision = field(browse, "Revision", "select");
   const description = el("p");
@@ -40,7 +96,9 @@ await initialize(async () => {
     selected = null,
     loadedRevision = "",
     generation = 0;
-  const launch = details("Launch this template");
+  const launch = section("Launch this template", panels.Browse);
+  const launchSummary = el("p", "", { class: "font-medium" });
+  launch.append(launchSummary);
   const ownerSelect = field(launch, "Lab owner", "select");
   options(ownerSelect, [{ id: "me", label: "Just me" }]);
   ownerSelect.value = "me";
@@ -57,6 +115,9 @@ await initialize(async () => {
         ? { kind: "user", id: context.subjectId }
         : { kind: "team", id: ownerSelect.value },
   });
+  launcher.template.parentElement.hidden = true;
+  launcher.revision.parentElement.hidden = true;
+  const activity = preparations(panels.Activity);
   // Context is supplied by the authenticated host, never entered by the package.
   const browseActions = el("div", "", { class: "actions" });
   browse.append(browseActions);
@@ -88,16 +149,37 @@ await initialize(async () => {
     if (source) source.value = "";
     editorMode?.reset();
     sourceText.textContent = "";
-    if (!revision.value) return;
+    if (!revision.value) {
+      await launcher.select("", "");
+      launchSummary.textContent = "Choose a published template to launch.";
+      return;
+    }
     const content = await request("templates.content", {
       templateId: selection.value,
       revisionId: revision.value,
     });
     if (token !== generation) return;
     loadedRevision = revision.value;
+    metadata = content;
+    launchSummary.textContent = `${selected?.name ?? ""} · ${revision.selectedOptions[0]?.textContent ?? ""}`;
+    if (recipesControl) {
+      options(
+        recipesControl,
+        (content.recipes ?? []).map((r) => ({
+          id: r.id,
+          label: `${r.id} · ${r.builder}${r.available ? "" : " · Builder unavailable"}`,
+        })),
+        "Choose a recipe",
+      );
+      recipesControl.value = content.recipes?.[0]?.id ?? "";
+      recipesControl.onchange?.();
+    }
+    if (publishButton) publishButton.disabled = !!content.sourceArchive;
+    if (source) source.readOnly = !!content.sourceArchive;
     sourceText.textContent = content.source;
     if (source) source.value = content.source;
     await launcher.select(selection.value, revision.value);
+    await cleanDraft();
   }
   async function choose() {
     const token = ++generation;
@@ -126,13 +208,27 @@ await initialize(async () => {
     options(selection, templates);
     options(launcher.template, templates);
     if (!selection.value) selection.value = templates[0]?.id ?? "";
-    await choose();
+    if (!dirty) await choose();
   }
-  selection.onchange = () => choose().catch((e) => message(e.message, true));
-  revision.onchange = () =>
-    loadRevision().catch((e) => message(e.message, true));
+  selection.onchange = async () => {
+    if (await discardDraft())
+      await choose().catch((e) => message(e.message, true));
+    else selection.value = selected?.id ?? "";
+  };
+  revision.onchange = async () => {
+    if (await discardDraft())
+      await loadRevision().catch((e) => message(e.message, true));
+    else revision.value = loadedRevision;
+  };
   if (author) {
-    editor = details("Author a template");
+    editor = section("Author a template", panels.Author);
+    editor.append(
+      el(
+        "p",
+        "Edit single-file lab YAML here. For portable templates, export the sources, edit Dockerfiles, playbooks and configuration locally, rebuild the source archive with lab-template-pack, then import a new independent template. This editor never replaces a multi-file package with a single YAML file.",
+        { class: "muted" },
+      ),
+    );
     name = field(editor, "Template name", "input", {
       maxlength: 63,
       required: true,
@@ -148,6 +244,9 @@ await initialize(async () => {
       spellcheck: false,
     });
     editorMode = sourceEditor(editor, source);
+    editor.addEventListener("input", () =>
+      markDraft().catch((e) => message(e.message, true)),
+    );
     editor.append(
       el(
         "p",
@@ -157,7 +256,11 @@ await initialize(async () => {
     const actions = el("div", "", { class: "actions" });
     editor.append(actions);
     actions.append(
-      button("New template", () => {
+      button("New template", async () => {
+        if (!(await discardDraft())) return;
+        metadata = {};
+        source.readOnly = false;
+        publishButton.disabled = false;
         selection.value = "";
         selected = null;
         name.value = "";
@@ -165,8 +268,14 @@ await initialize(async () => {
         source.value = "";
         editorMode.reset();
         options(revision, []);
+        await launcher.select("", "");
+        launchSummary.textContent = "Choose a published template to launch.";
+        description.textContent = "";
+        sourceText.textContent = "";
+        await cleanDraft();
       }),
       button("Make independent copy", async () => {
+        if (!(await discardDraft())) return;
         if (!selected) throw new Error("Select a template first.");
         if (!revision.value) throw new Error("Select a published revision.");
         const original = { ...selected },
@@ -188,6 +297,7 @@ await initialize(async () => {
           archive: pendingCopy.archive,
         });
         pendingCopy = undefined;
+        await cleanDraft();
         await refreshTemplates();
         selection.value = copy.id;
         await choose();
@@ -204,7 +314,7 @@ await initialize(async () => {
           `Template validated: ${result.resourceCount} resources. ${(result.warnings ?? []).map((w) => w.message).join(" ")}`,
         );
       }),
-      button(
+      (publishButton = button(
         "Publish revision",
         async () => {
           if (selected && revision.value && loadedRevision !== revision.value)
@@ -236,20 +346,25 @@ await initialize(async () => {
             });
             selected = target;
           }
+          if (metadata.sourceArchive)
+            throw new Error(
+              "Export and edit the complete source archive, then import it as an independent template.",
+            );
           const templateId = target.id;
           await mutate("templates.publish", {
             templateId,
             source: draft.source,
           });
+          await cleanDraft();
           await refreshTemplates();
           selection.value = templateId;
           await choose();
           message("Revision published.");
         },
         "primary",
-      ),
+      )),
     );
-    const imports = details("Import a source archive");
+    const imports = section("Import a source archive", panels.Import);
     const file = field(imports, "Source archive", "input", {
       type: "file",
       accept: ".tar,.tgz,.gz,application/gzip,application/x-tar",
@@ -291,7 +406,31 @@ await initialize(async () => {
           ["Unresolved local bindings", preview.unresolvedBuilders],
         ]) {
           const d = details(label, previewBox);
-          inspect(d, value ?? []);
+          const items = value ?? [];
+          if (!items.length) d.append(el("p", "None"));
+          for (const item of items)
+            d.append(
+              el(
+                "p",
+                typeof item === "string"
+                  ? item
+                  : [
+                      item.id ?? item.name ?? item.mount ?? item.package,
+                      item.kind,
+                      item.schema,
+                      item.digest,
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+              ),
+            );
+          if (label === "Unresolved local bindings" && items.length)
+            d.append(
+              el(
+                "p",
+                "Ask an administrator to bind these builder requirements in this installation before building. Import preserves the portable source unchanged.",
+              ),
+            );
         }
         publishArchive.disabled = false;
       } catch (e) {
@@ -304,6 +443,7 @@ await initialize(async () => {
     publishArchive = button(
       "Import as independent template",
       async () => {
+        if (!(await discardDraft())) return;
         if (!preview || !archive || !importName.value)
           throw new Error(
             "Preview an archive and enter its new template name.",
@@ -327,6 +467,7 @@ await initialize(async () => {
           archive: candidate,
         });
         pendingImport = undefined;
+        await cleanDraft();
         await refreshTemplates();
         selection.value = created.id;
         await choose();
@@ -338,7 +479,7 @@ await initialize(async () => {
     );
     publishArchive.disabled = true;
     imports.append(publishArchive);
-    const libraries = details("GitHub libraries");
+    const libraries = section("GitHub libraries", panels.Libraries);
     libraries.append(
       el(
         "p",
@@ -348,7 +489,7 @@ await initialize(async () => {
     const binding = field(libraries, "Configured source", "select"),
       reference = field(libraries, "Repository reference", "input", {
         maxlength: 1024,
-        placeholder: "Reference accepted by your configured GitHub source",
+        placeholder: "main",
       }),
       interval = field(libraries, "Poll interval (minutes)", "input", {
         type: "number",
@@ -364,11 +505,31 @@ await initialize(async () => {
         .map((b) => ({ id: b.binding, label: b.binding })),
     );
     binding.value = available.find((b) => b.available)?.binding ?? "";
+    libraries.append(
+      el(
+        "p",
+        "Enter the branch, tag or commit configured by your operator, for example main. The repository and read credential belong to the selected source binding.",
+        { class: "muted" },
+      ),
+    );
+    const configured = available.some((b) => b.available);
+    if (!configured)
+      libraries.prepend(
+        el(
+          "p",
+          "No GitHub source is configured for this workspace. Ask an administrator to configure a repository and grant its source binding here. No repository credential is entered on this page.",
+          { role: "status" },
+        ),
+      );
     const libraryList = el("div");
     libraries.append(
       button(
         "Add library",
         async () => {
+          if (!binding.value || !reference.value.trim())
+            throw new Error(
+              "Choose a configured source and enter its configured branch, tag or commit.",
+            );
           await mutate("libraries.create", {
             binding: binding.value,
             reference: reference.value,
@@ -389,6 +550,8 @@ await initialize(async () => {
       }),
       libraryList,
     );
+    if (!configured)
+      for (const b of libraries.querySelectorAll("button")) b.disabled = true;
     let renderedLibraries = "";
     async function refreshLibraries() {
       const values = (await request("libraries.list")).items ?? [];
@@ -405,6 +568,10 @@ await initialize(async () => {
             library.paused
               ? `Paused: ${library.pauseReason ?? "by author"}`
               : `Polling every ${library.intervalSeconds / 60} minutes`,
+          ),
+          el(
+            "small",
+            `Next poll: ${new Date(library.nextSyncAt).toLocaleString()}`,
           ),
           button("Sync now", async () => {
             await mutate("libraries.sync", { libraryId: library.id });
@@ -428,7 +595,22 @@ await initialize(async () => {
             ]);
             const detail = details("Entries and synchronization history", card);
             detail.open = true;
-            inspect(detail, { entries: data[0].items, history: data[1].items });
+            for (const entry of data[0].items ?? [])
+              detail.append(
+                el(
+                  "p",
+                  `${entry.key} · ${entry.available ? "Available upstream" : "Removed upstream"} · Commit ${entry.commit}`,
+                ),
+              );
+            for (const work of data[1].items ?? [])
+              detail.append(
+                el(
+                  "p",
+                  `${new Date(work.createdAt).toLocaleString()} · ${work.state}${work.failureCode ? ` · ${work.failureCode}` : ""} · ${work.result?.commit ?? "Commit pending"}`,
+                ),
+              );
+            if (!(data[1].items ?? []).length)
+              detail.append(el("p", "No synchronization has completed yet."));
           }),
         );
         libraryList.append(card);
@@ -436,76 +618,177 @@ await initialize(async () => {
     }
     await refreshLibraries();
     poll(refreshLibraries, 15000);
-    const builds = details("Image builds and approvals");
-    const recipe = field(builds, "Recipe ID", "input", { maxlength: 64 });
+  }
+  if (author || imageAdmin) {
+    const builds = section("Build recipes", panels.Images);
     builds.append(
-      button("Build image", async () => {
-        if (!revision.value) throw new Error("Select a published revision.");
-        await mutate("builds.create", {
-          revisionId: revision.value,
-          recipeId: recipe.value,
-        });
-        await refreshWork();
-      }),
+      el(
+        "p",
+        "Recipes come from the template selected in Browse. Imports and approvals apply to the environment shown here.",
+        { class: "muted" },
+      ),
     );
-    const workList = el("div");
-    builds.append(workList);
-    let refreshing = false,
-      renderedWork = "";
+    recipesControl = field(builds, "Build recipe", "select");
+    recipeInfo = el("p");
+    builds.append(recipeInfo);
+    recipesControl.onchange = () => {
+      const r = (metadata.recipes ?? []).find(
+        (r) => r.id === recipesControl.value,
+      );
+      recipeInfo.textContent = r
+        ? `${r.architecture} · ${r.available ? "Builder available" : "Builder unavailable — ask an administrator to configure the required binding"}${r.dependsOn?.length ? ` · Depends on ${r.dependsOn.join(", ")}` : ""}`
+        : "This template uses existing images and has no build recipes.";
+    };
+    const environment = field(builds, "Image environment", "select");
+    options(environment, (await request("targets.list")).items ?? []);
+    environment.value = launcher.target.value;
+    if (author)
+      builds.append(
+        button(
+          "Build image",
+          async () => {
+            const r = (metadata.recipes ?? []).find(
+              (r) => r.id === recipesControl.value,
+            );
+            if (!r) {
+              recipesControl.focus();
+              throw new Error(
+                "Choose a template with build recipes in Browse, then select its recipe.",
+              );
+            }
+            if (!r.available)
+              throw new Error(
+                "The required builder is unavailable. Ask an administrator to configure its binding.",
+              );
+            await mutate("builds.create", {
+              revisionId: revision.value,
+              recipeId: r.id,
+            });
+            message("Image build queued.");
+            await refreshWork();
+          },
+          "primary",
+        ),
+      );
+    const workPanel = section("Builds and imported images", panels.Images),
+      workList = el("div", "", { class: "space-y-3" });
+    workPanel.append(workList);
+    let pending = false;
     async function refreshWork() {
-      if (refreshing) return;
-      refreshing = true;
+      if (pending) return;
+      pending = true;
       try {
         const work = (await request("builds.list")).items ?? [];
-        const next = JSON.stringify(work);
-        if (next === renderedWork) return;
-        renderedWork = next;
-        workList.replaceChildren();
-        for (const w of work) {
+        const visible = work.filter(
+          (w) =>
+            ["build", "image-import"].includes(w.request.kind) &&
+            !w.request.import?.retireBindingId,
+        );
+        const rows = [];
+        for (const w of visible) {
+          let image = null;
+          if (w.request.kind === "image-import" && w.state === "succeeded")
+            try {
+              image = await request("images.get", { imageId: w.id });
+            } catch {
+              image = { unavailable: true };
+            }
+          rows.push({ ...w, image });
+        }
+        stableList(workList, rows, (w) => {
           const card = el("article");
+          const recipe =
+            w.request.build?.recipe?.id ?? w.request.build?.recipeId;
+          const stage = w.image?.retired
+            ? "Retired"
+            : w.image?.approved
+              ? "Approved"
+              : w.image?.unavailable
+                ? "Image unavailable"
+                : w.image
+                  ? "Awaiting approval"
+                  : (w.result?.stage ?? w.state);
           card.append(
-            el("h3", `${w.request.kind} · ${w.result?.stage ?? w.state}`),
-            el("small", w.id),
+            el(
+              "h3",
+              `${recipe ?? (w.request.kind === "build" ? "Image build" : "Imported image")} · ${stage}`,
+            ),
+            el(
+              "p",
+              `${new Date(w.createdAt).toLocaleString()}${w.image?.targetId ? ` · Environment: ${w.image.targetId}` : ""}`,
+            ),
           );
           if (w.failureCode)
             card.append(el("p", w.failureCode, { class: "error" }));
-          if (["queued", "running"].includes(w.state))
-            card.append(
-              button("Cancel", async () => {
+          const actions = el("div", "", { class: "actions" });
+          card.append(actions);
+          if (author && ["queued", "running"].includes(w.state))
+            actions.append(
+              button("Cancel build", async () => {
                 await mutate("builds.cancel", { operationId: w.id });
                 await refreshWork();
               }),
             );
-          if (w.request.kind === "build" && w.state === "succeeded")
-            card.append(
+          if (
+            imageAdmin &&
+            w.request.kind === "build" &&
+            w.state === "succeeded"
+          )
+            actions.append(
               button("Import to environment", async () => {
+                if (!environment.value)
+                  throw new Error("Select the image environment first.");
                 await mutate("images.import", {
                   buildId: w.id,
-                  targetId: launcher.target.value,
+                  targetId: environment.value,
                 });
+                message("Image import queued.");
                 await refreshWork();
               }),
             );
-          if (w.request.kind === "image-import" && w.state === "succeeded")
-            card.append(
-              button("Approve image", async () => {
-                await mutate("images.approve", {
-                  imageId: w.id,
-                  approved: true,
-                  retired: false,
-                });
-                message(
-                  "Image approved. Waiting preparations will recheck admission.",
-                );
-              }),
+          if (
+            imageAdmin &&
+            w.image &&
+            !w.image.unavailable &&
+            !w.image.retired
+          ) {
+            if (!w.image.approved)
+              actions.append(
+                button(
+                  "Approve image",
+                  async () => {
+                    if (
+                      !(await confirm(
+                        "Approve this image?",
+                        "Review the image evidence and target before allowing new deployments.",
+                        [
+                          w.image.targetId,
+                          w.image.binding?.artifactDigest ?? w.id,
+                        ],
+                        "Approve image",
+                      ))
+                    )
+                      return;
+                    await mutate("images.approve", {
+                      imageId: w.id,
+                      approved: true,
+                      retired: false,
+                    });
+                    await refreshWork();
+                  },
+                  "primary",
+                ),
+              );
+            actions.append(
               button(
                 "Retire image",
                 async () => {
                   if (
                     await confirm(
                       "Retire this image?",
-                      "New deployments will be blocked. Existing deployments retain their image until cleanup.",
-                      [w.id],
+                      "New deployments will be blocked. Existing labs retain their image until cleanup.",
+                      [w.image.targetId],
+                      "Retire image",
                     )
                   ) {
                     await mutate("images.approve", {
@@ -513,27 +796,39 @@ await initialize(async () => {
                       approved: false,
                       retired: true,
                     });
-                    message("Image retirement queued.");
+                    await refreshWork();
                   }
                 },
                 "danger",
               ),
             );
-          if (w.result) {
-            const data = details("Result", card);
-            inspect(data, w.result);
           }
-          workList.append(card);
-        }
+          if (w.image && !w.image.unavailable) {
+            const evidence = details("Image evidence", card);
+            for (const [key, value] of Object.entries(w.image.binding ?? {}))
+              if (typeof value !== "object")
+                evidence.append(el("p", `${key}: ${value}`));
+          }
+          const technical = details("Technical details", card);
+          inspect(technical, {
+            operationId: w.id,
+            request: w.request,
+            result: w.result,
+          });
+          return card;
+        });
+        if (!visible.length)
+          workList.append(
+            el("p", "No image builds yet.", { "data-key": "empty" }),
+          );
       } finally {
-        refreshing = false;
+        pending = false;
       }
     }
     await refreshWork();
-    poll(refreshWork);
+    poll(refreshWork, 15000);
   }
   browseActions.append(button("Refresh templates", refreshTemplates));
+  panels.Browse.append(browseActions, sourceView);
   await refreshTemplates();
-
-  preparations(app);
 });

@@ -66,3 +66,17 @@ The [web/client example](../../examples/proxmox-containers/lab.yaml) uses one
 VM per container and private static addresses. See [supported fields and console
 commands](../operations/container-vm-runtime.md). Each container also consumes a
 VM quota unit, with CPU and memory covering the entire guest.
+
+The Template Library has separate Browse, Author, Import, Libraries, Images and
+Activity views, according to your permissions. Choose the template and revision
+once in Browse, then select the lab owner and environment to prepare it. Activity
+retains preparation progress across reloads. Images lists declared recipes and the
+current approval state of imported images; approval requires an image administrator.
+
+The Author form edits single-file lab definitions. To change a portable template's
+Dockerfiles, Ansible playbooks or other files, export its sources, edit locally,
+repackage with `lab-template-pack`, and import the resulting source archive as an
+independent template. No built images are included. Unsaved form/source edits survive
+catalogue refresh; explicitly save or discard them before changing documents or
+leaving. A GitHub library requires an operator-configured source binding; its
+reference must match the configured branch, tag or commit (for example `main`).

@@ -60,6 +60,15 @@ Host-bound evidence and rollback instructions remain in protected operator recor
 Existing production load, recovery, failover and publisher gates remain open.
 See [the implementation contract](docs/design/portable-template-collaboration.md).
 
+## Feature page usability
+
+`TASK-UI-011` repairs Template Library, Teams and Classroom with the shared core
+theme, task-focused tabs, draft protection, accessible feedback and confirmations,
+authorized group rosters and administrator oversight. Additive host version 4
+provides permission-declared draft/navigation operations; older contributions
+retain their host semantics. Final release verification and private-testbed
+deployment are in progress. See [the UI contract](docs/design/classroom-ui.md).
+
 ## Independently installed extensions
 
 `TASK-EXT-001` through `TASK-EXT-007` implement the contracts and working orchestration under ADR-0023–ADR-0025. Independently installed provider, access, source, builder and browser contributions use explicit bindings and separate backend identities. Source publication, durable builds/imports/preparation, gateway device approval, isolated browser slots and descriptor-based workload/network access are implemented.

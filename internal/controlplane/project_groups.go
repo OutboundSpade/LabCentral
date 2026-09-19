@@ -82,3 +82,14 @@ func (s *Service) ChangeProjectGroupMembership(ctx context.Context, actor domain
 	}{project, group, join})
 	return store.ChangeProjectGroupMembership(ctx, app.ChangeProjectGroupMembership{ActorID: actor, ProjectID: project, GroupID: group, Join: join, IdempotencyKey: key, RequestDigest: digestBytes("projectGroup.member/v1", raw)})
 }
+
+func (s *Service) ListProjectGroupMembers(ctx context.Context, actor domain.UserID, project domain.ProjectID, group domain.TeamID, after string, limit uint32) (app.ProjectGroupMemberPage, error) {
+	if _, err := s.projectGroupStore(ctx, actor, project, app.ActionTemplateRead); err != nil {
+		return app.ProjectGroupMemberPage{}, err
+	}
+	store, ok := s.store.(app.ProjectGroupMemberStore)
+	if !ok {
+		return app.ProjectGroupMemberPage{}, ErrAccessUnavailable
+	}
+	return store.ListProjectGroupMembers(ctx, project, group, actor, after, limit)
+}

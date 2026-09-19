@@ -1,4 +1,9 @@
 <script lang="ts">
+  import {
+    featureDirty,
+    leaveFeatureDrafts,
+    hasFeatureDrafts,
+  } from "./feature-drafts";
   import { featurePermissions, featureRequest } from "./extension-bridge";
   import { presentAccess } from "./access-navigation";
   import { onMount } from "svelte";
@@ -33,9 +38,24 @@
   let frame = $state<HTMLIFrameElement>();
   let error = $state("");
   let disconnect = () => {};
-  beforeNavigate(() => disconnect());
+  beforeNavigate((navigation) => {
+    // Native beforeunload handles document exits and preserves a canceled session.
+    if (navigation.willUnload) return;
+    if (!leaveFeatureDrafts()) {
+      navigation.cancel();
+      return;
+    }
+    disconnect();
+  });
   onMount(() => {
     const nonce = crypto.randomUUID();
+    const unload = (event: BeforeUnloadEvent) => {
+      if (hasFeatureDrafts()) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", unload);
     const abort = new AbortController();
     let channel: MessageChannel | undefined;
     let initialUsed = false;
@@ -57,6 +77,8 @@
       "access.stream.write": "access.stream",
       "access.stream.close": "access.stream",
       "context.read": "context.read",
+      "page.dirty": "page.presentation",
+      "page.navigate": "page.presentation",
       "topology.read": "topology.read",
       "status.read": "status.read",
       "navigation.lab": "navigation.lab",
@@ -123,14 +145,54 @@
               resourceId,
               projectId,
               pluginInstance: extension.pluginInstance,
-              hostVersion: 3,
+              hostVersion: 4,
               allowedActions: [...allowedActions],
               subjectId,
+              imageAdministrator:
+                (
+                  await api<{ roles: string[] }>("/session", {
+                    signal: abort.signal,
+                  })
+                ).roles?.some((role) =>
+                  ["platform-administrator", "provider-administrator"].includes(
+                    role,
+                  ),
+                ) ?? false,
               methods: Object.keys(required).filter((method) =>
                 permissions.has(required[method]),
               ),
             };
-          else if (featurePermissions[data.method]) {
+          else if (data.method === "page.dirty") {
+            if (
+              extension.slot !== "page" ||
+              typeof data.input?.dirty !== "boolean" ||
+              Object.keys(data.input).length !== 1
+            )
+              throw new Error("Invalid presentation request");
+            featureDirty(nonce, data.input.dirty);
+            result = {};
+          } else if (data.method === "page.navigate") {
+            if (
+              extension.slot !== "page" ||
+              !["labs", "teams"].includes(data.input?.destination) ||
+              Object.keys(data.input).length !== 1
+            )
+              throw new Error("Invalid destination");
+            if (data.input.destination === "teams") {
+              const pages = await api<{ items: Extension[] }>(
+                "/extensions/browser",
+                { signal: abort.signal },
+              );
+              if (
+                !pages.items.some(
+                  (p) => p.slot === "page" && p.routeAlias === "teams",
+                )
+              )
+                throw new Error("Teams is not installed");
+            }
+            await goto(data.input.destination === "labs" ? "/" : "/teams/");
+            result = {};
+          } else if (featurePermissions[data.method]) {
             if (extension.slot !== "page")
               throw new Error("Feature operation requires a page contribution");
             const request = featureRequest(data.method, data.input, {
@@ -449,6 +511,8 @@
       channel?.port1.close();
       channel?.port2.close();
       frame?.removeEventListener("load", connect);
+      featureDirty(nonce, false);
+      window.removeEventListener("beforeunload", unload);
     };
   });
 </script>
@@ -460,6 +524,6 @@
   title={extension.title}
   sandbox="allow-scripts"
   referrerpolicy="no-referrer"
-  class="w-full rounded-box border border-base-300"
-  style:height={extension.slot === "page" ? "75vh" : "24rem"}
+  class="w-full min-w-0"
+  style:height={extension.slot === "page" ? "calc(100dvh - 13rem)" : "24rem"}
 ></iframe>

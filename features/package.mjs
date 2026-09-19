@@ -2,6 +2,30 @@
 import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
+import { compile } from "../web/node_modules/@tailwindcss/node/dist/index.mjs";
+import { Scanner } from "../web/node_modules/@tailwindcss/oxide/index.js";
+const cssSource = await readFile(
+  new URL("shared/style.css", import.meta.url),
+  "utf8",
+);
+const theme = await readFile(
+  new URL("../pkg/plugin-sdk-browser/theme.css", import.meta.url),
+  "utf8",
+);
+const compiler = await compile(cssSource + "\n" + theme, {
+  base: new URL("../web", import.meta.url).pathname,
+  onDependency() {},
+});
+const scanner = new Scanner({
+  sources: [
+    {
+      base: new URL(".", import.meta.url).pathname,
+      pattern: "**/*.{js,html}",
+      negated: false,
+    },
+  ],
+});
+const stylesheet = Buffer.from(compiler.build(scanner.scan()));
 const output = resolve(process.argv[2] ?? "bin/features");
 const installationRoot = process.argv[3] ?? output;
 const definitions = {
@@ -66,7 +90,10 @@ for (const [name, definition] of Object.entries(definitions)) {
     ["sdk.js", "../pkg/plugin-sdk-browser/index.js"],
   ];
   for (const [path, source] of files) {
-    const bytes = await readFile(new URL(source, import.meta.url));
+    const bytes =
+      path === "style.css"
+        ? stylesheet
+        : await readFile(new URL(source, import.meta.url));
     await writeFile(join(dir, path), bytes, { mode: 0o600 });
     assets.push({
       path,
@@ -76,12 +103,13 @@ for (const [name, definition] of Object.entries(definitions)) {
   const permissions = [
     "context.read",
     "navigation.lab",
+    "page.presentation",
     ...definition.permissions,
   ];
   const manifest = {
     apiVersion: "labcentral.io/plugin-manifest/v2",
     id: `io.labcentral.feature.${name}`,
-    version: "1.0.0",
+    version: "1.1.0",
     categories: ["browser"],
     protocolMajor: 1,
     minimumProtocolMinor: 0,
@@ -91,7 +119,7 @@ for (const [name, definition] of Object.entries(definitions)) {
     requestedPermissions: permissions,
     browser: {
       apiVersion: "labcentral.browser/v1",
-      minimumHostVersion: 3,
+      minimumHostVersion: 4,
       assets,
       contributions: [
         {

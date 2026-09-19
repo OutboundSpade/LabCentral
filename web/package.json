@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "vite build && bun run normalize-build",
+    "build": "node ../tools/sync_theme.mjs --check && vite build && bun run normalize-build",
     "normalize-build": "bun ../tools/normalize_web_build.mjs",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:extensions": "node tests/extensions.mjs",

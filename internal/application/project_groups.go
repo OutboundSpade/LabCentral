@@ -63,3 +63,16 @@ type ProjectGroupStore interface {
 	ChangeProjectGroupEnrollment(context.Context, ChangeProjectGroupEnrollment) (ProjectGroup, error)
 	ChangeProjectGroupMembership(context.Context, ChangeProjectGroupMembership) (ProjectGroup, error)
 }
+
+// ProjectGroupMember exposes only the display identity of a collaborator.
+type ProjectGroupMember struct {
+	ID          domain.UserID `json:"id"`
+	DisplayName string        `json:"displayName"`
+}
+type ProjectGroupMemberPage struct {
+	Items      []ProjectGroupMember `json:"items"`
+	NextCursor string               `json:"nextCursor,omitempty"`
+}
+type ProjectGroupMemberStore interface {
+	ListProjectGroupMembers(context.Context, domain.ProjectID, domain.TeamID, domain.UserID, string, uint32) (ProjectGroupMemberPage, error)
+}

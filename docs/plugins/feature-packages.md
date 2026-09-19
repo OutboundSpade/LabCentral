@@ -76,3 +76,29 @@ The preparation API retains its original field names and stored input bytes.
 Unused `TypedInput.Enum` and `TypedInput.SecretRef` alternatives accept JSON null,
 matching the existing Go representation. The browser bridge emits this representation
 from ordinary typed lab inputs; it cannot submit secret references.
+
+## Browser host contract 4 and presentation assets
+
+The standard packages now require host version 4. Older contracts and installed
+contributions remain supported. The optional `page.presentation` permission adds
+closed `page.dirty({dirty: boolean})` and `page.navigate({destination: "labs" |
+"teams"})` operations for page contributions. The host stores only an in-memory
+dirty flag, protects navigation/workspace changes and browser unload, and checks
+that Teams is installed before navigating. No arbitrary route or document content
+is accepted. `groups.members({groupId, after?})` uses `groups.read`, binds the active
+project and calls the authorized paginated group-member API. Context adds an image
+administrator display hint; it grants no authority.
+
+`pkg/plugin-sdk-browser/theme.css` is the single theme source. Run
+`node tools/sync_theme.mjs` after theme edits to update the generated core input;
+the core build rejects drift. Independent feature packaging compiles static
+DaisyUI/Tailwind assets with the repository's pinned web development dependencies;
+it neither imports core workflow code nor rebuilds core. Install those dependencies
+with `cd web && bun install --frozen-lockfile` before source packaging. Packaged
+features contain all CSS and require no CDN, runtime compiler or network styles.
+
+Template content responses add read-only recipe summaries (logical builder,
+architecture, dependencies and current builder availability) and a source-archive
+flag. Existing source and parameter fields retain their meaning. Availability is
+informational; build/preparation admission rechecks actual capabilities and policy.
+Group member responses use `items`/`nextCursor` and expose only `id`/`displayName`.

@@ -1,6 +1,17 @@
 formatVersion: 1
-lastUpdated: "2026-09-18"
+lastUpdated: "2026-09-19"
 tasks:
+  - id: TASK-UI-011
+    title: Repair independent feature page usability and deploy
+    status: in_progress
+    dependencies: [TASK-TEMPLATE-008, TASK-UI-010]
+    relatedAdrs: [ADR-0026, ADR-0027, ADR-0029]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/plugins/feature-packages.md]
+    acceptanceCriteria:
+      - Share the charcoal theme across independently packaged pages and provide responsive task navigation, visible feedback and accessible dialogs.
+      - Preserve unsaved drafts, unify template selection, expose recipe and current image state, and guide portable-source and unconfigured-library workflows.
+      - Provide authorized group rosters, administrator group oversight, stable preparation history and usable classroom selection and launch controls.
+      - Verify affected authorization, protocol, database and three-browser workflows, then push main and deploy exact tested artifacts with consistent backup and retained rollback packages.
   - id: TASK-TEMPLATE-001
     title: Record portable template and collaboration contracts
     status: complete

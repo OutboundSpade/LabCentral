@@ -3,18 +3,192 @@ export const bridge = await connect();
 export const context = await bridge.request("context.read");
 export const app = document.querySelector("#app");
 app.replaceChildren();
+const styles = {
+  p: "my-2",
+  h2: "text-lg font-semibold mb-3",
+  h3: "font-semibold",
+  section: "min-w-0 space-y-3",
+  article: "min-w-0 rounded-box border border-base-300 p-4 space-y-2",
+  details: "min-w-0 rounded-box border border-base-300 p-4 space-y-3",
+  summary:
+    "cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-primary",
+  small: "text-xs text-base-content/65 [overflow-wrap:anywhere]",
+  pre: "max-h-80 overflow-auto whitespace-pre-wrap text-xs font-mono [overflow-wrap:anywhere]",
+  fieldset: "fieldset border border-base-300 rounded-box p-4",
+  legend: "fieldset-legend",
+  nav: "flex flex-wrap items-center gap-2",
+  ul: "list-disc pl-5 space-y-1",
+};
+const aliases = {
+  actions: "flex flex-wrap items-center gap-2 my-3",
+  grid: "grid gap-3 md:grid-cols-2",
+  muted: "text-base-content/65",
+  error: "text-error",
+  badge: "badge badge-sm",
+  source: "font-mono min-h-80",
+};
 export function el(tag, text = "", attrs = {}) {
   const node = document.createElement(tag);
   node.textContent = text;
+  node.className = styles[tag] ?? "";
   for (const [key, value] of Object.entries(attrs))
-    if (value !== undefined) node.setAttribute(key, String(value));
+    if (value !== undefined) {
+      if (key === "class")
+        node.className += " " + (aliases[String(value)] ?? String(value));
+      else node.setAttribute(key, String(value));
+    }
   return node;
 }
-export const status = el("p", "", { role: "status", class: "status" });
-app.append(status);
+export const status = el("div", "", {
+  role: "status",
+  class:
+    "fixed bottom-4 right-4 left-4 z-40 rounded-box bg-base-100 border border-base-300 p-4 shadow-lg",
+  "data-feedback": "",
+});
+status.hidden = true;
+document.body.append(status);
+let messageTimer;
 export function message(text, error = false) {
-  status.textContent = text;
-  status.classList.toggle("error", error);
+  clearTimeout(messageTimer);
+  const target =
+    document.querySelector("dialog[open] [data-feedback]") ?? status;
+  target.replaceChildren();
+  target.hidden = !text;
+  target.setAttribute("role", error ? "alert" : "status");
+  if (!text) return;
+  target.append(
+    el("p", text, { class: error ? "text-error" : "" }),
+    button("Dismiss message", () => {
+      target.hidden = true;
+    }),
+  );
+  if (!error)
+    messageTimer = setTimeout(() => {
+      target.hidden = true;
+    }, 8000);
+}
+export function tabs(names, parent = app) {
+  const nav = el("div", "", {
+    role: "tablist",
+    "aria-label": "Page sections",
+    class: "tabs tabs-border sticky top-0 z-10 bg-base-100 flex-wrap",
+  });
+  parent.append(nav);
+  const panels = {},
+    controls = {};
+  const select = (name) => {
+    message("");
+    for (const n of names) {
+      panels[n].hidden = n !== name;
+      controls[n].setAttribute("aria-selected", String(n === name));
+      controls[n].classList.toggle("tab-active", n === name);
+      controls[n].tabIndex = n === name ? 0 : -1;
+    }
+    parent.scrollIntoView({ block: "start" });
+  };
+  for (const name of names) {
+    const id = crypto.randomUUID(),
+      control = el("button", name, {
+        type: "button",
+        role: "tab",
+        class: "tab min-h-11",
+        id,
+        "aria-controls": id + "-panel",
+      });
+    const panel = el("div", "", {
+      role: "tabpanel",
+      id: id + "-panel",
+      "aria-labelledby": id,
+      class: "min-w-0 space-y-5 py-4",
+    });
+    controls[name] = control;
+    panels[name] = panel;
+    nav.append(control);
+    parent.append(panel);
+    control.onclick = () => select(name);
+    control.onkeydown = (e) => {
+      const i = names.indexOf(name);
+      const next =
+        e.key === "ArrowRight"
+          ? (i + 1) % names.length
+          : e.key === "ArrowLeft"
+            ? (i + names.length - 1) % names.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? names.length - 1
+                : -1;
+      if (next >= 0) {
+        e.preventDefault();
+        select(names[next]);
+        controls[names[next]].focus();
+      }
+    };
+  }
+  select(names[0]);
+  return { panels, select };
+}
+export function modal(title, description = "") {
+  const d = el("dialog", "", {
+    class: "modal",
+    "aria-labelledby": crypto.randomUUID(),
+  });
+  const box = el("div", "", { class: "modal-box w-11/12 max-w-3xl space-y-4" });
+  box.append(el("h2", title, { id: d.getAttribute("aria-labelledby") }));
+  if (description) box.append(el("p", description, { class: "muted" }));
+  const feedback = el("div", "", { "data-feedback": "", role: "status" });
+  feedback.hidden = true;
+  box.append(feedback);
+  d.append(box);
+  document.body.append(d);
+  let opener;
+  d.addEventListener("close", () => opener?.isConnected && opener.focus());
+  return {
+    element: d,
+    body: box,
+    open() {
+      opener = document.activeElement;
+      d.showModal();
+    },
+    close() {
+      d.close();
+    },
+  };
+}
+export function stableList(parent, items, render) {
+  const old = new Map([...parent.children].map((n) => [n.dataset.key, n]));
+  for (const item of items) {
+    const key = item.id,
+      signature = JSON.stringify(item);
+    let node = old.get(key);
+    old.delete(key);
+    if (!node || node.dataset.signature !== signature) {
+      const focused = node?.contains(document.activeElement),
+        label = focused
+          ? document.activeElement.getAttribute("aria-label") ||
+            document.activeElement.textContent
+          : null;
+      const next = render(item);
+      next.dataset.key = key;
+      next.dataset.signature = signature;
+      if (node) node.replaceWith(next);
+      else parent.append(next);
+      node = next;
+      if (focused) {
+        const control = [...node.querySelectorAll("button,input")].find(
+          (n) => (n.getAttribute("aria-label") || n.textContent) === label,
+        );
+        control?.focus();
+      }
+    }
+  }
+  for (const node of old.values()) node.remove();
+}
+export function setDirty(dirty) {
+  return request("page.dirty", { dirty });
+}
+export function navigate(destination) {
+  return request("page.navigate", { destination });
 }
 export const can = (action) => context.allowedActions?.includes(action);
 // Keep package bursts below the host's request/concurrency bounds, including
@@ -82,7 +256,15 @@ export async function action(fn) {
   }
 }
 export function button(text, fn, kind = "") {
-  const b = el("button", text, { type: "button", class: kind });
+  const b = el("button", text, {
+    type: "button",
+    class:
+      kind === "primary"
+        ? "btn btn-sm btn-primary min-h-11 h-auto py-2 whitespace-normal"
+        : kind === "danger"
+          ? "btn btn-sm btn-outline text-error min-h-11 h-auto py-2 whitespace-normal"
+          : "btn btn-sm min-h-11 h-auto py-2 whitespace-normal",
+  });
   b.onclick = async () => {
     if (b.disabled) return;
     b.disabled = true;
@@ -95,15 +277,28 @@ export function button(text, fn, kind = "") {
   return b;
 }
 export function field(parent, label, tag = "input", attrs = {}) {
-  const wrap = el("label", label);
+  const wrap = el("label", label, { class: "grid gap-2 my-3 min-w-0" });
   const input = el(tag, "", { "aria-label": label, ...attrs });
+  input.className +=
+    tag === "textarea"
+      ? " textarea w-full min-w-0"
+      : tag === "select"
+        ? " select w-full min-w-0"
+        : attrs.type === "file"
+          ? " file-input w-full min-w-0"
+          : " input w-full min-w-0";
   wrap.append(input);
   parent.append(wrap);
   return input;
 }
 export function check(parent, label, checked = false) {
-  const wrap = el("label", "", { class: "check" });
-  const input = el("input", "", { type: "checkbox" });
+  const wrap = el("label", "", {
+    class: "flex items-center gap-3 my-2 min-w-0",
+  });
+  const input = el("input", "", {
+    type: "checkbox",
+    class: "checkbox checkbox-sm shrink-0",
+  });
   input.checked = checked;
   wrap.append(input, document.createTextNode(label));
   parent.append(wrap);
@@ -183,30 +378,36 @@ export function poll(fn, milliseconds = 5000) {
   polls.add(stop);
   return stop;
 }
-export function confirm(title, description, items = []) {
+export function confirm(
+  title,
+  description,
+  items = [],
+  actionLabel = "Confirm",
+) {
   return new Promise((resolve) => {
-    const d = el("dialog");
-    d.append(el("h2", title), el("p", description));
-    const list = el("ul");
+    const d = modal(title, description),
+      list = el("ul");
     items.forEach((i) => list.append(el("li", i)));
-    d.append(list);
+    d.body.append(list);
+    let finished = false;
     const done = (value) => {
+      if (finished) return;
+      finished = true;
       d.close();
-      d.remove();
+      d.element.remove();
       resolve(value);
     };
     const actions = el("div", "", { class: "actions" });
     actions.append(
       button("Cancel", () => done(false)),
-      button("Confirm", () => done(true), "danger"),
+      button(actionLabel, () => done(true), "danger"),
     );
-    d.append(actions);
-    d.oncancel = (e) => {
+    d.body.append(actions);
+    d.element.oncancel = (e) => {
       e.preventDefault();
       done(false);
     };
-    document.body.append(d);
-    d.showModal();
+    d.open();
   });
 }
 export function labCard(lab, parent, { end, onchange } = {}) {
@@ -215,7 +416,7 @@ export function labCard(lab, parent, { end, onchange } = {}) {
     button(lab.name ?? lab.id, () =>
       request("navigation.lab", { instanceId: lab.id }),
     ),
-    el("p", `${lab.phase} · ${lab.ownerKind}: ${lab.ownerId}`),
+    el("p", `${lab.phase}${lab.ownerName ? ` · ${lab.ownerName}` : ""}`),
   );
   if (lab.expiresAt)
     card.append(
@@ -230,7 +431,8 @@ export function labCard(lab, parent, { end, onchange } = {}) {
             await confirm(
               "End this lab?",
               "This deletes the lab and its files.",
-              [lab.id],
+              [lab.name ?? lab.id],
+              "End lab",
             )
           ) {
             await mutate("labs.destroy", { instanceId: lab.id });
@@ -247,7 +449,7 @@ export function labCard(lab, parent, { end, onchange } = {}) {
 
 export async function initialize(fn) {
   for (const stop of polls) stop();
-  app.replaceChildren(status);
+  app.replaceChildren();
   message("");
   const loading = el("p", "Loading feature…", { role: "status" });
   document.body.append(loading);

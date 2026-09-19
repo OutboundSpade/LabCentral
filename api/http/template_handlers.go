@@ -302,6 +302,11 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		if err != nil || revision.TemplateID != template.ID {
 			return nil, huma.Error404NotFound("Revision content is unavailable")
 		}
+		recipes, err := service.TemplateRecipeSummaries(source, template.ProjectID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("Recipe metadata could not be loaded")
+		}
+		sourceArchive := labbundle.Archive(source)
 		source, _, err = labbundle.Source(source)
 		if err != nil {
 			return nil, huma.Error404NotFound("Revision content is unavailable")
@@ -320,7 +325,7 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		if parameters == nil {
 			parameters = []TemplateParameterDTO{}
 		}
-		return &struct{ Body TemplateContentDTO }{Body: TemplateContentDTO{Source: string(source), Parameters: parameters}}, nil
+		return &struct{ Body TemplateContentDTO }{Body: TemplateContentDTO{Source: string(source), Parameters: parameters, Recipes: recipes, SourceArchive: sourceArchive}}, nil
 	})
 	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}", func(ctx context.Context, input *revisionInput) (*struct{ Body TemplateRevisionDTO }, error) {
 		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)

@@ -182,3 +182,10 @@ test("lab mutations and navigation require host-side project verification", () =
     ),
   ).toThrow();
 });
+
+
+test("group roster is closed and bound to the current project", () => {
+ expect(featureRequest("groups.members", {groupId:"team.one"}, {projectId:"project.one"}).path).toBe("/projects/project.one/groups/team.one/members?limit=200");
+ expect(() => featureRequest("groups.members", {groupId:"team.one",projectId:"project.two"}, {projectId:"project.one"})).toThrow();
+ expect(() => featureRequest("groups.members", {groupId:"../teams"}, {projectId:"project.one"})).toThrow();
+});

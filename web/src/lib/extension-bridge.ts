@@ -2,6 +2,7 @@
 // verbs, headers, project IDs, credentials or arbitrary response resources.
 export const featurePermissions: Record<string, string> = {
   "groups.list": "groups.read",
+  "groups.members": "groups.read",
   "groups.create": "groups.manage",
   "groups.enrollment": "groups.manage",
   "groups.join": "groups.enroll",
@@ -174,6 +175,11 @@ export function featureRequest(
       closed(data, ["after"]);
       return get(
         `/projects/${id(projectId)}/groups?limit=200${data.after ? `&after=${id(data.after)}` : ""}`,
+      );
+    case "groups.members":
+      closed(data, ["groupId", "after"]);
+      return get(
+        `/projects/${id(projectId)}/groups/${id(data.groupId)}/members?limit=200${data.after ? `&after=${id(data.after)}` : ""}`,
       );
     case "groups.create":
       closed(data, ["names", "enrollmentOpen", "idempotencyKey"]);

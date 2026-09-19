@@ -85,6 +85,19 @@ func projectGroupContract(t *testing.T, s *Store) {
 		t.Fatal("no membership")
 	}
 	group := groups[winner]
+	roster, err := s.ListProjectGroupMembers(ctx, "project.alpha", group.ID, user, "", 1)
+	if err != nil || len(roster.Items) != 1 || roster.Items[0].DisplayName != "Member" {
+		t.Fatal("member roster", roster, err)
+	}
+	if _, err = s.ListProjectGroupMembers(ctx, "project.alpha", groups[1-winner].ID, user, "", 100); !errors.Is(err, app.ErrAuthorityChanged) {
+		t.Fatal("foreign roster", err)
+	}
+	if _, err = s.ListProjectGroupMembers(ctx, "project.beta", group.ID, user, "", 100); !errors.Is(err, app.ErrAuthorityChanged) {
+		t.Fatal("cross-project roster", err)
+	}
+	if _, err = s.ListProjectGroupMembers(ctx, "project.alpha", group.ID, "user.quota", "", 100); err != nil {
+		t.Fatal("admin roster", err)
+	}
 	page, err := s.ListProjectGroups(ctx, "project.alpha", user, "", 1)
 	if err != nil || len(page.Items) != 1 || page.NextCursor == "" {
 		t.Fatal("pagination", err)

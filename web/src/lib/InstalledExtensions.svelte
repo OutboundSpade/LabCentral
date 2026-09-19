@@ -30,6 +30,13 @@
     },
   };
   const names: Record<string, string> = {
+    "io.labcentral.feature.template-library": "Template Library",
+    "io.labcentral.feature.teams": "Teams",
+    "io.labcentral.feature.classroom": "Classroom",
+    "io.labcentral.builder.ansible": "Ansible",
+    "io.labcentral.builder.dockerfile": "Dockerfile",
+    "io.labcentral.builder.container-runtime": "Container runtime",
+    "io.labcentral.source.github": "GitHub",
     "io.labcentral.provider.proxmox": "Proxmox",
     "io.labcentral.provider.docker": "Docker",
     "io.labcentral.access.novnc": "noVNC",

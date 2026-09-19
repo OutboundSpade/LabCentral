@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { leaveFeatureDrafts } from "./feature-drafts";
   import ExtensionPage from "./ExtensionPage.svelte";
   import ExtensionAccessView from "./ExtensionAccessView.svelte";
   import DeviceAuthorization from "./DeviceAuthorization.svelte";
@@ -421,7 +422,7 @@
       return;
     }
     if (templateId === "builtin.local") {
-      content = { source, parameters: [] };
+      content = { source, parameters: [], recipes: [], sourceArchive: false };
       return;
     }
     try {
@@ -983,8 +984,13 @@
           id="project-choice"
           aria-label="Switch workspace"
           class="select mb-3 w-full"
-          bind:value={projectId}
-          onchange={() => {
+          value={projectId}
+          onchange={(event) => {
+            if (!leaveFeatureDrafts()) {
+              event.currentTarget.value = projectId;
+              return;
+            }
+            projectId = event.currentTarget.value;
             drawerOpen = false;
             error = "";
             notice = "";

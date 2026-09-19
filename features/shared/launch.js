@@ -11,17 +11,18 @@ import {
   message,
   poll,
   labCard,
+  stableList,
 } from "./ui.js";
 export async function launchForm(
   parent,
   { owner, owners, onlaunch, batch = false } = {},
 ) {
-  const form = el("form");
+  const form = el("form", "", { class: "max-w-3xl space-y-3" });
   parent.append(form);
   const template = field(form, "Template", "select"),
     revision = field(form, "Revision", "select"),
     target = field(form, "Environment", "select");
-  const inputsBox = el("div");
+  const inputsBox = el("div", "", { class: "grid gap-x-4 md:grid-cols-2" });
   form.append(inputsBox);
   const minutes = field(form, "Lab lifetime (minutes)", "input", {
     type: "number",
@@ -170,12 +171,8 @@ export async function launchForm(
   const submit = button(
     batch ? "Launch selected labs" : "Prepare and deploy",
     async () => {
-      if (
-        !form.reportValidity() ||
-        !revision.value ||
-        loadedRevision !== revision.value ||
-        !target.value
-      )
+      if (!form.reportValidity()) return;
+      if (!revision.value || loadedRevision !== revision.value || !target.value)
         throw new Error("Select a published template and environment.");
       if (parameters.some((p) => p.type === "secretRef" && p.required))
         throw new Error(
@@ -246,9 +243,13 @@ export async function launchForm(
   };
 }
 export function watchPreparation(id, parent) {
+  let previous = "";
   let stop = () => {};
   const refresh = async () => {
     const w = await request("builds.get", { operationId: id });
+    const signature = JSON.stringify(w);
+    if (signature === previous) return;
+    previous = signature;
     parent.replaceChildren(
       el(
         "p",
@@ -283,26 +284,54 @@ export function watchPreparation(id, parent) {
 }
 
 export function preparations(parent, filter = () => true) {
-  const panel = el("section");
-  panel.append(el("h2", "Your recent preparations"));
-  const list = el("div");
-  panel.append(list);
+  const panel = el("section"),
+    list = el("div", "", { class: "space-y-3" });
+  panel.append(el("h2", "Your recent preparations"), list);
   parent.append(panel);
   let pending = false;
   const refresh = async () => {
     if (pending) return;
     pending = true;
     try {
-      const work = (await request("preparations.list")).items ?? [];
-      list.replaceChildren();
-      for (const w of work.filter(filter)) {
-        const card = el("article");
+      const [work, labs, groups] = await Promise.all([
+        request("preparations.list"),
+        all("labs.list"),
+        all("groups.list", {}, "after"),
+      ]);
+      const rows = (work.items ?? []).filter(filter).map((w) => {
+        const deployment = w.result?.deployment,
+          id = deployment?.instanceId ?? deployment?.InstanceID;
+        const lab = labs.find((l) => l.id === id),
+          owner = w.request.preparation?.owner;
+        const group = groups.find((g) => g.id === owner?.id);
+        const accessible =
+          lab &&
+          lab.phase !== "destroyed" &&
+          (!owner || owner.kind !== "team" || group?.joined);
+        return {
+          ...w,
+          lab: accessible ? lab : null,
+          label: lab?.name ?? "Lab preparation",
+          ownerName:
+            owner?.kind === "team"
+              ? (group?.name ?? "Former team")
+              : "Personal lab",
+          wasDeployed: !!id,
+        };
+      });
+      stableList(list, rows, (w) => {
+        const card = el("article"),
+          stage =
+            w.result?.stage === "awaiting-approval"
+              ? "Waiting for image approval"
+              : (w.result?.stage ?? w.state);
         card.append(
+          el("h3", w.label),
+          el("p", `${w.ownerName} · ${stage}`),
           el(
-            "p",
-            `${w.request.preparation?.owner?.kind ?? "user"} ${w.request.preparation?.owner?.id ?? ""} · ${w.result?.stage === "awaiting-approval" ? "Waiting for image approval" : (w.result?.stage ?? w.state)}`,
+            "small",
+            w.createdAt ? new Date(w.createdAt).toLocaleString() : "",
           ),
-          el("small", w.id),
         );
         if (w.failureCode)
           card.append(el("p", w.failureCode, { class: "error" }));
@@ -313,18 +342,22 @@ export function preparations(parent, filter = () => true) {
               await refresh();
             }),
           );
-        const deployment = w.result?.deployment;
-        const id = deployment?.instanceId ?? deployment?.InstanceID;
-        if (id)
+        if (w.lab)
           card.append(
             button("Open lab", () =>
-              request("navigation.lab", { instanceId: id }),
+              request("navigation.lab", { instanceId: w.lab.id }),
             ),
           );
-        list.append(card);
-      }
-      if (!list.childElementCount)
-        list.append(el("p", "No recent preparations."));
+        else if (w.wasDeployed)
+          card.append(
+            el("p", "This lab has ended or is no longer accessible.", {
+              class: "muted",
+            }),
+          );
+        return card;
+      });
+      if (!rows.length)
+        list.replaceChildren(el("p", "No recent preparations."));
     } finally {
       pending = false;
     }

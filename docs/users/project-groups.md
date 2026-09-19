@@ -47,3 +47,9 @@ list to get current membership.
 Persistence adds migration `0020_project_groups`; existing migration checksums,
 team memberships and role identifiers are unchanged. Enrollment and administrative
 changes are audited. See [ADR-0029](../adr/0029-project-groups-and-shared-console-control.md).
+
+In Teams, **Your team** shows your collaborators and active shared labs. Use
+**Groups** to find and join an open group. Administrators use **Manage** to inspect
+any project's group, view its members and labs, and change enrollment without
+joining it. Member rosters are visible only to that group's current members and
+project administrators. Leaving removes your roster and lab access immediately.

@@ -38,6 +38,24 @@ func registerProjectGroups(api huma.API, s *controlplane.Service, security *requ
 		}
 		return &struct{ Body app.ProjectGroupPage }{result}, nil
 	})
+
+	type rosterInput struct {
+		ProjectID string `path:"projectId" minLength:"1" maxLength:"128"`
+		ID        string `path:"id" minLength:"1" maxLength:"128"`
+		After     string `query:"after" maxLength:"128"`
+		Limit     uint32 `query:"limit" default:"100" minimum:"1" maximum:"200"`
+	}
+	huma.Get(api, "/projects/{projectId}/groups/{id}/members", func(ctx context.Context, in *rosterInput) (*struct{ Body app.ProjectGroupMemberPage }, error) {
+		p, ok := requestPrincipal(ctx)
+		if !ok {
+			return nil, huma.Error401Unauthorized("Authentication required")
+		}
+		result, err := s.ListProjectGroupMembers(ctx, p.user.ID, domain.ProjectID(in.ProjectID), domain.TeamID(in.ID), in.After, in.Limit)
+		if err != nil {
+			return nil, projectGroupError(err)
+		}
+		return &struct{ Body app.ProjectGroupMemberPage }{result}, nil
+	})
 	type createInput struct {
 		ProjectID      string `path:"projectId" minLength:"1" maxLength:"128"`
 		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`

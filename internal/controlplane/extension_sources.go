@@ -88,7 +88,12 @@ func (s *Service) ResolveSource(ctx context.Context, actor domain.UserID, projec
 }
 func (s *Service) ListExtensionWork(ctx context.Context, actor domain.UserID, project domain.ProjectID) ([]app.ExtensionWork, error) {
 	if err := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRevisionPublish); err != nil {
-		return nil, err
+		if readErr := s.authorizeExtension(ctx, actor, project, app.ActionTemplateRead); readErr != nil {
+			return nil, readErr
+		}
+		if adminErr := s.operationsAuthorizer.Authorize(ctx, app.AuthorizationRequest{SubjectID: actor, Action: app.ActionProviderTargetGrant, ScopeKind: app.ScopePlatform, ScopeID: "platform"}); adminErr != nil {
+			return nil, err
+		}
 	}
 	store, ok := s.store.(app.ExtensionWorkStore)
 	if !ok {

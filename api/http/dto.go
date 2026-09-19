@@ -207,8 +207,10 @@ type TemplateParameterDTO struct {
 	Pattern     string            `json:"pattern,omitempty"`
 }
 type TemplateContentDTO struct {
-	Source     string                 `json:"source"`
-	Parameters []TemplateParameterDTO `json:"parameters"`
+	Recipes       []controlplane.TemplateRecipeSummary `json:"recipes"`
+	SourceArchive bool                                 `json:"sourceArchive"`
+	Source        string                               `json:"source"`
+	Parameters    []TemplateParameterDTO               `json:"parameters"`
 }
 
 type AuditRecordDTO struct {

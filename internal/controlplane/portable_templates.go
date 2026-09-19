@@ -82,3 +82,31 @@ func portableCapabilities(representation []byte) ([]string, error) {
 	}
 	return append([]string{}, source.Spec.Requirements.Capabilities...), nil
 }
+
+// TemplateRecipeSummary is presentation metadata, never a build authorization.
+type TemplateRecipeSummary struct {
+	ID           string   `json:"id"`
+	Builder      string   `json:"builder"`
+	Architecture string   `json:"architecture"`
+	DependsOn    []string `json:"dependsOn"`
+	Available    bool     `json:"available"`
+}
+
+func (s *Service) TemplateRecipeSummaries(data []byte, project domain.ProjectID) ([]TemplateRecipeSummary, error) {
+	out := []TemplateRecipeSummary{}
+	if !labbundle.Archive(data) {
+		return out, nil
+	}
+	b, err := labbundle.Read(data)
+	if err != nil {
+		return nil, err
+	}
+	if b.Builds() == nil {
+		return out, nil
+	}
+	for _, r := range b.Builds().Recipes {
+		binding, ok := s.resolveRecipeBuilder(b, r, project)
+		out = append(out, TemplateRecipeSummary{ID: r.ID, Builder: r.Builder, Architecture: r.Architecture, DependsOn: r.DependsOn, Available: ok && (binding.Available == nil || binding.Available())})
+	}
+	return out, nil
+}
