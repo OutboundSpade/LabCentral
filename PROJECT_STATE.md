@@ -79,9 +79,15 @@ Teams feature; additive host version 5 lets packages declare scoped visibility
 and safe Lucide icons. Administrators can prepare group-owned labs without joining
 and delete groups after all their labs have ended. Deletion retains audit/ownership
 identities, removes enrollment and fences pending admission. Existing organizational
-teams retain their meaning. Authorization and SQLite/PostgreSQL race checks passed;
-release verification and the protected rollout are in progress. The additive
-migration and restoration of the prior core passed against a consistent data copy.
+teams retain their meaning. The reproducible release is deployed on the authorized
+private testbed. Authorization, SQLite/PostgreSQL races, three-browser workflows,
+exact-artifact plugin independence and the migration/prior-core rollback rehearsal
+passed. A live administrator and two students verified group launch without admin
+enrollment, Teams-only participant features, shared console handoff/instructions,
+instructor roster/history and group deletion. Prior lab/group/membership/role
+records and qualified backend bytes were preserved. The test VM, enrollments and
+temporary browser sessions were cleaned up; backup and rollback evidence is kept
+in protected operator records. Existing production gates remain open.
 
 ## Independently installed extensions
 
