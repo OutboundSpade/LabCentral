@@ -395,3 +395,20 @@ func (s *Store) appendInstanceBatchGovernanceTx(ctx context.Context, tx *sql.Tx,
 	}
 	return nil
 }
+
+func (s *Store) RecentInstanceBatchIDs(ctx context.Context, project domain.ProjectID) ([]domain.InstanceBatchID, error) {
+	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT batch_id FROM labcentral_instance_batches WHERE project_id=? ORDER BY created_at_us DESC,batch_id DESC LIMIT 100`), project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []domain.InstanceBatchID{}
+	for rows.Next() {
+		var id domain.InstanceBatchID
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

@@ -1,6 +1,17 @@
 formatVersion: 1
-lastUpdated: "2026-09-19"
+lastUpdated: "2026-09-20"
 tasks:
+  - id: TASK-UI-012
+    title: Complete desktop team workflows and role-scoped feature access
+    status: in_progress
+    dependencies: [TASK-UI-011]
+    relatedAdrs: [ADR-0026, ADR-0029]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/plugins/feature-packages.md]
+    acceptanceCriteria:
+      - Provide named labs, durable classroom launch activity, shared-lab roster visibility, unified preparation progress and console instructions.
+      - Restrict participant feature pages to Teams; provide declared safe sidebar icons and desktop spacing/wrapping without explanatory boilerplate.
+      - Support explicit administrator team-owned preparation and confirmed transactional group deletion without deleting or orphaning active labs or changing organizational teams.
+      - Verify authorization, races, SQLite/PostgreSQL parity, three-browser workflows and exact release integrity; push main and deploy with backup and rollback evidence.
   - id: TASK-UI-011
     title: Repair independent feature page usability and deploy
     status: complete

@@ -82,6 +82,7 @@
       "topology.read": "topology.read",
       "status.read": "status.read",
       "navigation.lab": "navigation.lab",
+      "navigation.console": "navigation.lab",
       "access.create": "access.create",
     };
     const reset = setInterval(() => {
@@ -145,7 +146,7 @@
               resourceId,
               projectId,
               pluginInstance: extension.pluginInstance,
-              hostVersion: 4,
+              hostVersion: 5,
               allowedActions: [...allowedActions],
               subjectId,
               imageAdministrator:
@@ -180,7 +181,7 @@
               throw new Error("Invalid destination");
             if (data.input.destination === "teams") {
               const pages = await api<{ items: Extension[] }>(
-                "/extensions/browser",
+                `/extensions/browser?projectId=${encodeURIComponent(projectId)}`,
                 { signal: abort.signal },
               );
               if (
@@ -266,6 +267,47 @@
               `/lab-instances/${encodeURIComponent(instanceId)}/topology`,
               { signal: abort.signal },
             );
+          } else if (data.method === "navigation.console") {
+            if (
+              extension.slot !== "page" ||
+              !data.input ||
+              Object.keys(data.input).some(
+                (k) => !["instanceId", "resourceId"].includes(k),
+              ) ||
+              typeof data.input.resourceId !== "string"
+            )
+              throw new Error("Invalid console destination");
+            const route = featureRequest(
+              "labs.get",
+              { instanceId: data.input.instanceId },
+              { projectId },
+            );
+            const lab = await api<{ id: string; projectId: string }>(
+              route.path,
+              { signal: abort.signal },
+            );
+            if (lab.projectId !== projectId)
+              throw new Error("Lab outside project");
+            const topology = await api<Topology>(`${route.path}/topology`, {
+              signal: abort.signal,
+            });
+            const action = topology.resources
+              ?.find((r) => r.id === data.input.resourceId)
+              ?.actions?.find((a) => a.method === "vnc");
+            if (!action) throw new Error("Console is unavailable");
+            const launch = await api<AccessLaunch>("/access-sessions", {
+              method: "POST",
+              headers: mutationHeaders(),
+              body: JSON.stringify({
+                instanceId: lab.id,
+                resourceId: data.input.resourceId,
+                method: action.method,
+                durationSeconds: 900,
+              }),
+              signal: abort.signal,
+            });
+            await presentAccess(launch, abort.signal);
+            result = {};
           } else if (data.method === "navigation.lab") {
             let destination = instanceId;
             if (extension.slot === "page") {

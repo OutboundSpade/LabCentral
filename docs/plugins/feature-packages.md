@@ -35,8 +35,7 @@ the packaging destination. Release examples do not embed temporary build paths.
 
 Template Library supports browsing, source export, import preview, independent
 copies, YAML and schema-form authoring, GitHub library synchronization, image
-builds/imports/approval, and single-owner preparation. Participants can browse and
-prepare published templates without author privileges. Preparation status survives
+builds/imports/approval, and single-owner preparation. Participants select and prepare published templates in Teams without author privileges. Template Library is shown to authors and instructors. Preparation status survives
 page reload through the caller-scoped `GET /deployment-preparations?projectId=…`
 API, which returns at most 200 recent requests belonging to that caller. The general
 extension-operation inventory retains its author requirement. Image approval and
@@ -79,8 +78,8 @@ from ordinary typed lab inputs; it cannot submit secret references.
 
 ## Browser host contract 4 and presentation assets
 
-The standard packages now require host version 4. Older contracts and installed
-contributions remain supported. The optional `page.presentation` permission adds
+Host version 4 introduced presentation operations. Older contracts and installed
+contributions remain supported by the current host. The optional `page.presentation` permission adds
 closed `page.dirty({dirty: boolean})` and `page.navigate({destination: "labs" |
 "teams"})` operations for page contributions. The host stores only an in-memory
 dirty flag, protects navigation/workspace changes and browser unload, and checks
@@ -102,3 +101,26 @@ architecture, dependencies and current builder availability) and a source-archiv
 flag. Existing source and parameter fields retain their meaning. Availability is
 informational; build/preparation admission rechecks actual capabilities and policy.
 Group member responses use `items`/`nextCursor` and expose only `id`/`displayName`.
+
+## Browser host contract 5
+
+Standard packages require host 5; older contributions retain their existing fields
+and behavior. A page can declare `icon` as `library`, `users`, `graduation-cap`,
+`book-open`, `flask-conical`, `server`, `terminal`, `folder`, `settings`, or `puzzle`.
+The host renders its bundled Lucide component, with a plug fallback when omitted;
+URLs, arbitrary SVG and scripts are not accepted.
+
+Optional `requiredActions` is an any-of list drawn from `template.read`,
+`template.create`, `instance.batchCreate`, and `team.manage`. Discovery accepts
+`projectId` and evaluates current core authority (including target grants for
+batch launches). Missing project context hides restricted contributions. Host
+route checks additionally use evaluated project actions. These declarations
+restrict page access; they never grant API authority.
+
+New closed bridge methods: `groups.delete({groupId,resourceVersion,idempotencyKey})`
+requires `groups.manage`; `labs.batchList({})` requires `labs.read`; and
+`navigation.console({instanceId,resourceId})` requires `navigation.lab`. Console
+navigation checks project and topology, creates an authorized VNC access session,
+and retains its one-time credential only in the host. No credentials reach frames.
+Batch history is bounded to the latest 100 project batches and each returned batch
+is authorized. Lab responses add optional `name`, `ownerName`, and `instructions`.

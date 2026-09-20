@@ -1003,13 +1003,14 @@
             >{/if}
           {#each projects as p}<option value={p.id}>{p.name}</option>{/each}
         </select>
-        <Navigation
-          {view}
-          {author}
-          {manager}
-          {administrator}
-          authenticated={server?.authMode !== "none"}
-        />
+        {#key projectId}<Navigation
+            {projectId}
+            {view}
+            {author}
+            {manager}
+            {administrator}
+            authenticated={server?.authMode !== "none"}
+          />{/key}
         <div class="mt-auto px-3 pt-10">
           <p class="mb-3 break-words text-sm text-base-content/60">
             {session.displayName}

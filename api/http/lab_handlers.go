@@ -314,6 +314,45 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			}, nil
 		})
 
+	huma.Get(api, "/lab-instance-batches", func(ctx context.Context, in *struct {
+		ProjectID string `query:"projectId" minLength:"1" maxLength:"128" required:"true"`
+	}) (*struct {
+		Body struct {
+			Items []InstanceBatchDTO `json:"items"`
+		}
+	}, error) {
+		actor, err := authorizeActor(ctx, security, application.AuthorizationRequest{Action: application.ActionTemplateRead, ScopeKind: application.ScopeProject, ScopeID: in.ProjectID})
+		if err != nil {
+			return nil, err
+		}
+		ids, err := service.RecentInstanceBatchIDs(ctx, domain.ProjectID(in.ProjectID))
+		if err != nil {
+			return nil, apiError(err)
+		}
+		out := &struct {
+			Body struct {
+				Items []InstanceBatchDTO `json:"items"`
+			}
+		}{}
+		out.Body.Items = []InstanceBatchDTO{}
+		for _, id := range ids {
+			if security.options.Mode != AuthModeNone {
+				if _, err := security.options.Authorizer.AuthorizeInstanceBatch(ctx, actor.user.ID, application.ActionInstanceBatchCreate, id); err != nil {
+					continue
+				}
+			}
+			record, err := service.GetInstanceBatch(ctx, id)
+			if err != nil {
+				return nil, apiError(err)
+			}
+			dto, err := instanceBatchDTO(ctx, service, record)
+			if err != nil {
+				return nil, apiError(err)
+			}
+			out.Body.Items = append(out.Body.Items, dto)
+		}
+		return out, nil
+	})
 	type InstanceBatchInput struct {
 		ID string `path:"id"`
 	}
@@ -383,7 +422,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 			if err != nil {
 				return nil, apiError(err)
 			}
-			output.Body.Items = append(output.Body.Items, instanceDTO(instance, resources))
+			output.Body.Items = append(output.Body.Items, namedInstanceDTO(ctx, service, instance, resources))
 		}
 		return output, nil
 	})
@@ -405,7 +444,7 @@ func register(api huma.API, service *controlplane.Service, exampleSource []byte,
 		return &struct {
 			ETag string `header:"ETag"`
 			Body InstanceDTO
-		}{ETag: fmt.Sprintf(`"%d"`, instance.ResourceVersion), Body: instanceDTO(instance, resources)}, nil
+		}{ETag: fmt.Sprintf(`"%d"`, instance.ResourceVersion), Body: namedInstanceDTO(ctx, service, instance, resources)}, nil
 	})
 
 	type DestroyInput struct {
@@ -578,4 +617,13 @@ func providerTargetDTO(target controlplane.ProviderTargetStatus, options Options
 		item.DiscoveredAt, item.ValidUntil = &discoveredAt, &validUntil
 	}
 	return item
+}
+
+func namedInstanceDTO(ctx context.Context, s *controlplane.Service, instance controlplane.InstanceRecord, resources []controlplane.ResourceRecord) InstanceDTO {
+	out := instanceDTO(instance, resources)
+	presentation := s.InstancePresentation(ctx, instance.ID)
+	out.Name = presentation.Name
+	out.Instructions = presentation.Instructions
+	out.OwnerName = presentation.OwnerName
+	return out
 }

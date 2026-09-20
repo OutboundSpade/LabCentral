@@ -316,6 +316,9 @@
       "BrowserExtensionDTO": {
         "additionalProperties": false,
         "properties": {
+          "icon": {
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -330,6 +333,15 @@
           },
           "pluginInstance": {
             "type": "string"
+          },
+          "requiredActions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "routeAlias": {
             "type": "string"
@@ -1975,6 +1987,33 @@
         ],
         "type": "object"
       },
+      "Get-lab-instance-batchesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/v1/schemas/Get-lab-instance-batchesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InstanceBatchDTO"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
       "Get-lab-instancesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2589,8 +2628,14 @@
           "id": {
             "type": "string"
           },
+          "instructions": {
+            "type": "string"
+          },
           "maximumExpiresAt": {
             "format": "date-time",
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           },
           "outputs": {
@@ -2601,6 +2646,9 @@
             "type": "string"
           },
           "ownerKind": {
+            "type": "string"
+          },
+          "ownerName": {
             "type": "string"
           },
           "phase": {
@@ -7773,6 +7821,17 @@
     "/extensions/browser": {
       "get": {
         "operationId": "get-extensions-browser",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -8219,6 +8278,45 @@
       }
     },
     "/lab-instance-batches": {
+      "get": {
+        "operationId": "get-lab-instance-batches",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Get-lab-instance-batchesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get lab instance batches"
+      },
       "post": {
         "operationId": "create-lab-instance-batch",
         "parameters": [
@@ -10261,6 +10359,65 @@
           }
         },
         "summary": "Post projects by project ID groups"
+      }
+    },
+    "/projects/{projectId}/groups/{id}": {
+      "delete": {
+        "operationId": "delete-projects-by-project-id-groups-by-id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete projects by project ID groups by ID"
       }
     },
     "/projects/{projectId}/groups/{id}/enrollment": {

@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
 phase: phase_3_production_topology_in_progress
-lastUpdated: "2026-09-19"
+lastUpdated: "2026-09-20"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -313,8 +313,9 @@ completedTasks:
   - TASK-UI-010
   - TASK-UI-011
 currentTasks:
+  - TASK-UI-012
   - TASK-PROD-004
   - TASK-PROD-005
 # Template/collaboration rollout passed; GitHub repository binding is owner-deferred.
 # Existing production load, recovery, failover and publisher gates remain open.
-nextRecommendedTasks: [TASK-PROD-004, TASK-PROD-005]
+nextRecommendedTasks: [TASK-UI-012, TASK-PROD-004, TASK-PROD-005]

@@ -154,9 +154,7 @@ creates and renames them through existing versioned commands, and links to the
 selected project's limits. Organization/project names now accept bounded human
 readable display text; opaque IDs and scope bindings remain unchanged.
 
-Classroom is always discoverable. Missing batch authority produces an explanation
-of instructor and environment requirements, with an administrative link to target
-access. The server's evaluated project actions still gate batch forms and roster
+Classroom is shown only when its declared project permission is available. The server's evaluated project actions still gate batch forms and roster
 reads. Creating a workspace never grants roles or target access implicitly.
 
 Plugins lists registered provider environments globally, discovery validity and
@@ -263,3 +261,39 @@ or unrelated organization membership. Classroom uses searchable compact student
 rows, selected counts, a launch dialog and separate group-lab presentation. Recent
 preparation updates preserve keyboard focus and do not offer known-inaccessible
 or ended labs as current destinations. Destructive dialogs name their action.
+
+## Desktop team workflows (TASK-UI-012)
+
+The standard participant feature navigation contains Teams only. Template Library
+requires template-author or classroom-launch authority; Classroom requires current
+classroom-launch authority. Host 5 packages declare project actions and a bounded
+Lucide icon identifier. Core filters discovery by current project authority; the
+host also gates direct page routes. Underlying template read/preparation APIs retain
+their participant semantics for the Teams workflow. Core lab management remains
+available, including with feature packages absent.
+
+Lab reads add display name, owner name and instructions derived from the already
+authorized lab's template and owner. Feature cards use names, separate status from
+actions, retain IDs in details, and offer fresh per-user console launches. Desktop
+controls keep labels together; prose wraps by words and identifiers wrap only in
+technical details. The console has a toggleable instructions panel and displays
+its effective watching state. Page introductions that repeat the page's purpose
+are removed; actionable errors and destructive confirmations remain.
+
+Teams opens administrative oversight for administrators, with named group selection,
+Deploy group lab, enrollment controls and confirmed Delete group. Creation focuses
+the first new group. Deletion rejects any non-destroyed lab, removes enrollments,
+retains historical ownership/audit identity, and fences pending preparation/admission.
+Members still require enrollment; administrators with both group-management and lab
+launch authority may prepare for a group without joining it. Historical identities
+cannot become organizational teams. A deleted display name can be reused by a new
+identity. Additive migration 0022 retains deletion metadata; older binaries do not
+understand retired groups, so downgrade requires the matching database/artifact
+backup and reconciliation of work performed after that backup.
+
+Classroom shows shared group work alongside personal labs in student rows. Scoped
+instructors can read project group rosters; students retain enrolled-group-only
+roster access. Recent launch activity loads at most 100 durable batches for the
+current project, reauthorizing each batch, and survives navigation/reload. Teams
+shows unfinished preparation separately from the resulting named lab, whose state
+and console action become the primary progress destination.

@@ -229,3 +229,13 @@ func (s *Service) GetInstanceBatch(ctx context.Context, id domain.InstanceBatchI
 	}
 	return s.store.GetInstanceBatch(ctx, id)
 }
+
+func (s *Service) RecentInstanceBatchIDs(ctx context.Context, project domain.ProjectID) ([]domain.InstanceBatchID, error) {
+	store, ok := s.store.(interface {
+		RecentInstanceBatchIDs(context.Context, domain.ProjectID) ([]domain.InstanceBatchID, error)
+	})
+	if !ok {
+		return nil, ErrAccessUnavailable
+	}
+	return store.RecentInstanceBatchIDs(ctx, project)
+}

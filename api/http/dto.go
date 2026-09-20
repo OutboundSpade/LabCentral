@@ -130,6 +130,9 @@ type ResourceDTO struct {
 }
 
 type InstanceDTO struct {
+	OwnerName        string         `json:"ownerName,omitempty"`
+	Name             string         `json:"name,omitempty"`
+	Instructions     string         `json:"instructions,omitempty"`
 	ID               string         `json:"id"`
 	RevisionID       string         `json:"revisionId,omitempty"`
 	ProjectID        string         `json:"projectId"`

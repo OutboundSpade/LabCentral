@@ -127,6 +127,14 @@ func runInstanceBatchConformance(t *testing.T, store *Store) {
 	assertTableCount(t, store, "labcentral_quota_reservations", application.MaximumInstanceBatchSize)
 	assertQuotaUsage(t, store, scope, application.MaximumInstanceBatchSize, 0, 0)
 
+	ids, err := store.RecentInstanceBatchIDs(ctx, request.ProjectID)
+	if err != nil || len(ids) != 1 || ids[0] != request.ID {
+		t.Fatal("recent batches", ids, err)
+	}
+	other, err := store.RecentInstanceBatchIDs(ctx, "project.beta")
+	if err != nil || len(other) != 0 {
+		t.Fatal("cross-project batches", other, err)
+	}
 	loaded, err := store.GetInstanceBatch(ctx, request.ID)
 	if err != nil || loaded.ID != created.ID || len(loaded.Items) != len(created.Items) {
 		t.Fatalf("loaded batch = %#v, %v", loaded, err)

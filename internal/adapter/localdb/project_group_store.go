@@ -19,6 +19,13 @@ func projectGroupMigration() []string {
 	}
 }
 func (s *Store) requireGroupProjectAuthorityTx(ctx context.Context, tx *sql.Tx, project domain.ProjectID, actor domain.UserID, admin bool) error {
+	roles := "'platform-administrator','organization-administrator','lab-author','instructor','participant','viewer'"
+	if admin {
+		roles = "'platform-administrator','organization-administrator'"
+	}
+	return s.requireGroupRolesTx(ctx, tx, project, actor, roles)
+}
+func (s *Store) requireGroupRolesTx(ctx context.Context, tx *sql.Tx, project domain.ProjectID, actor domain.UserID, roles string) error {
 	if project == "project.local" && actor == app.LocalAdminID {
 		return nil
 	}
@@ -27,10 +34,6 @@ func (s *Store) requireGroupProjectAuthorityTx(ctx context.Context, tx *sql.Tx, 
 		return err
 	}
 	n := now.UnixMicro()
-	roles := "'platform-administrator','organization-administrator','lab-author','instructor','participant','viewer'"
-	if admin {
-		roles = "'platform-administrator','organization-administrator'"
-	}
 	var allowed int
 	err = tx.QueryRowContext(ctx, s.bind(`WITH scope AS(SELECT organization_id FROM labcentral_projects WHERE project_id=?), memberships AS(SELECT organization_id,COALESCE(team_id,'') team_id FROM labcentral_memberships WHERE user_id=? AND valid_from_us<=? AND(valid_until_us=0 OR valid_until_us>?)) SELECT CASE WHEN EXISTS(SELECT 1 FROM labcentral_users WHERE user_id=? AND disabled=0) AND EXISTS(SELECT 1 FROM labcentral_role_assignments a CROSS JOIN scope s WHERE a.role IN(`+roles+`) AND a.valid_from_us<=? AND(a.valid_until_us=0 OR a.valid_until_us>?) AND((a.subject_kind='user' AND a.subject_id=?) OR(a.subject_kind='team' AND EXISTS(SELECT 1 FROM memberships m WHERE m.team_id=a.subject_id))) AND(a.subject_kind<>'user' OR a.scope_kind='platform' OR EXISTS(SELECT 1 FROM memberships m WHERE m.organization_id=s.organization_id)) AND((a.scope_kind='platform' AND a.scope_id='platform') OR(a.scope_kind='organization' AND a.scope_id=s.organization_id) OR(a.scope_kind='project' AND a.scope_id=?))) THEN 1 ELSE 0 END`), project, actor, n, n, actor, n, n, actor, project).Scan(&allowed)
 	if err != nil {
@@ -73,7 +76,7 @@ func (s *Store) groupTx(ctx context.Context, tx *sql.Tx, project domain.ProjectI
 			return app.ProjectGroup{}, err
 		}
 	}
-	return scanProjectGroup(tx.QueryRowContext(ctx, s.bind(`SELECT `+groupColumns+` FROM labcentral_project_groups g WHERE g.project_id=? AND g.team_id=?`), actor, project, group))
+	return scanProjectGroup(tx.QueryRowContext(ctx, s.bind(`SELECT `+groupColumns+` FROM labcentral_project_groups g WHERE g.project_id=? AND g.team_id=? AND NOT EXISTS(SELECT 1 FROM labcentral_deleted_project_groups d WHERE d.team_id=g.team_id)`), actor, project, group))
 }
 func (s *Store) ListProjectGroups(ctx context.Context, project domain.ProjectID, actor domain.UserID, after string, limit uint32) (out app.ProjectGroupPage, err error) {
 	if limit == 0 || limit > 200 || len(after) > 128 {
@@ -83,7 +86,7 @@ func (s *Store) ListProjectGroups(ctx context.Context, project domain.ProjectID,
 		if e := s.requireGroupProjectAuthorityTx(ctx, tx, project, actor, false); e != nil {
 			return e
 		}
-		rows, e := tx.QueryContext(ctx, s.bind(`SELECT `+groupColumns+` FROM labcentral_project_groups g WHERE g.project_id=? AND g.team_id>? ORDER BY g.team_id LIMIT ?`), actor, project, after, limit+1)
+		rows, e := tx.QueryContext(ctx, s.bind(`SELECT `+groupColumns+` FROM labcentral_project_groups g WHERE g.project_id=? AND g.team_id>? AND NOT EXISTS(SELECT 1 FROM labcentral_deleted_project_groups d WHERE d.team_id=g.team_id) ORDER BY g.team_id LIMIT ?`), actor, project, after, limit+1)
 		if e != nil {
 			return e
 		}
@@ -322,9 +325,9 @@ func (s *Store) ListProjectGroupMembers(ctx context.Context, project domain.Proj
 			return e
 		}
 		// A project user may discover groups, but member identities require current
-		// enrollment or project administration. Check both in this read transaction.
+		// enrollment, scoped instruction or project administration. Check both in this read transaction.
 		if !g.Joined {
-			if e = s.requireGroupProjectAuthorityTx(ctx, tx, project, actor, true); e != nil {
+			if e = s.requireGroupRolesTx(ctx, tx, project, actor, "'platform-administrator','organization-administrator','instructor'"); e != nil {
 				return e
 			}
 		}
@@ -351,4 +354,61 @@ func (s *Store) ListProjectGroupMembers(ctx context.Context, project domain.Proj
 		return nil
 	})
 	return
+}
+
+// Retain the ownership identity and audit history; only the active group is removed.
+// The group row lock is shared by enrollment and admission, fencing pending launches.
+func (s *Store) DeleteProjectGroup(ctx context.Context, r app.DeleteProjectGroup) error {
+	if r.ExpectedVersion == 0 {
+		return app.ErrAuthVersionConflict
+	}
+	if err := validateTemplateIdempotency(r.IdempotencyKey, r.RequestDigest); err != nil {
+		return err
+	}
+	const action = "projectGroup.delete"
+	return s.workTx(ctx, func(tx *sql.Tx) error {
+		if err := s.requireGroupProjectAuthorityTx(ctx, tx, r.ProjectID, r.ActorID, true); err != nil {
+			return err
+		}
+		if err := s.lockIdempotency(ctx, tx, r.ActorID, action, r.IdempotencyKey); err != nil {
+			return err
+		}
+		_, found, err := s.findIdempotency(ctx, tx, r.ActorID, action, r.IdempotencyKey, r.RequestDigest)
+		if err != nil || found {
+			return err
+		}
+		g, err := s.groupTx(ctx, tx, r.ProjectID, r.GroupID, r.ActorID, true)
+		if err != nil {
+			return err
+		}
+		if g.ResourceVersion != r.ExpectedVersion {
+			return app.ErrAuthVersionConflict
+		}
+		var count int
+		if err = tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_local_instances WHERE project_id=? AND owner_kind='team' AND owner_id=? AND phase<>'destroyed'`), r.ProjectID, r.GroupID).Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			return app.ErrGroupHasLabs
+		}
+		if _, err = tx.ExecContext(ctx, s.bind(`DELETE FROM labcentral_project_enrollments WHERE project_id=? AND team_id=?`), r.ProjectID, r.GroupID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, s.bind(`UPDATE labcentral_project_groups SET name=?,enrollment_open=0,resource_version=resource_version+1 WHERE project_id=? AND team_id=?`), "deleted:"+string(r.GroupID), r.ProjectID, r.GroupID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, s.bind(`INSERT INTO labcentral_deleted_project_groups(team_id,name,deleted_at_us) VALUES(?,?,`+s.nowMicros()+`)`), r.GroupID, g.Name); err != nil {
+			return err
+		}
+		if err = s.appendGroupAuditTx(ctx, tx, r.ActorID, r.ProjectID, string(r.GroupID), action, g); err != nil {
+			return err
+		}
+		return s.bindIdempotency(ctx, tx, r.ActorID, action, r.IdempotencyKey, r.RequestDigest, string(r.GroupID))
+	})
+}
+
+func (s *Store) InstancePresentation(ctx context.Context, id domain.InstanceID) (app.InstancePresentation, error) {
+	var out app.InstancePresentation
+	err := s.db.QueryRowContext(ctx, s.bind(`SELECT COALESCE(t.name,''),COALESCE(t.description,''),COALESCE(d.name,g.name,u.display_name,tm.name,'') FROM labcentral_local_instances i LEFT JOIN labcentral_template_revisions r ON r.revision_id=i.revision_id LEFT JOIN labcentral_lab_templates t ON t.template_id=r.template_id AND t.project_id=i.project_id LEFT JOIN labcentral_project_groups g ON i.owner_kind='team' AND g.team_id=i.owner_id AND g.project_id=i.project_id LEFT JOIN labcentral_deleted_project_groups d ON d.team_id=g.team_id LEFT JOIN labcentral_users u ON i.owner_kind='user' AND u.user_id=i.owner_id LEFT JOIN labcentral_teams tm ON i.owner_kind='team' AND tm.team_id=i.owner_id WHERE i.instance_id=?`), id).Scan(&out.Name, &out.Instructions, &out.OwnerName)
+	return out, err
 }

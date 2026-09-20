@@ -64,12 +64,6 @@ await initialize(async () => {
     );
   }
 
-  app.prepend(
-    el(
-      "p",
-      "Reusable lab sources, build recipes, and pinned dependencies. Portable exports contain source files needed to recreate images.",
-    ),
-  );
   const browse = section("Published templates", panels.Browse);
   const search = field(browse, "Search templates", "input", {
     type: "search",
@@ -222,13 +216,6 @@ await initialize(async () => {
   };
   if (author) {
     editor = section("Author a template", panels.Author);
-    editor.append(
-      el(
-        "p",
-        "Edit single-file lab YAML here. For portable templates, export the sources, edit Dockerfiles, playbooks and configuration locally, rebuild the source archive with lab-template-pack, then import a new independent template. This editor never replaces a multi-file package with a single YAML file.",
-        { class: "muted" },
-      ),
-    );
     name = field(editor, "Template name", "input", {
       maxlength: 63,
       required: true,
@@ -246,12 +233,6 @@ await initialize(async () => {
     editorMode = sourceEditor(editor, source);
     editor.addEventListener("input", () =>
       markDraft().catch((e) => message(e.message, true)),
-    );
-    editor.append(
-      el(
-        "p",
-        "Published revisions are immutable. Make an independent copy before changing synchronized content.",
-      ),
     );
     const actions = el("div", "", { class: "actions" });
     editor.append(actions);
@@ -273,6 +254,26 @@ await initialize(async () => {
         description.textContent = "";
         sourceText.textContent = "";
         await cleanDraft();
+      }),
+      button("Use as starting point", async () => {
+        if (!selected || !loadedRevision)
+          throw new Error("Choose a published template in Browse first.");
+        if (metadata.sourceArchive)
+          throw new Error(
+            "Use Make independent copy to preserve this template’s complete source archive.",
+          );
+        if (!(await discardDraft())) return;
+        const originalName = selected.name;
+        selected = null;
+        selection.value = "";
+        metadata = {};
+        loadedRevision = "";
+        options(revision, []);
+        name.value = (originalName + " copy").slice(0, 63);
+        source.readOnly = false;
+        publishButton.disabled = false;
+        await markDraft();
+        name.focus();
       }),
       button("Make independent copy", async () => {
         if (!(await discardDraft())) return;

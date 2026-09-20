@@ -45,12 +45,21 @@ func (s *Store) requirePreparationAuthorityTx(ctx context.Context, tx *sql.Tx, w
 	}
 	owner := r.EffectiveOwner(w.ActorID)
 	if owner.Kind == app.OwnerTeam {
-		var eligible int
-		if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_project_groups g WHERE g.team_id=? AND NOT EXISTS(SELECT 1 FROM labcentral_project_enrollments e WHERE e.project_id=g.project_id AND e.project_id=? AND e.team_id=g.team_id AND e.user_id=?)`), owner.ID, w.ProjectID, w.ActorID).Scan(&eligible); err != nil {
+		var groupProject string
+		err := tx.QueryRowContext(ctx, s.bind(`SELECT project_id FROM labcentral_project_groups WHERE team_id=?`), owner.ID).Scan(&groupProject)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		if eligible != 0 {
-			return app.ErrAuthorityChanged
+		if groupProject != "" {
+			g, err := s.groupTx(ctx, tx, w.ProjectID, domain.TeamID(owner.ID), w.ActorID, true)
+			if err != nil {
+				return app.ErrAuthorityChanged
+			}
+			if !g.Joined {
+				if err = s.requireGroupProjectAuthorityTx(ctx, tx, w.ProjectID, w.ActorID, true); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return s.requireInstanceOwnerAuthorizationTx(ctx, tx, app.InstanceRecord{ProjectID: w.ProjectID, ProviderTargetID: r.TargetID, OwnerKind: owner.Kind, OwnerID: owner.ID}, w.ActorID, now)

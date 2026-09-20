@@ -12,7 +12,7 @@
       pending = true;
       try {
         const result = await api<{ items: typeof featurePages }>(
-          "/extensions/browser",
+          `/extensions/browser?projectId=${encodeURIComponent(projectId)}`,
           { signal: abort.signal },
         );
         if (!abort.signal.aborted)
@@ -39,21 +39,40 @@
     Settings,
     FolderOpen,
     Plug,
+    Library,
+    GraduationCap,
+    FlaskConical,
+    Terminal,
+    Puzzle,
   } from "@lucide/svelte";
   import type { View } from "./navigation";
   let {
     view,
+    projectId,
     author,
     manager,
     administrator,
     authenticated,
   }: {
     view: View;
+    projectId: string;
     author?: boolean;
     manager: boolean;
     administrator: boolean;
     authenticated: boolean;
   } = $props();
+  const icons: Record<string, typeof Plug> = {
+    library: Library,
+    users: Users,
+    "graduation-cap": GraduationCap,
+    "book-open": BookOpen,
+    "flask-conical": FlaskConical,
+    server: Server,
+    terminal: Terminal,
+    folder: FolderOpen,
+    settings: Settings,
+    puzzle: Puzzle,
+  };
   let groups = $derived([
     {
       title: "LABS",
@@ -119,6 +138,7 @@
           : view === "feature" &&
             page.url.searchParams.get("contribution") ===
               `${feature.pluginInstance}/${feature.id}`}
+        {@const Icon = icons[feature.icon ?? ""] ?? Plug}
         <li>
           <a
             href={feature.routeAlias
@@ -126,7 +146,9 @@
               : `/feature/?contribution=${encodeURIComponent(`${feature.pluginInstance}/${feature.id}`)}`}
             class:menu-active={active}
             aria-current={active ? "page" : undefined}
-            ><Plug size={18} />{feature.title}</a
+            ><Icon size={18} class="shrink-0" /><span class="min-w-0"
+              >{feature.title}</span
+            ></a
           >
         </li>
       {/each}

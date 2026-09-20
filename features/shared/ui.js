@@ -4,15 +4,16 @@ export const context = await bridge.request("context.read");
 export const app = document.querySelector("#app");
 app.replaceChildren();
 const styles = {
-  p: "my-2",
-  h2: "text-lg font-semibold mb-3",
-  h3: "font-semibold",
-  section: "min-w-0 space-y-3",
-  article: "min-w-0 rounded-box border border-base-300 p-4 space-y-2",
+  p: "my-2 break-words",
+  h2: "text-lg font-semibold mb-3 break-words",
+  h3: "font-semibold break-words",
+  section: "min-w-0 space-y-3 [&>.btn+.btn]:ml-2",
+  article:
+    "min-w-0 rounded-box border border-base-300 p-4 space-y-2 [&>.btn+.btn]:ml-2 [&>small+.btn]:mt-3 [&>.btn+small]:mt-3",
   details: "min-w-0 rounded-box border border-base-300 p-4 space-y-3",
   summary:
     "cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-primary",
-  small: "text-xs text-base-content/65 [overflow-wrap:anywhere]",
+  small: "block text-xs text-base-content/65",
   pre: "max-h-80 overflow-auto whitespace-pre-wrap text-xs font-mono [overflow-wrap:anywhere]",
   fieldset: "fieldset border border-base-300 rounded-box p-4",
   legend: "fieldset-legend",
@@ -20,7 +21,7 @@ const styles = {
   ul: "list-disc pl-5 space-y-1",
 };
 const aliases = {
-  actions: "flex flex-wrap items-center gap-2 my-3",
+  actions: "flex flex-wrap items-center gap-3 my-3",
   grid: "grid gap-3 md:grid-cols-2",
   muted: "text-base-content/65",
   error: "text-error",
@@ -84,7 +85,8 @@ export function tabs(names, parent = app) {
       controls[n].classList.toggle("tab-active", n === name);
       controls[n].tabIndex = n === name ? 0 : -1;
     }
-    parent.scrollIntoView({ block: "start" });
+    window.scrollTo({ top: 0 });
+    parent.dispatchEvent(new CustomEvent("tabchange", { detail: name }));
   };
   for (const name of names) {
     const id = crypto.randomUUID(),
@@ -260,10 +262,10 @@ export function button(text, fn, kind = "") {
     type: "button",
     class:
       kind === "primary"
-        ? "btn btn-sm btn-primary min-h-11 h-auto py-2 whitespace-normal"
+        ? "btn btn-sm btn-primary min-h-11 h-auto py-2 whitespace-nowrap shrink-0"
         : kind === "danger"
-          ? "btn btn-sm btn-outline text-error min-h-11 h-auto py-2 whitespace-normal"
-          : "btn btn-sm min-h-11 h-auto py-2 whitespace-normal",
+          ? "btn btn-sm btn-outline text-error min-h-11 h-auto py-2 whitespace-nowrap shrink-0"
+          : "btn btn-sm min-h-11 h-auto py-2 whitespace-nowrap shrink-0",
   });
   b.onclick = async () => {
     if (b.disabled) return;
@@ -411,19 +413,64 @@ export function confirm(
   });
 }
 export function labCard(lab, parent, { end, onchange } = {}) {
-  const card = el("article");
-  card.append(
-    button(lab.name ?? lab.id, () =>
-      request("navigation.lab", { instanceId: lab.id }),
+  const card = el("article", "", {
+      class:
+        "flex flex-col min-[700px]:flex-row min-[700px]:items-center justify-between gap-6",
+    }),
+    summary = el("div", "", { class: "min-w-0 flex-1" }),
+    actions = el("div", "", {
+      class: "flex items-center flex-wrap gap-3 shrink-0",
+    });
+  const name = lab.name || "Untitled lab";
+  summary.append(
+    el("h3", name),
+    el(
+      "p",
+      [
+        lab.ownerName,
+        lab.desiredLifecycle === "destroyed" && lab.phase !== "destroyed"
+          ? "Ending…"
+          : lab.phase,
+      ]
+        .filter(Boolean)
+        .join(" · "),
     ),
-    el("p", `${lab.phase}${lab.ownerName ? ` · ${lab.ownerName}` : ""}`),
   );
   if (lab.expiresAt)
-    card.append(
+    summary.append(
       el("small", `Expires ${new Date(lab.expiresAt).toLocaleString()}`),
     );
-  if (end && lab.phase !== "destroyed")
-    card.append(
+  const identity = document.createElement("details");
+  identity.className = "mt-2 text-xs text-base-content/65";
+  identity.append(
+    el("summary", "Lab ID"),
+    el("code", lab.id, { class: "break-all text-xs" }),
+  );
+  summary.append(identity);
+  actions.append(
+    button("Open lab", () => request("navigation.lab", { instanceId: lab.id })),
+  );
+  if (lab.desiredLifecycle !== "destroyed")
+    for (const resource of (lab.resources ?? []).filter(
+      (r) => (r.kind === "VM" || r.virtualMachine) && r.phase === "ready",
+    ))
+      actions.append(
+        button(
+          (lab.resources ?? []).filter(
+            (r) => r.kind === "VM" || r.virtualMachine,
+          ).length > 1
+            ? `Console: ${resource.id.replace(/^[^.]+\./, "")}`
+            : "Open console",
+          () =>
+            request("navigation.console", {
+              instanceId: lab.id,
+              resourceId: resource.id,
+            }),
+          "primary",
+        ),
+      );
+  if (end && lab.phase !== "destroyed" && lab.desiredLifecycle !== "destroyed")
+    actions.append(
       button(
         "End lab",
         async () => {
@@ -431,7 +478,7 @@ export function labCard(lab, parent, { end, onchange } = {}) {
             await confirm(
               "End this lab?",
               "This deletes the lab and its files.",
-              [lab.name ?? lab.id],
+              [name, lab.ownerName].filter(Boolean),
               "End lab",
             )
           ) {
@@ -443,6 +490,7 @@ export function labCard(lab, parent, { end, onchange } = {}) {
         "danger",
       ),
     );
+  card.append(summary, actions);
   parent.append(card);
   return card;
 }

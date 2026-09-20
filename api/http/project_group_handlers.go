@@ -10,6 +10,9 @@ import (
 )
 
 func projectGroupError(err error) error {
+	if errors.Is(err, app.ErrGroupHasLabs) {
+		return huma.Error409Conflict("End all active group labs before deleting the group")
+	}
 	if errors.Is(err, app.ErrGroupEnrollmentClosed) {
 		return huma.Error409Conflict("Group enrollment is closed")
 	}
@@ -105,6 +108,26 @@ func registerProjectGroups(api huma.API, s *controlplane.Service, security *requ
 			return nil, projectGroupError(err)
 		}
 		return &versionedOutput[app.ProjectGroup]{ETag: resourceETag(result.ResourceVersion), Body: result}, nil
+	})
+	type deleteInput struct {
+		ProjectID      string `path:"projectId" minLength:"1" maxLength:"128"`
+		ID             string `path:"id" minLength:"1" maxLength:"128"`
+		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
+		IfMatch        string `header:"If-Match"`
+	}
+	huma.Delete(api, "/projects/{projectId}/groups/{id}", func(ctx context.Context, in *deleteInput) (*struct{}, error) {
+		p, err := authorizeActor(ctx, security, app.AuthorizationRequest{Action: app.ActionTeamManage, ScopeKind: app.ScopeProject, ScopeID: in.ProjectID})
+		if err != nil {
+			return nil, err
+		}
+		version, err := expectedResourceVersion(in.IfMatch)
+		if err != nil {
+			return nil, err
+		}
+		if err = s.DeleteProjectGroup(ctx, p.user.ID, domain.ProjectID(in.ProjectID), domain.TeamID(in.ID), version, in.IdempotencyKey); err != nil {
+			return nil, projectGroupError(err)
+		}
+		return &struct{}{}, nil
 	})
 	type memberInput struct {
 		ProjectID      string `path:"projectId" minLength:"1" maxLength:"128"`

@@ -51,7 +51,7 @@ func startExtensionAssets(ctx context.Context, cfg config, extensions loadedExte
 				}
 				aliases[v.RouteAlias] = true
 			}
-			views = append(views, httpapi.BrowserExtensionDTO{ID: v.ID, RouteAlias: v.RouteAlias, PluginInstance: b.InstanceID, Slot: v.Slot, Title: v.Title, URL: cfg.extensionAssetOrigin + "/" + url.PathEscape(b.InstanceID) + "/" + v.Entrypoint, Permissions: v.Permissions})
+			views = append(views, httpapi.BrowserExtensionDTO{ID: v.ID, RouteAlias: v.RouteAlias, Icon: v.Icon, RequiredActions: v.RequiredActions, PluginInstance: b.InstanceID, Slot: v.Slot, Title: v.Title, URL: cfg.extensionAssetOrigin + "/" + url.PathEscape(b.InstanceID) + "/" + v.Entrypoint, Permissions: v.Permissions})
 		}
 	}
 	handler, err := browserassets.Handler(cfg.extensionAssetOrigin, core, files)

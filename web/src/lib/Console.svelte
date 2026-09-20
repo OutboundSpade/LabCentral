@@ -19,7 +19,7 @@
   } from "./api";
   import type RFB from "@novnc/novnc";
   import type { components } from "./api.generated";
-  type Presence=components["schemas"]["ConsolePresence"];
+  type Presence = components["schemas"]["ConsolePresence"];
   let { accessSessionId }: { accessSessionId: string } = $props();
   let consoleStatus = $state("Connecting to your lab…");
   let consoleTarget = $state<HTMLDivElement>();
@@ -31,30 +31,67 @@
   let resizeMode = $state("fit");
   let currentID = $state("");
   let viewOnly = $state(false);
+  let showInstructions = $state(false);
   let sharedConsole = $state(false);
   let presence = $state<Presence>();
   let controlBusy = $state(false);
   let presenceTimer: ReturnType<typeof setTimeout> | undefined;
-  let hasControl = $derived(!!presence && presence.driverSessionId===currentID && presence.requestedSessionId===currentID);
+  let hasControl = $derived(
+    !!presence &&
+      presence.driverSessionId === currentID &&
+      presence.requestedSessionId === currentID,
+  );
   let effectiveViewOnly = $derived(viewOnly || (sharedConsole && !hasControl));
-  $effect(() => { const only=effectiveViewOnly; const mode=resizeMode; if(consoleClient) {consoleClient.viewOnly=only;consoleClient.resizeSession=mode==="remote"&&!only;consoleClient.scaleViewport=mode!=="actual";} });
-  async function refreshPresence(id:string,mine:number) {
-    if(disposed || id!==currentID || mine!==generation || !connected || !sharedConsole)return;
+  $effect(() => {
+    const only = effectiveViewOnly;
+    const mode = resizeMode;
+    if (consoleClient) {
+      consoleClient.viewOnly = only;
+      consoleClient.resizeSession = mode === "remote" && !only;
+      consoleClient.scaleViewport = mode !== "actual";
+    }
+  });
+  async function refreshPresence(id: string, mine: number) {
+    if (
+      disposed ||
+      id !== currentID ||
+      mine !== generation ||
+      !connected ||
+      !sharedConsole
+    )
+      return;
     try {
-      const result=await api<Presence>(`/access-sessions/${encodeURIComponent(id)}/console`,{fresh:true});
-      if(!disposed && id===currentID && mine===generation)presence=result;
-    } catch {if(id===currentID && mine===generation)presence=undefined;}
-    if(!disposed && id===currentID && mine===generation && connected)presenceTimer=setTimeout(()=>void refreshPresence(id,mine),1000);
+      const result = await api<Presence>(
+        `/access-sessions/${encodeURIComponent(id)}/console`,
+        { fresh: true },
+      );
+      if (!disposed && id === currentID && mine === generation)
+        presence = result;
+    } catch {
+      if (id === currentID && mine === generation) presence = undefined;
+    }
+    if (!disposed && id === currentID && mine === generation && connected)
+      presenceTimer = setTimeout(() => void refreshPresence(id, mine), 1000);
   }
-  async function changeControl(take:boolean) {
-    if(controlBusy || !connected)return;
-    const id=currentID,mine=generation;
-    controlBusy=true;controlError="";
+  async function changeControl(take: boolean) {
+    if (controlBusy || !connected) return;
+    const id = currentID,
+      mine = generation;
+    controlBusy = true;
+    controlError = "";
     try {
-      const result=await api<Presence>(`/access-sessions/${encodeURIComponent(id)}/console/${take?"take-control":"release-control"}`,{method:"POST",headers:mutationHeaders()});
-      if(id===currentID && mine===generation)presence=result;
-    } catch(e) {if(id===currentID && mine===generation)controlError=e instanceof Error?e.message:"Control could not be changed.";}
-    finally {controlBusy=false;}
+      const result = await api<Presence>(
+        `/access-sessions/${encodeURIComponent(id)}/console/${take ? "take-control" : "release-control"}`,
+        { method: "POST", headers: mutationHeaders() },
+      );
+      if (id === currentID && mine === generation) presence = result;
+    } catch (e) {
+      if (id === currentID && mine === generation)
+        controlError =
+          e instanceof Error ? e.message : "Control could not be changed.";
+    } finally {
+      controlBusy = false;
+    }
   }
   let specialKey = $state("escape");
   let controlError = $state("");
@@ -89,9 +126,12 @@
       const session = await api<AccessSession>(
         `/access-sessions/${encodeURIComponent(id)}`,
       );
-      if(disposed || id!==currentID)return;
-      sharedConsole=!!session.sharedConsole;
-      if(connected && sharedConsole){clearTimeout(presenceTimer);void refreshPresence(id,generation);}
+      if (disposed || id !== currentID) return;
+      sharedConsole = !!session.sharedConsole;
+      if (connected && sharedConsole) {
+        clearTimeout(presenceTimer);
+        void refreshPresence(id, generation);
+      }
       const instance = await api<Instance>(
         `/lab-instances/${encodeURIComponent(session.instanceId)}`,
         { signal: request?.signal ?? AbortSignal.timeout(10000) },
@@ -113,7 +153,7 @@
   let request: AbortController | undefined;
   function closeTransport() {
     clearTimeout(presenceTimer);
-    presence=undefined;
+    presence = undefined;
     clearTimeout(handshakeTimer);
     consoleClient?.disconnect();
     consoleClient = null;
@@ -226,8 +266,15 @@
           },
         ).catch(() => {});
       }
-      const presentation = await api<{streamPath?:string}>(`/access-sessions/${encodeURIComponent(currentID)}/presentation`, {signal});
-      if (!presentation.streamPath?.startsWith("/" ) || presentation.streamPath.startsWith("//")) throw new Error("Console stream unavailable");
+      const presentation = await api<{ streamPath?: string }>(
+        `/access-sessions/${encodeURIComponent(currentID)}/presentation`,
+        { signal },
+      );
+      if (
+        !presentation.streamPath?.startsWith("/") ||
+        presentation.streamPath.startsWith("//")
+      )
+        throw new Error("Console stream unavailable");
       const { default: ConsoleClient } = await import("@novnc/novnc");
       if (disposed || mine !== generation || !consoleTarget) return;
       const scheme = location.protocol === "https:" ? "wss:" : "ws:";
@@ -274,7 +321,7 @@
               clearTimeout(handshakeTimer);
               consoleStatus = "Connected";
               connected = true;
-              if(sharedConsole)void refreshPresence(currentID,mine);
+              if (sharedConsole) void refreshPresence(currentID, mine);
               reconnecting = false;
               client.focus();
             });
@@ -314,6 +361,22 @@
           e.status === 401
             ? "Sign in again to open your console."
             : "Console access is unavailable. Return to your lab.";
+        if (lab) {
+          try {
+            const latest = await api<Instance>(
+              `/lab-instances/${encodeURIComponent(lab.id)}`,
+              { fresh: true },
+            );
+            if (
+              mine === generation &&
+              (latest.phase === "destroyed" ||
+                latest.desiredLifecycle === "destroyed")
+            )
+              consoleStatus = "This lab has ended. Return to lab details.";
+          } catch {
+            /* Keep the authorization error when access is revoked. */
+          }
+        }
       } else
         retry(
           e instanceof Error ? e.message : "The console is unavailable.",
@@ -334,7 +397,17 @@
       class="btn btn-sm btn-ghost"
       ><ArrowLeft size={16} /> {lab ? "Lab details" : "My labs"}</a
     ><Terminal size={18} />
-    <h1 class="text-sm font-semibold">Lab console</h1>
+    <h1 class="min-w-0 break-words text-sm font-semibold">
+      {lab?.name || "Lab console"}{#if lab?.ownerName}<span
+          class="ml-3 text-base-content/65">{lab.ownerName}</span
+        >{/if}
+    </h1>
+    {#if lab?.instructions}<button
+        class="btn btn-sm shrink-0"
+        aria-expanded={showInstructions}
+        onclick={() => (showInstructions = !showInstructions)}
+        >Instructions</button
+      >{/if}
     {#if lab?.resources?.length}
       <select
         class="select select-sm w-auto"
@@ -406,8 +479,9 @@
         class="checkbox checkbox-sm"
         aria-label="View only"
         disabled={sharedConsole && !hasControl}
-        bind:checked={viewOnly}
-        onchange={() => {
+        checked={effectiveViewOnly}
+        onchange={(event) => {
+          viewOnly = event.currentTarget.checked;
           if (consoleClient) consoleClient.viewOnly = effectiveViewOnly;
         }}
       />View only</label
@@ -423,19 +497,52 @@
     </button>
   </div>
   {#if sharedConsole}
-    <div class="flex flex-wrap items-center gap-3 text-sm" aria-label="Shared console">
-      <span aria-live="polite">{hasControl?"You have control":presence?.requestedSessionId===currentID?"Waiting for control…":"Watching"}</span>
-      <button class="btn btn-sm" disabled={!connected || controlBusy} onclick={()=>void changeControl(!hasControl)}>{hasControl?"Release control":"Take control"}</button>
+    <div
+      class="flex flex-wrap items-center gap-3 text-sm"
+      aria-label="Shared console"
+    >
+      <span aria-live="polite"
+        >{hasControl
+          ? "You have control"
+          : presence?.requestedSessionId === currentID
+            ? "Waiting for control…"
+            : "Watching"}</span
+      >
+      <button
+        class="btn btn-sm"
+        disabled={!connected || controlBusy}
+        onclick={() => void changeControl(!hasControl)}
+        >{hasControl ? "Release control" : "Take control"}</button
+      >
       {#if presence?.participants?.length}
-        <span>Connected: {presence.participants.map(p=>p.displayName+(p.sessionId===presence?.driverSessionId?" (driver)":"")).join(", ")}</span>
+        <span
+          >Connected: {presence.participants
+            .map(
+              (p) =>
+                p.displayName +
+                (p.sessionId === presence?.driverSessionId ? " (driver)" : ""),
+            )
+            .join(", ")}</span
+        >
       {/if}
     </div>
   {/if}
   {#if controlError}<p role="alert" class="text-sm text-error">
       {controlError}
     </p>{/if}
-  <div
-    bind:this={consoleTarget}
-    class="min-h-0 flex-1 overflow-hidden rounded-lg border border-base-300 bg-neutral"
-  ></div>
+  <div class="flex min-h-0 flex-1 gap-4">
+    <div
+      bind:this={consoleTarget}
+      class="min-h-0 flex-1 overflow-hidden rounded-lg border border-base-300 bg-neutral"
+    ></div>
+    {#if showInstructions && lab?.instructions}<aside
+        aria-label="Exercise instructions"
+        class="w-80 shrink-0 overflow-y-auto rounded-lg border border-base-300 p-4"
+      >
+        <h2 class="mb-3 font-semibold">{lab.name || "Instructions"}</h2>
+        <p class="whitespace-pre-wrap break-words text-sm leading-relaxed">
+          {lab.instructions}
+        </p>
+      </aside>{/if}
+  </div>
 </main>

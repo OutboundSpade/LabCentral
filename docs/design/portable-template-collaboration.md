@@ -171,3 +171,10 @@ template exports, recording and general plugin workflow engines are out of scope
 Builder execution details and the typed recipe contracts are in [disposable VM builders](../plugins/vm-builders.md). The dedicated worker uses a private virtio-serial channel, mutually authenticated typed RPC relay, restricted egress proxy and independent systemd guest deadlines. These implement ADR-0028 without giving builder guests provider or control-plane credentials.
 
 The versioned reservation, import evidence, approval and retirement contracts are documented in [Proxmox image imports](../plugins/proxmox-image-import.md).
+
+
+The additive desktop workflow, administrator group-retirement and host-5 presentation
+contracts are specified in [classroom UI](classroom-ui.md#desktop-team-workflows-task-ui-012).
+Group retirement preserves historical team identity, rejects active labs and fences
+pending admission. It does not change last-member departure semantics or legacy
+organizational memberships.

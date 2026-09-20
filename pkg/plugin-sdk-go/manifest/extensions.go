@@ -20,15 +20,17 @@ type BrowserAsset struct {
 	SHA256 string `json:"sha256"`
 }
 type BrowserContribution struct {
-	ID          string   `json:"id"`
-	RouteAlias  string   `json:"routeAlias,omitempty"`
-	Slot        string   `json:"slot"`
-	Title       string   `json:"title"`
-	Entrypoint  string   `json:"entrypoint"`
-	Permissions []string `json:"permissions"`
+	ID              string   `json:"id"`
+	Icon            string   `json:"icon,omitempty"`
+	RequiredActions []string `json:"requiredActions,omitempty"`
+	RouteAlias      string   `json:"routeAlias,omitempty"`
+	Slot            string   `json:"slot"`
+	Title           string   `json:"title"`
+	Entrypoint      string   `json:"entrypoint"`
+	Permissions     []string `json:"permissions"`
 }
 
-const BrowserHostVersion = 4
+const BrowserHostVersion = 5
 
 type BrowserPackage struct {
 	MinimumHostVersion uint32                `json:"minimumHostVersion,omitempty"`
@@ -93,6 +95,20 @@ func SnapshotBrowser(root, manifestPath string, m Manifest) (map[string]AssetSna
 		}
 		if c.RouteAlias != "" && (m.Browser.MinimumHostVersion < 3 || c.Slot != "page" || !slices.Contains([]string{"templates", "teams", "classroom"}, c.RouteAlias)) {
 			return nil, fmt.Errorf("invalid browser route alias")
+		}
+		if (c.Icon != "" || len(c.RequiredActions) > 0) && (m.Browser.MinimumHostVersion < 5 || c.Slot != "page") {
+			return nil, fmt.Errorf("page metadata requires host 5")
+		}
+		if c.Icon != "" && !slices.Contains([]string{"library", "users", "graduation-cap", "book-open", "flask-conical", "server", "terminal", "folder", "settings", "puzzle"}, c.Icon) {
+			return nil, fmt.Errorf("unsupported page icon")
+		}
+		if len(c.RequiredActions) > 4 {
+			return nil, fmt.Errorf("too many page access actions")
+		}
+		for _, action := range c.RequiredActions {
+			if !slices.Contains([]string{"template.read", "template.create", "instance.batchCreate", "team.manage"}, action) {
+				return nil, fmt.Errorf("unsupported page access action")
+			}
 		}
 		ids[c.ID] = true
 		if asset, ok := assets[c.Entrypoint]; !ok || !strings.HasPrefix(asset.MediaType, "text/html") {

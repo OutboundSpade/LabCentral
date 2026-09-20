@@ -295,6 +295,9 @@ type governanceHTTPFixture struct {
 }
 
 func newGovernanceHTTPFixture(t *testing.T, bindings ...controlplane.TargetBinding) *governanceHTTPFixture {
+	return newGovernanceHTTPFixtureOptions(t, nil, bindings...)
+}
+func newGovernanceHTTPFixtureOptions(t *testing.T, views []BrowserExtensionDTO, bindings ...controlplane.TargetBinding) *governanceHTTPFixture {
 	t.Helper()
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:governance-http-%d?mode=memory&cache=shared", time.Now().UnixNano()))
@@ -424,6 +427,7 @@ func newGovernanceHTTPFixture(t *testing.T, bindings ...controlplane.TargetBindi
 	}
 	static := fstest.MapFS{"index.html": {Data: []byte("<h1>LabCentral</h1>")}}
 	server, err := New(service, []byte("example"), static, Options{
+		BrowserExtensions:       views,
 		DefaultProviderTargetID: string(controlplane.LocalDockerTarget),
 		Authentication: AuthenticationOptions{
 			Mode: AuthModeLocal, Manager: manager, Repository: database, Authorizer: evaluator, TokenHasher: keyring,

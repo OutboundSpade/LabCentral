@@ -39,7 +39,9 @@ await initialize(async () => {
       results = new Map();
     let roster = [],
       labs = [],
-      batchId = "",
+      batches = [],
+      groups = [],
+      groupMembers = [],
       pending = false,
       rendered = "",
       targetId = "";
@@ -60,7 +62,8 @@ await initialize(async () => {
           selectedLabs.clear();
           await refresh();
         } else {
-          batchId = result.id;
+          launch.close();
+          views.select("Launch activity");
           message("Classroom launch accepted.");
           await refresh();
         }
@@ -80,14 +83,15 @@ await initialize(async () => {
           .includes(search.value.toLowerCase()),
       );
     students.prepend(form.target.parentElement);
-    if(!targetId)students.append(el("p","No deployment environment is available. Ask an administrator to grant an environment to this workspace.",{role:"status"}));
+    if (!targetId)
+      students.append(
+        el(
+          "p",
+          "No deployment environment is available. Ask an administrator to grant an environment to this workspace.",
+          { role: "status" },
+        ),
+      );
     search.oninput = () => render();
-    students.append(
-      el(
-        "p",
-        "Select students to launch their own labs. Select labs to end them together.",
-      ),
-    );
     const allStudents = check(students, "Select all students");
     allStudents.onchange = () => {
       selected.clear();
@@ -117,7 +121,7 @@ await initialize(async () => {
             "This permanently deletes these labs and their files.",
             chosen.map(
               (l) =>
-                `${roster.find((p) => p.id === l.ownerId)?.displayName ?? l.ownerId} · ${l.id}`,
+                `${roster.find((p) => p.id === l.ownerId)?.displayName ?? l.ownerId} · ${l.name || "Untitled lab"}`,
             ),
             "End selected labs",
           ))
@@ -174,17 +178,15 @@ await initialize(async () => {
     };
     const groupPanel = section("Group-owned labs", views.panels["Group labs"]),
       groupList = el("div", "", { class: "space-y-3" });
-    groupPanel.append(groupList);
+    groupPanel.append(
+      button("Manage groups & deploy", () => navigate("teams"), "primary"),
+      groupList,
+    );
     const batchStatus = section(
       "Launch status",
       views.panels["Launch activity"],
     );
-    batchStatus.append(
-      el(
-        "p",
-        "No launches in this visit yet. Existing labs appear in the roster.",
-      ),
-    );
+    batchStatus.append(el("p", "Loading recent launches…"));
     function counts() {
       selectionCount.textContent = `${selected.size} students selected · ${selectedLabs.size} labs selected`;
       launchSelected.disabled = !selected.size;
@@ -215,6 +217,19 @@ await initialize(async () => {
       const rows = people.map((p) => ({
         ...p,
         selected: selected.has(p.id),
+        teams: groups
+          .filter((g) =>
+            groupMembers.some((m) => m.groupId === g.id && m.id === p.id),
+          )
+          .map((g) => ({
+            ...g,
+            labs: labs.filter(
+              (l) =>
+                l.ownerKind === "team" &&
+                l.ownerId === g.id &&
+                l.phase !== "destroyed",
+            ),
+          })),
         own: labs
           .filter(
             (l) =>
@@ -246,10 +261,25 @@ await initialize(async () => {
         const own = el("div", "", { class: "space-y-2" });
         card.append(own);
         if (!person.own.length)
-          own.append(el("p", "No active labs", { class: "muted" }));
+          own.append(el("p", "No personal labs", { class: "muted" }));
+        for (const group of person.teams) {
+          const shared = el("div", "", {
+            class: "border-l-2 border-primary pl-3 space-y-2",
+          });
+          shared.append(el("h3", group.name));
+          for (const lab of group.labs)
+            shared.append(
+              button(lab.name || "Open shared lab", () =>
+                request("navigation.lab", { instanceId: lab.id }),
+              ),
+            );
+          if (!group.labs.length)
+            shared.append(el("small", "No active group labs."));
+          own.append(shared);
+        }
         for (const lab of person.own) {
           const row = el("div", "", {
-            class: "border-l border-base-300 pl-3 space-y-2",
+            class: "border-l border-base-300 pl-3 space-y-3",
           });
           if (lab.phase !== "destroyed") {
             const choice = check(
@@ -297,7 +327,17 @@ await initialize(async () => {
       );
       stableList(groupList, groupLabs, (l) => {
         const holder = el("div");
-        return labCard(l, holder, { end: true, onchange: refresh });
+        return labCard(
+          {
+            ...l,
+            ownerName:
+              l.ownerName ||
+              groups.find((g) => g.id === l.ownerId)?.name ||
+              "Group",
+          },
+          holder,
+          { end: true, onchange: refresh },
+        );
       });
       if (!groupLabs.length)
         groupList.replaceChildren(
@@ -313,10 +353,23 @@ await initialize(async () => {
       if (pending || !targetId) return;
       pending = true;
       try {
-        [roster, labs] = await Promise.all([
+        [roster, labs, groups, { items: batches }] = await Promise.all([
           all("members.list", { targetId }, "after"),
           all("labs.list"),
+          all("groups.list", {}, "after"),
+          request("labs.batchList"),
         ]);
+        groupMembers = [];
+        // Only administrators/enrolled users can see group rosters; absent authority
+        // must not make the rest of Classroom unusable.
+        for (const g of groups) {
+          const members = await all(
+            "groups.members",
+            { groupId: g.id },
+            "after",
+          );
+          groupMembers.push(...members.map((m) => ({ ...m, groupId: g.id })));
+        }
         for (const id of selected)
           if (!roster.some((p) => p.id === id)) selected.delete(id);
         for (const [id, result] of results) {
@@ -337,22 +390,53 @@ await initialize(async () => {
             );
           }
         }
-        if (batchId) {
-          batchStatus.hidden = false;
-          const batch = await request("labs.batchGet", { batchId });
-          batchStatus.replaceChildren(el("h2", "Launch status"));
-          for (const item of batch.items ?? [])
-            batchStatus.append(
+        const batchRows = batches.map((b) => ({
+          ...b,
+          items: (b.items ?? []).map((item) => ({
+            ...item,
+            label:
+              roster.find((p) => p.id === item.ownerId)?.displayName ||
+              item.ownerId,
+            lab: labs.find((l) => l.id === item.instanceId),
+          })),
+        }));
+        let history = batchStatus.querySelector("[data-history]");
+        if (!history) {
+          history = el("div", "", { "data-history": "", class: "space-y-3" });
+          batchStatus.replaceChildren(el("h2", "Recent launches"), history);
+        }
+        stableList(history, batchRows, (b) => {
+          const card = el("article");
+          card.append(
+            el("h3", b.items[0]?.lab?.name || "Classroom launch"),
+            el("small", new Date(b.createdAt).toLocaleString()),
+          );
+          for (const item of b.items) {
+            const row = el("div", "", { class: "actions" });
+            row.append(
               el(
-                "p",
-                `${roster.find((p) => p.id === item.ownerId)?.displayName ?? item.ownerId}: ${item.operation.state}${item.operation.message ? ` · ${item.operation.message}` : ""}`,
+                "span",
+                `${item.label} · ${item.lab?.phase || item.operation.state}`,
               ),
             );
-        }
+            if (item.instanceId)
+              row.append(
+                button("Open lab", () =>
+                  request("navigation.lab", { instanceId: item.instanceId }),
+                ),
+              );
+            card.append(row);
+          }
+          return card;
+        });
+        if (!batchRows.length)
+          history.replaceChildren(el("p", "No recent launches."));
         const next = JSON.stringify([
           targetId,
           roster,
           labs,
+          groups,
+          groupMembers,
           [...results],
           [...selected],
           search.value,

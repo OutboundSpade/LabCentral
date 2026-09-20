@@ -281,3 +281,94 @@ func projectGroupContract(t *testing.T, s *Store) {
 		t.Fatal("stale group admission", err)
 	}
 }
+
+func TestSQLiteProjectGroupDeletion(t *testing.T) {
+	projectGroupDeletionContract(t, newSQLiteAccessContractStore(t))
+}
+func TestPostgreSQLProjectGroupDeletion(t *testing.T) {
+	s := newPostgreSQLQuotaTestStore(t, "group_deletion")
+	if err := s.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	projectGroupDeletionContract(t, s)
+}
+func projectGroupDeletionContract(t *testing.T, s *Store) {
+	ctx := context.Background()
+	setupQuotaTestTenancy(t, s)
+	groups, err := s.CreateProjectGroups(ctx, app.CreateProjectGroups{ProjectID: "project.alpha", ActorID: "user.quota", Groups: []app.ProjectGroupSeed{{ID: "team.deleted", Name: "Deleted team"}, {ID: "team.busy", Name: "Busy team"}}, EnrollmentOpen: true, IdempotencyKey: "delete-setup-groups", RequestDigest: testRequestDigest("delete-setup")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ChangeProjectGroupMembership(ctx, app.ChangeProjectGroupMembership{ProjectID: "project.alpha", GroupID: groups[0].ID, ActorID: "user.quota", Join: true, IdempotencyKey: "delete-join-member", RequestDigest: testRequestDigest("delete-join")}); err != nil {
+		t.Fatal(err)
+	}
+	remove := app.DeleteProjectGroup{ProjectID: "project.alpha", GroupID: groups[0].ID, ActorID: "user.quota", ExpectedVersion: 1, IdempotencyKey: "delete-group-request", RequestDigest: testRequestDigest("delete")}
+	stale := remove
+	stale.ExpectedVersion = 2
+	stale.IdempotencyKey = "delete-stale-version"
+	if err = s.DeleteProjectGroup(ctx, stale); !errors.Is(err, app.ErrAuthVersionConflict) {
+		t.Fatal("stale deletion", err)
+	}
+	// An administrator need not join a team to prepare a lab. Deletion fences that request.
+	if _, err = s.CreateLabTemplate(ctx, app.CreateLabTemplateRequest{GovernanceRecordIDs: governanceIDs("delete-template"), ID: "template.delete", ProjectID: "project.alpha", Name: "Delete fixture", CreatedBy: "user.quota", IdempotencyKey: "delete-template-key", RequestDigest: testRequestDigest("delete-template")}); err != nil {
+		t.Fatal(err)
+	}
+	rev := testRevisionRequest("revision.delete", "template.delete", "delete-bundle", "delete-canonical")
+	rev.PublishedBy = "user.quota"
+	if _, err = s.PublishTemplateRevision(ctx, rev); err != nil {
+		t.Fatal(err)
+	}
+	prep := app.CreateExtensionWork{GovernanceRecordIDs: governanceIDs("delete-prep"), IdempotencyKey: "delete-preparation", RequestDigest: testRequestDigest("delete-prep"), Work: app.ExtensionWork{ID: "prep.delete", ProjectID: "project.alpha", ActorID: "user.quota", InvocationID: "inv.delete", Request: app.ExtensionWorkRequest{Version: 2, Kind: domain.WorkPreparation, PluginInstance: "core-preparation", BindingID: "default", TemplateID: rev.TemplateID, Preparation: &app.PreparationWork{Version: 2, RevisionID: rev.ID, TargetID: "target.quota", Owner: &app.PreparationOwner{Kind: app.OwnerTeam, ID: string(groups[1].ID)}}}}}
+	if _, err = s.CreateExtensionWork(ctx, prep); err != nil {
+		t.Fatal("unjoined admin prep", err)
+	}
+	if _, err = s.AuthorizePreparationWork(ctx, prep.Work.ID); err != nil {
+		t.Fatal("unjoined admin authority", err)
+	}
+	if err = s.DeleteProjectGroup(ctx, remove); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteProjectGroup(ctx, remove); err != nil {
+		t.Fatal("replay", err)
+	}
+	page, err := s.ListProjectGroups(ctx, "project.alpha", "user.quota", "", 100)
+	if err != nil || len(page.Items) != 1 {
+		t.Fatal("deleted discovery", page, err)
+	}
+	if _, err = s.ChangeProjectGroupMembership(ctx, app.ChangeProjectGroupMembership{ProjectID: "project.alpha", GroupID: remove.GroupID, ActorID: "user.quota", Join: true, IdempotencyKey: "deleted-rejoin-key", RequestDigest: testRequestDigest("rejoin")}); !errors.Is(err, app.ErrNotFound) {
+		t.Fatal("deleted rejoin", err)
+	}
+	snapshot, err := s.AuthorizationSnapshot(ctx, "user.quota", time.Now())
+	if err != nil || len(snapshot.ProjectTeams) != 0 {
+		t.Fatal("deleted enrollment", err)
+	}
+	launch := quotaTestCreateRequest("instance.delete-race", "project.alpha", 3600)
+	launch.OwnerKind = app.OwnerTeam
+	launch.OwnerID = string(groups[1].ID)
+	remove.GroupID = groups[1].ID
+	remove.IdempotencyKey = "delete-busy-group"
+	remove.RequestDigest = testRequestDigest("busy-delete")
+	// Admission and deletion serialize on the group. Exactly one may win.
+	var admittedErr, deletedErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); _, admittedErr = s.CreateInstance(ctx, launch) }()
+	go func() { defer wg.Done(); deletedErr = s.DeleteProjectGroup(ctx, remove) }()
+	wg.Wait()
+	if admittedErr == nil {
+		if !errors.Is(deletedErr, app.ErrGroupHasLabs) {
+			t.Fatal("active lab orphaned", deletedErr)
+		}
+	} else if deletedErr != nil {
+		t.Fatal("neither operation succeeded", admittedErr, deletedErr)
+	}
+	if deletedErr == nil {
+		if _, err = s.AuthorizePreparationWork(ctx, prep.Work.ID); !errors.Is(err, app.ErrAuthorityChanged) {
+			t.Fatal("deleted preparation survived", err)
+		}
+	}
+	// Historical organization-team identity cannot be repurposed by ordinary management.
+	if err = s.PutMembership(ctx, app.MembershipRecord{ID: "membership.deleted", UserID: "user.quota", OrganizationID: "org.quota", TeamID: groups[0].ID, ValidFrom: time.Now().Add(-time.Hour)}); err == nil {
+		t.Fatal("deleted collaboration team became organizational membership")
+	}
+}

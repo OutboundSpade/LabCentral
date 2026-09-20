@@ -10,6 +10,8 @@ import (
 const ProjectGroupVersion = "labcentral.project-group/v1"
 const MaximumGroupBatch = 100
 
+var ErrGroupHasLabs = errors.New("end all active group labs before deleting the group")
+
 var ErrGroupEnrollmentClosed = errors.New("group enrollment is closed")
 var ErrGroupMembershipConflict = errors.New("already enrolled in another group in this project")
 
@@ -57,7 +59,16 @@ type ProjectGroupPage struct {
 	Items      []ProjectGroup `json:"items"`
 	NextCursor string         `json:"nextCursor,omitempty"`
 }
+type DeleteProjectGroup struct {
+	ProjectID       domain.ProjectID
+	GroupID         domain.TeamID
+	ActorID         domain.UserID
+	ExpectedVersion domain.ResourceVersion
+	IdempotencyKey  string
+	RequestDigest   domain.SHA256Digest
+}
 type ProjectGroupStore interface {
+	DeleteProjectGroup(context.Context, DeleteProjectGroup) error
 	ListProjectGroups(context.Context, domain.ProjectID, domain.UserID, string, uint32) (ProjectGroupPage, error)
 	CreateProjectGroups(context.Context, CreateProjectGroups) ([]ProjectGroup, error)
 	ChangeProjectGroupEnrollment(context.Context, ChangeProjectGroupEnrollment) (ProjectGroup, error)
@@ -75,4 +86,11 @@ type ProjectGroupMemberPage struct {
 }
 type ProjectGroupMemberStore interface {
 	ListProjectGroupMembers(context.Context, domain.ProjectID, domain.TeamID, domain.UserID, string, uint32) (ProjectGroupMemberPage, error)
+}
+
+// InstancePresentation is authorized through its owning lab, never independently.
+type InstancePresentation struct {
+	Name         string
+	Instructions string
+	OwnerName    string
 }

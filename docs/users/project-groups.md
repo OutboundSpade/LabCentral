@@ -32,7 +32,7 @@ project, including another project in the same organization.
 
 Use single-deployment preparation version 2 with
 `owner: {"kind":"team","id":"<group-id>"}` to prepare a published template for
-an enrolled member. It does not require instructor batch permissions. The core
+an enrolled member, or an administrator who has group-management and lab-launch permissions. Administrators do not have to join. It does not require instructor batch permissions. The core
 rechecks current enrollment during preparation and atomic admission. Labs retain
 the team owner and initiating audit actor; multiple labs remain subject to quotas.
 
@@ -52,4 +52,18 @@ In Teams, **Your team** shows your collaborators and active shared labs. Use
 **Groups** to find and join an open group. Administrators use **Manage** to inspect
 any project's group, view its members and labs, and change enrollment without
 joining it. Member rosters are visible only to that group's current members and
-project administrators. Leaving removes your roster and lab access immediately.
+project administrators and scoped instructors. Leaving removes your roster and lab access immediately.
+
+
+Administrators: open **Teams → Manage**, select a group, then choose **Deploy group
+lab**. The dialog names the group that will own the lab. Select the published
+template, environment and lifetime, then **Prepare and deploy**. Members see the
+lab in their own Teams view as it becomes ready.
+
+**Delete group** asks for confirmation and removes its members' enrollment. First
+end every active lab and wait for deletion to finish; otherwise deletion returns
+409. The group's historical labs and audit records remain, but it disappears from
+discovery and cannot accept joins or pending launches. The display name can be used
+for a new group. This uses `DELETE /api/v1/projects/{projectId}/groups/{id}` with
+`If-Match` and `Idempotency-Key`; a successful deletion/replay returns 204. Merely
+leaving or closing enrollment still never deletes a group or its labs.

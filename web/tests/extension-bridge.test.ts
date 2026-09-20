@@ -189,3 +189,11 @@ test("group roster is closed and bound to the current project", () => {
  expect(() => featureRequest("groups.members", {groupId:"team.one",projectId:"project.two"}, {projectId:"project.one"})).toThrow();
  expect(() => featureRequest("groups.members", {groupId:"../teams"}, {projectId:"project.one"})).toThrow();
 });
+
+test("group deletion is versioned and project bound",()=>{
+ const input={groupId:"team.one",resourceVersion:2,idempotencyKey:"delete-group-retry"};
+ expect(featureRequest("groups.delete",input,context)).toEqual({path:"/projects/project.one/groups/team.one",method:"DELETE",expectedVersion:2,idempotencyKey:input.idempotencyKey});
+ for(const extra of [{projectId:"project.other"},{actorId:"admin"},{force:true}])expect(()=>featureRequest("groups.delete",{...input,...extra},context)).toThrow();
+ expect(()=>featureRequest("groups.delete",{...input,resourceVersion:0},context)).toThrow();
+ expect(featureRequest("labs.batchList",{},context).path).toBe("/lab-instance-batches?projectId=project.one");
+});

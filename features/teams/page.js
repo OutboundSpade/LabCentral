@@ -21,88 +21,106 @@ import {
 } from "./ui.js";
 import { launchForm, preparations } from "./launch.js";
 await initialize(async () => {
-  const admin = can("team.manage");
-  app.append(
-    el(
-      "p",
-      "Work together in one team per workspace. Your team keeps its labs when members leave.",
-      { class: "muted" },
-    ),
-  );
-  const views = tabs(["Your team", "Groups", ...(admin ? ["Manage"] : [])]),
-    panels = views.panels;
+  const admin = can("team.manage"),
+    views = tabs(
+      admin ? ["Manage", "Your team", "Groups"] : ["Your team", "Groups"],
+    );
   let groups = [],
     labs = [],
     joined = null,
-    pending = false;
-  const current = section("Your team", panels["Your team"]),
-    currentInfo = el("div");
+    pending = false,
+    launchOwner = null,
+    managedID = "";
+  const current = section("Your team", views.panels["Your team"]),
+    currentInfo = el("div"),
+    currentLabs = el("div", "", { class: "space-y-3" });
   current.append(currentInfo);
-  const launch = modal(
-    "Deploy a group lab",
-    "This lab belongs to your team. Every member can access it.",
-  );
+  const teamColumns = el("div", "", {
+    class: "grid gap-6 md:grid-cols-[minmax(0,1fr)_14rem]",
+  });
+  views.panels["Your team"].append(teamColumns);
+  section("Labs", teamColumns).append(currentLabs);
+  const roster = section("Members", teamColumns),
+    memberList = el("div");
+  roster.append(memberList);
+
+  const launch = modal("Deploy a group lab"),
+    ownerLabel = el("p", "", { class: "font-semibold" });
+  launch.body.append(ownerLabel);
   const form = await launchForm(launch.body, {
-    owner: () => (joined ? { kind: "team", id: joined.id } : undefined),
+    owner: () =>
+      launchOwner ? { kind: "team", id: launchOwner.id } : undefined,
     onlaunch: async (w) => {
-      if (!w.changed)
-        message(
-          "Team preparation queued. You can close this dialog and follow its progress below.",
-        );
+      if (!w.changed) {
+        launch.close();
+        message("Lab preparation started.");
+        await refresh();
+        await refreshPreparations();
+      }
     },
   });
   launch.body.append(button("Close", () => launch.close()));
-  const deploy = button("Deploy a group lab", () => launch.open(), "primary");
-  current.append(deploy);
-  const roster = section("Members", panels["Your team"]),
-    memberList = el("div");
-  roster.append(memberList);
-  const labPanel = section("Your group labs", panels["Your team"]),
-    labList = el("div", "", { class: "space-y-3" });
-  labPanel.append(labList);
-  preparations(
-    panels["Your team"],
+  const openLaunch = async (group) => {
+    launchOwner = group;
+    ownerLabel.textContent = `Group: ${group.name}`;
+    await form.reload();
+    launch.open();
+  };
+  const activeOwner = () =>
+    admin && views.panels.Manage && !views.panels.Manage.hidden
+      ? managedID
+      : joined?.id;
+  const progressParent = admin
+    ? views.panels.Manage
+    : views.panels["Your team"];
+  const refreshPreparations = preparations(
+    progressParent,
     (w) =>
-      !!joined &&
       w.request.preparation?.owner?.kind === "team" &&
-      w.request.preparation.owner.id === joined.id,
+      w.request.preparation.owner.id === activeOwner(),
+    { activeOnly: true },
   );
-  const discovery = section("Project groups", panels.Groups),
+  app.addEventListener("tabchange", (event) => {
+    if (["Manage", "Your team"].includes(event.detail)) {
+      views.panels[event.detail].append(refreshPreparations.panel);
+      void refreshPreparations().catch((e) => message(e.message, true));
+    }
+  });
+  const discovery = section("Project groups", views.panels.Groups),
     search = field(discovery, "Search groups", "input", {
       type: "search",
       placeholder: "Find a group",
     }),
     groupList = el("div", "", { class: "grid" });
   discovery.append(groupList);
-  search.oninput = renderGroups;
-  async function membership(group) {
+  async function membership(g) {
     if (
-      group.joined &&
+      g.joined &&
       !(await confirm(
         "Leave this group?",
-        "Your access to group labs and consoles will end. The labs remain.",
-        [group.name],
+        "Your access to group labs and consoles will end.",
+        [g.name],
         "Leave group",
       ))
     )
       return;
-    await mutate(group.joined ? "groups.leave" : "groups.join", {
-      groupId: group.id,
-    });
+    await mutate(g.joined ? "groups.leave" : "groups.join", { groupId: g.id });
     await refresh();
-    if (!group.joined) views.select("Your team");
+    if (!g.joined) views.select("Your team");
+    await refreshPreparations();
   }
   function renderGroups() {
     const shown = groups
       .filter((g) => g.name.toLowerCase().includes(search.value.toLowerCase()))
       .map((g) => ({ ...g, otherJoined: !!joined && !g.joined }));
     stableList(groupList, shown, (g) => {
-      const card = el("article");
+      const card = el("article"),
+        actions = el("div", "", { class: "actions" });
       card.append(
         el("h3", g.name),
         el(
           "p",
-          `${g.memberCount} members · ${g.enrollmentOpen ? "Enrollment open" : "Enrollment closed"}${g.joined ? " · Your group" : ""}`,
+          `${g.memberCount} members · ${g.enrollmentOpen ? "Enrollment open" : "Enrollment closed"}`,
         ),
       );
       const join = button(
@@ -111,59 +129,46 @@ await initialize(async () => {
         g.joined ? "" : "primary",
       );
       join.disabled = !g.joined && (!g.enrollmentOpen || g.otherJoined);
-      card.append(join);
+      actions.append(join);
+      card.append(actions);
       if (g.otherJoined)
         card.append(
           el("small", "Leave your current group before joining another."),
-        );
-      else if (!g.enrollmentOpen && !g.joined)
-        card.append(
-          el("small", "Enrollment is closed. Ask an administrator to open it."),
         );
       return card;
     });
     if (!shown.length)
       groupList.replaceChildren(
-        el(
-          "p",
-          groups.length
-            ? "No groups match your search."
-            : "No groups have been created for this workspace.",
-        ),
+        el("p", groups.length ? "No matching groups." : "No groups yet."),
       );
   }
-  async function members(group, parent) {
-    if (!group) {
+  search.oninput = renderGroups;
+  async function members(g, parent) {
+    if (!g) {
       parent.replaceChildren();
       return;
     }
-    const items = await all("groups.members", { groupId: group.id }, "after");
+    const items = await all("groups.members", { groupId: g.id }, "after");
     stableList(parent, items, (m) => el("p", m.displayName || "Team member"));
     if (!items.length) parent.replaceChildren(el("p", "No members yet."));
   }
-  function showLabs(group, parent) {
+  function showLabs(g, parent) {
     const own = labs.filter(
       (l) =>
-        group &&
+        g &&
         l.ownerKind === "team" &&
-        l.ownerId === group.id &&
+        l.ownerId === g.id &&
         l.phase !== "destroyed",
     );
-    stableList(parent, own, (l) => {
-      const holder = el("div");
-      return labCard({ ...l, ownerName: group.name }, holder, {
+    stableList(parent, own, (l) =>
+      labCard({ ...l, ownerName: g.name }, el("div"), {
         end: true,
         onchange: refresh,
-      });
-    });
+      }),
+    );
     if (!own.length)
       parent.replaceChildren(
-        el(
-          "p",
-          group
-            ? "No active labs."
-            : "Join a group to deploy and access its labs.",
-        ),
+        el("p", g ? "No active labs." : "Join a group to access its labs."),
       );
   }
   let manageGroup,
@@ -173,17 +178,28 @@ await initialize(async () => {
     manageFingerprint = "";
   async function refreshManaged() {
     if (!manageGroup) return;
-    const g = groups.find((g) => g.id === manageGroup.value),
-      sig = JSON.stringify(g);
+    const g = groups.find((g) => g.id === manageGroup.value);
+    managedID = g?.id ?? "";
+    const sig = JSON.stringify([
+      g,
+      labs
+        .filter((l) => l.ownerId === managedID && l.phase !== "destroyed")
+        .map((l) => l.id),
+    ]);
     if (sig !== manageFingerprint) {
       manageFingerprint = sig;
       manageInfo.replaceChildren();
-      if (g)
+      if (g) {
+        const actions = el("div", "", { class: "actions" });
         manageInfo.append(
           el(
             "p",
             `${g.memberCount} members · ${g.enrollmentOpen ? "Enrollment open" : "Enrollment closed"}`,
           ),
+          actions,
+        );
+        actions.append(
+          button("Deploy group lab", () => openLaunch(g), "primary"),
           button(
             g.enrollmentOpen ? "Close enrollment" : "Open enrollment",
             async () => {
@@ -195,31 +211,59 @@ await initialize(async () => {
               await refresh();
             },
           ),
+          button(
+            "Delete group",
+            async () => {
+              if (
+                labs.some(
+                  (l) =>
+                    l.ownerKind === "team" &&
+                    l.ownerId === g.id &&
+                    l.phase !== "destroyed",
+                )
+              )
+                throw new Error(
+                  "End all active group labs before deleting this group.",
+                );
+              if (
+                !(await confirm(
+                  "Delete this group?",
+                  `${g.memberCount} members will lose enrollment. Lab history is retained.`,
+                  [g.name],
+                  "Delete group",
+                ))
+              )
+                return;
+              await mutate("groups.delete", {
+                groupId: g.id,
+                resourceVersion: g.resourceVersion,
+              });
+              manageGroup.value = "";
+              await refresh();
+              message("Group deleted.");
+            },
+            "danger",
+          ),
         );
+      }
     }
     showLabs(g, manageLabs);
     await members(g, manageMembers);
   }
   if (admin) {
-    const oversight = section("Manage project groups", panels.Manage);
-    manageGroup = field(oversight, "Group", "select");
-    manageInfo = el("div");
-    oversight.append(manageInfo);
-    manageMembers = el("div");
-    section("Group members", panels.Manage).append(manageMembers);
-    manageLabs = el("div", "", { class: "space-y-3" });
-    section("Group labs", panels.Manage).append(manageLabs);
-    manageGroup.onchange = () =>
-      refreshManaged().catch((e) => message(e.message, true));
-    const setup = section("Create project groups", panels.Manage),
+    const oversight = section("Project groups", views.panels.Manage);
+    views.panels.Manage.prepend(oversight);
+    const create = modal("Create project groups"),
       names = field(
-        setup,
+        create.body,
         "Group names — one per line (up to 100)",
         "textarea",
         { maxlength: 12900 },
       ),
-      open = check(setup, "Open enrollment", true);
-    setup.append(
+      open = check(create.body, "Open enrollment", true);
+    const createActions = el("div", "", { class: "actions" });
+    create.body.append(createActions);
+    createActions.append(
       button(
         "Create groups",
         async () => {
@@ -231,17 +275,41 @@ await initialize(async () => {
             names.focus();
             throw new Error("Enter 1–100 group names.");
           }
-          await mutate("groups.create", {
+          const result = await mutate("groups.create", {
             names: list,
             enrollmentOpen: open.checked,
           });
           names.value = "";
+          create.close();
           await refresh();
+          manageGroup.value =
+            result.items?.[0]?.id ??
+            groups.find((g) => g.name === list[0])?.id ??
+            "";
+          await refreshManaged();
           message("Groups created.");
         },
         "primary",
       ),
+      button("Cancel", () => create.close()),
     );
+    oversight.append(button("Create groups", () => create.open(), "primary"));
+    manageGroup = field(oversight, "Group", "select");
+    manageInfo = el("div");
+    oversight.append(manageInfo);
+    const columns = el("div", "", {
+      class: "grid gap-6 md:grid-cols-[minmax(0,1fr)_16rem]",
+    });
+    views.panels.Manage.append(columns);
+    manageLabs = el("div", "", { class: "space-y-3" });
+    section("Group labs", columns).append(manageLabs);
+    manageMembers = el("div");
+    section("Members", columns).append(manageMembers);
+    manageGroup.onchange = () => {
+      void refreshManaged()
+        .then(refreshPreparations)
+        .catch((e) => message(e.message, true));
+    };
   }
   let currentFingerprint = "";
   async function refresh() {
@@ -257,27 +325,29 @@ await initialize(async () => {
       if (sig !== currentFingerprint) {
         currentFingerprint = sig;
         currentInfo.replaceChildren();
-        if (joined)
-          currentInfo.append(
-            el("h3", joined.name),
-            el("p", `${joined.memberCount} members`),
-            button("Leave group", () => membership(joined)),
+        if (joined) {
+          const g = joined,
+            actions = el("div", "", { class: "actions" });
+          currentInfo.append(el("h3", g.name), actions);
+          actions.append(
+            button("Deploy a group lab", () => openLaunch(g), "primary"),
+            button("Leave group", () => membership(g)),
           );
-        else
+        } else
           currentInfo.append(
-            el("p", "Join a group to deploy and access its labs."),
             button("Find a group", () => views.select("Groups"), "primary"),
           );
       }
-      deploy.hidden = !joined;
       roster.hidden = !joined;
-      showLabs(joined, labList);
+      showLabs(joined, currentLabs);
       renderGroups();
       await members(joined, memberList);
       if (manageGroup) {
         const old = manageGroup.value;
         options(manageGroup, groups);
-        manageGroup.value = old || groups[0]?.id || "";
+        manageGroup.value = groups.some((g) => g.id === old)
+          ? old
+          : (groups[0]?.id ?? "");
         await refreshManaged();
       }
     } finally {
@@ -286,5 +356,6 @@ await initialize(async () => {
   }
   discovery.append(button("Refresh groups", refresh));
   await refresh();
+  await refreshPreparations();
   poll(refresh);
 });

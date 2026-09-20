@@ -230,6 +230,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err := s.applyMigration(ctx, "0021_console_control", consoleControlMigration()); err != nil {
 		return err
 	}
+	if err := s.applyMigration(ctx, "0022_deleted_project_groups", []string{`CREATE TABLE labcentral_deleted_project_groups (team_id TEXT PRIMARY KEY REFERENCES labcentral_project_groups(team_id),name TEXT NOT NULL,deleted_at_us BIGINT NOT NULL)`}); err != nil {
+		return err
+	}
 	return s.backfillLegacyInstanceQuota(ctx)
 }
 
@@ -908,6 +911,9 @@ func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request a
 			return err
 		}
 		if groupProject != "" {
+			if _, err := s.groupTx(ctx, tx, request.ProjectID, domain.TeamID(request.OwnerID), request.CreatedBy, true); err != nil {
+				return application.ErrAuthorityChanged
+			}
 			if groupProject != string(request.ProjectID) {
 				return application.ErrAuthorityChanged
 			}

@@ -93,3 +93,27 @@ func (s *Service) ListProjectGroupMembers(ctx context.Context, actor domain.User
 	}
 	return store.ListProjectGroupMembers(ctx, project, group, actor, after, limit)
 }
+
+func (s *Service) DeleteProjectGroup(ctx context.Context, actor domain.UserID, project domain.ProjectID, group domain.TeamID, version domain.ResourceVersion, key string) error {
+	store, err := s.projectGroupStore(ctx, actor, project, app.ActionTeamManage)
+	if err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(struct {
+		Project domain.ProjectID
+		Group   domain.TeamID
+		Version domain.ResourceVersion
+	}{project, group, version})
+	return store.DeleteProjectGroup(ctx, app.DeleteProjectGroup{ProjectID: project, GroupID: group, ActorID: actor, ExpectedVersion: version, IdempotencyKey: key, RequestDigest: digestBytes("projectGroup.delete/v1", raw)})
+}
+
+func (s *Service) InstancePresentation(ctx context.Context, id domain.InstanceID) app.InstancePresentation {
+	if store, ok := s.store.(interface {
+		InstancePresentation(context.Context, domain.InstanceID) (app.InstancePresentation, error)
+	}); ok {
+		if out, err := store.InstancePresentation(ctx, id); err == nil {
+			return out
+		}
+	}
+	return app.InstancePresentation{}
+}

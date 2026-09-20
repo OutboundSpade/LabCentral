@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Updated:** 2026-09-19
+**Updated:** 2026-09-20
 
 LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
@@ -72,6 +72,16 @@ independent-package and live role/enrollment checks passed. Consistent backups
 and prior packages are retained, with qualified backend identities unchanged.
 All existing lab, membership and role records were preserved; temporary
 enrollment and browser sessions were cleaned up. See [the UI contract](docs/design/classroom-ui.md).
+
+`TASK-UI-012` implements desktop group management, named shared labs, retained
+Classroom launch history and console instructions. Participants receive only the
+Teams feature; additive host version 5 lets packages declare scoped visibility
+and safe Lucide icons. Administrators can prepare group-owned labs without joining
+and delete groups after all their labs have ended. Deletion retains audit/ownership
+identities, removes enrollment and fences pending admission. Existing organizational
+teams retain their meaning. Authorization and SQLite/PostgreSQL race checks passed;
+release verification and the protected rollout are in progress. The additive
+migration and restoration of the prior core passed against a consistent data copy.
 
 ## Independently installed extensions
 

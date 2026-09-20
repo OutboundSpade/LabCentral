@@ -268,11 +268,8 @@ try {
         .click();
       await page.getByRole("heading", { name: "Lab limits" }).waitFor();
       await page.getByRole("link", { name: "Classroom", exact: true }).click();
-      await page.frameLocator('iframe[title="Classroom"]')
-        .getByText("Classroom launches require instructor access", {
-          exact: false,
-        })
-        .waitFor();
+      await page.getByText("This feature is not installed or is unavailable.",{exact:true}).waitFor();
+      assert.equal(await page.locator('iframe[title="Classroom"]').count(),0);
       await page
         .getByRole("link", { name: "Integrations", exact:true })
         .click();
@@ -326,11 +323,8 @@ try {
       await page
         .getByLabel("Switch workspace", { exact: true })
         .selectOption(projects[1].id);
-      await page.frameLocator('iframe[title="Classroom"]')
-        .getByText("Classroom launches require instructor access", {
-          exact: false,
-        })
-        .waitFor();
+      await page.getByText("This feature is not installed or is unavailable.").waitFor();
+      assert.equal(await page.locator('iframe[title="Classroom"]').count(), 0);
       assert.equal(
         await page
           .getByRole("link", { name: "Classroom", exact: true })

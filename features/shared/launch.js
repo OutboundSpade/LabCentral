@@ -42,7 +42,7 @@ export async function launchForm(
     values = [],
     generation = 0,
     loadedRevision = "";
-  const [templates, targets] = await Promise.all([
+  let [templates, targets] = await Promise.all([
     all("templates.list"),
     request("targets.list"),
   ]);
@@ -146,7 +146,13 @@ export async function launchForm(
     parameters = content.parameters ?? [];
     renderInputs();
   }
+  const instructions = el("p", "", {
+    class: "whitespace-pre-wrap leading-relaxed",
+  });
+  template.parentElement.after(instructions);
   async function templateChanged() {
+    instructions.textContent =
+      templates.find((t) => t.id === template.value)?.description ?? "";
     const current = ++generation;
     options(revision, []);
     inputsBox.replaceChildren();
@@ -214,7 +220,7 @@ export async function launchForm(
         ...(selectedOwner ? { owner: selectedOwner } : {}),
       });
       const work = result.work ?? result;
-      progress.replaceChildren(el("p", `Preparation accepted: ${work.id}`));
+      progress.replaceChildren(el("p", "Preparing your lab…"));
       watchPreparation(work.id, progress);
       await onlaunch?.(work);
     },
@@ -226,6 +232,13 @@ export async function launchForm(
     submit.click();
   };
   return {
+    reload: async () => {
+      const chosen = template.value;
+      templates = await all("templates.list");
+      options(template, templates);
+      template.value = templates.some((t) => t.id === chosen) ? chosen : "";
+      await templateChanged();
+    },
     template,
     revision,
     target,
@@ -283,48 +296,70 @@ export function watchPreparation(id, parent) {
   void refresh().catch((e) => message(e.message, true));
 }
 
-export function preparations(parent, filter = () => true) {
+export function preparations(
+  parent,
+  filter = () => true,
+  { activeOnly = false } = {},
+) {
   const panel = el("section"),
     list = el("div", "", { class: "space-y-3" });
-  panel.append(el("h2", "Your recent preparations"), list);
+  panel.append(
+    el("h2", activeOnly ? "Preparing labs" : "Your recent preparations"),
+    list,
+  );
+  list.append(el("p", "Loading preparations…", { role: "status" }));
   parent.append(panel);
   let pending = false;
   const refresh = async () => {
     if (pending) return;
     pending = true;
     try {
-      const [work, labs, groups] = await Promise.all([
+      const [work, labs, groups, templates] = await Promise.all([
         request("preparations.list"),
         all("labs.list"),
         all("groups.list", {}, "after"),
+        all("templates.list"),
       ]);
-      const rows = (work.items ?? []).filter(filter).map((w) => {
-        const deployment = w.result?.deployment,
-          id = deployment?.instanceId ?? deployment?.InstanceID;
-        const lab = labs.find((l) => l.id === id),
-          owner = w.request.preparation?.owner;
-        const group = groups.find((g) => g.id === owner?.id);
-        const accessible =
-          lab &&
-          lab.phase !== "destroyed" &&
-          (!owner || owner.kind !== "team" || group?.joined);
-        return {
-          ...w,
-          lab: accessible ? lab : null,
-          label: lab?.name ?? "Lab preparation",
-          ownerName:
-            owner?.kind === "team"
-              ? (group?.name ?? "Former team")
-              : "Personal lab",
-          wasDeployed: !!id,
-        };
-      });
+      const rows = (work.items ?? [])
+        .filter(filter)
+        .filter((w) => !activeOnly || !w.result?.deployment)
+        .map((w) => {
+          const deployment = w.result?.deployment,
+            id = deployment?.instanceId ?? deployment?.InstanceID;
+          const lab = labs.find((l) => l.id === id),
+            owner = w.request.preparation?.owner;
+          const group = groups.find((g) => g.id === owner?.id);
+          const accessible =
+            lab &&
+            lab.phase !== "destroyed" &&
+            (!owner || owner.kind !== "team" || group?.joined);
+          return {
+            ...w,
+            lab: accessible ? lab : null,
+            label:
+              lab?.name ||
+              templates.find((t) => t.id === w.request.templateId)?.name ||
+              "Lab preparation",
+            ownerName:
+              owner?.kind === "team"
+                ? (group?.name ?? "Former team")
+                : "Personal lab",
+            wasDeployed: !!id,
+          };
+        });
+      panel.hidden = activeOnly && !rows.length;
       stableList(list, rows, (w) => {
         const card = el("article"),
           stage =
             w.result?.stage === "awaiting-approval"
               ? "Waiting for image approval"
-              : (w.result?.stage ?? w.state);
+              : w.state === "queued"
+                ? "Queued"
+                : w.state === "running"
+                  ? "Preparing image"
+                  : w.state === "succeeded"
+                    ? "Ready"
+                    : (w.result?.stage ?? w.state);
         card.append(
           el("h3", w.label),
           el("p", `${w.ownerName} · ${stage}`),
@@ -363,6 +398,7 @@ export function preparations(parent, filter = () => true) {
     }
   };
   poll(refresh);
-  void refresh().catch((e) => message(e.message, true));
+  if (!activeOnly) void refresh().catch((e) => message(e.message, true));
+  refresh.panel = panel;
   return refresh;
 }

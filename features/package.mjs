@@ -32,6 +32,8 @@ const definitions = {
   "template-library": {
     title: "Template Library",
     route: "templates",
+    icon: "library",
+    requiredActions: ["template.create", "instance.batchCreate"],
     permissions: [
       "templates.read",
       "templates.write",
@@ -48,6 +50,8 @@ const definitions = {
   teams: {
     title: "Teams",
     route: "teams",
+    icon: "users",
+    requiredActions: ["template.read"],
     permissions: [
       "groups.read",
       "groups.enroll",
@@ -63,8 +67,11 @@ const definitions = {
   classroom: {
     title: "Classroom",
     route: "classroom",
+    icon: "graduation-cap",
+    requiredActions: ["instance.batchCreate"],
     permissions: [
       "members.read",
+      "groups.read",
       "templates.read",
       "labs.read",
       "labs.create",
@@ -109,7 +116,7 @@ for (const [name, definition] of Object.entries(definitions)) {
   const manifest = {
     apiVersion: "labcentral.io/plugin-manifest/v2",
     id: `io.labcentral.feature.${name}`,
-    version: "1.1.0",
+    version: "1.2.0",
     categories: ["browser"],
     protocolMajor: 1,
     minimumProtocolMinor: 0,
@@ -119,13 +126,15 @@ for (const [name, definition] of Object.entries(definitions)) {
     requestedPermissions: permissions,
     browser: {
       apiVersion: "labcentral.browser/v1",
-      minimumHostVersion: 4,
+      minimumHostVersion: 5,
       assets,
       contributions: [
         {
           id: "page",
           slot: "page",
           routeAlias: definition.route,
+          icon: definition.icon,
+          requiredActions: definition.requiredActions,
           title: definition.title,
           entrypoint: "index.html",
           permissions,

@@ -80,3 +80,10 @@ independent template. No built images are included. Unsaved form/source edits su
 catalogue refresh; explicitly save or discard them before changing documents or
 leaving. A GitHub library requires an operator-configured source binding; its
 reference must match the configured branch, tag or commit (for example `main`).
+
+
+Students choose published templates from **Teams → Your team → Deploy a group lab**.
+Template Library is an author/instructor feature. For a new single-file exercise,
+authors can choose an existing template in Browse, then select **Author → Use as
+starting point** to edit a new draft without changing the original. Multi-file
+packages retain **Make independent copy** to preserve their complete source closure.

@@ -78,6 +78,27 @@ func TestPageContributionHostContract(t *testing.T) {
 	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err != nil {
 		t.Fatal(err)
 	}
+	m.Browser.Contributions[0].Icon = "users"
+	m.Browser.Contributions[0].RequiredActions = []string{"template.read"}
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err != nil {
+		t.Fatal(err)
+	}
+	m.Browser.MinimumHostVersion = 4
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("host 5 metadata accepted by older host")
+	}
+	m.Browser.MinimumHostVersion = BrowserHostVersion
+	m.Browser.Contributions[0].Icon = "https://host/tracker.svg"
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("arbitrary icon URL accepted")
+	}
+	m.Browser.Contributions[0].Icon = "users"
+	m.Browser.Contributions[0].RequiredActions = []string{"superuser"}
+	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err == nil {
+		t.Fatal("arbitrary action accepted")
+	}
+	m.Browser.Contributions[0].Icon = ""
+	m.Browser.Contributions[0].RequiredActions = nil
 	m.Browser.Contributions[0].RouteAlias = "teams"
 	if _, err := SnapshotBrowser(root, filepath.Join(root, "plugin.json"), m); err != nil {
 		t.Fatal(err)

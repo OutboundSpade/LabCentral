@@ -23,6 +23,8 @@
     extensions.find(
       (e) =>
         e.slot === "page" &&
+        (!e.requiredActions?.length ||
+          e.requiredActions.some((a) => allowedActions.includes(a))) &&
         (routeAlias
           ? e.routeAlias === routeAlias
           : `${e.pluginInstance}/${e.id}` === contribution),
@@ -36,7 +38,7 @@
       pending = true;
       try {
         const result = await api<{ items: typeof extensions }>(
-          "/extensions/browser",
+          `/extensions/browser?projectId=${encodeURIComponent(projectId)}`,
           { signal: abort.signal },
         );
         if (!abort.signal.aborted) {

@@ -3,6 +3,8 @@
 export const featurePermissions: Record<string, string> = {
   "groups.list": "groups.read",
   "groups.members": "groups.read",
+  "groups.delete": "groups.manage",
+  "labs.batchList": "labs.read",
   "groups.create": "groups.manage",
   "groups.enrollment": "groups.manage",
   "groups.join": "groups.enroll",
@@ -49,7 +51,7 @@ export const featurePermissions: Record<string, string> = {
 export type FeatureContext = { projectId: string };
 export type FeatureRequest = {
   path: string;
-  method: "GET" | "POST" | "PUT";
+  method: "GET" | "POST" | "PUT" | "DELETE";
   body?: object;
   idempotencyKey?: string;
   expectedVersion?: number;
@@ -193,6 +195,17 @@ export function featureRequest(
         names: data.names.map((n) => string(n)),
         enrollmentOpen: bool(data.enrollmentOpen),
       });
+    case "groups.delete":
+      closed(data, ["groupId", "resourceVersion", "idempotencyKey"]);
+      return {
+        path: `/projects/${id(projectId)}/groups/${id(data.groupId)}`,
+        method: "DELETE",
+        expectedVersion: version(),
+        idempotencyKey: key(data.idempotencyKey),
+      };
+    case "labs.batchList":
+      closed(data, []);
+      return get(`/lab-instance-batches${query}`);
     case "groups.enrollment":
       closed(data, ["groupId", "open", "resourceVersion", "idempotencyKey"]);
       return {

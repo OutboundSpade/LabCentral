@@ -789,7 +789,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get lab instance batches */
+        get: operations["get-lab-instance-batches"];
         put?: never;
         post: operations["create-lab-instance-batch"];
         delete?: never;
@@ -1241,6 +1242,23 @@ export interface paths {
         /** Post projects by project ID groups */
         post: operations["post-projects-by-project-id-groups"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete projects by project ID groups by ID */
+        delete: operations["delete-projects-by-project-id-groups-by-id"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1898,9 +1916,11 @@ export interface components {
             tokenType: string;
         };
         BrowserExtensionDTO: {
+            icon?: string;
             id: string;
             permissions: string[] | null;
             pluginInstance: string;
+            requiredActions?: string[] | null;
             routeAlias?: string;
             slot: string;
             title: string;
@@ -2425,6 +2445,15 @@ export interface components {
             readonly $schema?: string;
             items: components["schemas"]["LabTemplateDTO"][] | null;
         };
+        "Get-lab-instance-batchesResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/v1/schemas/Get-lab-instance-batchesResponse.json
+             */
+            readonly $schema?: string;
+            items: components["schemas"]["InstanceBatchDTO"][] | null;
+        };
         "Get-lab-instancesResponse": {
             /**
              * Format: uri
@@ -2614,13 +2643,16 @@ export interface components {
             /** Format: date-time */
             expiresAt?: string;
             id: string;
+            instructions?: string;
             /** Format: date-time */
             maximumExpiresAt?: string;
+            name?: string;
             outputs: {
                 [key: string]: unknown;
             };
             ownerId: string;
             ownerKind: string;
+            ownerName?: string;
             phase: string;
             projectId: string;
             providerTargetId: string;
@@ -4905,7 +4937,9 @@ export interface operations {
     };
     "get-extensions-browser": {
         parameters: {
-            query?: never;
+            query?: {
+                projectId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5246,6 +5280,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-lab-instance-batches": {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-lab-instance-batchesResponse"];
                 };
             };
             /** @description Error */
@@ -6510,6 +6575,39 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectGroupPage"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-projects-by-project-id-groups-by-id": {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+                "If-Match"?: string;
+            };
+            path: {
+                projectId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

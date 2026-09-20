@@ -40,6 +40,7 @@ const server=createServer(async(req,res)=>{
   if(p.startsWith('/lab-instances/')&&req.method==='GET')return json(labs.find(l=>l.id===p.split('/')[2])??lab);
   if(p.endsWith('/actions/destroy')){labs=labs.map(l=>l.id===p.split('/')[2]?{...l,phase:'destroyed'}:l);return json({operation:{id:'operation.end',state:'succeeded'}},202);}
   if(p==='/projects/project.class/members'||p==='/users')return json({items:[{id:'user.student',displayName:'Alex Morgan',username:'alex',resourceVersion:1}]});
+  if(p==='/lab-instance-batches'&&req.method==='GET')return json({items:[{id:'batch.test',createdAt:new Date().toISOString(),projectId:'project.class',items:[{ownerId:'user.student',instanceId:lab.id,operation:{state:'succeeded'}}]}]});
   if(p.startsWith('/lab-instance-batches'))return json({id:'batch.test',projectId:'project.class',items:[{ownerId:'user.student',operation:{state:'succeeded'}}]},req.method==='POST'?202:200);
   return json({detail:'Not configured'},404);
  }
@@ -119,6 +120,7 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.ttlSeconds,5400);
   labs=[{...lab,id:'instance.bulk-a'},{...lab,id:'instance.bulk-b'}];
   await page.waitForLoadState('networkidle');await page.reload();
+  await classroom.getByRole('tab',{name:'Launch activity',exact:true}).click();await classroom.getByRole('heading',{name:'Recent launches',exact:true}).waitFor();await classroom.getByText('Alex Morgan · succeeded',{exact:true}).waitFor();await classroom.getByRole('tab',{name:'Students',exact:true}).click();
   await classroom.getByLabel('Select lab instance.bulk-a',{exact:true}).check();
   await classroom.getByLabel('Select lab instance.bulk-b',{exact:true}).check();
   await classroom.getByRole('button',{name:'End selected labs'}).click();
