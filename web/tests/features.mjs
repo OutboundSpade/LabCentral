@@ -6,7 +6,7 @@ import {featureExtensions,serveFeature} from './feature-fixture.mjs';
 const build=new URL('../build/',import.meta.url);
 const template={id:'tpl.one',name:'Shared workstation',description:'Work together.',projectId:'project.one',resourceVersion:1};
 const revision={id:'rev.one',templateId:template.id,revisionNumber:1};
-let imageFixtures=false,approved=false,failEnrollment=false;
+let imageFixtures=false,approved=false,failEnrollment=false,delayGroupRefresh=false;
 let groups,mutations,labs,preparations,installed=true,admin=true,stage='awaiting-approval';
 const server=createServer(async(req,res)=>{
  if(await serveFeature(req,res))return;
@@ -26,10 +26,10 @@ const server=createServer(async(req,res)=>{
  if(p.endsWith('/actions/destroy')){labs=labs.map(l=>l.id===p.split('/')[2]?{...l,phase:'destroyed'}:l);return json({operation:{id:'op.destroy',state:'succeeded'}});}
  if(p==='/projects/project.one/groups'){
   if(req.method==='POST'){const created=body.names.map((name,i)=>({id:`team.created${i}`,name,projectId:'project.one',joined:false,enrollmentOpen:body.enrollmentOpen,memberCount:0,resourceVersion:1}));groups.push(...created);return json({items:created});}
-  return json({items:groups});
+  if(delayGroupRefresh){delayGroupRefresh=false;await new Promise(r=>setTimeout(r,600));}return json({items:groups});
  }
  if(p.endsWith('/members'))return json({items:[{id:'user.alice',displayName:'Alice'},{id:'user.bob',displayName:'Bob'}]});
- if(p.startsWith('/projects/project.one/groups/')){const group=groups.find(g=>g.id===p.split('/')[4]);assert(group);if(req.method==='DELETE'){assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);groups=groups.filter(g=>g.id!==group.id);return json({});}if(p.endsWith('/enrollment')){if(failEnrollment&&group.id==='team.two'){failEnrollment=false;return json({detail:'Temporarily unavailable'},503);}assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);group.enrollmentOpen=body.open;group.resourceVersion++;}if(p.endsWith('/join')){group.joined=true;group.memberCount++;}if(p.endsWith('/leave')){group.joined=false;group.memberCount--;}return json(group);}
+ if(p.startsWith('/projects/project.one/groups/')){const group=groups.find(g=>g.id===p.split('/')[4]);assert(group);if(req.method==='DELETE'){assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);groups=groups.filter(g=>g.id!==group.id);return json({});}if(p.endsWith('/enrollment')){if(failEnrollment&&group.id==='team.two'){failEnrollment=false;delayGroupRefresh=true;return json({detail:'Temporarily unavailable'},503);}assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);group.enrollmentOpen=body.open;group.resourceVersion++;}if(p.endsWith('/join')){group.joined=true;group.memberCount++;}if(p.endsWith('/leave')){group.joined=false;group.memberCount--;}return json(group);}
  if(p==='/deployment-preparations'){if(req.method==='POST'){assert.equal(body.preparation.inputs[0].Integer,2);assert.equal(body.preparation.inputs[0].Name,'count');assert.deepEqual(body.preparation.inputs[1].Enum,{String:null,Integer:0});const work={id:`prep.${preparations.length+1}`,state:'running',request:{kind:'preparation',preparation:body.preparation},result:{stage,importIds:['image.one']}};preparations.push(work);return json(work);}return json({items:preparations});}
  if(p.startsWith('/extension-operations/')){const w=preparations.find(w=>w.id===p.split('/')[2]);if(p.endsWith('/cancel'))w.state='canceled';return json({...w,result:{stage,importIds:['image.one']}});}
  if(p==='/extension-operations'&&imageFixtures)return json({items:[{id:'image.active',state:'succeeded',request:{kind:'image-import',import:{targetId:'target.one'}}},{id:'image.retired',state:'succeeded',request:{kind:'image-import',import:{targetId:'target.one'}}},{id:'retirement.one',state:'succeeded',request:{kind:'image-import',import:{retireBindingId:'image.retired'}}}]});

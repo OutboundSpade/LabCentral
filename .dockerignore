@@ -10,3 +10,7 @@ web/node_modules
 *.db-shm
 *.db-wal
 *.lock
+
+# Local operator credentials must never enter a build context.
+.env
+.env.*

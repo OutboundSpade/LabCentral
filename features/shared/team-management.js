@@ -19,6 +19,7 @@ export async function teamManagement(views, read, refresh, createGroup) {
     selectedLabs = new Set();
   let busy = false,
     retry = [],
+    retryAction,
     refreshView = () => {},
     launchGroups = [];
   const root = el("section");
@@ -64,6 +65,7 @@ export async function teamManagement(views, read, refresh, createGroup) {
     busy = true;
     refreshView();
     retry = [];
+    retryAction = undefined;
     outcomes.replaceChildren();
     let accepted = 0;
     try {
@@ -84,8 +86,16 @@ export async function teamManagement(views, read, refresh, createGroup) {
       outcomes.prepend(
         el("p", `${accepted} accepted · ${retry.length} failed`),
       );
-      if (retry.length)
-        outcomes.append(button("Retry failed actions", () => run([...retry])));
+      if (retry.length) {
+        retryAction = button(
+          "Retry failed actions",
+          () => run([...retry]),
+          "",
+          () => busy,
+        );
+        retryAction.disabled = true;
+        outcomes.append(retryAction);
+      }
       await refresh();
     } finally {
       busy = false;
@@ -265,6 +275,7 @@ export async function teamManagement(views, read, refresh, createGroup) {
     labCount.textContent = `${selectedLabs.size} labs selected`;
     controls.forEach((b) => (b.disabled = busy || !selectedGroups.size));
     end.disabled = busy || !selectedLabs.size;
+    if (retryAction) retryAction.disabled = busy;
     stableList(
       groupList,
       matchingGroups().map((g) => ({
