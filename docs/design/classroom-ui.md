@@ -297,3 +297,15 @@ roster access. Recent launch activity loads at most 100 durable batches for the
 current project, reauthorizing each batch, and survives navigation/reload. Teams
 shows unfinished preparation separately from the resulting named lab, whose state
 and console action become the primary progress destination.
+
+## Desktop dialogs and bulk Teams (TASK-UI-013)
+
+Feature launch dialogs share the core theme and full-page dimming. A versioned
+host presentation operation isolates host navigation while the feature's native
+dialog controls focus. Desktop forms show settings and template instructions in
+two columns, optional settings in a disclosure, and launch/cancel in one footer.
+Roster rows use display names without redundant usernames. Tabs and selection
+actions occupy a single opaque sticky header, without separate offset rounding.
+Teams provides bounded multi-group preparation, enrollment and deletion, plus
+confirmed multi-lab cleanup through individually authorized existing APIs. See
+[feature packages](../plugins/feature-packages.md) for partial-failure semantics.

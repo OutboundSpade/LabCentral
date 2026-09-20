@@ -256,10 +256,10 @@ export function editor(parent, source) {
 export function providerOptions(parent, target) {
   let value,
     rawMode = false;
-  const panel = el("section");
+  const panel = el("details", "", { class: "sm:col-span-2" });
   parent.append(panel);
   const content = el("div");
-  panel.append(el("h3", "Plugin options"), content);
+  panel.append(el("summary", "Advanced options"), content);
   const schema = () => {
     try {
       const encoded = target()?.discovery?.override_json_schema;

@@ -365,7 +365,7 @@
       </section>{/if}
     <dialog
       bind:this={dialog}
-      class="modal"
+      class="modal open:bg-neutral/40"
       aria-labelledby="revoke-grant-title"
     >
       <div class="modal-box">

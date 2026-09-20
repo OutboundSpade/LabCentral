@@ -148,7 +148,7 @@
 {#if message}<p role="status" class="mb-3 text-sm">{message}</p>{/if}
 <dialog
   bind:this={dialog}
-  class="modal"
+  class="modal open:bg-neutral/40"
   aria-labelledby="bulk-delete-title"
   oncancel={(event) => {
     if (busy) event.preventDefault();

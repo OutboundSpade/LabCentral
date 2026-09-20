@@ -1,30 +1,37 @@
 # Run LabCentral locally
 
-Prerequisites are Go 1.27.1, Bun 1.3 or newer, and a local Docker Engine exposing API 1.44 or newer. Build both binaries, pin the provider executable checksum, and start the loopback-only server with:
+The recommended path uses Docker Engine and Docker Compose with a supplied,
+verified LabCentral image. No Go, Bun or Make installation is required.
 
 ```sh
-make run
-```
-
-Open <http://127.0.0.1:8080/>. LabCentral stores local state beneath `./labcentral-data`, launches `lab-provider-docker` as a separate process over a private Unix socket, and refuses a non-loopback no-auth listener unless the exact unsafe flag is supplied.
-
-Build a deterministic native archive for the host platform with:
-
-```sh
-make release VERSION=0.1.0
-sha256sum -c dist/labcentral-0.1.0-$(go env GOOS)-$(go env GOARCH).tar.gz.sha256
-```
-
-The archive includes `labd`, both official providers, the Proxmox qualification utility, provider checksums/manifests, the Proxmox source-tree binding, deployment assets, an archive-wide checksum file, a CycloneDX SBOM, and source/build provenance. Releases require a clean Git worktree so the embedded source binding describes the built provider. Set `SOURCE_DATE_EPOCH` to reproduce a prior build timestamp; otherwise the tool uses the current Git commit time. Provenance is descriptive metadata, not a signature or SLSA attestation.
-
-For the supported Linux Docker path, start the minimal image with Compose:
-
-```sh
-LABCENTRAL_VERSION=0.1.0 LABCENTRAL_VCS_REF=$(git rev-parse HEAD) docker compose up -d --build
+export LABCENTRAL_IMAGE='your-registry/labcentral@sha256:YOUR_VERIFIED_DIGEST'
+docker compose up -d --no-build
 docker compose ps
 ```
 
-Open <http://127.0.0.1:8080/>. `LABCENTRAL_PORT`, `DOCKER_SOCKET_PATH`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` select the loopback port, Engine socket, image, and persistent volume. Stop with `docker compose down`; add `--volumes` only when you intend to delete local LabCentral state.
+For an offline image, verify the supplied archive checksum, run `docker load
+--input labcentral-image.tar`, and set `LABCENTRAL_IMAGE` to its loaded image ID.
+Use your actual verified image reference; the example above is a placeholder.
+Signed public images are published only through the protected release workflow.
+
+Open <http://127.0.0.1:8080/>. Template Library and Teams are included, with isolated
+feature assets at `http://localhost:8082`, a separate cookie hostname. `LABCENTRAL_FEATURE_SET=with-classroom` also
+installs Classroom, whose launch workflows need authenticated instructor access.
+`LABCENTRAL_PORT`, `LABCENTRAL_ASSET_PORT`, `DOCKER_SOCKET_PATH` and
+`LABCENTRAL_DATA_VOLUME` select the ports, Docker socket and persistent volume.
+Stop with `docker compose down`; state remains in the named volume. Use
+`--volumes` only when intentionally deleting that state.
+
+If no release image is available, build one using Docker alone from this checkout:
+
+```sh
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
+
+This optional path compiles the UI, feature packages and executables inside pinned
+build stages. Source/native development instructions live in the
+[contributor guide](../development/README.md). Shared or remote installations use
+[authenticated container deployment](../operations/container-deployment.md).
 
 Example A intentionally requires a checked acknowledgement. Ordinary Docker containers are not a hostile-workload boundary, and its loopback-published web port currently uses a normal user-defined bridge. The requested denied-egress intent is therefore degraded and is not claimed as enforced. Use this slice only on a trusted development laptop with trusted images.
 

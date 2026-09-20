@@ -2,12 +2,7 @@ name: labcentral
 
 services:
   labcentral:
-    image: ${LABCENTRAL_IMAGE:-labcentral:dev}
-    build:
-      context: .
-      args:
-        VERSION: ${LABCENTRAL_VERSION:-dev}
-        VCS_REF: ${LABCENTRAL_VCS_REF:-unknown}
+    image: ${LABCENTRAL_IMAGE:-labcentral:local}
     network_mode: host
     init: true
     read_only: true
@@ -30,6 +25,12 @@ services:
       - 127.0.0.1:${LABCENTRAL_OBSERVABILITY_PORT:-9090}
       - --auth-mode
       - none
+      - --installation
+      - /opt/labcentral/features/${LABCENTRAL_FEATURE_SET:-standard}.installation.json
+      - --extension-asset-listen
+      - 127.0.0.1:${LABCENTRAL_ASSET_PORT:-8082}
+      - --extension-asset-origin
+      - http://localhost:${LABCENTRAL_ASSET_PORT:-8082}
     volumes:
       - type: bind
         source: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}

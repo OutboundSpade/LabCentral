@@ -8,6 +8,7 @@ await mkdir(shots,{recursive:true});
 const template={id:'template.debian',projectId:'project.class',name:'Debian starter',description:'Explore files and processes in your own Debian environment.',resourceVersion:1};
 const revision={id:'revision.debian',templateId:template.id,revisionNumber:1};
 const lab={id:'instance.student',projectId:'project.class',revisionId:revision.id,providerTargetId:'target.test',ownerKind:'user',ownerId:'user.student',phase:'ready',expiresAt:new Date(Date.now()+14400000).toISOString(),resources:[{id:'workstation',kind:'VM',phase:'ready'}]};
+let rosterSize=1;
 let subjectId="user.student",noProjects=false,sessionDenied=false,slowNavigation=false,reads=[],labs=[],mutations=[],outage=false,role='participant',consoleLaunchKind='relative';
 const server=createServer(async(req,res)=>{
  if(await serveFeature(req,res))return;
@@ -39,7 +40,7 @@ const server=createServer(async(req,res)=>{
   if(p==='/lab-instances'&&req.method==='POST'){labs=[lab];return json({operation:{id:'operation.create',instanceId:lab.id,state:'succeeded'}},202);}
   if(p.startsWith('/lab-instances/')&&req.method==='GET')return json(labs.find(l=>l.id===p.split('/')[2])??lab);
   if(p.endsWith('/actions/destroy')){labs=labs.map(l=>l.id===p.split('/')[2]?{...l,phase:'destroyed'}:l);return json({operation:{id:'operation.end',state:'succeeded'}},202);}
-  if(p==='/projects/project.class/members'||p==='/users')return json({items:[{id:'user.student',displayName:'Alex Morgan',username:'alex',resourceVersion:1}]});
+  if(p==='/projects/project.class/members'||p==='/users')return json({items:Array.from({length:rosterSize},(_,i)=>({id:i?`user.extra${i}`:'user.student',displayName:i?`Student ${i}`:'Alex Morgan',username:i?`student-${i}`:'alex',resourceVersion:1}))});
   if(p==='/lab-instance-batches'&&req.method==='GET')return json({items:[{id:'batch.test',createdAt:new Date().toISOString(),projectId:'project.class',items:[{ownerId:'user.student',instanceId:lab.id,operation:{state:'succeeded'}}]}]});
   if(p.startsWith('/lab-instance-batches'))return json({id:'batch.test',projectId:'project.class',items:[{ownerId:'user.student',operation:{state:'succeeded'}}]},req.method==='POST'?202:200);
   return json({detail:'Not configured'},404);
@@ -54,7 +55,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.
 try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  if(process.env.LABCENTRAL_BROWSER && process.env.LABCENTRAL_BROWSER!==name)continue;
  const browser=await engine.launch();try{
-  subjectId="user.student";noProjects=false;sessionDenied=false;reads=[];labs=[];mutations=[];outage=false;role='participant';
+  rosterSize=1;subjectId="user.student";noProjects=false;sessionDenied=false;reads=[];labs=[];mutations=[];outage=false;role='participant';
   const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(10000);
   const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.message);});
   await page.waitForLoadState("networkidle");await page.goto(origin);await page.getByRole('heading',{name:'Your next lab starts here'}).waitFor();
@@ -106,14 +107,27 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await page.getByText('Project limits saved. Existing lab expiry times are unchanged.').waitFor();
   assert.equal(mutations.find(m=>m.path==='/quotas/project/project.class/instances').body.limit,25);
   assert.equal(mutations.find(m=>m.path==='/lifetime-policies/project/project.class').body.defaultTtlSeconds,14400);
-  await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');
+  rosterSize=30;await page.waitForLoadState("networkidle");await page.goto(origin+'/classroom');
   const classroom=page.frameLocator('iframe[title="Classroom"]');
   await classroom.getByLabel('Alex Morgan',{exact:true}).waitFor();await page.screenshot({path:new URL(`${name}-classroom-ready.png`,shots).pathname,fullPage:true});
   await classroom.getByLabel('Alex Morgan',{exact:true}).check();
+  const classroomFrame=page.frames().find(f=>f.url().includes('__features/classroom'));
+  await classroomFrame.evaluate(()=>scrollTo(0,600));
+  const tabsBox=await classroom.getByRole('tablist').boundingBox(),barBox=await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).locator('..').boundingBox();
+  assert(Math.abs(tabsBox.y+tabsBox.height-barBox.y)<1,`${name}: no gap between sticky tabs and action bar`);
+  await page.screenshot({path:new URL(`${name}-classroom-scrolled.png`,shots).pathname,fullPage:true});
+  await classroomFrame.evaluate(()=>scrollTo(0,0));
   await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).click();
   await classroom.getByLabel('Template',{exact:true}).selectOption(template.id);
   await classroom.getByLabel('Workstation name',{exact:true}).fill('classroom');
   await classroom.getByLabel('Lab lifetime (minutes)',{exact:true}).fill('90');
+
+  assert.equal(await classroom.getByText('alex',{exact:true}).count(),0,'Roster omits redundant usernames');
+  const settingsBox=await classroom.getByRole('dialog').getByLabel('Template',{exact:true}).boundingBox();
+  const instructionsBox=await classroom.getByRole('complementary',{name:'Template instructions'}).boundingBox();
+  assert(instructionsBox.x>settingsBox.x+settingsBox.width,'Desktop launch uses two columns');
+  assert(await page.getByRole('link',{name:'Teams',exact:true}).evaluate(n=>!!n.closest('[inert]')),'Feature modal isolates host navigation');
+  await page.waitForTimeout(350);assert.equal(await classroom.getByRole('dialog').evaluate(n=>getComputedStyle(n).backgroundColor),await page.locator('div.fixed.inset-0.z-40').evaluate(n=>getComputedStyle(n).backgroundColor),'Frame and host dimming match');await page.screenshot({path:new URL(`${name}-classroom-launch.png`,shots).pathname,fullPage:true});
   await classroom.getByRole('dialog').getByRole('button',{name:'Launch selected labs',exact:true}).click();
   await classroom.locator('[data-feedback]').filter({hasText:'Classroom launch accepted.'}).waitFor();
   assert.equal(mutations.find(m=>m.path==='/lab-instance-batches').body.owners[0].ownerId,'user.student');

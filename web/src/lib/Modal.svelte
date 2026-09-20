@@ -24,7 +24,7 @@
 
 <dialog
   bind:this={dialog}
-  class="modal"
+  class="modal open:bg-neutral/40"
   aria-labelledby={id}
   onclose={() => (open = false)}
   oncancel={(event) => {

@@ -2,6 +2,14 @@
 
 Current architecture follows ADR-0015, ADR-0016 and ADR-0017. See [architecture](architecture.md), [installation and cleanup authority](../operations/plugin-installation.md), and [compatibility](../compatibility.md). Historical task checkpoints below remain evidence, not additional implementation requirements.
 
+Container images are the recommended operator distribution under TASK-DEPLOY-001.
+Use the [container runbook](../operations/container-deployment.md). Source/native
+commands below remain historical implementation and compatibility references.
+The current image includes independent feature packages and all official runtime
+executables; Compose uses a supplied image, with source compilation in the optional
+`compose.build.yaml` override. This does not change process identities, qualification,
+VM build isolation or protected publisher requirements.
+
 ## Forms
 
 - **Release archive/native:** `labd`, official provider/access executables, static UI, schemas, migrations, checksums. Local mode supervises configured children; the production Proxmox units attach three separately sandboxed systemd services.
@@ -21,8 +29,8 @@ The server always refuses a non-loopback no-auth listener. No-auth is an explici
 
 - `make release VERSION=<version>` writes `dist/labcentral-<version>-<os>-<arch>.tar.gz` and its adjacent checksum. Archive headers, ordering, ownership, modes, gzip metadata, build IDs, and timestamps are normalized. `SOURCE_DATE_EPOCH` selects the timestamp and otherwise defaults to the Git commit time. Production release creation refuses a dirty Git worktree so embedded source provenance matches compiled code.
 - The archive contains `labd`, the Docker and Proxmox providers, the noVNC access plugin, the Proxmox qualification utility, provider checksums and v1 manifests, the build-embedded Proxmox source-tree digest, Kubernetes and three-service systemd assets, deployment examples/runbooks, the compatibility matrix, archive-wide `SHA256SUMS`, a CycloneDX 1.6 SBOM, release metadata, and source/build facts. The internal `provenance.json` is not a signature; the protected publisher adds an external Sigstore bundle and GitHub SLSA provenance after byte-reproducibility checks. Linux amd64 is the verified target; Windows IPC remains gated by `OQ-GUEST-001`.
-- `make image VERSION=<version> IMAGE=<tag>` uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing only `labd`, the three official runtime executables/checksums, the Proxmox source digest, and the system CA bundle. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
-- `docker compose up -d --build` persists `/var/lib/labcentral` in the named `labcentral-data` volume, mounts the explicitly selected `${DOCKER_SOCKET_PATH:-/var/run/docker.sock}`, and uses host networking. `LABCENTRAL_PORT`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` override the loopback port, image, and volume name. `docker compose down` preserves state; `docker compose down --volumes` deliberately removes it.
+- The Docker image build uses digest-pinned Go and Bun build stages, gives SvelteKit the requested deterministic application version, and creates a `scratch` runtime containing `labd`, official runtime/source/builder/recovery executables, independent feature packages, provider checksums, the Proxmox source digest, and the system CA bundle. Native development web builds use the stable `WEB_VERSION=dev` default. Bun, Go, a shell, and package-manager files are absent at runtime. `labd healthcheck` validates the local server-info contract without adding a runtime HTTP client.
+- `docker compose up -d --no-build` with a supplied verified image persists `/var/lib/labcentral` in the named `labcentral-data` volume, mounts the explicitly selected `${DOCKER_SOCKET_PATH:-/var/run/docker.sock}`, and uses host networking. `LABCENTRAL_PORT`, `LABCENTRAL_IMAGE`, and `LABCENTRAL_DATA_VOLUME` override the loopback port, image, and volume name. `docker compose down` preserves state; `docker compose down --volumes` deliberately removes it.
 
 The scratch image creates `/var/lib/labcentral` as mode `0700` before declaring
 it as a volume, so Docker's first-use copy-up preserves the private mountpoint

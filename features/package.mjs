@@ -92,6 +92,7 @@ for (const [name, definition] of Object.entries(definitions)) {
     ["style.css", "shared/style.css"],
     ["ui.js", "shared/ui.js"],
     ["launch.js", "shared/launch.js"],
+    ["team-management.js", "shared/team-management.js"],
     ["editor.js", "shared/editor.js"],
     ["page.js", `${name}/page.js`],
     ["sdk.js", "../pkg/plugin-sdk-browser/index.js"],
@@ -116,7 +117,7 @@ for (const [name, definition] of Object.entries(definitions)) {
   const manifest = {
     apiVersion: "labcentral.io/plugin-manifest/v2",
     id: `io.labcentral.feature.${name}`,
-    version: "1.2.0",
+    version: "1.3.0",
     categories: ["browser"],
     protocolMajor: 1,
     minimumProtocolMinor: 0,
@@ -126,7 +127,7 @@ for (const [name, definition] of Object.entries(definitions)) {
     requestedPermissions: permissions,
     browser: {
       apiVersion: "labcentral.browser/v1",
-      minimumHostVersion: 5,
+      minimumHostVersion: 6,
       assets,
       contributions: [
         {

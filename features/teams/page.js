@@ -19,11 +19,14 @@ import {
   options,
   stableList,
 } from "./ui.js";
+import { teamManagement } from "./team-management.js";
 import { launchForm, preparations } from "./launch.js";
 await initialize(async () => {
   const admin = can("team.manage"),
     views = tabs(
-      admin ? ["Manage", "Your team", "Groups"] : ["Your team", "Groups"],
+      admin
+        ? ["Manage", "Labs", "Your team", "Groups"]
+        : ["Your team", "Groups"],
     );
   let groups = [],
     labs = [],
@@ -31,6 +34,7 @@ await initialize(async () => {
     pending = false,
     launchOwner = null,
     managedID = "";
+  let refreshBulk = () => {};
   const current = section("Your team", views.panels["Your team"]),
     currentInfo = el("div"),
     currentLabs = el("div", "", { class: "space-y-3" });
@@ -59,7 +63,7 @@ await initialize(async () => {
       }
     },
   });
-  launch.body.append(button("Close", () => launch.close()));
+  form.actions.append(button("Cancel", () => launch.close()));
   const openLaunch = async (group) => {
     launchOwner = group;
     ownerLabel.textContent = `Group: ${group.name}`;
@@ -77,7 +81,8 @@ await initialize(async () => {
     progressParent,
     (w) =>
       w.request.preparation?.owner?.kind === "team" &&
-      w.request.preparation.owner.id === activeOwner(),
+      ((admin && views.panels["Your team"].hidden) ||
+        w.request.preparation.owner.id === activeOwner()),
     { activeOnly: true },
   );
   app.addEventListener("tabchange", (event) => {
@@ -171,6 +176,7 @@ await initialize(async () => {
         el("p", g ? "No active labs." : "Join a group to access its labs."),
       );
   }
+  let openCreateGroups;
   let manageGroup,
     manageInfo,
     manageMembers,
@@ -251,7 +257,7 @@ await initialize(async () => {
     await members(g, manageMembers);
   }
   if (admin) {
-    const oversight = section("Project groups", views.panels.Manage);
+    const oversight = section("Group details", views.panels.Manage);
     views.panels.Manage.prepend(oversight);
     const create = modal("Create project groups"),
       names = field(
@@ -293,7 +299,7 @@ await initialize(async () => {
       ),
       button("Cancel", () => create.close()),
     );
-    oversight.append(button("Create groups", () => create.open(), "primary"));
+    openCreateGroups = () => create.open();
     manageGroup = field(oversight, "Group", "select");
     manageInfo = el("div");
     oversight.append(manageInfo);
@@ -311,6 +317,13 @@ await initialize(async () => {
         .catch((e) => message(e.message, true));
     };
   }
+  if (admin)
+    refreshBulk = await teamManagement(
+      views,
+      () => ({ groups, labs }),
+      refresh,
+      () => openCreateGroups(),
+    );
   let currentFingerprint = "";
   async function refresh() {
     if (pending) return;
@@ -341,6 +354,7 @@ await initialize(async () => {
       roster.hidden = !joined;
       showLabs(joined, currentLabs);
       renderGroups();
+      refreshBulk();
       await members(joined, memberList);
       if (manageGroup) {
         const old = manageGroup.value;

@@ -6,6 +6,7 @@
   } from "./feature-drafts";
   import { featurePermissions, featureRequest } from "./extension-bridge";
   import { presentAccess } from "./access-navigation";
+  import { isolateFeatureModal } from "./feature-modal";
   import { onMount } from "svelte";
   import { goto, beforeNavigate } from "$app/navigation";
   import {
@@ -37,6 +38,15 @@
   } = $props();
   let frame = $state<HTMLIFrameElement>();
   let error = $state("");
+  let modalOpen = $state(false);
+  let modalShell = $state<HTMLDivElement>();
+  let restoreModal = () => {};
+  function setModal(open: boolean) {
+    restoreModal();
+    modalOpen = open;
+    restoreModal =
+      open && modalShell ? isolateFeatureModal(modalShell) : () => {};
+  }
   let disconnect = () => {};
   beforeNavigate((navigation) => {
     // Native beforeunload handles document exits and preserves a canceled session.
@@ -78,6 +88,7 @@
       "access.stream.close": "access.stream",
       "context.read": "context.read",
       "page.dirty": "page.presentation",
+      "page.modal": "page.presentation",
       "page.navigate": "page.presentation",
       "topology.read": "topology.read",
       "status.read": "status.read",
@@ -95,6 +106,7 @@
         abort.abort();
         channel?.port1.close();
         channel?.port2.close();
+        setModal(false);
         error = "Extension navigation ended its connection.";
         return;
       }
@@ -146,7 +158,7 @@
               resourceId,
               projectId,
               pluginInstance: extension.pluginInstance,
-              hostVersion: 5,
+              hostVersion: 6,
               allowedActions: [...allowedActions],
               subjectId,
               imageAdministrator:
@@ -163,7 +175,16 @@
                 permissions.has(required[method]),
               ),
             };
-          else if (data.method === "page.dirty") {
+          else if (data.method === "page.modal") {
+            if (
+              extension.slot !== "page" ||
+              typeof data.input?.open !== "boolean" ||
+              Object.keys(data.input).length !== 1
+            )
+              throw new Error("Invalid modal presentation request");
+            setModal(data.input.open);
+            result = {};
+          } else if (data.method === "page.dirty") {
             if (
               extension.slot !== "page" ||
               typeof data.input?.dirty !== "boolean" ||
@@ -540,12 +561,14 @@
       if (!ready) error = "Extension did not connect.";
     }, 15000);
     disconnect = () => {
+      setModal(false);
       closeStreams();
       abort.abort();
       channel?.port1.close();
       channel?.port2.close();
     };
     return () => {
+      setModal(false);
       closeStreams();
       abort.abort();
       clearInterval(reset);
@@ -560,12 +583,18 @@
 </script>
 
 {#if error}<p role="alert" class="text-error">{error}</p>{/if}
-<iframe
-  bind:this={frame}
-  src={extension.url}
-  title={extension.title}
-  sandbox="allow-scripts"
-  referrerpolicy="no-referrer"
-  class="w-full min-w-0"
-  style:height={extension.slot === "page" ? "calc(100dvh - 13rem)" : "24rem"}
-></iframe>
+{#if modalOpen}<div
+    class="fixed inset-0 z-40 bg-neutral/40"
+    aria-hidden="true"
+  ></div>{/if}
+<div bind:this={modalShell} class:relative={modalOpen} class:z-50={modalOpen}>
+  <iframe
+    bind:this={frame}
+    src={extension.url}
+    title={extension.title}
+    sandbox="allow-scripts"
+    referrerpolicy="no-referrer"
+    class="w-full min-w-0"
+    style:height={extension.slot === "page" ? "calc(100dvh - 13rem)" : "24rem"}
+  ></iframe>
+</div>

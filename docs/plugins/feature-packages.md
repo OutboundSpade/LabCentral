@@ -104,8 +104,8 @@ Group member responses use `items`/`nextCursor` and expose only `id`/`displayNam
 
 ## Browser host contract 5
 
-Standard packages require host 5; older contributions retain their existing fields
-and behavior. A page can declare `icon` as `library`, `users`, `graduation-cap`,
+Host 5 introduced the following optional fields; older contributions retain their
+existing fields and behavior. A page can declare `icon` as `library`, `users`, `graduation-cap`,
 `book-open`, `flask-conical`, `server`, `terminal`, `folder`, `settings`, or `puzzle`.
 The host renders its bundled Lucide component, with a plug fallback when omitted;
 URLs, arbitrary SVG and scripts are not accepted.
@@ -124,3 +124,20 @@ navigation checks project and topology, creates an authorized VNC access session
 and retains its one-time credential only in the host. No credentials reach frames.
 Batch history is bounded to the latest 100 project batches and each returned batch
 is authorized. Lab responses add optional `name`, `ownerName`, and `instructions`.
+
+## Browser host contract 6
+
+The current feature packages require host 6. `page.modal({open: boolean})`, gated
+by `page.presentation` and the page slot, coordinates a native feature dialog
+with the host backdrop and focus isolation. Closing, navigation or channel failure
+restores the host's previous inert state. It grants no data or API authority; old
+packages keep their previous behavior. Feature dialogs and core dialogs use the
+same theme backdrop. Desktop launch dialogs place settings beside instructions
+and keep actions together. Tabs and bulk controls share one opaque sticky header.
+
+Teams administrators can select up to 100 groups to prepare labs, change enrollment
+or delete groups, and select team labs for confirmed cleanup. Each command uses
+the existing typed API, project checks, optimistic version and idempotency key.
+Partial failures are named; retry repeats only failed commands with the original
+key and payload. Successful requests leave the selection. Deployment preparation
+remains one explicit team owner per command, independent of Classroom permissions.

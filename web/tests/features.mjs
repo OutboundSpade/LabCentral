@@ -6,7 +6,7 @@ import {featureExtensions,serveFeature} from './feature-fixture.mjs';
 const build=new URL('../build/',import.meta.url);
 const template={id:'tpl.one',name:'Shared workstation',description:'Work together.',projectId:'project.one',resourceVersion:1};
 const revision={id:'rev.one',templateId:template.id,revisionNumber:1};
-let imageFixtures=false,approved=false;
+let imageFixtures=false,approved=false,failEnrollment=false;
 let groups,mutations,labs,preparations,installed=true,admin=true,stage='awaiting-approval';
 const server=createServer(async(req,res)=>{
  if(await serveFeature(req,res))return;
@@ -29,8 +29,8 @@ const server=createServer(async(req,res)=>{
   return json({items:groups});
  }
  if(p.endsWith('/members'))return json({items:[{id:'user.alice',displayName:'Alice'},{id:'user.bob',displayName:'Bob'}]});
- if(p.startsWith('/projects/project.one/groups/')){const group=groups.find(g=>g.id===p.split('/')[4]);assert(group);if(req.method==='DELETE'){assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);groups=groups.filter(g=>g.id!==group.id);return json({});}if(p.endsWith('/enrollment')){assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);group.enrollmentOpen=body.open;group.resourceVersion++;}if(p.endsWith('/join')){group.joined=true;group.memberCount++;}if(p.endsWith('/leave')){group.joined=false;group.memberCount--;}return json(group);}
- if(p==='/deployment-preparations'){if(req.method==='POST'){assert.equal(body.preparation.inputs[0].Integer,2);assert.equal(body.preparation.inputs[0].Name,'count');assert.deepEqual(body.preparation.inputs[1].Enum,{String:null,Integer:0});const work={id:'prep.one',state:'running',request:{kind:'preparation',preparation:body.preparation},result:{stage,importIds:['image.one']}};preparations.push(work);return json(work);}return json({items:preparations});}
+ if(p.startsWith('/projects/project.one/groups/')){const group=groups.find(g=>g.id===p.split('/')[4]);assert(group);if(req.method==='DELETE'){assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);groups=groups.filter(g=>g.id!==group.id);return json({});}if(p.endsWith('/enrollment')){if(failEnrollment&&group.id==='team.two'){failEnrollment=false;return json({detail:'Temporarily unavailable'},503);}assert.equal(req.headers['if-match'],`"${group.resourceVersion}"`);group.enrollmentOpen=body.open;group.resourceVersion++;}if(p.endsWith('/join')){group.joined=true;group.memberCount++;}if(p.endsWith('/leave')){group.joined=false;group.memberCount--;}return json(group);}
+ if(p==='/deployment-preparations'){if(req.method==='POST'){assert.equal(body.preparation.inputs[0].Integer,2);assert.equal(body.preparation.inputs[0].Name,'count');assert.deepEqual(body.preparation.inputs[1].Enum,{String:null,Integer:0});const work={id:`prep.${preparations.length+1}`,state:'running',request:{kind:'preparation',preparation:body.preparation},result:{stage,importIds:['image.one']}};preparations.push(work);return json(work);}return json({items:preparations});}
  if(p.startsWith('/extension-operations/')){const w=preparations.find(w=>w.id===p.split('/')[2]);if(p.endsWith('/cancel'))w.state='canceled';return json({...w,result:{stage,importIds:['image.one']}});}
  if(p==='/extension-operations'&&imageFixtures)return json({items:[{id:'image.active',state:'succeeded',request:{kind:'image-import',import:{targetId:'target.one'}}},{id:'image.retired',state:'succeeded',request:{kind:'image-import',import:{targetId:'target.one'}}},{id:'retirement.one',state:'succeeded',request:{kind:'image-import',import:{retireBindingId:'image.retired'}}}]});
  if(p.startsWith('/image-bindings/')){if(p.endsWith('/policy')){approved=body.approved;return json({});}return json({id:p.split('/')[2],targetId:'target.one',retired:p.includes('retired'),approved:p.includes('active')&&approved,binding:{artifactDigest:'sha256:verified-test-source',architecture:'amd64'}});}
@@ -58,7 +58,7 @@ try{for(const [name,engine] of Object.entries({chromium,firefox,webkit})){
  await teamPanel.getByRole('heading',{name:labs[0].name,exact:true}).waitFor();
  const titleBox=await teamPanel.getByRole('heading',{name:labs[0].name,exact:true}).boundingBox(),buttonBox=await teamPanel.getByRole('button',{name:'Open lab',exact:true}).boundingBox();assert(titleBox.x+titleBox.width+8<=buttonBox.x||titleBox.y+titleBox.height+8<=buttonBox.y,'Long lab names wrap without crowding actions');
   await page.screenshot({path:new URL(`../../bin/plugin-usability/screenshots/${name}-teams.png`,import.meta.url).pathname,fullPage:true});await teams.getByRole('tab',{name:'Manage',exact:true}).click();await teams.getByRole('button',{name:'Close enrollment',exact:true}).click();await teams.getByRole('tabpanel',{name:'Manage',exact:true}).getByText('2 members · Enrollment closed',{exact:true}).waitFor();
- await teams.getByRole('button',{name:'Deploy group lab',exact:true}).click();await teams.getByLabel('Template',{exact:true}).selectOption(template.id);await teams.getByLabel('Machine count',{exact:true}).fill('2');await teams.getByLabel('Variant',{exact:true}).selectOption('0');await teams.getByRole('button',{name:'Prepare and deploy',exact:true}).click();await teams.getByText('Blue team · Waiting for image approval',{exact:true}).waitFor();assert.deepEqual(mutations.find(m=>m.path==='/deployment-preparations').body.preparation.owner,{kind:'team',id:'team.one'});
+ await teams.getByRole('button',{name:'Deploy group lab',exact:true}).click();await teams.getByRole('dialog').getByLabel('Template',{exact:true}).selectOption(template.id);await teams.getByRole('dialog').getByLabel('Machine count',{exact:true}).fill('2');await teams.getByRole('dialog').getByLabel('Variant',{exact:true}).selectOption('0');await teams.getByRole('button',{name:'Prepare and deploy',exact:true}).click();await teams.getByText('Blue team · Waiting for image approval',{exact:true}).waitFor();assert.deepEqual(mutations.find(m=>m.path==='/deployment-preparations').body.preparation.owner,{kind:'team',id:'team.one'});
  await page.reload();await teams.getByText('Blue team · Waiting for image approval',{exact:true}).waitFor();
  const cancel=teams.getByRole('button',{name:'Cancel preparation',exact:true});await cancel.focus();await page.waitForTimeout(5500);assert(await cancel.evaluate(n=>n===document.activeElement),'Polling preserves keyboard focus');
  await teams.getByRole('button',{name:'End lab',exact:true}).click();await teams.getByRole('dialog',{name:'End this lab?'}).waitFor();await teams.getByRole('button',{name:'Cancel',exact:true}).click();assert(!mutations.some(m=>m.path.endsWith('/actions/destroy')));
@@ -66,7 +66,37 @@ try{for(const [name,engine] of Object.entries({chromium,firefox,webkit})){
  await teams.getByRole('tab',{name:'Manage',exact:true}).click();await teams.getByRole('button',{name:'Create groups',exact:true}).click();await teams.getByLabel('Group names — one per line (up to 100)',{exact:true}).fill('Red team\nGreen team');await teams.getByRole('dialog').getByRole('button',{name:'Create groups',exact:true}).click();await teams.getByRole('combobox',{name:'Group',exact:true}).locator('option').filter({hasText:'Red team'}).waitFor({state:'attached'});
 
  await teams.getByRole('combobox',{name:'Group',exact:true}).selectOption('team.created0');await teams.getByRole('button',{name:'Delete group',exact:true}).click();await teams.getByRole('dialog').getByText('Red team',{exact:true}).waitFor();await teams.getByRole('dialog').getByRole('button',{name:'Delete group',exact:true}).click();await teams.getByText('Group deleted.',{exact:true}).waitFor();assert(!groups.some(g=>g.id==='team.created0'));
- await teams.getByRole('combobox',{name:'Group',exact:true}).selectOption('team.one');await teams.getByRole('button',{name:'Deploy group lab',exact:true}).click();await teams.getByRole('dialog').getByText('Group: Blue team',{exact:true}).waitFor();await teams.getByLabel('Template',{exact:true}).selectOption(template.id);await teams.getByLabel('Machine count',{exact:true}).fill('2');await teams.getByLabel('Variant',{exact:true}).selectOption('0');await teams.getByRole('button',{name:'Prepare and deploy',exact:true}).click();await teams.getByText('Lab preparation started.',{exact:true}).waitFor();assert(!groups.find(g=>g.id==='team.one').joined,'Admin deployed without joining');
+ await teams.getByRole('combobox',{name:'Group',exact:true}).selectOption('team.one');await teams.getByRole('button',{name:'Deploy group lab',exact:true}).click();await teams.getByRole('dialog').getByText('Group: Blue team',{exact:true}).waitFor();await teams.getByRole('dialog').getByLabel('Template',{exact:true}).selectOption(template.id);await teams.getByRole('dialog').getByLabel('Machine count',{exact:true}).fill('2');await teams.getByRole('dialog').getByLabel('Variant',{exact:true}).selectOption('0');await teams.getByRole('button',{name:'Prepare and deploy',exact:true}).click();await teams.getByText('Lab preparation started.',{exact:true}).waitFor();assert(!groups.find(g=>g.id==='team.one').joined,'Admin deployed without joining');
+
+ const manage=teams.getByRole('tabpanel',{name:'Manage',exact:true});
+ await manage.getByRole('checkbox',{name:'Blue team',exact:true}).check();
+ await manage.getByRole('checkbox',{name:'Closed team',exact:true}).check();
+ failEnrollment=true;const enrollmentStart=mutations.length;
+ await teams.getByRole('button',{name:'Open selected enrollment',exact:true}).click();
+ await teams.getByRole('dialog').getByRole('button',{name:'Open enrollment',exact:true}).click();
+ await teams.getByText('1 accepted · 1 failed',{exact:true}).waitFor();
+ await teams.getByRole('button',{name:'Retry failed actions',exact:true}).click();
+ await teams.getByText('1 accepted · 0 failed',{exact:true}).waitFor();
+ const enrollmentCalls=mutations.slice(enrollmentStart).filter(m=>m.path.endsWith('/enrollment'));
+ assert.equal(enrollmentCalls.filter(m=>m.path.includes('team.one')).length,1,'Bulk retry never repeats successful commands');
+ const retried=enrollmentCalls.filter(m=>m.path.includes('team.two'));assert.equal(retried.length,2);assert(retried[0].headers['idempotency-key']);assert.equal(retried[0].headers['idempotency-key'],retried[1].headers['idempotency-key']);
+ await manage.getByRole('checkbox',{name:'Blue team',exact:true}).check();
+ await manage.getByRole('checkbox',{name:'Closed team',exact:true}).check();
+ const prepStart=preparations.length;
+ await teams.getByRole('button',{name:'Deploy selected groups',exact:true}).click();
+ const bulkDialog=teams.getByRole('dialog',{name:'Deploy group labs',exact:true});
+ await bulkDialog.getByLabel('Template',{exact:true}).selectOption(template.id);await bulkDialog.getByLabel('Machine count',{exact:true}).fill('2');await bulkDialog.getByLabel('Variant',{exact:true}).selectOption('0');
+ await page.waitForTimeout(350);await page.screenshot({path:new URL(`../../bin/plugin-usability/screenshots/${name}-bulk-launch.png`,import.meta.url).pathname,fullPage:true});
+ await bulkDialog.getByRole('button',{name:'Deploy selected groups',exact:true}).click();
+ await teams.getByText('2 accepted · 0 failed',{exact:true}).waitFor();
+ assert.deepEqual(preparations.slice(prepStart).map(p=>p.request.preparation.owner),[{kind:'team',id:'team.one'},{kind:'team',id:'team.two'}]);
+ assert(!mutations.some(m=>m.path==='/lab-instance-batches'),'Ordinary group launches use individually authorized preparation');
+ await bulkDialog.waitFor({state:'hidden'});assert(await teams.getByRole('button',{name:'Deploy selected groups',exact:true}).isDisabled(),'Cleared bulk selection disables actions');
+ await teams.getByRole('tab',{name:'Labs',exact:true}).click();await teams.getByRole('checkbox',{name:'Select all matching labs',exact:true}).check();
+ await teams.getByRole('button',{name:'End selected labs',exact:true}).click();await teams.getByRole('dialog').getByRole('button',{name:'End labs',exact:true}).click();
+ await teams.getByRole('tabpanel',{name:'Labs',exact:true}).getByText('1 accepted · 0 failed',{exact:true}).waitFor();assert.equal(labs[0].phase,'destroyed');
+ await teams.getByRole('tab',{name:'Manage',exact:true}).click();await manage.getByRole('checkbox',{name:'Closed team',exact:true}).check();await manage.getByRole('checkbox',{name:'Green team',exact:true}).check();
+ await teams.getByRole('button',{name:'Delete selected groups',exact:true}).click();await teams.getByRole('dialog').getByRole('button',{name:'Delete groups',exact:true}).click();await teams.getByText('2 accepted · 0 failed',{exact:true}).waitFor();assert.deepEqual(groups.map(g=>g.id),['team.one']);
  await page.goto(origin+'/templates/');const library=page.frameLocator('iframe[title="Template Library"]');await library.getByRole('heading',{name:'Published templates'}).waitFor();
  assert.equal(await library.getByRole('combobox',{name:'Template',exact:true}).count(),1,'Launch uses one visible template selection');
  await library.getByRole('tab',{name:'Author',exact:true}).click();const source=library.getByLabel('Lab YAML',{exact:true});await source.fill('# unsaved draft');

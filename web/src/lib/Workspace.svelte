@@ -1028,7 +1028,7 @@
       </aside>
     </div>
   </div>
-  <dialog bind:this={endDialog} class="modal" aria-labelledby="end-title">
+  <dialog bind:this={endDialog} class="modal open:bg-neutral/40" aria-labelledby="end-title">
     <div class="modal-box">
       <h2 id="end-title" class="text-xl font-semibold">End this lab?</h2>
       <p class="mt-4 text-sm leading-6 text-base-content/70">

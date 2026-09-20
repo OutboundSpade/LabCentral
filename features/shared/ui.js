@@ -72,12 +72,19 @@ export function tabs(names, parent = app) {
   const nav = el("div", "", {
     role: "tablist",
     "aria-label": "Page sections",
-    class: "tabs tabs-border sticky top-0 z-10 bg-base-100 flex-wrap",
+    class: "tabs tabs-border bg-base-100 flex-wrap",
   });
-  parent.append(nav);
+  const header = el("div", "", { class: "sticky top-0 z-20 bg-base-100" });
+  const toolbar = el("div"),
+    toolbars = {};
+  header.append(nav, toolbar);
+  parent.append(header);
+  let selected;
   const panels = {},
     controls = {};
   const select = (name) => {
+    selected = name;
+    toolbar.replaceChildren(...(toolbars[name] ? [toolbars[name]] : []));
     message("");
     for (const n of names) {
       panels[n].hidden = n !== name;
@@ -128,14 +135,23 @@ export function tabs(names, parent = app) {
     };
   }
   select(names[0]);
-  return { panels, select };
+  return {
+    panels,
+    select,
+    toolbar(name, node) {
+      toolbars[name] = node;
+      if (selected === name) toolbar.replaceChildren(node);
+    },
+  };
 }
 export function modal(title, description = "") {
   const d = el("dialog", "", {
-    class: "modal",
+    class: "modal open:bg-neutral/40",
     "aria-labelledby": crypto.randomUUID(),
   });
-  const box = el("div", "", { class: "modal-box w-11/12 max-w-3xl space-y-4" });
+  const box = el("div", "", {
+    class: "modal-box w-11/12 max-w-5xl max-h-[90dvh] space-y-4 bg-base-100",
+  });
   box.append(el("h2", title, { id: d.getAttribute("aria-labelledby") }));
   if (description) box.append(el("p", description, { class: "muted" }));
   const feedback = el("div", "", { "data-feedback": "", role: "status" });
@@ -144,12 +160,18 @@ export function modal(title, description = "") {
   d.append(box);
   document.body.append(d);
   let opener;
-  d.addEventListener("close", () => opener?.isConnected && opener.focus());
+  d.addEventListener("close", () => {
+    void request("page.modal", {
+      open: !!document.querySelector("dialog[open]"),
+    }).catch(() => {});
+    if (opener?.isConnected) opener.focus();
+  });
   return {
     element: d,
     body: box,
-    open() {
+    async open() {
       opener = document.activeElement;
+      await request("page.modal", { open: true });
       d.showModal();
     },
     close() {
@@ -257,7 +279,7 @@ export async function action(fn) {
     message(error.message ?? "Request failed", true);
   }
 }
-export function button(text, fn, kind = "") {
+export function button(text, fn, kind = "", disabled = () => false) {
   const b = el("button", text, {
     type: "button",
     class:
@@ -273,7 +295,7 @@ export function button(text, fn, kind = "") {
     try {
       await action(fn);
     } finally {
-      b.disabled = false;
+      b.disabled = disabled();
     }
   };
   return b;
@@ -409,7 +431,10 @@ export function confirm(
       e.preventDefault();
       done(false);
     };
-    d.open();
+    void d.open().catch((error) => {
+      done(false);
+      message(error.message, true);
+    });
   });
 }
 export function labCard(lab, parent, { end, onchange } = {}) {

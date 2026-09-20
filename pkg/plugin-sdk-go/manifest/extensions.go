@@ -30,7 +30,7 @@ type BrowserContribution struct {
 	Permissions     []string `json:"permissions"`
 }
 
-const BrowserHostVersion = 5
+const BrowserHostVersion = 6
 
 type BrowserPackage struct {
 	MinimumHostVersion uint32                `json:"minimumHostVersion,omitempty"`

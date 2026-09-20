@@ -18,18 +18,19 @@ trusted local development; Proxmox supports qualified VM environments.
 
 See the [documentation index](docs/README.md) for contracts and design references.
 
-## Run locally
+## Run with a container image
 
-With the Go version in `go.mod`, Bun and Docker installed:
+Use a verified release image with Docker Compose; Go, Bun and Make are not needed:
 
 ```sh
-make run
+export LABCENTRAL_IMAGE='your-registry/labcentral@sha256:YOUR_VERIFIED_DIGEST'
+docker compose up -d --no-build
 ```
 
-Open [LabCentral](http://127.0.0.1:8080/). This builds the UI and binaries before
-starting a loopback-only, unauthenticated development instance. Use trusted images
-only: ordinary Docker containers do not isolate arbitrary hostile workloads.
-See [local setup](docs/users/local-setup.md) for prerequisites and Compose.
+Open [LabCentral](http://127.0.0.1:8080/). This Compose profile is loopback-only
+local evaluation with trusted Docker workloads. See [local setup](docs/users/local-setup.md)
+for offline images and the optional Docker-only source build. For authenticated
+installations, use the [container deployment guide](docs/operations/container-deployment.md).
 
 ## Project status
 

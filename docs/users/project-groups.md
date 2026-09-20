@@ -67,3 +67,12 @@ discovery and cannot accept joins or pending launches. The display name can be u
 for a new group. This uses `DELETE /api/v1/projects/{projectId}/groups/{id}` with
 `If-Match` and `Idempotency-Key`; a successful deletion/replay returns 204. Merely
 leaving or closing enrollment still never deletes a group or its labs.
+
+For multiple groups, select their checkboxes in **Manage**, then **Deploy selected
+groups**, **Open selected enrollment**, **Close selected enrollment**, or **Delete
+selected groups**. **Labs** lists team-owned labs and offers **End selected labs**.
+Each action supports up to 100 selected items and shows individual failures.
+**Retry failed actions** retries only those requests; accepted requests are not
+repeated. If another administrator changed a group's version, refresh and select
+it again to issue a new command against its current state. Launch progress is
+shown in Manage, including approval or capacity waits.

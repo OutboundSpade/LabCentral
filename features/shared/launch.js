@@ -15,28 +15,37 @@ import {
 } from "./ui.js";
 export async function launchForm(
   parent,
-  { owner, owners, onlaunch, batch = false } = {},
+  { owner, owners, onlaunch, batch = false, prepareMany } = {},
 ) {
-  const form = el("form", "", { class: "max-w-3xl space-y-3" });
+  const form = el("form", "", {
+    class: "grid gap-6 md:grid-cols-2 items-start",
+  });
   parent.append(form);
-  const template = field(form, "Template", "select"),
-    revision = field(form, "Revision", "select"),
-    target = field(form, "Environment", "select");
+  const settings = el("div", "", {
+    class: "min-w-0 grid gap-x-4 sm:grid-cols-2",
+  });
+  form.append(settings);
+  const template = field(settings, "Template", "select"),
+    revision = field(settings, "Revision", "select"),
+    target = field(settings, "Environment", "select");
+  template.parentElement.classList.add("sm:col-span-2");
   const inputsBox = el("div", "", { class: "grid gap-x-4 md:grid-cols-2" });
-  form.append(inputsBox);
-  const minutes = field(form, "Lab lifetime (minutes)", "input", {
+  inputsBox.classList.add("sm:col-span-2");
+  const minutes = field(settings, "Lab lifetime (minutes)", "input", {
     type: "number",
     min: 1,
     max: 527040,
     step: 1,
     placeholder: "Workspace default",
   });
+  settings.append(inputsBox);
   const ack = check(
     form,
     "I understand Docker environments are for trusted code and do not isolate hostile workloads.",
   );
+  ack.parentElement.classList.add("md:col-span-2");
   ack.parentElement.hidden = true;
-  const progress = el("div", "", { role: "status" });
+  const progress = el("div", "", { role: "status", class: "md:col-span-2" });
   form.append(progress);
   let parameters = [],
     values = [],
@@ -50,7 +59,7 @@ export async function launchForm(
   options(target, targets.items ?? []);
   target.value = targets.items?.[0]?.id ?? "";
   const override = batch
-    ? providerOptions(form, () =>
+    ? providerOptions(settings, () =>
         targets.items?.find((t) => t.id === target.value),
       )
     : null;
@@ -107,6 +116,8 @@ export async function launchForm(
           },
         );
       }
+      if (parameters.length === 1)
+        control.parentElement.classList.add("md:col-span-2");
       control.required = p.required && p.default === undefined;
       values.push({ p, control });
     }
@@ -149,10 +160,17 @@ export async function launchForm(
   const instructions = el("p", "", {
     class: "whitespace-pre-wrap leading-relaxed",
   });
-  template.parentElement.after(instructions);
+  const lesson = el("aside", "", {
+    class:
+      "min-w-0 rounded-box border border-base-300 p-4 max-h-80 overflow-auto",
+    "aria-label": "Template instructions",
+  });
+  lesson.append(el("h3", "Instructions"), instructions);
+  settings.after(lesson);
   async function templateChanged() {
     instructions.textContent =
-      templates.find((t) => t.id === template.value)?.description ?? "";
+      templates.find((t) => t.id === template.value)?.description ||
+      "No instructions provided.";
     const current = ++generation;
     options(revision, []);
     inputsBox.replaceChildren();
@@ -175,7 +193,11 @@ export async function launchForm(
   revision.onchange = () =>
     revisionChanged().catch((e) => message(e.message, true));
   const submit = button(
-    batch ? "Launch selected labs" : "Prepare and deploy",
+    batch
+      ? "Launch selected labs"
+      : prepareMany
+        ? "Deploy selected groups"
+        : "Prepare and deploy",
     async () => {
       if (!form.reportValidity()) return;
       if (!revision.value || loadedRevision !== revision.value || !target.value)
@@ -205,6 +227,19 @@ export async function launchForm(
         await onlaunch?.(result);
         return;
       }
+      if (prepareMany) {
+        await prepareMany({
+          revisionId: revision.value,
+          targetId: target.value,
+          inputs,
+          lifetime: {
+            ttlSeconds: minutes.value ? Number(minutes.value) * 60 : 0,
+            persistent: false,
+          },
+          acknowledged: ack.checked,
+        });
+        return;
+      }
       const selectedOwner = owner?.();
       if (owner && !selectedOwner)
         throw new Error("Join a group before deploying its lab.");
@@ -226,12 +261,18 @@ export async function launchForm(
     },
     "primary",
   );
-  form.append(submit);
+  const actions = el("div", "", {
+    class:
+      "md:col-span-2 flex flex-wrap items-center gap-3 border-t border-base-300 pt-4",
+  });
+  actions.append(submit);
+  form.append(actions);
   form.onsubmit = (e) => {
     e.preventDefault();
     submit.click();
   };
   return {
+    actions,
     reload: async () => {
       const chosen = template.value;
       templates = await all("templates.list");

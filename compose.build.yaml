@@ -1,0 +1,9 @@
+# Optional source build. Normal deployment uses compose.yaml and a supplied image.
+services:
+  labcentral:
+    build:
+      context: .
+      args:
+        VERSION: ${LABCENTRAL_VERSION:-dev}
+        VCS_REF: ${LABCENTRAL_VCS_REF:-unknown}
+        PROXMOX_SOURCE_TREE_DIGEST: ${PROXMOX_SOURCE_TREE_DIGEST:-unavailable}

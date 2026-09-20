@@ -26,7 +26,12 @@ function openLab(lab) {
     request("navigation.lab", { instanceId: lab.id }),
   );
   control.classList.remove("whitespace-nowrap");
-  control.classList.add("whitespace-normal", "max-w-full", "break-words", "text-left");
+  control.classList.add(
+    "whitespace-normal",
+    "max-w-full",
+    "break-words",
+    "text-left",
+  );
   return control;
 }
 await initialize(async () => {
@@ -54,10 +59,7 @@ await initialize(async () => {
       rendered = "",
       targetId = "";
     const views = tabs(["Students", "Group labs", "Launch activity"]);
-    const launch = modal(
-      "Launch classroom labs",
-      "Review the selected students, template and environment before launching.",
-    );
+    const launch = modal("Launch classroom labs");
     const selectedSummary = el("p");
     launch.body.append(selectedSummary);
     const form = await launchForm(launch.body, {
@@ -77,7 +79,7 @@ await initialize(async () => {
         }
       },
     });
-    launch.body.append(button("Close", () => launch.close()));
+    form.actions.append(button("Cancel", () => launch.close()));
     targetId = form.target.value;
     const students = section("Students & labs", views.panels.Students);
     const search = field(students, "Search students", "input", {
@@ -111,9 +113,9 @@ await initialize(async () => {
     ended.onchange = () => render();
     const actions = el("div", "", {
       class:
-        "sticky top-12 z-10 bg-base-100 border-y border-base-300 py-3 flex flex-wrap items-center gap-3",
+        "bg-base-100 border-b border-base-300 py-3 flex flex-wrap items-center gap-3",
     });
-    students.append(actions);
+    views.toolbar("Students", actions);
     const list = el("div", "", { class: "space-y-2" });
     students.append(list);
     const endSelected = button(
@@ -161,11 +163,8 @@ await initialize(async () => {
     const launchSelected = button(
       "Launch selected labs",
       () => {
-        selectedSummary.textContent = `${selected.size} students · Environment: ${form.target.selectedOptions[0]?.textContent ?? "Unavailable"}: ${roster
-          .filter((p) => selected.has(p.id))
-          .map((p) => p.displayName)
-          .join(", ")}`;
-        launch.open();
+        selectedSummary.textContent = `${selected.size} students selected`;
+        return launch.open();
       },
       "primary",
     );
@@ -263,9 +262,8 @@ await initialize(async () => {
             : selected.delete(person.id);
           counts();
         };
-        identity.append(
-          el("small", person.username ?? "Not eligible for this environment"),
-        );
+        if (person.unavailable)
+          identity.append(el("small", "Not eligible for this environment"));
         const own = el("div", "", { class: "space-y-2" });
         card.append(own);
         if (!person.own.length)
@@ -275,10 +273,7 @@ await initialize(async () => {
             class: "border-l-2 border-primary pl-3 space-y-2",
           });
           shared.append(el("h3", group.name));
-          for (const lab of group.labs)
-            shared.append(
-              openLab(lab),
-            );
+          for (const lab of group.labs) shared.append(openLab(lab));
           if (!group.labs.length)
             shared.append(el("small", "No active group labs."));
           own.append(shared);
@@ -304,10 +299,7 @@ await initialize(async () => {
               counts();
             };
           }
-          row.append(
-            openLab(lab),
-            el("small", lab.phase),
-          );
+          row.append(openLab(lab), el("small", lab.phase));
           if (lab.outcome?.error)
             row.append(
               el("p", lab.outcome.error, { role: "alert", class: "error" }),
