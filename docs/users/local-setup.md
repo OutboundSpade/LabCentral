@@ -22,7 +22,7 @@ installs Classroom, whose launch workflows need authenticated instructor access.
 Stop with `docker compose down`; state remains in the named volume. Use
 `--volumes` only when intentionally deleting that state.
 
-If no release image is available, build one using Docker alone from this checkout:
+If no release image is available, build one using Docker alone from a source checkout:
 
 ```sh
 docker compose -f compose.yaml -f compose.build.yaml up -d --build

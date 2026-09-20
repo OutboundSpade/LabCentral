@@ -286,7 +286,7 @@ export function button(text, fn, kind = "", disabled = () => false) {
       kind === "primary"
         ? "btn btn-sm btn-primary min-h-11 h-auto py-2 whitespace-nowrap shrink-0"
         : kind === "danger"
-          ? "btn btn-sm btn-outline text-error min-h-11 h-auto py-2 whitespace-nowrap shrink-0"
+          ? "btn btn-sm btn-outline enabled:text-error min-h-11 h-auto py-2 whitespace-nowrap shrink-0"
           : "btn btn-sm min-h-11 h-auto py-2 whitespace-nowrap shrink-0",
   });
   b.onclick = async () => {

@@ -80,6 +80,13 @@ try{for(const [name,engine] of Object.entries({chromium,firefox,webkit})){
  const enrollmentCalls=mutations.slice(enrollmentStart).filter(m=>m.path.endsWith('/enrollment'));
  assert.equal(enrollmentCalls.filter(m=>m.path.includes('team.one')).length,1,'Bulk retry never repeats successful commands');
  const retried=enrollmentCalls.filter(m=>m.path.includes('team.two'));assert.equal(retried.length,2);assert(retried[0].headers['idempotency-key']);assert.equal(retried[0].headers['idempotency-key'],retried[1].headers['idempotency-key']);
+ for(const state of ['Close','Open']){
+  await manage.getByRole('checkbox',{name:'Select all matching groups',exact:true}).check();
+  await teams.getByText('3 groups selected',{exact:true}).waitFor();
+  await teams.getByRole('button',{name:state+' selected enrollment',exact:true}).click();
+  await teams.getByRole('dialog').getByRole('button',{name:state+' enrollment',exact:true}).click();
+  await teams.getByText('3 accepted · 0 failed',{exact:true}).waitFor();
+ }
  await manage.getByRole('checkbox',{name:'Blue team',exact:true}).check();
  await manage.getByRole('checkbox',{name:'Closed team',exact:true}).check();
  const prepStart=preparations.length;

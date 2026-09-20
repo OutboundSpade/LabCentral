@@ -117,7 +117,7 @@ for (const [name, definition] of Object.entries(definitions)) {
   const manifest = {
     apiVersion: "labcentral.io/plugin-manifest/v2",
     id: `io.labcentral.feature.${name}`,
-    version: "1.3.0",
+    version: "1.3.1",
     categories: ["browser"],
     protocolMajor: 1,
     minimumProtocolMinor: 0,

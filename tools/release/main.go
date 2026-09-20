@@ -325,6 +325,11 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	for sourcePath, destination := range map[string]string{
+		"compose.yaml":                                          "compose.yaml",
+		"deploy/containers/compose.yaml":                        "deploy/containers/compose.yaml",
+		"docs/operations/container-deployment.md":               "docs/operations/container-deployment.md",
+		"docs/users/local-setup.md":                             "docs/users/local-setup.md",
+		"tools/container_smoke.py":                              "tools/container_smoke.py",
 		"deploy/observability/prometheus-alerts.yaml":           "deploy/prometheus-alerts.yaml",
 		"deploy/kubernetes/config.example.yaml":                 "deploy/kubernetes/config.example.yaml",
 		"deploy/kubernetes/disruption-budget.yaml":              "deploy/kubernetes/disruption-budget.yaml",
@@ -615,6 +620,9 @@ func goPURL(path, version string) string {
 
 func releaseReadme(version, goos, goarch, labdName, dockerProviderName, proxmoxProviderName, accessProviderName, recoveryName string) string {
 	return fmt.Sprintf(`# LabCentral %s (%s/%s)
+
+Container images are the recommended deployment. This archive is the native
+compatibility package; see docs/operations/container-deployment.md.
 
 This archive contains the trusted-laptop Docker distribution and the
 qualification-gated Proxmox distribution with its isolated noVNC access

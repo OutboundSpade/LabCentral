@@ -67,6 +67,8 @@ export async function teamManagement(views, read, refresh, createGroup) {
     retry = [];
     retryAction = undefined;
     outcomes.replaceChildren();
+    const progress = el("p", `0 of ${commands.length} completed`);
+    outcomes.append(progress);
     let accepted = 0;
     try {
       for (const c of commands) {
@@ -82,10 +84,10 @@ export async function teamManagement(views, read, refresh, createGroup) {
             }),
           );
         }
+        progress.textContent = `${accepted + retry.length} of ${commands.length} completed`;
+        refreshView();
       }
-      outcomes.prepend(
-        el("p", `${accepted} accepted · ${retry.length} failed`),
-      );
+      progress.textContent = `${accepted} accepted · ${retry.length} failed`;
       if (retry.length) {
         retryAction = button(
           "Retry failed actions",
