@@ -234,7 +234,7 @@
               id: "project.local",
               organizationId: "organization.local",
               name: "Local workspace",
-              allowedActions: ["template.create"],
+              allowedActions: ["template.read", "template.create", "team.manage"],
             },
           ]
         : await collection<Project>("/projects", "after");
