@@ -607,7 +607,7 @@ await initialize(async () => {
               detail.append(
                 el(
                   "p",
-                  `${new Date(work.createdAt).toLocaleString()} · ${work.state}${work.failureCode ? ` · ${work.failureCode}` : ""} · ${work.result?.commit ?? "Commit pending"}`,
+                  `${new Date(work.createdAt).toLocaleString()} · ${work.state}${work.failureCode ? ` · ${work.failureCode}` : ""} · ${work.result?.resolvedIdentity ?? "Commit pending"}`,
                 ),
               );
             if (!(data[1].items ?? []).length)

@@ -1,6 +1,18 @@
 formatVersion: 1
 lastUpdated: "2026-09-20"
 tasks:
+  - id: TASK-TEMPLATE-009
+    title: Configure the private meeting library and repair GitHub installation and history
+    status: complete
+    dependencies: [TASK-TEMPLATE-004, TASK-DEPLOY-001]
+    relatedAdrs: [ADR-0023, ADR-0027]
+    relatedDocuments: [docs/plugins/github-library.md, docs/design/portable-template-collaboration.md]
+    acceptanceCriteria:
+      - Include the GitHub binding configuration schema in release manifests and verify installation accepts valid repository settings while rejecting invalid settings.
+      - Display completed synchronization commit identities from the canonical source result in the independently installed Template Library history.
+      - Ensure the non-root container core can create SQLite temporary files under its bounded, non-executable tmpfs and verify authenticated requests after restart.
+      - Initialize the authorized private source repository, configure protected credentials and restricted source-service egress, and verify scheduled and manual commit-pinned synchronization on the private testbed.
+      - Preserve existing records and qualified backend identities, retain consistent rollback state, and document empty-library setup and remaining authoring work.
   - id: TASK-UI-013
     title: Unify feature dialogs and add bulk Teams management
     status: complete
@@ -127,7 +139,7 @@ tasks:
   - id: TASK-TEMPLATE-008
     title: Verify publish and deploy the template collaboration release
     # Reproducible release, migration/rollback, exact-target qualification and
-    # live build/team-console acceptance passed; repository binding is owner-deferred.
+    # live build/team-console acceptance passed; private binding is covered by TASK-TEMPLATE-009.
     status: complete
     dependencies: [TASK-TEMPLATE-007]
     relatedAdrs: [ADR-0026, ADR-0027, ADR-0028, ADR-0029]

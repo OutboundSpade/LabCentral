@@ -9,7 +9,10 @@ Git hooks, submodules, symlinks and third-party download URLs are not followed.
 Build `./cmd/lab-source-github` and install it as a v2 source manifest with plugin
 ID `io.labcentral.source.github`, source kind `github`, protocol 1.0 and separate
 plugin-owned state (`--state /absolute/protected/journal`). The usual executable
-hash and protected installation rules apply. Its binding configuration is:
+hash and protected installation rules apply. The manifest must include
+[`github-source-binding-v1.schema.json`](../../schemas/github-source-binding-v1.schema.json)
+as its `configurationSchema`; core rejects nonempty bindings without a declared
+schema. Release packaging includes this schema. Its binding configuration is:
 
 ```json
 {
@@ -24,6 +27,21 @@ Bind it to explicit projects. If required, set the binding's `credentialFile` to
 a protected file containing the token. Never place it in configuration, the
 repository or a template archive. The declared reference must match the binding;
 a browser cannot redirect the plugin to another repository or reference.
+
+For a containerized core with an attached native source service, mount the
+credential file read-only at the exact `credentialFile` path inside the core
+container. Make it readable only by the core service identity; core passes it to
+the source plugin for the invocation. The plugin registration token and GitHub
+repository credential are separate credentials. Prefer a repository-scoped token
+with Contents read permission; an operator's GitHub CLI credential may have
+broader access and depends on that account's continued authorization.
+
+The source service needs DNS through the configured resolver and outbound HTTPS
+to `api.github.com`. A dormant service restricted to loopback cannot synchronize.
+Keep core/provider/access network restrictions separate. If using an IP allowlist,
+retrieve current `api` ranges from GitHub's `/meta` endpoint, allow TCP 443, and
+refresh the operator-managed rules when those ranges change. Keep actual ranges,
+credential locations and installation-specific rules in private operator records.
 
 An index uses `labcentral.library/v1`, with an explicit `templates` array (including
 an empty array when intentionally removing all entries). Each entry has a stable
@@ -68,3 +86,24 @@ The plugin does not read the control-plane database or artifact directory.
 The optional `source-collection-v1` capability adds `ResolveCollection` and a typed
 collection result to source recovery. The GitHub package provides this collection
 workflow; existing single-bundle source plugins retain `Resolve` unchanged.
+
+## Initialize a private library
+
+Create the repository with `gh repo create ORGANIZATION/REPOSITORY --private`,
+then commit a root `index.yaml` on the configured branch:
+
+```yaml
+apiVersion: labcentral.library/v1
+templates: []
+```
+
+An empty index is a valid starting library. Add locked portable template roots and
+stable entries as meeting labs are authored; an existing template's portable
+export can supply the source files. Configure the installed source binding before
+adding the library under Template Library's **Libraries** tab. Select the source,
+enter its configured branch and use the default fifteen-minute interval.
+
+Verify a successful initial scheduled synchronization and **Sync now** in the
+history, including the expected commit. Confirm that polling is enabled and that
+the next poll is scheduled. An empty-index check verifies private transport and
+publication setup; importing real entries still requires valid portable packages.

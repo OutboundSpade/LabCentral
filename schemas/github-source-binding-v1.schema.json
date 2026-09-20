@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://labcentral.io/schemas/github-source-binding-v1.schema.json",
+  "title": "Configured GitHub template library",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "owner",
+    "repository",
+    "reference",
+    "index"
+  ],
+  "properties": {
+    "owner": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+    },
+    "reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\r\n\u0000]+$"
+    },
+    "index": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^/\\\\:\u0000-\u001f\u007f]+(/[^/\\\\:\u0000-\u001f\u007f]+){0,16}$",
+      "not": {
+        "pattern": "(^|/)\\.{1,2}(/|$)"
+      }
+    }
+  }
+}

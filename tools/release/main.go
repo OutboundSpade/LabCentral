@@ -63,6 +63,28 @@ type module struct {
 	Replace *module
 }
 
+type pluginManifest struct {
+	APIVersion           string          `json:"apiVersion"`
+	ID                   string          `json:"id"`
+	Version              string          `json:"version"`
+	Executable           string          `json:"executable"`
+	SHA256               string          `json:"sha256"`
+	Categories           []string        `json:"categories"`
+	ProviderKinds        []string        `json:"providerKinds,omitempty"`
+	AccessKinds          []string        `json:"accessKinds,omitempty"`
+	SourceKinds          []string        `json:"sourceKinds,omitempty"`
+	BuilderKinds         []string        `json:"builderKinds,omitempty"`
+	ConfigurationSchema  json.RawMessage `json:"configurationSchema,omitempty"`
+	AccessMethods        []string        `json:"accessMethods,omitempty"`
+	EndpointSchemas      []string        `json:"endpointSchemas,omitempty"`
+	ProtocolMajor        int             `json:"protocolMajor"`
+	MinimumProtocolMinor int             `json:"minimumProtocolMinor"`
+	MaximumProtocolMinor int             `json:"maximumProtocolMinor"`
+	OperatingSystems     []string        `json:"operatingSystems"`
+	Architectures        []string        `json:"architectures"`
+	RequestedPermissions []string        `json:"requestedPermissions"`
+}
+
 func main() {
 	if err := run(context.Background(), os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, "release:", err)
@@ -204,27 +226,7 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	created := time.Unix(cfg.epoch, 0).UTC()
-	type pluginManifest struct {
-		APIVersion           string          `json:"apiVersion"`
-		ID                   string          `json:"id"`
-		Version              string          `json:"version"`
-		Executable           string          `json:"executable"`
-		SHA256               string          `json:"sha256"`
-		Categories           []string        `json:"categories"`
-		ProviderKinds        []string        `json:"providerKinds,omitempty"`
-		AccessKinds          []string        `json:"accessKinds,omitempty"`
-		SourceKinds          []string        `json:"sourceKinds,omitempty"`
-		BuilderKinds         []string        `json:"builderKinds,omitempty"`
-		ConfigurationSchema  json.RawMessage `json:"configurationSchema,omitempty"`
-		AccessMethods        []string        `json:"accessMethods,omitempty"`
-		EndpointSchemas      []string        `json:"endpointSchemas,omitempty"`
-		ProtocolMajor        int             `json:"protocolMajor"`
-		MinimumProtocolMinor int             `json:"minimumProtocolMinor"`
-		MaximumProtocolMinor int             `json:"maximumProtocolMinor"`
-		OperatingSystems     []string        `json:"operatingSystems"`
-		Architectures        []string        `json:"architectures"`
-		RequestedPermissions []string        `json:"requestedPermissions"`
-	}
+
 	dockerManifest := pluginManifest{
 		APIVersion: "labcentral.io/plugin-manifest/v1", ID: dockerPluginID, Version: pluginVersion,
 		Executable: "../" + dockerProviderName, SHA256: dockerProviderDigest, Categories: []string{"provider"},
@@ -260,7 +262,11 @@ func run(ctx context.Context, args []string) error {
 	for _, entry := range additionalSubjects {
 		var m pluginManifest
 		if entry.Name == "lab-source-github"+extension {
-			m = pluginManifest{APIVersion: "labcentral.io/plugin-manifest/v2", ID: "io.labcentral.source.github", Version: pluginVersion, Executable: "../" + entry.Name, SHA256: entry.SHA256, Categories: []string{"source"}, SourceKinds: []string{"github"}, ProtocolMajor: 1, OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch}, RequestedPermissions: []string{"github-api-endpoint", "invocation-journal-write"}}
+			var err error
+			m, err = githubSourceManifest("schemas/github-source-binding-v1.schema.json", cfg, entry)
+			if err != nil {
+				return err
+			}
 			if err := writeJSON(filepath.Join(root, "plugins", "source-github.json"), m); err != nil {
 				return err
 			}
@@ -880,4 +886,13 @@ func commandOutput(ctx context.Context, name string, arguments ...string) (strin
 		return "", fmt.Errorf("%s %s: %w: %s", name, strings.Join(arguments, " "), err, strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// githubSourceManifest declares the configuration contract consumed by installation.
+func githubSourceManifest(schemaPath string, cfg config, entry subject) (pluginManifest, error) {
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return pluginManifest{}, err
+	}
+	return pluginManifest{APIVersion: "labcentral.io/plugin-manifest/v2", ID: "io.labcentral.source.github", Version: pluginVersion, Executable: "../" + entry.Name, SHA256: entry.SHA256, Categories: []string{"source"}, SourceKinds: []string{"github"}, ProtocolMajor: 1, OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch}, RequestedPermissions: []string{"github-api-endpoint", "invocation-journal-write"}, ConfigurationSchema: schema}, nil
 }

@@ -31,6 +31,7 @@ const installationRoot = process.argv[3] ?? output;
 const definitions = {
   "template-library": {
     title: "Template Library",
+    version: "1.3.2",
     route: "templates",
     icon: "library",
     requiredActions: ["template.create", "instance.batchCreate"],
@@ -117,7 +118,7 @@ for (const [name, definition] of Object.entries(definitions)) {
   const manifest = {
     apiVersion: "labcentral.io/plugin-manifest/v2",
     id: `io.labcentral.feature.${name}`,
-    version: "1.3.1",
+    version: definition.version ?? "1.3.1",
     categories: ["browser"],
     protocolMajor: 1,
     minimumProtocolMinor: 0,

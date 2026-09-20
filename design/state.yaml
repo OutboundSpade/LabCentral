@@ -244,6 +244,7 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-TEMPLATE-009
   - TASK-TEMPLATE-008
   - TASK-TEMPLATE-007
   - TASK-TEMPLATE-006
@@ -320,6 +321,6 @@ completedTasks:
 currentTasks:
   - TASK-PROD-004
   - TASK-PROD-005
-# Template/collaboration rollout passed; GitHub repository binding is owner-deferred.
+# Template/collaboration rollout and private GitHub repository binding passed.
 # Existing production load, recovery, failover and publisher gates remain open.
 nextRecommendedTasks: [TASK-PROD-004, TASK-PROD-005]

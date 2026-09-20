@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix=name) as temporary:
     try:
         docker('run', '-d', '--name', name, '--network', 'host', '--read-only',
                '--user', f'{uid}:{gid}', '--cap-drop', 'ALL',
-               '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=64m',
+               '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777',
                '--mount', f'type=bind,src={root},dst=/var/lib/labcentral',
                '-e', f'LABCENTRAL_HEALTHCHECK_URL={ready}', args.image,
                f'--listen=127.0.0.1:{product}', f'--observability-listen=127.0.0.1:{health}',
@@ -60,6 +60,17 @@ with tempfile.TemporaryDirectory(prefix=name) as temporary:
             assert b'<html' in get(view['url'])
         assert b'<!doctype html' in get(origin).lower()
         docker('exec', name, '/usr/local/bin/labd', 'healthcheck')
+        # Exercise creation as the actual non-root identity. This source process
+        # creates its private state directory before refusing absent registration;
+        # it performs no repository requests or control-plane work.
+        temporary_probe = subprocess.run(
+            ['docker', 'exec', name, '/usr/local/bin/lab-source-github',
+             '--state=/tmp/labcentral-temp-smoke'], capture_output=True, text=True, timeout=10)
+        assert temporary_probe.returncode == 1 and temporary_probe.stderr.strip() == 'GitHub source service stopped', temporary_probe.stderr
+        # Also exercise regular-file writes using the already packaged recovery
+        # command. These unused test keys disappear with the tmpfs/container.
+        docker('exec', name, '/usr/local/bin/labcentral-recovery', 'keygen',
+               '--directory=/tmp/labcentral-temp-smoke', '--key-id=temp-smoke')
         docker('stop', name)
         with sqlite3.connect(root / 'labcentral.db') as db:
             assert db.execute('pragma integrity_check').fetchone()[0] == 'ok'
@@ -71,6 +82,6 @@ with tempfile.TemporaryDirectory(prefix=name) as temporary:
         docker('stop', name)
         with sqlite3.connect(root / 'labcentral.db') as db:
             assert db.execute('select name, sql from sqlite_master order by name').fetchall() == schema
-        print('PASS: exact image startup, embedded UI, independent assets, non-root read-only execution, healthcheck and persisted database restart')
+        print('PASS: exact image startup, embedded UI, independent assets, non-root read-only execution, writable temporary storage, healthcheck and persisted database restart')
     finally:
         subprocess.run(['docker', 'rm', '-fv', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

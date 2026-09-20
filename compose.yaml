@@ -40,7 +40,7 @@ services:
         source: labcentral-data
         target: /var/lib/labcentral
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
 
 volumes:
   labcentral-data:

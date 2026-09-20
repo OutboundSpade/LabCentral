@@ -24,8 +24,10 @@ Export/import into a fresh installation with different bindings rebuilt both
 Ansible and Dockerfile images, including shared-base dependencies. GitHub
 collection synchronization supports atomic commit-pinned publication, unchanged
 content reuse, retained upstream removals, schedules and authority revocation.
-Its source plugin is installed; the owner deferred the repository/credential
-binding. Synchronization alone never executes builds.
+Its source plugin is installed and bound to the authorized private meeting library.
+Initial scheduled and manual synchronization passed against one pinned commit; the
+new library starts empty, ready for meeting lab sources. Synchronization alone never
+executes builds.
 
 Linux amd64 builds run inside disposable VMs in a separate builder environment.
 Pinned QEMU/Packer/Ansible produce qcow2 images; pinned BuildKit produces OCI
@@ -95,7 +97,7 @@ in protected operator records. Existing production gates remain open.
 
 External fixtures exercise source recovery, concurrent build deduplication, image approval, preparation and owned lifecycle against a prebuilt core/UI. Chromium, Firefox and WebKit exercise installed stream views, sandbox isolation and browser-approved gateway grants. SQLite/PostgreSQL race tests cover work fencing, shared cancellation, delegated access revocation and atomic prepared batch admission.
 
-`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, AWS and Fedora CoreOS integrations remain outside this implementation. The newer GitHub and image-builder implementations are deployed on the private testbed as described above; repository binding remains owner-deferred. Existing production-validation gaps remain open.
+`TASK-EXT-008` is complete: native release `extensions-20260917` from commit `91c9ef0` reproduced byte-for-byte and passed the independent installation suite using only its packaged public SDK and unchanged core/UI. Normal/race SQLite/PostgreSQL, contracts, OpenAPI/Protobuf, three-browser, vet and vulnerability gates passed. The prior-core migration and matching database/artifact rollback rehearsal passed. `TASK-EXT-009` is complete: the authorized private rollout passed. Authenticated administration, provider apply/read/destroy, topology action discovery and the retained noVNC console/reload passed; all pre-existing lab records and qualified plugin/configuration bytes remained unchanged. Test resources, allocation claims and temporary browser sessions were cleaned up. The protected publisher ceremony and existing production-validation gates remain separate. Production Fly, WireGuard, SSH, AWS and Fedora CoreOS integrations remain outside this implementation. The newer GitHub and image-builder implementations are deployed on the private testbed as described above; the private repository binding is configured and verified. Existing production-validation gaps remain open.
 
 See [extension contracts](docs/design/extensions.md) and [author examples](docs/plugins/extensions.md).
 
@@ -186,10 +188,28 @@ Firefox dimming/scrolling, shared control, deletion guards and owned cleanup.
 Consistent backups and rollback packages remain in protected operator records;
 existing records were preserved. Existing production gates remain open.
 
+## Private meeting library
+
+`TASK-TEMPLATE-009` is complete. The private repository has an initial empty source
+index, a project-scoped credential binding and fifteen-minute polling. Scheduled
+and manual sync passed with the expected commit displayed in Template Library.
+Release manifests now declare the GitHub binding schema; the independent Library
+package reads the canonical source result when displaying synchronization history.
+The container tmpfs explicitly uses mode 1777 so the non-root core can create
+SQLite temporary files; authenticated requests passed after restart.
+
+Release/manifest/source/package tests, SQLite atomic publication, Svelte checks,
+Chromium feature workflows, exact-image startup/persistence/temporary-file checks
+and live synchronization passed. Existing lab, group, membership, role, template
+and revision records were preserved. The core image and qualified backend binaries
+were reused; changed manifests/assets, protected configuration and rollback state
+are recorded outside source. The library awaits actual meeting templates, and the
+existing production gates remain open. No architectural decision changed.
+
 ## Next action and production gates
 
-Configure the GitHub library binding when the owner supplies its repository and
-credential details. Existing production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
+Author meeting templates in the configured private GitHub library. Existing
+production work remains open: `TASK-PROD-004` and `TASK-PROD-005`: load/soak, cross-node
 locking/failover, encrypted off-host recovery, TLS renewal, monitoring delivery and
 reviewed release controls. Private testbed validation does not close these gates.
 Within-lab parallel branches need multi-invocation recovery before implementation.

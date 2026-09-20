@@ -6,7 +6,8 @@ import {featureExtensions,serveFeature} from './feature-fixture.mjs';
 const build=new URL('../build/',import.meta.url);
 const template={id:'tpl.one',name:'Shared workstation',description:'Work together.',projectId:'project.one',resourceVersion:1};
 const revision={id:'rev.one',templateId:template.id,revisionNumber:1};
-let imageFixtures=false,approved=false,failEnrollment=false,delayGroupRefresh=false;
+let imageFixtures=false,libraryFixtures=false,approved=false,failEnrollment=false,delayGroupRefresh=false;
+const libraryCommit='a'.repeat(40);
 let groups,mutations,labs,preparations,installed=true,admin=true,stage='awaiting-approval';
 const server=createServer(async(req,res)=>{
  if(await serveFeature(req,res))return;
@@ -35,6 +36,12 @@ const server=createServer(async(req,res)=>{
  if(p==='/extension-operations'&&imageFixtures)return json({items:[{id:'image.active',state:'succeeded',request:{kind:'image-import',import:{targetId:'target.one'}}},{id:'image.retired',state:'succeeded',request:{kind:'image-import',import:{targetId:'target.one'}}},{id:'retirement.one',state:'succeeded',request:{kind:'image-import',import:{retireBindingId:'image.retired'}}}]});
  if(p.startsWith('/image-bindings/')){if(p.endsWith('/policy')){approved=body.approved;return json({});}return json({id:p.split('/')[2],targetId:'target.one',retired:p.includes('retired'),approved:p.includes('active')&&approved,binding:{artifactDigest:'sha256:verified-test-source',architecture:'amd64'}});}
  if(p==='/builds'){assert.equal(body.recipeId,'desktop');return json({id:'build.one'});}
+ if(libraryFixtures){
+  if(p==='/source-bindings')return json({items:[{binding:'github/meeting-labs',available:true}]});
+  if(p==='/template-libraries')return json({items:[{id:'library.one',reference:'main',intervalSeconds:900,paused:false,nextSyncAt:'2026-09-20T12:15:00Z'}]});
+  if(p==='/template-libraries/library.one/entries')return json({items:[]});
+  if(p==='/template-libraries/library.one/history')return json({items:[{id:'sync.one',createdAt:'2026-09-20T12:00:00Z',state:'succeeded',result:{resolvedIdentity:libraryCommit}}]});
+ }
  if(['/source-bindings','/template-libraries','/extension-operations'].includes(p))return json({items:[]});
  return json({detail:'Unavailable'},404);
  }
@@ -113,6 +120,7 @@ try{for(const [name,engine] of Object.entries({chromium,firefox,webkit})){
  await library.getByRole('button',{name:'New template',exact:true}).click();await library.getByRole('dialog').getByRole('button',{name:'Discard changes',exact:true}).click();assert.equal(await source.inputValue(),'');
  await library.getByRole('tab',{name:'Libraries',exact:true}).click();await library.getByText('No GitHub source is configured',{exact:false}).waitFor();assert(await library.getByRole('button',{name:'Add library',exact:true}).isDisabled());
  await library.getByRole('tab',{name:'Images',exact:true}).click();await library.getByRole('button',{name:'Build image',exact:true}).click();await library.getByRole('alert').filter({hasText:'Choose a template with build recipes'}).waitFor();
+ libraryFixtures=true;await page.reload();await library.getByRole('tab',{name:'Libraries',exact:true}).click();await library.getByRole('button',{name:'Show entries and history',exact:true}).click();await library.getByText(new RegExp(`succeeded.*${libraryCommit}`)).waitFor();assert.equal(await library.getByText(/Commit pending/).count(),0,'Completed sync displays the source result commit');libraryFixtures=false;
  imageFixtures=true;await page.reload();await library.getByRole('tab',{name:'Images',exact:true}).click();await library.getByRole('heading',{name:'Imported image · Retired',exact:true}).waitFor();assert.equal(await library.getByRole('button',{name:'Approve image',exact:true}).count(),1,'Only the active unapproved binding offers approval');assert.equal(await library.getByRole('button',{name:'Retire image',exact:true}).count(),1,'Retired bindings and retirement operations offer no destructive action');
  await library.getByRole('button',{name:'Approve image',exact:true}).click();await library.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();assert(!approved);
  await library.getByRole('button',{name:'Approve image',exact:true}).click();await library.getByRole('dialog').getByRole('button',{name:'Approve image',exact:true}).click();await library.getByRole('heading',{name:'Imported image · Approved',exact:true}).waitFor();

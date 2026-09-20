@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,7 +13,50 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/manifest"
+	"github.com/OutboundSpade/LabCentral/sources/github"
 )
+
+func TestGitHubReleaseManifestAcceptsConfiguredLibrary(t *testing.T) {
+	t.Parallel()
+	m, err := githubSourceManifest("../../schemas/github-source-binding-v1.schema.json", config{goos: "linux", goarch: "amd64"}, subject{Name: "lab-source-github", SHA256: strings.Repeat("a", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var installed manifest.Manifest
+	if err := manifest.Decode(data, &installed); err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the same configuration gate as installation, then the real source
+	// parser. A manifest without its schema used to reject every real binding.
+	for _, index := range []string{"index.yaml", "examples/template-library/index.yaml"} {
+		value := []byte(`{"owner":"example-organization","repository":"lab-templates","reference":"meeting/lab-1","index":"` + index + `"}`)
+		if err := manifest.ValidateConfiguration(installed.ConfigurationSchema, value); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := github.ParseConfiguration(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, value := range []string{
+		`{}`,
+		`{"owner":"../org","repository":"labs","reference":"main","index":"index.yaml"}`,
+		`{"owner":"org","repository":"labs","reference":"","index":"index.yaml"}`,
+		`{"owner":"org","repository":"labs","reference":"main\n","index":"index.yaml"}`,
+		`{"owner":"org","repository":"labs","reference":"main","index":"../index.yaml"}`,
+		`{"owner":"org","repository":"labs","reference":"main","index":"/index.yaml"}`,
+		`{"owner":"org","repository":"labs","reference":"main","index":"index.yaml","token":"must-not-be-configuration"}`,
+	} {
+		if err := manifest.ValidateConfiguration(installed.ConfigurationSchema, []byte(value)); err == nil {
+			t.Fatalf("invalid repository configuration accepted: %s", value)
+		}
+	}
+}
 
 func TestSafeToken(t *testing.T) {
 	t.Parallel()
