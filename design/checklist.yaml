@@ -1,6 +1,18 @@
 formatVersion: 1
 lastUpdated: "2026-09-20"
 tasks:
+  - id: TASK-LAB-001
+    title: Deliver the Example Branch competition lab
+    status: in_progress
+    dependencies: [TASK-TEMPLATE-009, TASK-TEMPLATE-008]
+    relatedAdrs: [ADR-0004, ADR-0027, ADR-0028, ADR-0030, ADR-0031]
+    relatedDocuments: [docs/plugins/portable-templates.md, docs/plugins/vm-builders.md, docs/design/networking.md]
+    acceptanceCriteria:
+      - Publish a source-only four-VM banking lab with Debian web, database and desktop systems and a RHEL-compatible FTP publishing server in the authorized private library.
+      - Verify working application, database, FTP publishing and desktop workflows with realistic synthetic business data and no student-facing vulnerability hints or instructor solutions.
+      - Supply Internet access through a qualified trusted boundary that denies management and cross-lab traffic even when a student controls a guest; validate representative multi-image plans before provisioning.
+      - Require author privileges for source export while preserving participant template reads and launches; keep instructor guides outside all student artifacts.
+      - Verify required builder compatibility, image construction and approval, live functionality and isolation, while preserving existing labs and keeping instructor and deployment records protected outside student exports.
   - id: TASK-TEMPLATE-009
     title: Configure the private meeting library and repair GitHub installation and history
     status: complete

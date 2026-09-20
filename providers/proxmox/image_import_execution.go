@@ -180,7 +180,7 @@ func (s *ImageService) run(ctx context.Context, client ImageImportAPI, config Ta
 			if err = s.save(r); err != nil {
 				return nil, err
 			}
-			task, err := client.CreateImageVM(ctx, ImageVMCreate{Node: p.Node, VMID: p.VMID, Pool: config.Pool, Name: "lc-image-" + strconv.FormatUint(uint64(p.VMID), 10), Description: marker, Storage: storage.ID, Format: storage.Format, StagingStorage: config.ImageImport.StagingStorage, Filename: filename})
+			task, err := client.CreateImageVM(ctx, ImageVMCreate{CPUModel: config.ImageImport.CPUModel, Node: p.Node, VMID: p.VMID, Pool: config.Pool, Name: "lc-image-" + strconv.FormatUint(uint64(p.VMID), 10), Description: marker, Storage: storage.ID, Format: storage.Format, StagingStorage: config.ImageImport.StagingStorage, Filename: filename})
 			if err != nil {
 				return nil, status.Error(codes.Unavailable, "image creation outcome awaits recovery")
 			}
@@ -275,6 +275,9 @@ func validateImportedConfig(e importedImageEvidence, current VMConfig, config Ta
 	raw, _ := json.Marshal(config)
 	if e.Version != imageImportPlanV1 || !validRuntimeEvidence(config, e.Plan.ContainerRuntime) || e.ConfigurationDigest != bareDigest(raw) || e.Retired || e.Ownership != imageOwnership(e.Plan, config) || current.Description != e.Ownership || current.Fields["template"] != "1" || current.Fields["lock"] != "" || current.Fields["onboot"] != "0" || current.Fields["ciupgrade"] != "0" {
 		return fmt.Errorf("imported image identity or ownership changed")
+	}
+	if config.ImageImport != nil && config.ImageImport.CPUModel != "" && current.Fields["cpu"] != config.ImageImport.CPUModel {
+		return fmt.Errorf("imported image CPU model does not match qualified policy")
 	}
 	plan := QEMUPlan{Template: &PlanTemplate{ConfigDigest: e.Profile.ConfigDigest}, Disks: []PlanDisk{{Device: "scsi0"}}}
 	if err := verifyTemplateConfig(plan, current); err != nil {

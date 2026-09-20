@@ -248,7 +248,7 @@ func registerTemplates(api huma.API, service *controlplane.Service, security *re
 		}
 	}
 	huma.Get(api, "/lab-templates/{id}/revisions/{revisionId}/export", func(ctx context.Context, input *revisionInput) (*portableExport, error) {
-		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRead)
+		template, err := loadTemplate(ctx, input.ID, input.ProjectID, application.ActionTemplateRevisionPublish)
 		if err != nil {
 			return nil, err
 		}

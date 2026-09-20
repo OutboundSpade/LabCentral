@@ -16,6 +16,12 @@ records. ADR-0028 governs this boundary.
 }
 ```
 
+Target-config v1.5 additionally accepts optional `imageImport.cpuModel` with
+`host` or `x86-64-v2-AES`. This is an operator-owned, qualified choice; omission
+preserves the legacy import CPU default. Imported configuration evidence binds
+the model. Select and verify an appropriate model before approving an image that
+requires a newer CPU baseline, including RHEL-compatible x86-64-v2 guests.
+
 This fragment belongs in an otherwise qualified target configuration. A destination
 pool and configured VM-image storage profile are required. The staging store must
 report active, enabled, file-backed `import` content. Its scoped credentials need

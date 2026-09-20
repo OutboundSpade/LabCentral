@@ -199,6 +199,9 @@ func (fake *fakeMutationAPI) ConfigureVM(_ context.Context, request ConfigureReq
 	for index, binding := range request.Networks {
 		config.Fields[fmt.Sprintf("net%d", index)] = fmt.Sprintf("virtio=%s,bridge=%s,tag=%d", strings.ToUpper(binding.MAC), binding.Bridge, binding.VLAN)
 		config.Fields[fmt.Sprintf("ipconfig%d", index)] = "ip=" + binding.IPv4Address + "/24"
+		if binding.Gateway != "" {
+			config.Fields[fmt.Sprintf("ipconfig%d", index)] += ",gw=" + binding.Gateway
+		}
 	}
 	fake.configs[request.VMID] = config
 	if fake.configureErrorAfterApply {
@@ -377,13 +380,29 @@ type executionFixture struct {
 	vmPlan       *pluginv1.PlanResourceResponse
 }
 
-func newExecutionFixture(t *testing.T) *executionFixture {
+func newExecutionFixture(t *testing.T, withEgress ...bool) *executionFixture {
 	t.Helper()
 	fake := newFakeMutationAPI()
 	service := newT0MutationService(ClientFactoryFunc(func([]byte, []byte) (DiscoveryClient, error) { return fake, nil }))
 	target := mutationTestTarget(t)
-	validation := validateMutationLab(t, service, target)
+	egress := len(withEgress) != 0 && withEgress[0]
+	if egress {
+		_, target = egressTestConfig(t)
+	}
+	var validation *pluginv1.ValidateLabResponse
+	if egress {
+		var err error
+		validation, err = service.ValidateLab(context.Background(), &pluginv1.ValidateLabRequest{Target: target, CanonicalLabJson: []byte(strings.Replace(string(canonicalMutationLab()), `"mode":"deny"`, `"mode":"allow"`, 1))})
+		if err != nil || len(validation.Errors) != 0 {
+			t.Fatalf("egress validation %v %+v", err, validation.Errors)
+		}
+	} else {
+		validation = validateMutationLab(t, service, target)
+	}
 	networkResource := []byte(`{"id":"network.lab","kind":"Network","spec":{"kind":"isolated","ipv4Cidr":"10.20.0.0/24","ipam":{"mode":"static"},"egress":{"mode":"deny"}}}`)
+	if egress {
+		networkResource = []byte(strings.Replace(string(networkResource), `"mode":"deny"`, `"mode":"allow"`, 1))
+	}
 	networkInput := &pluginv1.ResourceMutationInput{Context: completeCall("inv-network", "network.lab", target.GetTargetId()), Target: target, CanonicalResourceJson: networkResource, ProviderPlan: validation.GetProviderPlan(), OwnershipTokens: []string{"network-token"}}
 	networkPlan, err := service.PlanResource(context.Background(), &pluginv1.PlanResourceRequest{Input: networkInput})
 	if err != nil || networkPlan.GetError() != nil {

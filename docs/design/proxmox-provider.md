@@ -66,3 +66,19 @@ The authoritative contract is [`proxmox-qemu-mutation.md`](proxmox-qemu-mutation
 ## Container VM extension
 
 Target v1.3 optionally selects an approved runtime template and preloaded images. Container plans use qemu-plan v1.1 with a typed bootstrap binding; physical state stays qemu-state v1.0. Existing VM plans and state remain compatible. Discovery reports emulated `workload.container` only after the runtime target qualifies. [Runtime setup](../operations/container-vm-runtime.md) lists explicit rejected fields. New VM names use a short logical name plus an eight-hex identity suffix; ownership remains in the full marker.
+
+## Qualified preconfigured egress
+
+ADR-0030 and target-config v1.5 extend the initial subset with optional network
+`egress` profiles: `mode`, exact `ipv4Cidr`, `gateway`, `policyDigest`, `probeDigest`,
+`internetReachable`, `managementReachable` and `crossInstanceReachable`. Only
+explicit `allow`, a usable private IPv4 gateway, successful Internet probes and
+failed management/cross-lab probes qualify. Profile selection matches the lab's
+mode and CIDR; multiple profiles may share a bridge only with disjoint VLAN pools.
+Old denied-egress plans remain readable. The provider supplies the bound gateway
+through typed PVE addressing and creates no routing/firewall infrastructure.
+
+Signed qualification evidence v1.2 carries the matching typed egress profile;
+v1/v1.1 cannot certify egress. Fresh exact-target/profile/build authorization
+remains mandatory. The optional v1.5 image-import CPU model and imported-image
+drift checks are documented in [image imports](../plugins/proxmox-image-import.md).

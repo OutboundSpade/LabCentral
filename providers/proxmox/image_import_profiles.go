@@ -11,7 +11,7 @@ func importedTemplateProfile(config TargetConfig, alias string) (TemplateProfile
 	return evidence.Profile, ok
 }
 func importedImageProfile(config TargetConfig, alias string) (importedImageEvidence, bool) {
-	if config.ImageImport == nil || config.SchemaVersion != targetConfigV14 || !aliasPattern.MatchString(alias) || !strings.HasPrefix(alias, "img-") {
+	if config.ImageImport == nil || (config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15) || !aliasPattern.MatchString(alias) || !strings.HasPrefix(alias, "img-") {
 		return importedImageEvidence{}, false
 	}
 	raw, err := readImageFile(filepath.Join(config.JournalDirectory, "images", alias+".json"))

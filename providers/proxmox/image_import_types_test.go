@@ -66,3 +66,28 @@ func TestImageImportRequiresStagingDeletionPermission(t *testing.T) {
 		t.Fatal("upload-only permission permits import whose staging cannot be retired")
 	}
 }
+
+func TestImageImportCPUModelRequiresVersionAndAllowlist(t *testing.T) {
+	_, _, request, _ := imageFixture(t)
+	var config TargetConfig
+	if err := json.Unmarshal(request.Target.ConfigEnvelope, &config); err != nil {
+		t.Fatal(err)
+	}
+	config.ImageImport.CPUModel = "host"
+	if config.validateMutation() == nil {
+		t.Fatal("old schema accepted explicit CPU policy")
+	}
+	config.SchemaVersion = targetConfigV15
+	for _, model := range []string{"", "host", "x86-64-v2-AES"} {
+		config.ImageImport.CPUModel = model
+		if err := config.validateMutation(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, model := range []string{"kvm64", "max", "host,flags=+vmx", "custom-unqualified"} {
+		config.ImageImport.CPUModel = model
+		if config.validateMutation() == nil {
+			t.Fatalf("unqualified CPU model %q accepted", model)
+		}
+	}
+}

@@ -46,7 +46,9 @@ Old YAML, bundle and rendering versions retain their meaning.
 
 Import preview lists package metadata, dependency identities, required capabilities
 and unresolved bindings without running code or downloading images. Export uses
-the verified immutable revision and its source closure. Copying a synchronized
+the verified immutable revision and its source closure. Under ADR-0031, full
+source export requires project template publication authority; participant
+template reads and launch preparation do not grant access to build archives. Copying a synchronized
 template creates an independent template; editing does not alter upstream history.
 
 ## Library synchronization

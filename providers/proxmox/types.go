@@ -35,6 +35,7 @@ var templateDiskPattern = regexp.MustCompile(`^(scsi|virtio)[0-9]{1,2}$`)
 
 const (
 	targetConfigV11      = "proxmox.target-config/v1.1"
+	targetConfigV15      = "proxmox.target-config/v1.5"
 	targetConfigV14      = "proxmox.target-config/v1.4"
 	targetConfigV13      = "proxmox.target-config/v1.3"
 	targetConfigV12      = "proxmox.target-config/v1.2"
@@ -103,9 +104,10 @@ type StorageProfile struct {
 }
 
 type NetworkProfile struct {
-	Alias      string         `json:"alias"`
-	Bridge     string         `json:"bridge"`
-	VLANRanges []IntegerRange `json:"vlanRanges"`
+	Egress     *NetworkEgressProfile `json:"egress,omitempty"`
+	Alias      string                `json:"alias"`
+	Bridge     string                `json:"bridge"`
+	VLANRanges []IntegerRange        `json:"vlanRanges"`
 }
 
 type MutationLimits struct {
@@ -143,14 +145,14 @@ func (config TargetConfig) validateMutation() error {
 	if !config.MutationEnabled {
 		return nil
 	}
-	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14 {
+	if config.SchemaVersion != targetConfigV11 && config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15 {
 		return fmt.Errorf("mutation requires schemaVersion %q or %q", targetConfigV11, targetConfigV12)
 	}
 	if err := config.validateImageImport(); err != nil {
 		return err
 	}
 	if runtime := config.ContainerRuntime; runtime != nil {
-		if (config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14) || config.Pool == "" || runtime.SchemaVersion != containervm.Version || len(runtime.Images) == 0 || len(runtime.Images) > 64 {
+		if (config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15) || config.Pool == "" || runtime.SchemaVersion != containervm.Version || len(runtime.Images) == 0 || len(runtime.Images) > 64 {
 			return fmt.Errorf("invalid container runtime profile")
 		}
 		if _, ok := findTemplateProfile(config, runtime.TemplateAlias); !ok {
@@ -166,7 +168,7 @@ func (config TargetConfig) validateMutation() error {
 	}
 
 	if config.ConsoleAccess.Enabled {
-		if (config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14) || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
+		if (config.SchemaVersion != targetConfigV12 && config.SchemaVersion != targetConfigV13 && config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15) || config.ConsoleAccess.MaximumDurationSeconds < 60 || config.ConsoleAccess.MaximumDurationSeconds > 3600 {
 			return fmt.Errorf("console access requires schemaVersion %q and a maximum duration between 60 and 3600 seconds", targetConfigV12)
 		}
 	} else if config.ConsoleAccess.MaximumDurationSeconds != 0 {
@@ -251,14 +253,33 @@ func (config TargetConfig) validateMutation() error {
 		if _, exists := seenAliases[network.Alias]; exists {
 			return fmt.Errorf("duplicate profile alias %q", network.Alias)
 		}
-		if _, exists := seenBridges[network.Bridge]; exists {
+		if _, exists := seenBridges[network.Bridge]; exists && config.SchemaVersion != targetConfigV15 {
 			return fmt.Errorf("duplicate network bridge %q", network.Bridge)
 		}
 		if err := validateDisjointRanges(network.VLANRanges, 1, 4094); err != nil {
 			return fmt.Errorf("network vlanRanges: %w", err)
 		}
+		if err := validateNetworkEgress(config.SchemaVersion, network); err != nil {
+			return err
+		}
 		seenAliases[network.Alias] = struct{}{}
 		seenBridges[network.Bridge] = struct{}{}
+	}
+	if config.SchemaVersion == targetConfigV15 {
+		for i, a := range config.Networks {
+			for _, b := range config.Networks[i+1:] {
+				if a.Bridge == b.Bridge && a.Egress == nil && b.Egress == nil {
+					return fmt.Errorf("duplicate denied network bridge")
+				}
+				for _, ar := range a.VLANRanges {
+					for _, br := range b.VLANRanges {
+						if ar.Start <= br.End && br.Start <= ar.End {
+							return fmt.Errorf("network profiles have overlapping VLAN allocations")
+						}
+					}
+				}
+			}
+		}
 	}
 	if config.Limits.MaxCPUMillis == 0 || config.Limits.MaxCPUMillis > 128000 || config.Limits.MaxMemoryBytes < 16<<20 || config.Limits.MaxNICs == 0 || config.Limits.MaxNICs > 16 || config.Limits.MaxVMs == 0 {
 		return fmt.Errorf("mutation limits are invalid")

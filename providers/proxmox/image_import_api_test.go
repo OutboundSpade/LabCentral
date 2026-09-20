@@ -13,6 +13,39 @@ import (
 	"time"
 )
 
+func TestCreateImageVMUsesOnlyExplicitQualifiedCPUModel(t *testing.T) {
+	for _, model := range []string{"", "host", "x86-64-v2-AES", "host,flags=+vmx"} {
+		t.Run(model, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "POST" || r.URL.Path != "/api2/json/nodes/pve-a/qemu" {
+					t.Fatal("unexpected API operation")
+				}
+				if err := r.ParseForm(); err != nil {
+					t.Fatal(err)
+				}
+				if r.Form.Get("cpu") != model || model == "" && r.Form.Has("cpu") {
+					t.Fatalf("CPU request %v", r.Form["cpu"])
+				}
+				writeAPIData(t, w, "UPID:pve-a:00000001:00000002:00000003:qmcreate:200:root@pam:")
+			}))
+			defer server.Close()
+			client := newTestClient(t, server, 0)
+			_, err := client.CreateImageVM(context.Background(), ImageVMCreate{CPUModel: model, Node: "pve-a", VMID: 200, Pool: "lab", Name: "image", Description: "LCIMAGE1:owned", Storage: "local", Format: "qcow2", StagingStorage: "local", Filename: "lc-image-" + strings.Repeat("a", 64) + ".qcow2"})
+			if strings.Contains(model, ",") {
+				if err == nil || calls != 0 {
+					t.Fatal("arbitrary CPU flags reached provider")
+				}
+				return
+			}
+			if err != nil || calls != 1 {
+				t.Fatalf("create %v calls%d", err, calls)
+			}
+		})
+	}
+}
+
 func TestImageUploadAPIStreamsChecksumAndPollsTask(t *testing.T) {
 	data := []byte("bounded-image-fixture")
 	digest := bareDigest(data)

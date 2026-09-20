@@ -14,6 +14,24 @@ import (
 	"github.com/OutboundSpade/LabCentral/tools/proxmox-qualification/qualification"
 )
 
+func TestQualificationProfileIncludesExactEgressPolicyAndProbe(t *testing.T) {
+	config, inventory, _ := authorizationFixture()
+	config.Networks[0].Egress = &proxmox.NetworkEgressProfile{Mode: "allow", IPv4CIDR: "10.44.0.0/24", Gateway: "10.44.0.1", PolicyDigest: authorizationDigest("a"), ProbeDigest: authorizationDigest("b"), InternetReachable: true}
+	profile, err := qualificationProfile(config, inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := profile.Networks[0].Egress
+	if e == nil || e.PolicyDigest != config.Networks[0].Egress.PolicyDigest || e.ProbeDigest != config.Networks[0].Egress.ProbeDigest || e.Gateway != "10.44.0.1" || e.IPv4CIDR != "10.44.0.0/24" || e.Mode != "allow" || !e.InternetReachable || e.ManagementReachable || e.CrossInstanceReachable {
+		t.Fatalf("missing exact profile bindings %+v", e)
+	}
+	config.Networks[0].Egress.PolicyDigest = authorizationDigest("c")
+	changed, err := qualificationProfile(config, inventory)
+	if err != nil || changed.Networks[0].Egress.PolicyDigest == profile.Networks[0].Egress.PolicyDigest {
+		t.Fatal("policy drift did not change expected signed profile")
+	}
+}
+
 func TestProductionAuthorizerBindsExactLiveTargetAndTrust(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

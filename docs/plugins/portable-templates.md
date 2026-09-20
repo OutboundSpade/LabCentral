@@ -60,7 +60,9 @@ legacy YAML is wrapped as source. Target bindings and approvals are destination
 configuration and are never attached to the export.
 
 The feature bridge exposes `templates.importPreview` and `templates.export` under
-`templates.write` and `templates.read` respectively. Core repeats authorization
+`templates.write` for both operations (ADR-0031). Full source export requires
+project template publication authority; participant template reads and launches
+remain available. Core repeats authorization
 independently of the declared browser permission.
 
 Image recipes and dependency graphs are described in [disposable VM builders](vm-builders.md).

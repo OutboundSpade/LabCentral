@@ -211,6 +211,52 @@ func assertReasons(t *testing.T, result Verification, expected ...string) {
 
 func digest(character string) string { return "sha256:" + strings.Repeat(character, 64) }
 
+func TestEgressEvidenceRequiresVersionMeasuredIsolationAndSignedProfile(t *testing.T) {
+	makeEvidence := func() Evidence {
+		e := passingEvidence()
+		e.SchemaVersion = EgressEvidenceSchema
+		e.Profile.Networks = append(e.Profile.Networks, NetworkEvidence{Alias: "internet", Bridge: "vmbr1", VLANAware: true, VLANRanges: []IntegerRange{{Start: 211, End: 220}}, Egress: &NetworkEgressEvidence{Mode: "allow", IPv4CIDR: "10.20.0.0/24", Gateway: "10.20.0.1", PolicyDigest: digest("a"), ProbeDigest: digest("b"), InternetReachable: true}})
+		return e
+	}
+	key := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x42}, ed25519.SeedSize))
+	e := makeEvidence()
+	signed, err := Sign(e, "qualification.test", key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Verify(signed, verificationPolicy(key.Public().(ed25519.PublicKey)))
+	if err != nil || !result.Qualifies {
+		t.Fatalf("valid egress evidence %v %+v", err, result)
+	}
+	for name, change := range map[string]func(*Evidence){
+		"old schema":           func(e *Evidence) { e.SchemaVersion = EvidenceSchema },
+		"missing Internet":     func(e *Evidence) { e.Profile.Networks[1].Egress.InternetReachable = false },
+		"management reachable": func(e *Evidence) { e.Profile.Networks[1].Egress.ManagementReachable = true },
+		"cross lab reachable":  func(e *Evidence) { e.Profile.Networks[1].Egress.CrossInstanceReachable = true },
+		"missing probe":        func(e *Evidence) { e.Profile.Networks[1].Egress.ProbeDigest = "" },
+		"overlapping claim":    func(e *Evidence) { e.Profile.Networks[1].VLANRanges[0].Start = 210 },
+		"broadcast gateway":    func(e *Evidence) { e.Profile.Networks[1].Egress.Gateway = "10.20.0.255" },
+		"empty v1.2":           func(e *Evidence) { e.Profile.Networks = e.Profile.Networks[:1] },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := makeEvidence()
+			change(&e)
+			if _, err := Sign(e, "qualification.test", key); err == nil {
+				t.Fatal("unsafe evidence signed")
+			}
+		})
+	}
+	var document SignedEvidence
+	if err := json.Unmarshal(signed, &document); err != nil {
+		t.Fatal(err)
+	}
+	document.Evidence.Profile.Networks[1].Egress.PolicyDigest = digest("c")
+	tampered, _ := json.Marshal(document)
+	if _, err := Verify(tampered, verificationPolicy(key.Public().(ed25519.PublicKey))); err == nil {
+		t.Fatal("modified gateway policy accepted")
+	}
+}
+
 func TestRuntimeEvidenceRequiresVersionTranscriptAndExactPool(t *testing.T) {
 	evidence := passingEvidence()
 	evidence.Profile.ContainerRuntime = &RuntimeProfileEvidence{SchemaVersion: "labcentral.container-vm/v1", Pool: "lab", TemplateAlias: "debian", Images: []string{"docker.io/library/python@" + digest("a")}}

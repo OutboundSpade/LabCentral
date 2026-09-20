@@ -96,6 +96,26 @@ func validateCanonicalLab(config TargetConfig, lab canonicalLabDocument, overrid
 	if override.NetworkAlias != "" {
 		selection.network = override.NetworkAlias
 	}
+	if override.NetworkAlias == "" {
+		for _, profile := range config.Networks {
+			matches, hasNetwork := true, false
+			for _, resource := range lab.Resources {
+				if resource.Kind != "Network" {
+					continue
+				}
+				hasNetwork = true
+				var spec canonicalNetworkSpec
+				if decodeEnvelope(resource.Spec, maximumConfigBytes, &spec) != nil || validateNetworkProfileSpec(profile, spec) != nil {
+					matches = false
+					break
+				}
+			}
+			if hasNetwork && matches {
+				selection.network = profile.Alias
+				break
+			}
+		}
+	}
 	if _, ok := findStorageProfile(config, selection.storage); !ok {
 		return selection, []*pluginv1.StructuredError{mutationError("unknown_provider_profile", "invalid_declaration", "Provider override references an unavailable profile", "providerOverride", "")}
 	}
@@ -137,7 +157,8 @@ func validateCanonicalLab(config TargetConfig, lab canonicalLabDocument, overrid
 				result = append(result, mutationError("invalid_network", "invalid_declaration", "Network specification is invalid", field+".spec", resource.ID))
 				continue
 			}
-			if err := validateNetworkSpec(spec); err != nil {
+			profile, _ := findNetworkProfile(config, selection.network)
+			if err := validateNetworkProfileSpec(profile, spec); err != nil {
 				result = append(result, mutationError("unsupported_network", "unsupported_capability", err.Error(), field+".spec", resource.ID))
 				continue
 			}
@@ -198,8 +219,8 @@ func validateCanonicalLab(config TargetConfig, lab canonicalLabDocument, overrid
 
 func validateNetworkSpec(spec canonicalNetworkSpec) error {
 	prefix, err := netip.ParsePrefix(spec.IPv4CIDR)
-	if spec.Kind != "isolated" || err != nil || !prefix.Addr().Is4() || spec.IPv6CIDR != "" || spec.IPAM.Mode != "static" || spec.Egress.Mode != "deny" || len(spec.Egress.Destinations) != 0 {
-		return fmt.Errorf("only isolated static IPv4 networks with denied egress are supported")
+	if spec.Kind != "isolated" || err != nil || !prefix.Addr().Is4() || spec.IPv6CIDR != "" || spec.IPAM.Mode != "static" || (spec.Egress.Mode != "deny" && spec.Egress.Mode != "allow") || len(spec.Egress.Destinations) != 0 {
+		return fmt.Errorf("only isolated static IPv4 networks with denied or qualified allowed egress are supported")
 	}
 	if spec.MTU != 0 && (spec.MTU < 576 || spec.MTU > 9216) {
 		return fmt.Errorf("network MTU is outside the supported range")
@@ -385,8 +406,8 @@ func planNetwork(plan *QEMUPlan, config TargetConfig, validation ValidationPlan,
 		return fmt.Errorf("network specification is outside the supported subset")
 	}
 	profile, ok := findNetworkProfile(config, validation.NetworkAlias)
-	if !ok {
-		return fmt.Errorf("validated network profile is unavailable")
+	if !ok || validateNetworkProfileSpec(profile, spec) != nil {
+		return fmt.Errorf("validated network profile is unavailable or mismatched")
 	}
 	value, source, ok := firstAvailable(profile.VLANRanges, vlanClaimNamespace, excluded)
 	if !ok {
@@ -394,7 +415,7 @@ func planNetwork(plan *QEMUPlan, config TargetConfig, validation ValidationPlan,
 	}
 	claim := AllocationBinding{Namespace: vlanClaimNamespace, Value: strconv.FormatUint(uint64(value), 10), SourceRange: source}
 	plan.Allocations = append(plan.Allocations, claim)
-	plan.Networks = append(plan.Networks, NetworkBinding{LogicalResourceID: resource.ID, ProfileAlias: profile.Alias, Bridge: profile.Bridge, VLAN: value, IPv4CIDR: spec.IPv4CIDR})
+	plan.Networks = append(plan.Networks, NetworkBinding{LogicalResourceID: resource.ID, ProfileAlias: profile.Alias, Bridge: profile.Bridge, VLAN: value, IPv4CIDR: spec.IPv4CIDR, Gateway: networkProfileGateway(profile)})
 	plan.Steps = []string{"bind-network"}
 	return nil
 }
@@ -459,7 +480,7 @@ func planVM(plan *QEMUPlan, config TargetConfig, validation ValidationPlan, inpu
 		binding := dependency.Networks[0]
 		prefix, err := netip.ParsePrefix(binding.IPv4CIDR)
 		address, addressErr := netip.ParseAddr(networkInterface.IPv4)
-		if err != nil || addressErr != nil || !prefix.Contains(address) {
+		if err != nil || addressErr != nil || !prefix.Contains(address) || binding.Gateway != "" && (!usableIPv4(prefix, address) || address.String() == binding.Gateway) {
 			return fmt.Errorf("VM IPv4 address is outside its dependency network")
 		}
 		binding.IPv4Address = address.String()
@@ -555,7 +576,8 @@ func validatePlanBindings(config TargetConfig, plan QEMUPlan, resourceJSON []byt
 			return fmt.Errorf("plan network specification is invalid")
 		}
 		binding := plan.Networks[0]
-		if binding.IPv4CIDR != spec.IPv4CIDR || binding.MAC != "" || binding.IPv4Address != "" || binding.Gateway != "" || validateNetworkPlanProfile(config, plan) != nil {
+		profile, ok := findNetworkProfile(config, binding.ProfileAlias)
+		if !ok || validateNetworkProfileSpec(profile, spec) != nil || binding.IPv4CIDR != spec.IPv4CIDR || binding.MAC != "" || binding.IPv4Address != "" || validateNetworkPlanProfile(config, plan) != nil {
 			return fmt.Errorf("plan network profile binding is invalid")
 		}
 		return nil
@@ -593,7 +615,7 @@ func validatePlanBindings(config TargetConfig, plan QEMUPlan, resourceJSON []byt
 		binding := plan.Networks[index]
 		address, err := netip.ParseAddr(networkInterface.IPv4)
 		profile, profileOK := findNetworkProfile(config, binding.ProfileAlias)
-		if err != nil || !profileOK || binding.LogicalResourceID != networkInterface.NetworkRef || binding.Bridge != profile.Bridge || binding.IPv4Address != address.String() || binding.MAC != deterministicMAC(plan.TargetID, plan.InstanceID, plan.LogicalResourceID, index) || binding.Gateway != "" || !valueInRanges(binding.VLAN, profile.VLANRanges) {
+		if err != nil || !profileOK || binding.LogicalResourceID != networkInterface.NetworkRef || !networkBindingMatchesProfile(profile, binding) || binding.IPv4Address != address.String() || binding.MAC != deterministicMAC(plan.TargetID, plan.InstanceID, plan.LogicalResourceID, index) || !valueInRanges(binding.VLAN, profile.VLANRanges) {
 			return fmt.Errorf("plan network binding is invalid")
 		}
 	}
@@ -626,7 +648,7 @@ func validateNetworkPlanProfile(config TargetConfig, plan QEMUPlan) error {
 	}
 	binding := plan.Networks[0]
 	profile, ok := findNetworkProfile(config, binding.ProfileAlias)
-	if !ok || binding.Bridge != profile.Bridge || !valueInRanges(binding.VLAN, profile.VLANRanges) || !allocationMatchesRanges(plan.Allocations[0], profile.VLANRanges) {
+	if !ok || !networkBindingMatchesProfile(profile, binding) || !allocationMatchesRanges(plan.Allocations[0], profile.VLANRanges) {
 		return fmt.Errorf("network plan profile is not configured")
 	}
 	return nil

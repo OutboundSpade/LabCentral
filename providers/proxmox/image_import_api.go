@@ -35,6 +35,7 @@ type ImageUpload struct {
 	Size                            uint64
 }
 type ImageVMCreate struct {
+	CPUModel                                                                 string
 	Node, Pool, Name, Description, Storage, Format, StagingStorage, Filename string
 	VMID                                                                     uint32
 }
@@ -120,10 +121,13 @@ func (client *Client) UploadImage(ctx context.Context, r ImageUpload, src io.Rea
 	return task, err
 }
 func (client *Client) CreateImageVM(ctx context.Context, r ImageVMCreate) (UPID, error) {
-	if !nodeNamePattern.MatchString(r.Node) || !storageIDPattern.MatchString(r.Pool) || !vmNamePattern.MatchString(r.Name) || !strings.HasPrefix(r.Description, "LCIMAGE1:") || len(r.Description) > 2048 || !storageIDPattern.MatchString(r.Storage) || !storageIDPattern.MatchString(r.StagingStorage) || !imageFilenamePattern.MatchString(r.Filename) || r.VMID < 100 || r.VMID > 999999999 || (r.Format != "raw" && r.Format != "qcow2") {
+	if !validImageCPUModel(r.CPUModel) || !nodeNamePattern.MatchString(r.Node) || !storageIDPattern.MatchString(r.Pool) || !vmNamePattern.MatchString(r.Name) || !strings.HasPrefix(r.Description, "LCIMAGE1:") || len(r.Description) > 2048 || !storageIDPattern.MatchString(r.Storage) || !storageIDPattern.MatchString(r.StagingStorage) || !imageFilenamePattern.MatchString(r.Filename) || r.VMID < 100 || r.VMID > 999999999 || (r.Format != "raw" && r.Format != "qcow2") {
 		return UPID{}, fmt.Errorf("invalid image VM request")
 	}
 	p := url.Values{"vmid": {strconv.FormatUint(uint64(r.VMID), 10)}, "name": {r.Name}, "pool": {r.Pool}, "description": {r.Description}, "ostype": {"l26"}, "sockets": {"1"}, "cores": {"1"}, "memory": {"512"}, "agent": {"enabled=1"}, "scsihw": {"virtio-scsi-single"}, "scsi0": {r.Storage + ":0,import-from=" + r.StagingStorage + ":import/" + r.Filename + ",format=" + r.Format}, "ide2": {r.Storage + ":cloudinit"}, "boot": {"order=scsi0"}, "ciupgrade": {"0"}, "onboot": {"0"}}
+	if r.CPUModel != "" {
+		p.Set("cpu", r.CPUModel)
+	}
 	task, err := client.taskRequest(ctx, "/nodes/"+r.Node+"/qemu", p)
 	if err == nil {
 		err = task.validateObject(r.Node, r.VMID, "qmcreate")

@@ -416,9 +416,15 @@ func validateNetworkBinding(binding NetworkBinding) error {
 	if err != nil || !prefix.Addr().Is4() || binding.VLAN < 1 || binding.VLAN > 4094 || !storageIDPattern.MatchString(binding.Bridge) || !aliasPattern.MatchString(binding.ProfileAlias) || !logicalIDPattern.MatchString(binding.LogicalResourceID) {
 		return fmt.Errorf("invalid network binding")
 	}
+	if binding.Gateway != "" {
+		gateway, gatewayErr := netip.ParseAddr(binding.Gateway)
+		if gatewayErr != nil || !usableIPv4(prefix, gateway) {
+			return fmt.Errorf("invalid network gateway binding")
+		}
+	}
 	if binding.IPv4Address != "" {
 		address, parseErr := netip.ParseAddr(binding.IPv4Address)
-		if parseErr != nil || !prefix.Contains(address) {
+		if parseErr != nil || !prefix.Contains(address) || binding.Gateway != "" && (!usableIPv4(prefix, address) || address.String() == binding.Gateway) {
 			return fmt.Errorf("invalid network address binding")
 		}
 	}

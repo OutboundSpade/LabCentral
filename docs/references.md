@@ -189,3 +189,13 @@ Retrieved 2026-09-18. These sources inform ADR-0027–ADR-0029; live target capa
 - [Pinned Debian 13 genericcloud package manifest](https://cloud.debian.org/images/cloud/trixie/20260831-2587/debian-13-genericcloud-amd64-20260831-2587.json), retrieved 2026-09-19: the example's pinned base includes cloud-init but omits `qemu-guest-agent`; the reusable Ansible recipe installs the agent required by Proxmox guest readiness.
 
 - [systemd service restart semantics](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml), retrieved 2026-09-19: `Restart=always` covers clean process exits as well as failures; explicit service stops do not trigger restart. The noVNC service uses this policy to recover after a heartbeat-triggered clean exit.
+
+## Qualified lab egress and additional build guest compatibility
+
+Retrieved 2026-09-20:
+
+- [Linux network namespaces](https://man7.org/linux/man-pages/man7/network_namespaces.7.html): namespace-local interfaces, routing and firewall state support overlapping guest CIDRs behind separate trusted routing contexts (ADR-0030); actual isolation remains a live qualification requirement.
+- [AlmaLinux generic cloud images](https://wiki.almalinux.org/cloud/Generic-cloud) and [AlmaLinux 10 release notes](https://wiki.almalinux.org/release-notes/10.0.html): NoCloud image selection, default Python 3.12, x86-64-v2 variant and signing identity. The selected ext4 image checksum signature and bytes are verified in protected build records.
+- [QEMU CPU models](https://www.qemu.org/docs/master/system/qemu-cpu-models.html): the disposable inner TCG builder selects `max` for the additional AlmaLinux CPU baseline; deployment CPU compatibility is checked separately.
+- PyPI release metadata for [CFFI 2.1.1](https://pypi.org/pypi/cffi/2.1.1/json), [MarkupSafe 3.0.3](https://pypi.org/pypi/markupsafe/3.0.3/json) and [PyYAML 6.0.3](https://pypi.org/pypi/pyyaml/6.0.3/json): additive CPython 3.12 wheel hashes, verified against downloaded bytes and offline installations alongside the existing Python 3.13 closure.
+- [Proxmox CPU configuration](https://raw.githubusercontent.com/proxmox/qemu-server/master/src/PVE/QemuServer/CPUConfig.pm): the REST CPU type default remains `kvm64`; v1.5 imports explicitly bind the operator-selected model when a newer guest baseline requires it. Retrieved 2026-09-20.

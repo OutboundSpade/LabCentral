@@ -26,8 +26,8 @@ collection synchronization supports atomic commit-pinned publication, unchanged
 content reuse, retained upstream removals, schedules and authority revocation.
 Its source plugin is installed and bound to the authorized private meeting library.
 Initial scheduled and manual synchronization passed against one pinned commit; the
-new library starts empty, ready for meeting lab sources. Synchronization alone never
-executes builds.
+library now contains its first four-machine meeting lab source. Synchronization
+alone never executes builds.
 
 Linux amd64 builds run inside disposable VMs in a separate builder environment.
 Pinned QEMU/Packer/Ansible produce qcow2 images; pinned BuildKit produces OCI
@@ -61,6 +61,19 @@ only test-owned VM/image resources and temporary sessions were cleaned up.
 Host-bound evidence and rollback instructions remain in protected operator records.
 Existing production load, recovery, failover and publisher gates remain open.
 See [the implementation contract](docs/design/portable-template-collaboration.md).
+
+## Four-machine meeting lab
+
+`TASK-LAB-001` is in progress. ADR-0030 adds target-config v1.5 for a qualified,
+operator-preconfigured IPv4 egress gateway on disjoint VLAN pools and explicit
+imported-image CPU models. ADR-0031 requires authoring privileges for complete
+source exports while preserving participant reads and launches. The builder's
+pinned wheel closure now supports Python 3.12 and 3.13; the inner TCG CPU supports
+the additional RHEL-compatible guest baseline. The private source library contains
+four VM recipes and normal student handover material; instructor guides are
+outside exports. Exact provider qualification, image construction and final live
+lab verification remain required before this task is complete. Host-bound policy,
+probe, build and recovery records remain protected outside tracked source.
 
 ## Feature page usability
 

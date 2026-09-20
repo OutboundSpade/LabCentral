@@ -63,6 +63,9 @@ func (f *fakeImageAPI) CreateImageVM(_ context.Context, r ImageVMCreate) (UPID, 
 	current.Fields["digest"] = current.Digest
 	current.Fields["onboot"] = "0"
 	current.Fields["ciupgrade"] = "0"
+	if r.CPUModel != "" {
+		current.Fields["cpu"] = r.CPUModel
+	}
 	current.Fields["scsi0"] = fmt.Sprintf("%s:vm-%d-disk-0,size=8G", r.Storage, r.VMID)
 	f.configs[r.VMID] = current
 	task := fakeUPID(r.Node, "qmcreate", r.VMID)
@@ -298,5 +301,42 @@ func TestImageRetirementRecoveryCannotReviveOrDeleteForeignImage(t *testing.T) {
 	}
 	if _, err = s.Retire(ctx, retire); err != nil || fake.deleteCalls != 1 {
 		t.Fatal("replayed retirement changed infrastructure", err)
+	}
+}
+
+func TestImageImportBindsExplicitCPUModelAndRejectsDrift(t *testing.T) {
+	s, fake, r, data := imageFixture(t)
+	var config TargetConfig
+	if err := json.Unmarshal(r.Target.ConfigEnvelope, &config); err != nil {
+		t.Fatal(err)
+	}
+	config.SchemaVersion = targetConfigV15
+	config.ImageImport.CPUModel = "host"
+	r.Target.ConfigEnvelope, _ = json.Marshal(config)
+	fake.config = config
+	plan, err := s.Plan(context.Background(), &wire.ImageImportServicePlanRequest{Input: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.ReservedPlan = plan.Plan
+	uploadImageFixture(t, s, r, data)
+	imported, err := s.Import(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.configs[200].Fields["cpu"] != "host" {
+		t.Fatal("explicit CPU model not sent to creation")
+	}
+	check := &wire.ImageImportServiceValidateBindingRequest{Context: r.Context, Target: r.Target, Binding: imported.Binding}
+	valid, err := s.ValidateBinding(context.Background(), check)
+	if err != nil || !valid.Valid {
+		t.Fatalf("qualified CPU binding rejected %v %+v", err, valid)
+	}
+	for _, cpu := range []string{"", "kvm64", "host,flags=+vmx"} {
+		fake.configs[200].Fields["cpu"] = cpu
+		valid, err = s.ValidateBinding(context.Background(), check)
+		if err != nil || valid.Valid {
+			t.Fatalf("CPU drift accepted %q %v %+v", cpu, err, valid)
+		}
 	}
 }

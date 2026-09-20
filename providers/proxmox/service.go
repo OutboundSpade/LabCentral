@@ -95,6 +95,19 @@ func (service *Service) DiscoverTarget(ctx context.Context, request *pluginv1.Di
 	capabilities := makeCapabilities(inventory, digest, request.GetTarget().GetConfigFingerprint())
 	if enabled, evidence := service.mutationCapabilityGate(ctx, request.GetTarget(), client, inventory, mutationDigest); enabled {
 		enableMutationCapabilities(capabilities, evidence)
+		for _, profile := range config.Networks {
+			if profile.Egress == nil {
+				continue
+			}
+			for _, value := range capabilities {
+				if value.GetFeatureId() == "network.egress.enforced" {
+					value.Support = pluginv1.Capability_SUPPORT_NATIVE
+					value.Evidence = evidence + "; operator gateway policy and positive Internet/negative management/cross-instance probes bound by signed configuration"
+					value.Constraints = []string{"explicit allow only", "qualified profile IPv4 CIDR and gateway", "operator-provisioned isolated per-VLAN gateway; provider never changes routing or firewall"}
+				}
+			}
+			break
+		}
 		var config TargetConfig
 		if decodeEnvelope(request.GetTarget().GetConfigEnvelope(), maximumConfigBytes, &config) == nil && config.ConsoleAccess.Enabled {
 			enableConsoleAccessCapability(capabilities, evidence, config.ConsoleAccess.MaximumDurationSeconds)

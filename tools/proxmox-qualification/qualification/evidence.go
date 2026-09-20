@@ -12,17 +12,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 	"io"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/render"
+	"github.com/OutboundSpade/LabCentral/pkg/containervm"
 )
 
 const (
+	EgressEvidenceSchema  = "labcentral.proxmox-qualification-evidence/v1.2"
 	RuntimeEvidenceSchema = "labcentral.proxmox-qualification-evidence/v1.1"
 	EvidenceSchema        = "labcentral.proxmox-qualification-evidence/v1"
 	EnvelopeSchema        = "labcentral.proxmox-qualification-envelope/v1"
@@ -141,11 +143,23 @@ type StorageEvidence struct {
 	Format string `json:"format"`
 }
 
+type NetworkEgressEvidence struct {
+	Mode                   string `json:"mode"`
+	IPv4CIDR               string `json:"ipv4Cidr"`
+	Gateway                string `json:"gateway"`
+	PolicyDigest           string `json:"policyDigest"`
+	ProbeDigest            string `json:"probeDigest"`
+	InternetReachable      bool   `json:"internetReachable"`
+	ManagementReachable    bool   `json:"managementReachable"`
+	CrossInstanceReachable bool   `json:"crossInstanceReachable"`
+}
+
 type NetworkEvidence struct {
-	Alias      string         `json:"alias"`
-	Bridge     string         `json:"bridge"`
-	VLANAware  bool           `json:"vlanAware"`
-	VLANRanges []IntegerRange `json:"vlanRanges"`
+	Egress     *NetworkEgressEvidence `json:"egress,omitempty"`
+	Alias      string                 `json:"alias"`
+	Bridge     string                 `json:"bridge"`
+	VLANAware  bool                   `json:"vlanAware"`
+	VLANRanges []IntegerRange         `json:"vlanRanges"`
 }
 
 type TemplateEvidence struct {
@@ -392,11 +406,20 @@ func validatePolicy(policy VerificationPolicy) error {
 }
 
 func validateEvidence(evidence Evidence) (bool, []string, error) {
-	if (evidence.SchemaVersion != EvidenceSchema && evidence.SchemaVersion != RuntimeEvidenceSchema) || !stableIDPattern.MatchString(evidence.RunID) {
+	if (evidence.SchemaVersion != EvidenceSchema && evidence.SchemaVersion != RuntimeEvidenceSchema && evidence.SchemaVersion != EgressEvidenceSchema) || !stableIDPattern.MatchString(evidence.RunID) {
 		return false, nil, errors.New("qualification evidence identity is invalid")
 	}
+	hasEgress := false
+	for _, network := range evidence.Profile.Networks {
+		if network.Egress != nil {
+			hasEgress = true
+		}
+	}
+	if hasEgress != (evidence.SchemaVersion == EgressEvidenceSchema) {
+		return false, nil, errors.New("egress profiles require qualification evidence v1.2")
+	}
 	if evidence.Profile.ContainerRuntime != nil {
-		if evidence.SchemaVersion != RuntimeEvidenceSchema || !digestPattern.MatchString(evidence.ContainerRuntimeTranscriptDigest) {
+		if (evidence.SchemaVersion != RuntimeEvidenceSchema && evidence.SchemaVersion != EgressEvidenceSchema) || !digestPattern.MatchString(evidence.ContainerRuntimeTranscriptDigest) {
 			return false, nil, errors.New("runtime qualification transcript is required")
 		}
 	} else if evidence.SchemaVersion == RuntimeEvidenceSchema || evidence.ContainerRuntimeTranscriptDigest != "" {
@@ -493,15 +516,45 @@ func validateProfile(profile ProfileEvidence) error {
 		}
 		aliases[storage.Alias], storageIDs[storage.ID] = true, true
 	}
-	bridges := make(map[string]bool)
+	hasEgress := false
 	for _, network := range profile.Networks {
-		if !aliasPattern.MatchString(network.Alias) || aliases[network.Alias] || !objectPattern.MatchString(network.Bridge) || bridges[network.Bridge] || !network.VLANAware {
+		if network.Egress != nil {
+			hasEgress = true
+		}
+	}
+	for index, network := range profile.Networks {
+		if !aliasPattern.MatchString(network.Alias) || aliases[network.Alias] || !objectPattern.MatchString(network.Bridge) || !network.VLANAware {
 			return errors.New("qualification network profile is invalid")
 		}
 		if err := validateRanges(network.VLANRanges, 1, 4094); err != nil {
 			return fmt.Errorf("qualification VLAN ranges: %w", err)
 		}
-		aliases[network.Alias], bridges[network.Bridge] = true, true
+		if e := network.Egress; e != nil {
+			prefix, err := netip.ParsePrefix(e.IPv4CIDR)
+			gateway, gatewayErr := netip.ParseAddr(e.Gateway)
+			if e.Mode != "allow" || err != nil || gatewayErr != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || !prefix.Addr().IsPrivate() || prefix.Bits() < 16 || prefix.Bits() > 29 || !gateway.Is4() || !prefix.Contains(gateway) || gateway == prefix.Addr() || !digestPattern.MatchString(e.PolicyDigest) || !digestPattern.MatchString(e.ProbeDigest) || !e.InternetReachable || e.ManagementReachable || e.CrossInstanceReachable {
+				return errors.New("qualification egress gateway or probe evidence is invalid")
+			}
+			a := gateway.As4()
+			v := uint32(a[0])<<24 | uint32(a[1])<<16 | uint32(a[2])<<8 | uint32(a[3])
+			mask := uint32(0xffffffff) >> prefix.Bits()
+			if v&mask == mask {
+				return errors.New("qualification egress gateway is a broadcast address")
+			}
+		}
+		for _, prior := range profile.Networks[:index] {
+			for _, a := range prior.VLANRanges {
+				for _, b := range network.VLANRanges {
+					if hasEgress && a.Start <= b.End && b.Start <= a.End {
+						return errors.New("qualification network VLAN ranges overlap")
+					}
+				}
+			}
+			if prior.Bridge == network.Bridge && prior.Egress == nil && network.Egress == nil {
+				return errors.New("qualification duplicate denied network bridge")
+			}
+		}
+		aliases[network.Alias] = true
 	}
 	templateIDs := make(map[string]bool)
 	for _, template := range profile.Templates {

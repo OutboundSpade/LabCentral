@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-18
 - **Supersedes:** ADR-0025 (explicit-only source synchronization and installation-bound recipe selection)
-- **Superseded by:** None
+- **Superseded by:** ADR-0031 (source-export authorization only)
 
 ## Decision
 

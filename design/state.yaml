@@ -28,6 +28,8 @@ acceptedAdrs:
   - ADR-0027
   - ADR-0028
   - ADR-0029
+  - ADR-0030
+  - ADR-0031
 proposedAdrs: []
 supersededAdrs: [ADR-0011, ADR-0012, ADR-0014, ADR-0017]
 documents:
@@ -319,8 +321,9 @@ completedTasks:
   - TASK-UI-013
   - TASK-DEPLOY-001
 currentTasks:
+  - TASK-LAB-001
   - TASK-PROD-004
   - TASK-PROD-005
 # Template/collaboration rollout and private GitHub repository binding passed.
 # Existing production load, recovery, failover and publisher gates remain open.
-nextRecommendedTasks: [TASK-PROD-004, TASK-PROD-005]
+nextRecommendedTasks: [TASK-LAB-001, TASK-PROD-004, TASK-PROD-005]

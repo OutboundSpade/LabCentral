@@ -77,7 +77,7 @@ func executeAnsible(ctx context.Context, root string, recipe *wire.BuildRecipe, 
 	config := map[string]any{
 		"builders": []any{map[string]any{
 			"type": "qemu", "name": "labcentral", "qemu_binary": "/usr/bin/qemu-system-x86_64", "accelerator": "tcg", "headless": true, "disk_image": true, "iso_url": base, "iso_checksum": "none", "format": "qcow2", "disk_size": strconv.FormatUint(uint64(settings.DiskGiB)*1024, 10), "memory": min(uint64(2048), limits.MemoryBytes/(2<<20)), "cpus": max(uint32(1), limits.CpuMillis/1000), "output_directory": outputDir, "vm_name": "image.qcow2", "ssh_username": settings.GuestUser, "ssh_private_key_file": key, "ssh_timeout": "20m", "shutdown_command": "sudo shutdown -P now", "shutdown_timeout": "5m",
-			"qemuargs": [][]string{{"-netdev", "user,id=user.0,net=10.0.3.0/24,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"}, {"-drive", "file=" + filepath.Join(outputDir, "image.qcow2") + ",format=qcow2,if=virtio,cache=writeback,index=0"}, {"-drive", "file=" + seed + ",format=raw,if=virtio,readonly=on,index=1"}},
+			"qemuargs": [][]string{{"-cpu", "max"}, {"-netdev", "user,id=user.0,net=10.0.3.0/24,hostfwd=tcp:127.0.0.1:{{ .SSHHostPort }}-:22"}, {"-drive", "file=" + filepath.Join(outputDir, "image.qcow2") + ",format=qcow2,if=virtio,cache=writeback,index=0"}, {"-drive", "file=" + seed + ",format=raw,if=virtio,readonly=on,index=1"}},
 		}},
 		"provisioners": []any{
 			map[string]any{"type": "file", "source": "/opt/labcentral/offline-ansible", "destination": "/tmp/offline-ansible"},

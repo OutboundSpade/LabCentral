@@ -144,7 +144,11 @@ func qualificationProfile(config proxmox.TargetConfig, inventory proxmox.Invento
 		for _, item := range value.VLANRanges {
 			ranges = append(ranges, qualification.IntegerRange{Start: item.Start, End: item.End})
 		}
-		profile.Networks = append(profile.Networks, qualification.NetworkEvidence{Alias: value.Alias, Bridge: value.Bridge, VLANAware: vlanAware, VLANRanges: ranges})
+		network := qualification.NetworkEvidence{Alias: value.Alias, Bridge: value.Bridge, VLANAware: vlanAware, VLANRanges: ranges}
+		if e := value.Egress; e != nil {
+			network.Egress = &qualification.NetworkEgressEvidence{Mode: e.Mode, IPv4CIDR: e.IPv4CIDR, Gateway: e.Gateway, PolicyDigest: e.PolicyDigest, ProbeDigest: e.ProbeDigest, InternetReachable: e.InternetReachable, ManagementReachable: e.ManagementReachable, CrossInstanceReachable: e.CrossInstanceReachable}
+		}
+		profile.Networks = append(profile.Networks, network)
 	}
 	for _, value := range config.Templates {
 		profile.Templates = append(profile.Templates, qualification.TemplateEvidence{

@@ -21,6 +21,24 @@ The core does not model DHCP, DNS, routes, NAT, firewalls, VPNs, or routing prot
 
 The first Proxmox mutation contract narrows its mapping to an existing administrator-approved VLAN-aware Linux bridge plus one core-claimed VLAN per isolated logical Network. The Network provider state records that binding; dependent VM plans consume it. It does not create or reconfigure bridges, SDN, routes, firewall, DHCP, or NAT. IPv4 static addressing is rendered into typed PVE `ipconfigN`; IPv6, external networks, trunks, and provider-managed IPAM fail validation. Capability remains unsupported until management-path and cross-instance negative connectivity tests pass on the exact target profile.
 
+## Qualified preconfigured Proxmox egress
+
+ADR-0030 extends the initial subset with target-config v1.5. A network profile may
+bind an exact allowed-egress IPv4 CIDR and gateway to reviewed policy/probe
+digests and measured Internet/management/cross-lab results. Matching is explicit:
+denied requests cannot consume an allowed-egress VLAN, and allowed requests
+cannot consume a denied-egress profile. VLAN pools are disjoint even when they
+share a bridge. Typed VM addressing carries only the configured gateway; workload
+addresses cannot equal the gateway or subnet network/broadcast addresses.
+
+The provider still creates no routing, NAT or firewall infrastructure. An
+operator-owned boundary outside student guests supplies stateful outbound IPv4
+with management/private/metadata/cross-lab denies, source-spoofing protection and
+IPv6 denial. Qualification must measure Internet access and negative reachability
+with overlapping-CIDR labs, including altered guest networking, before signing the
+exact target/build/profile. Operator details and policy transcripts are private.
+Unconfigured or unqualified targets fail explicit egress requests.
+
 ## Docker laptop degradation
 
 The `TASK-DOCKER-001` baseline uses only version-negotiated Docker Engine image/container/volume/network APIs. Every published port is bound explicitly to `127.0.0.1`; a provider-selected host port is read back from Engine state before the instance becomes ready, and published TCP ports must accept a bounded loopback connection. Containers drop all Linux capabilities, set `no-new-privileges`, and receive declared CPU/memory limits. These controls reduce exposure but do not turn containers into a hostile-workload boundary.

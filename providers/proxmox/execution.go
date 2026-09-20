@@ -1469,7 +1469,6 @@ func claimSet(claims []*pluginv1.AllocationClaim) (map[string]bool, error) {
 func bindingWithoutVMFields(binding NetworkBinding) NetworkBinding {
 	binding.MAC = ""
 	binding.IPv4Address = ""
-	binding.Gateway = ""
 	return binding
 }
 
@@ -1485,7 +1484,7 @@ func stateMatchesTargetConfig(config TargetConfig, state QEMUProviderState) bool
 	}
 	for _, binding := range state.Networks {
 		profile, ok := findNetworkProfile(config, binding.ProfileAlias)
-		if !ok || binding.Bridge != profile.Bridge || !valueInRanges(binding.VLAN, profile.VLANRanges) {
+		if !ok || !networkBindingMatchesProfile(profile, binding) {
 			return false
 		}
 	}

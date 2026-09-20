@@ -19,6 +19,12 @@ The slice does not support portable Volume or mount resources, root-disk resizin
 
 Example B remains gated because its router/guest provisioning and access requirements exceed this subset.
 
+The current ADR-0030 extension supports explicit IPv4 egress through already
+provisioned and qualified gateway profiles; see [networking](networking.md).
+Signed evidence v1.2 and target-config v1.5 bind the policy and measured probes.
+The provider still creates no gateway or firewall, and older denied-egress plans
+keep their semantics. Image-import CPU selection is operator-owned in v1.5.
+
 ## Typed target and plan schemas
 
 Mutation configuration is the additive closed `proxmox.target-config` v1.1 document. `mutationEnabled` defaults to false. When enabled it contains the release-supported PVE range, installation ID, fixed destination node and optional pool, disjoint VMID ranges, a template catalogue keyed by operator aliases, one or more storage profiles, approved bridge profiles with VLAN pools, hard VM/NIC/resource limits, positive intended-segment plus negative management/cross-instance evidence, exact qualification digests, exact non-root ACL paths, and the provider-journal directory. A template entry pins source node/VMID, expected PVE config digest and operator-approved content digest, cloned disks, architecture, Cloud-Init drive, guest-agent requirement, and forbidden-device policy. A provider override selects administrator aliases only through the closed validation plan; it cannot supply raw bridge names, VLANs, storage IDs, VMIDs, PVE arguments, or weaken isolation.

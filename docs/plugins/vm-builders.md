@@ -20,7 +20,7 @@ one `baseDependency`, a playbook, disk size and existing/cloud-init guest user.
 The authored URL must be query-free and present in the local mirror allowlist.
 At most five HTTPS redirects are accepted; every redirect destination is still
 subject to that exact host allowlist and public-address checks. `baseImageDigests` contains its lowercase SHA-256 hex value.
-The base must support NoCloud, SSH and Python 3.13 for this initial toolchain's
+The base must support NoCloud, SSH and Python 3.12 or 3.13 for the toolchain's
 offline wheel set. Ansible receives declared inputs as extra variables.
 Authors provide playbooks, roles and files; the worker generates Packer's
 configuration. The pinned offline Ansible installation avoids an unpinned
@@ -74,7 +74,10 @@ Every author build boots a fresh overlay of that trusted image. QEMU parses
 only this trusted base on the worker host. Author-provided qcow2/OCI inputs are
 processed inside the disposable guest. Packer's inner image VM and ansible-local
 provisioning run there; BuildKit also runs there. The generated Packer VM uses
-TCG, so the worker does not require a third level of nested KVM.
+TCG with its `max` CPU model, including the x86-64-v2 instructions needed by
+AlmaLinux 10 x86_64_v2 bases, so the worker does not require a third level of
+nested KVM. The deployed provider CPU must independently meet the base image
+requirements.
 
 A private virtio-serial channel carries bounded, digest-verified chunks and
 status. No SSH credential, management network port or writable host filesystem

@@ -9,6 +9,7 @@ type ContainerImageImportPolicy struct {
 	AgentSHA256 string `json:"agentSHA256"`
 }
 type ImageImportProfile struct {
+	CPUModel             string                      `json:"cpuModel,omitempty"`
 	ContainerRuntime     *ContainerImageImportPolicy `json:"containerRuntime,omitempty"`
 	StagingStorage       string                      `json:"stagingStorage"`
 	StorageAlias         string                      `json:"storageAlias"`
@@ -22,8 +23,11 @@ func (config TargetConfig) validateImageImport() error {
 	if p == nil {
 		return nil
 	}
-	if config.SchemaVersion != targetConfigV14 || config.Pool == "" || !storageIDPattern.MatchString(p.StagingStorage) || p.MaximumArtifactBytes < 1<<20 || p.MaximumArtifactBytes > 32<<30 || p.MaximumDiskBytes < 1<<30 || p.MaximumDiskBytes > 128<<30 {
+	if (config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15) || config.Pool == "" || !storageIDPattern.MatchString(p.StagingStorage) || p.MaximumArtifactBytes < 1<<20 || p.MaximumArtifactBytes > 32<<30 || p.MaximumDiskBytes < 1<<30 || p.MaximumDiskBytes > 128<<30 {
 		return fmt.Errorf("image import requires bounded v1.4 policy and an ownership pool")
+	}
+	if p.CPUModel != "" && (config.SchemaVersion != targetConfigV15 || !validImageCPUModel(p.CPUModel)) {
+		return fmt.Errorf("image import CPU model requires v1.5 and host or x86-64-v2-AES")
 	}
 	if runtime := p.ContainerRuntime; runtime != nil {
 		if config.ContainerRuntime == nil || !sha256Pattern.MatchString("sha256:"+runtime.BaseSHA256) || !sha256Pattern.MatchString("sha256:"+runtime.AgentSHA256) {
@@ -50,7 +54,7 @@ func (config TargetConfig) validateImageImport() error {
 // v1.4 projection binds only configured static templates: imported images are
 // validated individually against their immutable provider evidence instead.
 func (inventory Inventory) MutationDigestForConfig(config TargetConfig) (string, error) {
-	if config.SchemaVersion != targetConfigV14 {
+	if config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15 {
 		return inventory.MutationDigest()
 	}
 	// Normalize the full inventory before filtering, so malformed discovery data
@@ -73,4 +77,8 @@ func (inventory Inventory) MutationDigestForConfig(config TargetConfig) (string,
 		return "", err
 	}
 	return digestDocument([]byte("proxmox.mutation-inventory/v1.1\x00" + digest)), nil
+}
+
+func validImageCPUModel(model string) bool {
+	return model == "" || model == "host" || model == "x86-64-v2-AES"
 }
