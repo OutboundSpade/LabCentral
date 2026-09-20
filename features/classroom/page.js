@@ -21,6 +21,14 @@ import {
 } from "./ui.js";
 import { launchForm } from "./launch.js";
 import { initialize } from "./ui.js";
+function openLab(lab) {
+  const control = button(lab.name || "Open lab", () =>
+    request("navigation.lab", { instanceId: lab.id }),
+  );
+  control.classList.remove("whitespace-nowrap");
+  control.classList.add("whitespace-normal", "max-w-full", "break-words", "text-left");
+  return control;
+}
 await initialize(async () => {
   if (!can("instance.batchCreate")) {
     app.append(
@@ -269,9 +277,7 @@ await initialize(async () => {
           shared.append(el("h3", group.name));
           for (const lab of group.labs)
             shared.append(
-              button(lab.name || "Open shared lab", () =>
-                request("navigation.lab", { instanceId: lab.id }),
-              ),
+              openLab(lab),
             );
           if (!group.labs.length)
             shared.append(el("small", "No active group labs."));
@@ -299,9 +305,7 @@ await initialize(async () => {
             };
           }
           row.append(
-            button(lab.name ?? "Open lab", () =>
-              request("navigation.lab", { instanceId: lab.id }),
-            ),
+            openLab(lab),
             el("small", lab.phase),
           );
           if (lab.outcome?.error)
