@@ -41,6 +41,8 @@ documents:
     status: complete
   - path: docs/design/classroom-ui.md
     status: complete
+  - path: docs/operations/container-deployment.md
+    status: complete
   - path: docs/operations/classroom-testbed.md
     status: complete
   - path: docs/operations/private-pilot.md
@@ -313,6 +315,8 @@ completedTasks:
   - TASK-UI-010
   - TASK-UI-011
   - TASK-UI-012
+  - TASK-UI-013
+  - TASK-DEPLOY-001
 currentTasks:
   - TASK-PROD-004
   - TASK-PROD-005

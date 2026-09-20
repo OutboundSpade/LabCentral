@@ -23,6 +23,9 @@ def get(url):
         return response.read()
 with tempfile.TemporaryDirectory(prefix=name) as temporary:
     root = Path(temporary)
+    uid, gid = (os.getuid(), os.getgid()) if os.getuid() else (65532, 65532)
+    if os.getuid() == 0:
+        os.chown(root, uid, gid)
     ports = []
     for _ in range(3):
         with socket.socket() as sock:
@@ -42,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix=name) as temporary:
         raise RuntimeError(docker('logs', name))
     try:
         docker('run', '-d', '--name', name, '--network', 'host', '--read-only',
-               '--user', f'{os.getuid()}:{os.getgid()}', '--cap-drop', 'ALL',
+               '--user', f'{uid}:{gid}', '--cap-drop', 'ALL',
                '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=64m',
                '--mount', f'type=bind,src={root},dst=/var/lib/labcentral',
                '-e', f'LABCENTRAL_HEALTHCHECK_URL={ready}', args.image,

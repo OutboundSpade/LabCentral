@@ -3,7 +3,7 @@ lastUpdated: "2026-09-20"
 tasks:
   - id: TASK-UI-013
     title: Unify feature dialogs and add bulk Teams management
-    status: in_progress
+    status: complete
     dependencies: [TASK-UI-012]
     relatedAdrs: [ADR-0026, ADR-0029]
     relatedDocuments: [docs/design/classroom-ui.md, docs/plugins/feature-packages.md]
@@ -13,7 +13,7 @@ tasks:
       - Preserve per-project authorization and student Teams-only access; verify Firefox scrolling and all three browser engines, push main and deploy exact tested artifacts.
   - id: TASK-DEPLOY-001
     title: Make container images the recommended distribution
-    status: in_progress
+    status: complete
     dependencies: [TASK-UI-013, TASK-RELEASE-001]
     relatedAdrs: [ADR-0015, ADR-0023, ADR-0026]
     relatedDocuments: [docs/design/deployment.md, docs/users/local-setup.md]

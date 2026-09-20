@@ -174,6 +174,18 @@ rehearsed before deployment. Live the private testbed checks and final database/
 checks passed. Evidence remains in ignored `bin/extensions-20260917/`; earlier
 provider qualification evidence remains in `bin/classroom-usability-20260915/`.
 
+`TASK-UI-013` and `TASK-DEPLOY-001` are complete. Host 6 coordinates full-page
+feature dialogs; desktop launches use two columns, rosters omit redundant IDs,
+and tabs/bulk controls share one opaque sticky header. Teams supports bounded
+multi-group launch, enrollment and deletion, plus multi-lab cleanup with per-item
+progress and failed-only retries. Container images are the recommended distribution.
+The exact tested image now runs core on the private testbed with preserved data
+ownership and unchanged qualified backend services. Three-browser, exact-image,
+independent-package and live administrator/two-student checks passed, including
+Firefox dimming/scrolling, shared control, deletion guards and owned cleanup.
+Consistent backups and rollback packages remain in protected operator records;
+existing records were preserved. Existing production gates remain open.
+
 ## Next action and production gates
 
 Configure the GitHub library binding when the owner supplies its repository and
