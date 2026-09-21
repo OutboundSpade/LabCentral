@@ -1,9 +1,9 @@
 formatVersion: 1
-lastUpdated: "2026-09-20"
+lastUpdated: "2026-09-21"
 tasks:
   - id: TASK-LAB-001
     title: Deliver the Example Branch competition lab
-    status: in_progress
+    status: complete
     dependencies: [TASK-TEMPLATE-009, TASK-TEMPLATE-008]
     relatedAdrs: [ADR-0004, ADR-0027, ADR-0028, ADR-0030, ADR-0031]
     relatedDocuments: [docs/plugins/portable-templates.md, docs/plugins/vm-builders.md, docs/design/networking.md]

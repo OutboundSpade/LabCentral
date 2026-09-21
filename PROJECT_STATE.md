@@ -1,6 +1,6 @@
 # LabCentral project state
 
-**Updated:** 2026-09-20
+**Updated:** 2026-09-21
 
 LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
@@ -64,16 +64,25 @@ See [the implementation contract](docs/design/portable-template-collaboration.md
 
 ## Four-machine meeting lab
 
-`TASK-LAB-001` is in progress. ADR-0030 adds target-config v1.5 for a qualified,
+`TASK-LAB-001` is complete. ADR-0030 defines target-config v1.5 for a qualified,
 operator-preconfigured IPv4 egress gateway on disjoint VLAN pools and explicit
 imported-image CPU models. ADR-0031 requires authoring privileges for complete
 source exports while preserving participant reads and launches. The builder's
-pinned wheel closure now supports Python 3.12 and 3.13; the inner TCG CPU supports
-the additional RHEL-compatible guest baseline. The private source library contains
-four VM recipes and normal student handover material; instructor guides are
-outside exports. Exact provider qualification, image construction and final live
-lab verification remain required before this task is complete. Host-bound policy,
-probe, build and recovery records remain protected outside tracked source.
+pinned wheel closure supports Python 3.12 and 3.13, including the additional
+RHEL-compatible guest baseline.
+
+The private source library contains a working Debian web/database/desktop and
+RHEL-compatible FTP lab with normal student handover material. Instructor guides
+remain outside source exports and guest images. Fresh approved images passed
+banking, transfers, FTP publishing, graphical-console, administration and exercise
+checks. Guest Internet access and cross-lab/management denial passed alongside the
+signed provider qualification and physical gateway checks. The desktop uses the
+standard Debian kernel; branch hostnames and DNS persist through commissioning.
+Temporary probes and the superseded preview were removed; verification sessions
+were retired and existing classroom records were preserved. Host-bound image
+identities, qualification expiry, deployment and rollback instructions remain in
+protected operator records.
+Existing production load, recovery, failover and publisher gates remain open.
 
 ## Feature page usability
 

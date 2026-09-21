@@ -97,6 +97,13 @@ apiVersion: labcentral.library/v1
 templates: []
 ```
 
+Check the organization's base repository permission as well as team and individual
+grants. Private visibility still allows organization members to read the source
+when the base permission is Read; a repository role cannot lower that inherited
+permission. LabCentral's author-only source export does not change GitHub access.
+Keep instructor solutions outside the repository and exported bundles, and use
+an organization access policy appropriate for everyone who can inspect build source.
+
 An empty index is a valid starting library. Add locked portable template roots and
 stable entries as meeting labs are authored; an existing template's portable
 export can supply the source files. Configure the installed source binding before
