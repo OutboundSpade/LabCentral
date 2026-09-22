@@ -13,7 +13,7 @@ func (s *Store) ListMemberships(ctx context.Context, organization domain.Organiz
 	if organization == "" || limit == 0 || limit > 200 {
 		return nil, fmt.Errorf("invalid membership query")
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT membership_id, user_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version FROM labcentral_memberships WHERE organization_id = ? AND membership_id > ? ORDER BY membership_id LIMIT ?`), organization, after, limit)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT membership_id, user_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version FROM labcentral_memberships WHERE organization_id = ? AND membership_id > ? ORDER BY membership_id LIMIT ?`), organization, after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func (s *Store) ListProjects(ctx context.Context, after string, limit uint32) ([
 	if limit == 0 || limit > 200 {
 		return nil, fmt.Errorf("invalid directory limit")
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT project_id, organization_id, name, resource_version FROM labcentral_projects WHERE project_id > ? ORDER BY project_id LIMIT ?`), after, limit)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT project_id, organization_id, name, resource_version FROM labcentral_projects WHERE project_id > ? ORDER BY project_id LIMIT ?`), after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (s *Store) ListDirectoryUsers(ctx context.Context, organization domain.Orga
 	}
 	query += ` ORDER BY u.user_id LIMIT ?`
 	args = append(args, limit)
-	rows, err := s.db.QueryContext(ctx, s.bind(query), args...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (s *Store) ListOrganizations(ctx context.Context, after string, limit uint3
 	if limit == 0 || limit > 200 {
 		return nil, fmt.Errorf("invalid directory limit")
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT organization_id, name, resource_version FROM labcentral_organizations WHERE organization_id > ? ORDER BY organization_id LIMIT ?`), after, limit)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT organization_id, name, resource_version FROM labcentral_organizations WHERE organization_id > ? ORDER BY organization_id LIMIT ?`), after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (s *Store) ListTargetGrants(ctx context.Context, after string, limit uint32
 	if limit == 0 || limit > 200 {
 		return nil, fmt.Errorf("invalid directory limit")
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version FROM labcentral_provider_target_grants WHERE grant_id > ? ORDER BY grant_id LIMIT ?`), after, limit)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version FROM labcentral_provider_target_grants WHERE grant_id > ? ORDER BY grant_id LIMIT ?`), after, limit)
 	if err != nil {
 		return nil, err
 	}

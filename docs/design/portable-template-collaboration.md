@@ -119,7 +119,8 @@ managed teams retain their old semantics.
 
 Open groups may be joined while labs run, giving access to those labs. Closing
 enrollment blocks new joins, not existing members. Any member may launch and use
-otherwise-permitted lifecycle actions, with destructive UI confirmation. Labs stay
+otherwise-permitted lifecycle actions. Under ADR-0036, ending a group lab requires
+instructor authority; membership alone is insufficient. Labs stay
 team-owned; creator remains the audit actor. Multiple labs obey normal quotas.
 Leaving invalidates new access immediately and revokes active sessions within the
 existing closure bound. Even the last member leaving does not delete/transfer labs;
@@ -180,3 +181,14 @@ contracts are specified in [classroom UI](classroom-ui.md#desktop-team-workflows
 Group retirement preserves historical team identity, rejects active labs and fences
 pending admission. It does not change last-member departure semantics or legacy
 organizational memberships.
+
+ADR-0034 supersedes unconditional member launch and viewer-only reconnect UX:
+operators can suspend participant deployments, instructors manage project groups,
+and a sole connected viewer can make a fresh atomic no-takeover control request.
+All ownership, authorization and lease boundaries described above remain in force.
+
+Under [ADR-0036](../adr/0036-instructor-managed-group-lab-deletion.md), participant
+assignments cannot destroy team-owned labs. Students retain shared access and
+personal-lab deletion; instructors retain scoped group-lab deletion. Both the core
+lab details and Teams feature hide group deletion controls for students. Direct
+API requests use the same core authorization rule. Expiration remains automatic.

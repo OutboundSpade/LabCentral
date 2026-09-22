@@ -48,3 +48,9 @@ type AccessAuthorizationHandler interface {
 type AccessDeliveryStore interface {
 	ClaimAccessDelivery(context.Context, domain.AccessSessionID, domain.UserID, []KeyedTokenHash, GovernanceRecordIDs) (AccessSessionRecord, error)
 }
+
+// AccessLaunchLocker coordinates endpoint discovery through upstream handshake.
+// It is separate from authorization and must not hold the SQLite writer.
+type AccessLaunchLocker interface {
+	LockAccessLaunch(context.Context, domain.InstanceID, domain.LogicalResourceID) (func(), error)
+}

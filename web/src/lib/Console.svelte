@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstructionNotes from "./InstructionNotes.svelte";
   import { onMount } from "svelte";
   import {
     ArrowLeft,
@@ -35,6 +36,7 @@
   let sharedConsole = $state(false);
   let presence = $state<Presence>();
   let controlBusy = $state(false);
+ let autoControlAttempted = false;
   let presenceTimer: ReturnType<typeof setTimeout> | undefined;
   let hasControl = $derived(
     !!presence &&
@@ -66,22 +68,29 @@
         { fresh: true },
       );
       if (!disposed && id === currentID && mine === generation)
+        {
         presence = result;
+        if (!autoControlAttempted && !controlBusy && !viewOnly && !result.driverSessionId && !result.requestedSessionId && result.participants?.length === 1 && result.participants[0].sessionId === id) {
+          autoControlAttempted = true;
+          await changeControl(true, true);
+        }
+      }
     } catch {
       if (id === currentID && mine === generation) presence = undefined;
     }
     if (!disposed && id === currentID && mine === generation && connected)
       presenceTimer = setTimeout(() => void refreshPresence(id, mine), 1000);
   }
-  async function changeControl(take: boolean) {
+  async function changeControl(take: boolean, onlyIfAlone = false) {
     if (controlBusy || !connected) return;
+    if (!onlyIfAlone) autoControlAttempted = true;
     const id = currentID,
       mine = generation;
     controlBusy = true;
     controlError = "";
     try {
       const result = await api<Presence>(
-        `/access-sessions/${encodeURIComponent(id)}/console/${take ? "take-control" : "release-control"}`,
+        `/access-sessions/${encodeURIComponent(id)}/console/${take ? "take-control" : "release-control"}${onlyIfAlone ? "?onlyIfAlone=true" : ""}`,
         { method: "POST", headers: mutationHeaders() },
       );
       if (id === currentID && mine === generation) presence = result;
@@ -195,6 +204,7 @@
   async function connectConsole(selectedResource?: string) {
     clearTimeout(retryTimer);
     const mine = ++generation;
+    autoControlAttempted = false;
     request?.abort();
     request = new AbortController();
     const signal = request.signal;
@@ -537,12 +547,10 @@
     ></div>
     {#if showInstructions && lab?.instructions}<aside
         aria-label="Exercise instructions"
-        class="w-80 shrink-0 overflow-y-auto rounded-lg border border-base-300 p-4"
+        class="w-[min(32rem,45vw)] shrink-0 overflow-y-auto rounded-lg border border-base-300 p-4"
       >
         <h2 class="mb-3 font-semibold">{lab.name || "Instructions"}</h2>
-        <p class="whitespace-pre-wrap break-words text-sm leading-relaxed">
-          {lab.instructions}
-        </p>
+        <InstructionNotes content={lab.instructions} />
       </aside>{/if}
   </div>
 </main>

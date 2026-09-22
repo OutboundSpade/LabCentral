@@ -194,6 +194,10 @@ await initialize(async () => {
       views.panels["Launch activity"],
     );
     batchStatus.append(el("p", "Loading recent launches…"));
+    const preparationHistory = section(
+      "Image preparation",
+      views.panels["Launch activity"],
+    );
     function counts() {
       selectionCount.textContent = `${selected.size} students selected · ${selectedLabs.size} labs selected`;
       launchSelected.disabled = !selected.size;
@@ -355,6 +359,35 @@ await initialize(async () => {
           all("groups.list", {}, "after"),
           request("labs.batchList"),
         ]);
+        const { items: preparations } = await request("preparations.list");
+        const waiting = preparations.filter(
+          (w) =>
+            w.request?.preparation?.owners?.length && w.state !== "succeeded",
+        );
+        preparationHistory.hidden = !waiting.length;
+        let preparationRows = preparationHistory.querySelector(
+          "[data-preparations]",
+        );
+        if (!preparationRows) {
+          preparationRows = el("div", "", {
+            "data-preparations": "",
+            class: "space-y-3",
+          });
+          preparationHistory.append(preparationRows);
+        }
+        stableList(preparationRows, waiting, (w) => {
+          const card = el("article");
+          const state = ["failed", "canceled"].includes(w.state)
+            ? w.failureCode || w.state
+            : w.result?.stage === "awaiting-approval"
+              ? "Waiting for image approval"
+              : w.failureCode || w.result?.stage || w.state;
+          card.append(
+            el("p", `Classroom launch · ${state}`),
+            el("small", new Date(w.createdAt).toLocaleString()),
+          );
+          return card;
+        });
         groupMembers = [];
         // Only administrators/enrolled users can see group rosters; absent authority
         // must not make the rest of Classroom unusable.

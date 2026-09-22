@@ -139,3 +139,6 @@ The imported image reference uses the OCI manifest digest, while
 `artifactDigest` continues to identify the containing qcow2 bytes. Per-resource
 planning selects that imported VM template and v2 offline runtime configuration;
 no registry fetch or arbitrary guest command is added.
+
+Target-config v1.6 retains these image contracts and requires capacity minima for
+both destination and staging storage under [ADR-0032](../adr/0032-proxmox-storage-capacity-qualification.md). Fresh import checks reject capacity below the reviewed minimum; imported-image approval and signed infrastructure qualification remain separate.

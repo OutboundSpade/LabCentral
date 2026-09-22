@@ -28,6 +28,9 @@ func (s *Store) preparationTx(ctx context.Context, tx *sql.Tx, id domain.Operati
 	return scanExtensionWork(tx.QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.operation_id=?`), id))
 }
 func (s *Store) requirePreparationAuthorityTx(ctx context.Context, tx *sql.Tx, w app.ExtensionWork) error {
+	if err := s.requireDeploymentPolicyTx(ctx, tx, w.ProjectID, w.ActorID); err != nil {
+		return err
+	}
 	r := w.Request.Preparation
 	if r == nil || r.Version != 2 || r.ValidateVersion() != nil || w.CancelRequested || (w.State != "" && w.State != domain.OperationQueued && w.State != domain.OperationRunning) {
 		return app.ErrAuthorityChanged
@@ -153,7 +156,7 @@ func (s *Store) AuthorizePreparationWork(ctx context.Context, id domain.Operatio
 }
 
 func (s *Store) CanReadPreparationWork(ctx context.Context, id domain.OperationID, actor domain.UserID) (bool, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.actor_id=? AND (w.operation_id=? OR EXISTS(SELECT 1 FROM labcentral_extension_dependencies d WHERE d.parent_id=w.operation_id AND d.child_id=?)) LIMIT 1025`), actor, id, id)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.actor_id=? AND (w.operation_id=? OR EXISTS(SELECT 1 FROM labcentral_extension_dependencies d WHERE d.parent_id=w.operation_id AND d.child_id=?)) LIMIT 1025`), actor, id, id)
 	if err != nil {
 		return false, err
 	}

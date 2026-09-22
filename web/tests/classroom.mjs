@@ -8,7 +8,7 @@ await mkdir(shots,{recursive:true});
 const template={id:'template.debian',projectId:'project.class',name:'Debian starter',description:'Explore files and processes in your own Debian environment.',resourceVersion:1};
 const revision={id:'revision.debian',templateId:template.id,revisionNumber:1};
 const lab={id:'instance.student',projectId:'project.class',revisionId:revision.id,providerTargetId:'target.test',ownerKind:'user',ownerId:'user.student',phase:'ready',expiresAt:new Date(Date.now()+14400000).toISOString(),resources:[{id:'workstation',kind:'VM',phase:'ready'}]};
-let rosterSize=1;
+let rosterSize=1,buildTemplate=false,preparations=[];
 let subjectId="user.student",noProjects=false,sessionDenied=false,slowNavigation=false,reads=[],labs=[],mutations=[],outage=false,role='participant',consoleLaunchKind='relative';
 const server=createServer(async(req,res)=>{
  if(await serveFeature(req,res))return;
@@ -19,7 +19,8 @@ const server=createServer(async(req,res)=>{
   const p=path.slice(7);if(req.method==='GET')reads.push(p+url.search);let body='';for await(const chunk of req)body+=chunk;
   if(['POST','PUT'].includes(req.method))mutations.push({path:p,body:body?JSON.parse(body):null,headers:req.headers});
   if(p==='/extensions/browser')return json(await featureExtensions(origin));
-  if(p==='/source-bindings'||p==='/template-libraries'||p==='/extension-operations'||p==='/deployment-preparations'||p==='/projects/project.class/groups')return json({items:[]});
+  if(p==='/deployment-preparations'){if(req.method==='POST'){const w={id:`prep.${preparations.length+1}`,state:'running',createdAt:new Date().toISOString(),request:{preparation:JSON.parse(body).preparation},result:{stage:'awaiting-approval'}};preparations.push(w);return json(w);}return json({items:preparations});}
+  if(p==='/source-bindings'||p==='/template-libraries'||p==='/extension-operations'||p==='/projects/project.class/groups')return json({items:[]});
   if(p.startsWith('/quotas/')||p.startsWith('/lifetime-policies/')){
    if(url.searchParams.get('organizationId')!=='org.class')return json({detail:'Quota scope is invalid'},400);
    if(req.method==='GET')return json({detail:'Not configured'},404);
@@ -35,7 +36,7 @@ const server=createServer(async(req,res)=>{
   if(p==='/provider-targets')return json({items:[{id:'target.test',providerKind:'proxmox',status:'ready'}]});
   if(p==='/lab-templates')return json({items:[template]});
   if(p===`/lab-templates/${template.id}/revisions`)return json({items:[revision]});
-  if(p.endsWith('/content'))return json({source:'apiVersion: labcentral.io/v1alpha1',parameters:[{name:'hostname',type:'string',description:'Workstation name',required:true}]});
+  if(p.endsWith('/content'))return json({source:'apiVersion: labcentral.io/v1alpha1',recipes:buildTemplate?[{id:'base'}]:[],parameters:[{name:'hostname',type:'string',description:'Workstation name',required:true}]});
   if(p==='/lab-instances'&&req.method==='GET')return outage?json({detail:'Temporarily unavailable'},503):json({items:labs});
   if(p==='/lab-instances'&&req.method==='POST'){labs=[lab];return json({operation:{id:'operation.create',instanceId:lab.id,state:'succeeded'}},202);}
   if(p.startsWith('/lab-instances/')&&req.method==='GET')return json(labs.find(l=>l.id===p.split('/')[2])??lab);
@@ -55,9 +56,38 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.
 try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
  if(process.env.LABCENTRAL_BROWSER && process.env.LABCENTRAL_BROWSER!==name)continue;
  const browser=await engine.launch();try{
-  rosterSize=1;subjectId="user.student";noProjects=false;sessionDenied=false;reads=[];labs=[];mutations=[];outage=false;role='participant';
+  rosterSize=1;buildTemplate=false;preparations=[];subjectId="user.student";noProjects=false;sessionDenied=false;reads=[];labs=[];mutations=[];outage=false;role='participant';
   const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(10000);
   const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.message);});
+  if(process.env.LABCENTRAL_GROUP_DELETE_ONLY){
+   labs=[{...lab,ownerKind:'team',ownerId:'team.class'}];
+   await page.goto(origin+'/lab?id='+lab.id);
+   await page.getByRole('button',{name:'Open console'}).waitFor();
+   assert.equal(await page.getByRole('button',{name:'End lab',exact:true}).count(),0,'student cannot end shared lab');
+   role='instructor';await page.reload();
+   await page.getByRole('button',{name:'End lab',exact:true}).waitFor();
+   role='participant';labs=[lab];await page.reload();
+   await page.getByRole('button',{name:'End lab',exact:true}).waitFor();
+   assert.deepEqual(errors,[]);
+   console.log(`PASS: ${name} group deletion hidden for students, retained for instructor and personal labs`);
+   continue;
+  }
+  if(process.env.LABCENTRAL_QUERY_POLLING_ONLY){
+   labs=[{...lab,resources:Array.from({length:4},(_,i)=>({id:`vm.machine${i}`,kind:'VM',phase:'ready'}))}];
+   const originalResources=lab.resources;lab.resources=labs[0].resources;
+   await page.goto(origin+'/lab?id='+lab.id);
+   await page.getByRole('button',{name:'Open console'}).nth(3).waitFor();
+   await page.waitForTimeout(11000);
+   const topology=reads.filter(p=>p.endsWith('/topology')).length;
+   const catalog=reads.filter(p=>p==='/extensions/browser').length;
+   const navigation=reads.filter(p=>p.startsWith('/extensions/browser?')).length;
+   assert(topology>=1&&topology<=3,`four rows must share topology polling: ${topology}`);
+   assert.equal(catalog,1,'resource and lab panels share the cached catalogue');
+   assert.equal(navigation,new Set(reads.filter(p=>p.startsWith('/extensions/browser?'))).size,'each project-scoped navigation catalogue remains fresh');
+   assert.deepEqual(errors,[]);lab.resources=originalResources;
+   console.log(`PASS: ${name} four-resource polling: topology=${topology}, catalogue=${catalog}, navigation=${navigation} over 11s`);
+   continue;
+  }
   await page.waitForLoadState("networkidle");await page.goto(origin);await page.getByRole('heading',{name:'Your next lab starts here'}).waitFor();
   assert.equal(await page.getByRole('link',{name:'People',exact:true}).count(),0);
   await page.evaluate(()=>{
@@ -143,6 +173,20 @@ try{for(const[name,engine]of Object.entries({chromium,firefox,webkit})){
   await classroom.getByText('2 deletions queued.',{exact:true}).waitFor();
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-a/actions/destroy'));
   assert(mutations.some(m=>m.path==='/lab-instances/instance.bulk-b/actions/destroy'));
+  buildTemplate=true;await page.goto(origin+'/classroom');
+  await classroom.getByLabel('Alex Morgan',{exact:true}).check();await classroom.getByRole('button',{name:'Launch selected labs',exact:true}).click();
+  await classroom.getByRole('dialog').getByLabel('Template',{exact:true}).selectOption(template.id);await classroom.getByLabel('Workstation name',{exact:true}).fill('prepared-class');
+  const directBatches=mutations.filter(m=>m.path==='/lab-instance-batches').length;
+  await classroom.getByRole('dialog').getByRole('button',{name:'Launch selected labs',exact:true}).click();
+  await classroom.getByText('Classroom launch · Waiting for image approval',{exact:true}).waitFor();
+  assert.equal(mutations.filter(m=>m.path==='/lab-instance-batches').length,directBatches,'Build-backed classroom bypassed direct validation');
+  assert.equal(preparations[0].request.preparation.version,1);assert.deepEqual(preparations[0].request.preparation.owners,[{Kind:'user',ID:'user.student'}]);
+  await page.reload();await classroom.getByRole('tab',{name:'Launch activity',exact:true}).click();await classroom.getByText('Classroom launch · Waiting for image approval',{exact:true}).waitFor();
+  await page.goto(origin+'/launch');await page.getByLabel('Workstation name',{exact:false}).fill('prepared-personal');await page.getByRole('button',{name:'Launch lab',exact:true}).click();
+  await page.getByRole('region',{name:'Lab preparation'}).getByText('Debian starter · Waiting for image approval',{exact:true}).waitFor();
+  assert.equal(preparations[1].request.preparation.version,2);assert.equal(preparations[1].request.preparation.inputs[0].String,'prepared-personal');assert.equal(preparations[1].request.preparation.owners,undefined);
+  await page.reload();await page.getByRole('region',{name:'Lab preparation'}).getByText('Debian starter · Waiting for image approval',{exact:true}).waitFor();
+  preparations[1].state='failed';preparations[1].failureCode='build_failed';preparations[1].result={};await page.getByRole('button',{name:'Refresh labs'}).click();await page.getByText('Debian starter · build_failed',{exact:true}).waitFor();
   await page.setViewportSize({width:390,height:844});
   for(const route of ['','launch','classroom','people','settings']){
    await page.waitForLoadState("networkidle");await page.goto(origin+'/'+route);await page.getByRole('heading',{level:1}).waitFor();if(route==='classroom')await page.frameLocator('iframe[title="Classroom"]').getByLabel('Alex Morgan',{exact:true}).waitFor();await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${name} ${route} mobile overflow`);if(name==='chromium')await page.screenshot({path:new URL(`mobile-${route||'labs'}.png`,shots).pathname,fullPage:true});

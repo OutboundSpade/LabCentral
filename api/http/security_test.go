@@ -602,3 +602,16 @@ func secureRequest(method, path string, body []byte) *http.Request {
 	}
 	return request
 }
+
+func TestStalePublicRequestCannotEraseReplacementSession(t *testing.T) {
+	server := localAuthenticationServer(t, nil)
+	for _, path := range []string{"/", "/api/v1/server-info"} {
+		request := secureRequest(http.MethodGet, path, nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: strings.Repeat("stale", 10)})
+		response := httptest.NewRecorder()
+		server.Handler.ServeHTTP(response, request)
+		if response.Code != 200 || len(response.Result().Cookies()) != 0 {
+			t.Fatalf("stale public response overwrites newer cookie: %s %d", path, response.Code)
+		}
+	}
+}

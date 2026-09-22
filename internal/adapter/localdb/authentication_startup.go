@@ -11,7 +11,7 @@ import (
 // before labd starts a provider process or contacts an OIDC issuer.
 func (s *Store) ValidateAuthenticationStartup(ctx context.Context, mode string) error {
 	var recorded string
-	err := s.db.QueryRowContext(ctx, `SELECT setting_value FROM labcentral_installation_settings WHERE setting_key = 'authentication_mode'`).Scan(&recorded)
+	err := s.readDB().QueryRowContext(ctx, `SELECT setting_value FROM labcentral_installation_settings WHERE setting_key = 'authentication_mode'`).Scan(&recorded)
 	switch {
 	case err == nil:
 		if mode == "none" {
@@ -33,16 +33,16 @@ func (s *Store) ValidateAuthenticationStartup(ctx context.Context, mode string) 
 	}
 
 	var users, instances, jobs int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_users`).Scan(&users); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_users`).Scan(&users); err != nil {
 		return fmt.Errorf("inspect authentication identities: %w", err)
 	}
 	if users != 0 {
 		return fmt.Errorf("cannot enable %s authentication: database contains %d user identity record(s) but has no recorded authentication mode; restore consistent installation metadata or deploy with a new database", mode, users)
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_local_instances`).Scan(&instances); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_local_instances`).Scan(&instances); err != nil {
 		return fmt.Errorf("inspect legacy lab instances: %w", err)
 	}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_jobs`).Scan(&jobs); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_jobs`).Scan(&jobs); err != nil {
 		return fmt.Errorf("inspect legacy durable jobs: %w", err)
 	}
 	if instances != 0 || jobs != 0 {

@@ -53,6 +53,7 @@ export function readKey(path: string) {
 }
 
 export function readFreshness(path: string) {
+  if (/^\/lab-instances\/[^/]+\/topology(?:\?|$)/.test(path)) return 5_000;
   if (/^\/(lab-instances|operations|lab-instance-batches)(\/|\?|$)/.test(path))
     return 1_000;
   if (/^\/admin\/lab-instances\/[^/]+\/usage(?:\?|$)/.test(path)) return 5_000;
@@ -83,4 +84,9 @@ export function listenForIdentityChanges() {
     channel?.close();
     channel = undefined;
   };
+}
+
+// Used only to recover a read racing cookie rotation, never to authorize it.
+export function matchesRequestIdentity(session: {subjectId: string; roles: string[] | null}) {
+  return identity !== "" && identity === JSON.stringify([session.subjectId, [...(session.roles ?? [])].sort()]);
 }

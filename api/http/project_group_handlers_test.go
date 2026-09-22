@@ -178,3 +178,33 @@ func TestRecentBatchHistoryAndLabPresentation(t *testing.T) {
 		t.Fatal("lab presentation", lab)
 	}
 }
+
+func TestParticipantCannotEndGroupLab(t *testing.T) {
+	f := newGovernanceHTTPFixture(t)
+	ctx := context.Background()
+	if err := f.database.PutRoleAssignment(ctx, app.RoleAssignmentRecord{ID: "role.student-delete", SubjectKind: app.SubjectUser, SubjectID: "user.auditor", ScopeKind: app.ScopeProject, ScopeID: "project.alpha", Role: app.RoleParticipant, ValidFrom: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+
+	admin := f.client(t, "admin", "a-production-length-password")
+	student := f.client(t, "auditor", "an-auditor-production-password")
+	root := "/api/v1/projects/project.alpha/groups"
+	response := admin.request(http.MethodPost, root, map[string]any{"names": []string{"Shared lab"}, "enrollmentOpen": true}, "", "delete-group-setup")
+	requireGovernanceStatus(t, response, 200)
+	var groups app.ProjectGroupPage
+	decodeGovernanceResponse(t, response, &groups)
+	group := groups.Items[0]
+	requireGovernanceStatus(t, student.request(http.MethodPost, root+"/"+string(group.ID)+"/join", nil, "", "delete-group-join"), 200)
+	instance := seedQuotaHTTPInstance(t, f.database, "instance.group-delete", "project.alpha", "user.admin", app.OwnerTeam, string(group.ID), 3600)
+	if _, err := f.sqlDB.Exec(`UPDATE labcentral_jobs SET state='succeeded' WHERE operation_id=?`, "operation."+string(instance.ID)); err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/lab-instances/" + string(instance.ID)
+	requireGovernanceStatus(t, student.request(http.MethodGet, path, nil, "", ""), 200)
+	requireGovernanceStatus(t, student.request(http.MethodPost, path+"/actions/destroy", struct{}{}, "", "student-end-denied"), 404)
+	current, err := f.database.GetInstance(ctx, instance.ID)
+	if err != nil || current.DesiredLifecycle != instance.DesiredLifecycle {
+		t.Fatal("denial changed lifecycle", err)
+	}
+	requireGovernanceStatus(t, admin.request(http.MethodPost, path+"/actions/destroy", struct{}{}, "", "instructor-end-allowed"), 202)
+}

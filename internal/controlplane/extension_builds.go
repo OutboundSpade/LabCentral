@@ -332,7 +332,7 @@ func (s *Service) workContext(parent context.Context, c app.ExtensionWorkClaim, 
 						return
 					}
 				}
-				if s.store.(app.BuildStore).RenewExtensionWork(ctx, c, 30*time.Second) != nil {
+				if s.store.(app.BuildStore).RenewExtensionWork(ctx, c, s.workLease()) != nil {
 					cancel()
 					return
 				}
@@ -539,7 +539,7 @@ func (s *Service) RunBuildWork(ctx context.Context, owner string, report func(er
 			if b.Available != nil && !b.Available() {
 				continue
 			}
-			c, e := store.ClaimExtensionWork(ctx, owner, key, domain.WorkBuild, 30*time.Second)
+			c, e := store.ClaimExtensionWork(ctx, owner, key, domain.WorkBuild, s.workLease())
 			if e == nil {
 				if e = s.executeBuild(ctx, b, c); e != nil && report != nil {
 					report(e)
@@ -550,14 +550,14 @@ func (s *Service) RunBuildWork(ctx context.Context, owner string, report func(er
 			if !slices.Contains(target.Features, "image-import-v1") {
 				continue
 			}
-			c, e := store.ClaimExtensionWork(ctx, owner, "core-import/"+string(target.ID), domain.WorkImageImport, 30*time.Second)
+			c, e := store.ClaimExtensionWork(ctx, owner, "core-import/"+string(target.ID), domain.WorkImageImport, s.workLease())
 			if e == nil {
 				if e = s.executeImport(ctx, c); e != nil && report != nil {
 					report(e)
 				}
 			}
 		}
-		c, e := store.ClaimExtensionWork(ctx, owner, "core-preparation/default", domain.WorkPreparation, 30*time.Second)
+		c, e := store.ClaimExtensionWork(ctx, owner, "core-preparation/default", domain.WorkPreparation, s.workLease())
 		if e == nil {
 			if e = s.executePreparation(ctx, c); e != nil && report != nil {
 				report(e)

@@ -88,66 +88,78 @@ func TestEgressSelectionPreservesDeniedNetworks(t *testing.T) {
 }
 
 func TestEgressPlansFourMachinesAndRejectsGatewayTampering(t *testing.T) {
-	config, target := egressTestConfig(t)
-	lab := []byte(strings.Replace(string(canonicalMutationLab()), `"mode":"deny"`, `"mode":"allow"`, 1))
-	var doc canonicalLabDocument
-	_ = json.Unmarshal(lab, &doc)
-	base := doc.Resources[1]
-	doc.Resources = doc.Resources[:1]
-	for i := 0; i < 4; i++ {
-		resource := base
-		resource.ID = fmt.Sprintf("vm.machine%d", i)
-		resource.Spec = []byte(strings.Replace(string(base.Spec), "10.20.0.10", fmt.Sprintf("10.20.0.%d", 10+i), 1))
-		doc.Resources = append(doc.Resources, resource)
-	}
-	lab, _ = json.Marshal(doc)
-	service := NewService()
-	validation, err := service.ValidateLab(context.Background(), &wire.ValidateLabRequest{Target: target, CanonicalLabJson: lab})
-	if err != nil || len(validation.Errors) > 0 {
-		t.Fatalf("validate %v %+v", err, validation.Errors)
-	}
-	networkJSON, _ := json.Marshal(doc.Resources[0])
-	ninput := &wire.ResourceMutationInput{Context: completeCall("plan-network", "network.lab", target.TargetId), Target: target, CanonicalResourceJson: networkJSON, ProviderPlan: validation.ProviderPlan, OwnershipTokens: []string{"owned"}}
-	net, err := service.PlanResource(context.Background(), &wire.PlanResourceRequest{Input: ninput})
-	if err != nil || net.Error != nil {
-		t.Fatalf("network %v %+v", err, net.Error)
-	}
-	var nplan QEMUPlan
-	_ = json.Unmarshal(net.ProviderPlan, &nplan)
-	if nplan.Networks[0].Gateway != "10.20.0.1" || nplan.Networks[0].VLAN != 211 {
-		t.Fatalf("network binding %+v", nplan.Networks)
-	}
-	var excluded []*wire.AllocationClaim
-	for i := 0; i < 4; i++ {
-		resource := doc.Resources[i+1]
-		vmJSON, _ := json.Marshal(resource)
-		input := &wire.ResourceMutationInput{Context: completeCall(fmt.Sprintf("plan-vm%d", i), resource.ID, target.TargetId), Target: target, CanonicalResourceJson: vmJSON, ProviderPlan: validation.ProviderPlan, OwnershipTokens: []string{"owned"}, Dependencies: []*wire.ResourceDependency{{LogicalResourceId: "network.lab", ProviderPlan: net.ProviderPlan, ProviderPlanDigest: net.ProviderPlanDigest}}}
-		r, err := service.PlanResource(context.Background(), &wire.PlanResourceRequest{Input: input, ExcludedAllocations: excluded})
-		if err != nil || r.Error != nil {
-			t.Fatalf("VM %d %v %+v", i, err, r.Error)
-		}
-		excluded = append(excluded, r.ProposedAllocations...)
-		var plan QEMUPlan
-		_ = json.Unmarshal(r.ProviderPlan, &plan)
-		if plan.Networks[0].Gateway != "10.20.0.1" || validatePlanBindings(config, plan, vmJSON) != nil || bindingWithoutVMFields(plan.Networks[0]) != nplan.Networks[0] {
-			t.Fatal("gateway not bound across network dependency and VM")
-		}
-		for _, address := range []string{"10.20.0.1", "10.20.0.0", "10.20.0.255"} {
-			changed := strings.Replace(string(vmJSON), fmt.Sprintf("10.20.0.%d", 10+i), address, 1)
-			input.CanonicalResourceJson = []byte(changed)
-			bad, _ := service.PlanResource(context.Background(), &wire.PlanResourceRequest{Input: input})
-			if bad.Error == nil {
-				t.Fatalf("reserved address %s accepted", address)
+	for _, version := range []string{targetConfigV15, targetConfigV16} {
+		t.Run(version, func(t *testing.T) {
+			config, target := egressTestConfig(t)
+			if version == targetConfigV16 {
+				config.SchemaVersion = version
+				config.StorageCapacityFloors = []StorageCapacityFloor{{ID: "local-lvm", MinimumTotalBytes: 1 << 40}}
+				inventory := mutationTestInventory()
+				inventory.Storages[0].TotalBytes = 3 << 40
+				config.Qualification.InventoryDigest, _ = inventory.MutationDigestForConfig(config)
+				target.ConfigEnvelope, _ = json.Marshal(config)
 			}
-		}
-		plan.Networks[0].Gateway = "10.20.0.2"
-		if validatePlanBindings(config, plan, vmJSON) == nil {
-			t.Fatal("tampered gateway accepted")
-		}
-	}
-	nplan.Networks[0].Gateway = ""
-	if validatePlanBindings(config, nplan, networkJSON) == nil {
-		t.Fatal("network gateway removal accepted")
+			lab := []byte(strings.Replace(string(canonicalMutationLab()), `"mode":"deny"`, `"mode":"allow"`, 1))
+			var doc canonicalLabDocument
+			_ = json.Unmarshal(lab, &doc)
+			base := doc.Resources[1]
+			doc.Resources = doc.Resources[:1]
+			for i := 0; i < 4; i++ {
+				resource := base
+				resource.ID = fmt.Sprintf("vm.machine%d", i)
+				resource.Spec = []byte(strings.Replace(string(base.Spec), "10.20.0.10", fmt.Sprintf("10.20.0.%d", 10+i), 1))
+				doc.Resources = append(doc.Resources, resource)
+			}
+			lab, _ = json.Marshal(doc)
+			service := NewService()
+			validation, err := service.ValidateLab(context.Background(), &wire.ValidateLabRequest{Target: target, CanonicalLabJson: lab})
+			if err != nil || len(validation.Errors) > 0 {
+				t.Fatalf("validate %v %+v", err, validation.Errors)
+			}
+			networkJSON, _ := json.Marshal(doc.Resources[0])
+			ninput := &wire.ResourceMutationInput{Context: completeCall("plan-network", "network.lab", target.TargetId), Target: target, CanonicalResourceJson: networkJSON, ProviderPlan: validation.ProviderPlan, OwnershipTokens: []string{"owned"}}
+			net, err := service.PlanResource(context.Background(), &wire.PlanResourceRequest{Input: ninput})
+			if err != nil || net.Error != nil {
+				t.Fatalf("network %v %+v", err, net.Error)
+			}
+			var nplan QEMUPlan
+			_ = json.Unmarshal(net.ProviderPlan, &nplan)
+			if nplan.Networks[0].Gateway != "10.20.0.1" || nplan.Networks[0].VLAN != 211 {
+				t.Fatalf("network binding %+v", nplan.Networks)
+			}
+			var excluded []*wire.AllocationClaim
+			for i := 0; i < 4; i++ {
+				resource := doc.Resources[i+1]
+				vmJSON, _ := json.Marshal(resource)
+				input := &wire.ResourceMutationInput{Context: completeCall(fmt.Sprintf("plan-vm%d", i), resource.ID, target.TargetId), Target: target, CanonicalResourceJson: vmJSON, ProviderPlan: validation.ProviderPlan, OwnershipTokens: []string{"owned"}, Dependencies: []*wire.ResourceDependency{{LogicalResourceId: "network.lab", ProviderPlan: net.ProviderPlan, ProviderPlanDigest: net.ProviderPlanDigest}}}
+				r, err := service.PlanResource(context.Background(), &wire.PlanResourceRequest{Input: input, ExcludedAllocations: excluded})
+				if err != nil || r.Error != nil {
+					t.Fatalf("VM %d %v %+v", i, err, r.Error)
+				}
+				excluded = append(excluded, r.ProposedAllocations...)
+				var plan QEMUPlan
+				_ = json.Unmarshal(r.ProviderPlan, &plan)
+				if plan.Networks[0].Gateway != "10.20.0.1" || validatePlanBindings(config, plan, vmJSON) != nil || bindingWithoutVMFields(plan.Networks[0]) != nplan.Networks[0] {
+					t.Fatal("gateway not bound across network dependency and VM")
+				}
+				for _, address := range []string{"10.20.0.1", "10.20.0.0", "10.20.0.255"} {
+					changed := strings.Replace(string(vmJSON), fmt.Sprintf("10.20.0.%d", 10+i), address, 1)
+					input.CanonicalResourceJson = []byte(changed)
+					bad, _ := service.PlanResource(context.Background(), &wire.PlanResourceRequest{Input: input})
+					if bad.Error == nil {
+						t.Fatalf("reserved address %s accepted", address)
+					}
+				}
+				plan.Networks[0].Gateway = "10.20.0.2"
+				if validatePlanBindings(config, plan, vmJSON) == nil {
+					t.Fatal("tampered gateway accepted")
+				}
+			}
+			nplan.Networks[0].Gateway = ""
+			if validatePlanBindings(config, nplan, networkJSON) == nil {
+				t.Fatal("network gateway removal accepted")
+			}
+		})
 	}
 }
 

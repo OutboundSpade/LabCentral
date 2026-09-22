@@ -21,7 +21,7 @@ func projectGroupMigration() []string {
 func (s *Store) requireGroupProjectAuthorityTx(ctx context.Context, tx *sql.Tx, project domain.ProjectID, actor domain.UserID, admin bool) error {
 	roles := "'platform-administrator','organization-administrator','lab-author','instructor','participant','viewer'"
 	if admin {
-		roles = "'platform-administrator','organization-administrator'"
+		roles = "'platform-administrator','organization-administrator','instructor'"
 	}
 	return s.requireGroupRolesTx(ctx, tx, project, actor, roles)
 }
@@ -82,7 +82,7 @@ func (s *Store) ListProjectGroups(ctx context.Context, project domain.ProjectID,
 	if limit == 0 || limit > 200 || len(after) > 128 {
 		return out, fmt.Errorf("group list bounds")
 	}
-	err = s.workTx(ctx, func(tx *sql.Tx) error {
+	err = s.readTx(ctx, func(tx *sql.Tx) error {
 		if e := s.requireGroupProjectAuthorityTx(ctx, tx, project, actor, false); e != nil {
 			return e
 		}
@@ -316,7 +316,7 @@ func (s *Store) ListProjectGroupMembers(ctx context.Context, project domain.Proj
 	if limit == 0 || limit > 200 || len(after) > 128 {
 		return out, fmt.Errorf("member list bounds")
 	}
-	err = s.workTx(ctx, func(tx *sql.Tx) error {
+	err = s.readTx(ctx, func(tx *sql.Tx) error {
 		if e := s.requireGroupProjectAuthorityTx(ctx, tx, project, actor, false); e != nil {
 			return e
 		}
@@ -409,6 +409,6 @@ func (s *Store) DeleteProjectGroup(ctx context.Context, r app.DeleteProjectGroup
 
 func (s *Store) InstancePresentation(ctx context.Context, id domain.InstanceID) (app.InstancePresentation, error) {
 	var out app.InstancePresentation
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT COALESCE(t.name,''),COALESCE(t.description,''),COALESCE(d.name,g.name,u.display_name,tm.name,'') FROM labcentral_local_instances i LEFT JOIN labcentral_template_revisions r ON r.revision_id=i.revision_id LEFT JOIN labcentral_lab_templates t ON t.template_id=r.template_id AND t.project_id=i.project_id LEFT JOIN labcentral_project_groups g ON i.owner_kind='team' AND g.team_id=i.owner_id AND g.project_id=i.project_id LEFT JOIN labcentral_deleted_project_groups d ON d.team_id=g.team_id LEFT JOIN labcentral_users u ON i.owner_kind='user' AND u.user_id=i.owner_id LEFT JOIN labcentral_teams tm ON i.owner_kind='team' AND tm.team_id=i.owner_id WHERE i.instance_id=?`), id).Scan(&out.Name, &out.Instructions, &out.OwnerName)
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT COALESCE(t.name,''),COALESCE(t.description,''),COALESCE(d.name,g.name,u.display_name,tm.name,'') FROM labcentral_local_instances i LEFT JOIN labcentral_template_revisions r ON r.revision_id=i.revision_id LEFT JOIN labcentral_lab_templates t ON t.template_id=r.template_id AND t.project_id=i.project_id LEFT JOIN labcentral_project_groups g ON i.owner_kind='team' AND g.team_id=i.owner_id AND g.project_id=i.project_id LEFT JOIN labcentral_deleted_project_groups d ON d.team_id=g.team_id LEFT JOIN labcentral_users u ON i.owner_kind='user' AND u.user_id=i.owner_id LEFT JOIN labcentral_teams tm ON i.owner_kind='team' AND tm.team_id=i.owner_id WHERE i.instance_id=?`), id).Scan(&out.Name, &out.Instructions, &out.OwnerName)
 	return out, err
 }

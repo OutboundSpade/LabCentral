@@ -128,6 +128,10 @@ func projectGroupContract(t *testing.T, s *Store) {
 	if err = evaluator.Authorize(ctx, check); err != nil {
 		t.Fatal("group owner denied", err)
 	}
+	check.Action = app.ActionInstanceDestroy
+	if err = evaluator.Authorize(ctx, check); !errors.Is(err, authorization.ErrDenied) {
+		t.Fatal("participant may not destroy a group lab", err)
+	}
 	check.Action = app.ActionTeamManage
 	if err = evaluator.Authorize(ctx, check); err == nil {
 		t.Fatal("group role escalated")
@@ -145,6 +149,10 @@ func projectGroupContract(t *testing.T, s *Store) {
 	}
 	instance.OwnerKind = app.OwnerTeam
 	instance.OwnerID = string(group.ID)
+	if _, err = s.QueueDestroy(ctx, quotaTestDestroyRequest(instance.ID, "operation.student-group-delete", user, "student-group-delete", time.Time{})); !errors.Is(err, app.ErrAuthorityChanged) {
+		t.Fatal("transaction permitted participant group deletion", err)
+	}
+
 	if _, err = evaluator.AuthorizeInstance(ctx, user, app.ActionInstanceRead, instance.ID); err != nil {
 		t.Fatal(err)
 	}

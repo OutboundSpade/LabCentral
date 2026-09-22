@@ -22,6 +22,7 @@ import (
 )
 
 type OIDCConfig struct {
+	AutoProvisionProject  string
 	Issuer                string
 	ClientID              string
 	ClientSecret          string
@@ -33,16 +34,17 @@ type OIDCConfig struct {
 }
 
 type OIDCService struct {
-	repository application.AuthRepository
-	manager    *Manager
-	keyring    *Keyring
-	issuer     string
-	clientID   string
-	verifier   *oidc.IDTokenVerifier
-	oauth      oauth2.Config
-	lifetime   time.Duration
-	httpClient *http.Client
-	now        func() time.Time
+	autoProvisionProject string
+	repository           application.AuthRepository
+	manager              *Manager
+	keyring              *Keyring
+	issuer               string
+	clientID             string
+	verifier             *oidc.IDTokenVerifier
+	oauth                oauth2.Config
+	lifetime             time.Duration
+	httpClient           *http.Client
+	now                  func() time.Time
 }
 
 type OIDCCallbackResult struct {
@@ -59,6 +61,14 @@ type OIDCBeginResult struct {
 func NewOIDCService(ctx context.Context, repository application.AuthRepository, manager *Manager, keyring *Keyring, configuration OIDCConfig) (*OIDCService, error) {
 	if repository == nil || manager == nil || keyring == nil {
 		return nil, fmt.Errorf("OIDC repository, session manager, and keyring are required")
+	}
+	if configuration.AutoProvisionProject != "" {
+		if _, ok := repository.(application.OIDCIdentitySynchronizer); !ok {
+			return nil, fmt.Errorf("OIDC provisioning is not supported by this repository")
+		}
+		if _, err := repository.ResolveScope(ctx, application.ScopeProject, configuration.AutoProvisionProject); err != nil {
+			return nil, fmt.Errorf("OIDC provisioning project does not exist")
+		}
 	}
 	issuer, err := strictHTTPSURL(configuration.Issuer, false)
 	if err != nil {
@@ -108,7 +118,7 @@ func NewOIDCService(ctx context.Context, repository application.AuthRepository, 
 	if endpoint.AuthURL != metadata.AuthorizationEndpoint || endpoint.TokenURL != metadata.TokenEndpoint {
 		return nil, fmt.Errorf("OIDC endpoint metadata is inconsistent")
 	}
-	return &OIDCService{
+	return &OIDCService{autoProvisionProject: configuration.AutoProvisionProject,
 		repository: repository, manager: manager, keyring: keyring, issuer: issuer.String(), clientID: configuration.ClientID,
 		verifier: provider.Verifier(&oidc.Config{ClientID: configuration.ClientID, Now: configuration.Now}),
 		oauth: oauth2.Config{
@@ -192,15 +202,26 @@ func (s *OIDCService) Callback(ctx context.Context, state, code, browserBinding 
 		return OIDCCallbackResult{}, ErrUnauthenticated
 	}
 	var claims struct {
-		Subject         string `json:"sub"`
-		Nonce           string `json:"nonce"`
-		AuthorizedParty string `json:"azp"`
+		Subject           string `json:"sub"`
+		Name              string `json:"name"`
+		PreferredUsername string `json:"preferred_username"`
+		Nonce             string `json:"nonce"`
+		AuthorizedParty   string `json:"azp"`
 	}
 	if err := idToken.Claims(&claims); err != nil || idToken.Issuer != s.issuer || !validAudience(idToken.Audience, claims.AuthorizedParty, s.clientID) || claims.Subject == "" || len(claims.Subject) > 512 || claims.Nonce == "" ||
 		!hmacEqual(flow.NonceHash, keyedHash(key.material, "oidc-nonce", claims.Nonce)) {
 		return OIDCCallbackResult{}, ErrUnauthenticated
 	}
-	user, err := s.repository.UserByExternalIdentity(ctx, s.issuer, claims.Subject)
+	name := strings.TrimSpace(claims.Name)
+	if name == "" {
+		name = strings.TrimSpace(claims.PreferredUsername)
+	}
+	var user application.UserRecord
+	if syncer, ok := s.repository.(application.OIDCIdentitySynchronizer); ok {
+		user, err = syncer.SyncOIDCUser(ctx, s.issuer, claims.Subject, name, s.autoProvisionProject)
+	} else {
+		user, err = s.repository.UserByExternalIdentity(ctx, s.issuer, claims.Subject)
+	}
 	if err != nil || user.Disabled {
 		return OIDCCallbackResult{}, ErrUnauthenticated
 	}

@@ -127,7 +127,7 @@ is authorized. Lab responses add optional `name`, `ownerName`, and `instructions
 
 ## Browser host contract 6
 
-The current feature packages require host 6. `page.modal({open: boolean})`, gated
+Host 6 adds `page.modal({open: boolean})`, gated
 by `page.presentation` and the page slot, coordinates a native feature dialog
 with the host backdrop and focus isolation. Closing, navigation or channel failure
 restores the host's previous inert state. It grants no data or API authority; old
@@ -141,3 +141,21 @@ the existing typed API, project checks, optimistic version and idempotency key.
 Partial failures are named; retry repeats only failed commands with the original
 key and payload. Successful requests leave the selection. Deployment preparation
 remains one explicit team owner per command, independent of Classroom permissions.
+
+## Browser host contract 7
+
+Classroom 1.3.3 requires host 7 and declares `builds.read` for its caller-scoped
+preparation history. The typed `labs.batchPrepare` operation maps bounded user
+IDs to the existing version-1 author batch preparation API. It binds the current
+project and accepts declared inputs, lifetime and acknowledgement; it accepts no
+actor, project, secret input or provider override. Core retains author checks,
+image approval, target qualification and atomic batch admission. Batch preparation
+requires author privileges as well as classroom launch authority; version-2
+personal and team preparation retains its participant permissions.
+
+Templates with build recipes use preparation from Classroom and My labs instead
+of direct rendering with unresolved build references. Pending approval and failed
+preparation remain visible after reload. Templates without builds retain direct
+launch and custom provider options. Build-backed launch uses template/environment
+defaults and rejects custom overrides explicitly. Existing host contracts and
+packages remain compatible; the qualified provider does not change.

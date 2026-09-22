@@ -43,10 +43,10 @@ func scanExtensionWork(row scanner) (app.ExtensionWork, error) {
 	return w, nil
 }
 func (s *Store) GetExtensionWork(ctx context.Context, id domain.OperationID) (app.ExtensionWork, error) {
-	return scanExtensionWork(s.db.QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.operation_id=?`), id))
+	return scanExtensionWork(s.readDB().QueryRowContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.operation_id=?`), id))
 }
 func (s *Store) ListExtensionWork(ctx context.Context, project domain.ProjectID) ([]app.ExtensionWork, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.project_id=? ORDER BY w.created_at_us DESC,w.operation_id LIMIT 200`), project)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.project_id=? ORDER BY w.created_at_us DESC,w.operation_id LIMIT 200`), project)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (s *Store) ListExtensionWork(ctx context.Context, project domain.ProjectID)
 	return out, rows.Err()
 }
 func (s *Store) ListOwnPreparations(ctx context.Context, project domain.ProjectID, actor domain.UserID) ([]app.ExtensionWork, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.project_id=? AND w.actor_id=? AND j.subject_kind='preparation' ORDER BY w.created_at_us DESC,w.operation_id LIMIT 200`), project, actor)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id WHERE w.project_id=? AND w.actor_id=? AND j.subject_kind='preparation' ORDER BY w.created_at_us DESC,w.operation_id LIMIT 200`), project, actor)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +77,24 @@ func (s *Store) ListOwnPreparations(ctx context.Context, project domain.ProjectI
 	}
 	return out, rows.Err()
 }
+
+// readTx keeps a read's authorization and result in one snapshot without
+// occupying the SQLite writer. Existing PostgreSQL locking is unchanged.
+func (s *Store) readTx(ctx context.Context, f func(*sql.Tx) error) error {
+	if s.readers == nil {
+		return s.workTx(ctx, f)
+	}
+	tx, err := s.readers.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := f(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) workTx(ctx context.Context, f func(*sql.Tx) error) error {
 	for attempt := 0; ; attempt++ {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})

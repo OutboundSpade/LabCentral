@@ -1,3 +1,4 @@
+import { renderNotes } from "./notes.js";
 import {
   app,
   el,
@@ -81,7 +82,7 @@ await initialize(async () => {
   };
   const selection = field(browse, "Template", "select"),
     revision = field(browse, "Revision", "select");
-  const description = el("p");
+  const description = el("div");
   browse.append(description);
   const sourceView = details("View source", browse),
     sourceText = el("pre");
@@ -179,7 +180,7 @@ await initialize(async () => {
     const token = ++generation;
     loadedRevision = "";
     selected = templates.find((t) => t.id === selection.value);
-    description.textContent = selected?.description ?? "";
+    renderNotes(description, selected?.description ?? "");
     if (name) {
       name.value = selected?.name ?? "";
       descriptionInput.value = selected?.description ?? "";

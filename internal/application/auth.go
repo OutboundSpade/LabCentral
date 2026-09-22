@@ -31,6 +31,7 @@ const (
 	ActionInstanceRead             PermissionAction = "instance.read"
 	ActionInstanceTTLExtend        PermissionAction = "instance.ttl.extend"
 	ActionInstanceDestroy          PermissionAction = "instance.destroy"
+	ActionAccessSessionRead        PermissionAction = "accessSession.read"
 	ActionAccessSessionCreate      PermissionAction = "accessSession.create"
 	ActionAccessSessionRevoke      PermissionAction = "accessSession.revoke"
 	ActionQuotaManage              PermissionAction = "quota.manage"
@@ -189,13 +190,14 @@ type OIDCFlowRecord struct {
 }
 
 type AuthorizationSnapshot struct {
-	ProjectTeams []domain.ProjectTeamRelationship
-	User         UserRecord
-	Memberships  []MembershipRecord
-	Assignments  []RoleAssignmentRecord
-	Projects     []ProjectRecord
-	Teams        []TeamRecord
-	Grants       []TargetGrantRecord
+	ParticipantDeploymentDisabled bool
+	ProjectTeams                  []domain.ProjectTeamRelationship
+	User                          UserRecord
+	Memberships                   []MembershipRecord
+	Assignments                   []RoleAssignmentRecord
+	Projects                      []ProjectRecord
+	Teams                         []TeamRecord
+	Grants                        []TargetGrantRecord
 }
 
 type ScopeHierarchy struct {
@@ -308,4 +310,15 @@ type AuthRepository interface {
 	InstanceBatchAccess(context.Context, domain.InstanceBatchID) (InstanceBatchAccessRecord, error)
 	ListInstanceAccessFiltered(context.Context, InstanceAccessFilter) ([]InstanceAccessRecord, error)
 	OwnerBelongsToScope(context.Context, OwnerKind, string, ScopeHierarchy, time.Time) (bool, error)
+}
+
+// OIDCIdentitySynchronizer is called only after verified issuer/subject authentication.
+type OIDCIdentitySynchronizer interface {
+	SyncOIDCUser(context.Context, string, string, string, string) (UserRecord, error)
+}
+
+// ProjectCapabilityReader returns UI hints after authorizing the project read.
+// It never authorizes execution; actual mutations must use Authorize again.
+type ProjectCapabilityReader interface {
+	ProjectCapabilities(context.Context, domain.UserID, domain.ProjectID) ([]PermissionAction, error)
 }

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/internal/adapter/jobsdb"
@@ -42,10 +43,16 @@ const (
 )
 
 type Store struct {
-	db       *sql.DB
-	jobs     *jobsdb.Store
-	dialect  jobsdb.Dialect
-	lockFile *os.File
+	accessLaunchOnce  sync.Once
+	accessLaunchSlots [256]chan struct{}
+	db                *sql.DB
+	readers           *sql.DB
+	checkpointer      *sql.DB
+	checkpointCancel  context.CancelFunc
+	checkpointDone    chan struct{}
+	jobs              *jobsdb.Store
+	dialect           jobsdb.Dialect
+	lockFile          *os.File
 }
 
 func Open(ctx context.Context, databasePath string) (*Store, error) {
@@ -68,7 +75,8 @@ func Open(ctx context.Context, databasePath string) (*Store, error) {
 		_ = lockFile.Close()
 		return nil, fmt.Errorf("another labd process owns %s", absolute)
 	}
-	dsn := (&url.URL{Scheme: "file", Path: absolute, RawQuery: "mode=rwc"}).String()
+	writerQuery := url.Values{"mode": {"rwc"}, "_pragma": {"foreign_keys(1)", "busy_timeout(5000)", "synchronous(FULL)", "wal_autocheckpoint(0)"}}
+	dsn := (&url.URL{Scheme: "file", Path: absolute, RawQuery: writerQuery.Encode()}).String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		_ = unix.Flock(int(lockFile.Fd()), unix.LOCK_UN)
@@ -86,6 +94,33 @@ func Open(ctx context.Context, databasePath string) (*Store, error) {
 	}
 	store.lockFile = lockFile
 	if err := store.Migrate(ctx); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	// WAL readers must not queue behind a writer's durable disk flush. Each
+	// connection is read-only; mutation and transaction paths retain db.
+	query := url.Values{"mode": {"ro"}, "_pragma": {"query_only(1)", "busy_timeout(5000)"}}
+	readDSN := (&url.URL{Scheme: "file", Path: absolute, RawQuery: query.Encode()}).String()
+	readers, err := sql.Open("sqlite", readDSN)
+	if err == nil {
+		readers.SetMaxOpenConns(8)
+		readers.SetMaxIdleConns(8)
+		err = readers.PingContext(ctx)
+	}
+	if err != nil {
+		if readers != nil {
+			_ = readers.Close()
+		}
+		_ = store.Close()
+		return nil, fmt.Errorf("open SQLite readers: %w", err)
+	}
+	store.readers = readers
+	store.jobs, err = jobsdb.NewWithReader(db, readers, jobsdb.DialectSQLite)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	if err := store.startCheckpointer(absolute); err != nil {
 		_ = store.Close()
 		return nil, err
 	}
@@ -856,6 +891,9 @@ func (s *Store) insertInstanceTx(ctx context.Context, tx *sql.Tx, request applic
 }
 
 func (s *Store) validateInstanceScope(ctx context.Context, tx *sql.Tx, request application.CreateInstanceRequest) error {
+	if err := s.requireDeploymentPolicyTx(ctx, tx, request.ProjectID, request.CreatedBy); err != nil {
+		return err
+	}
 	if request.RevisionID != "" {
 		if _, err := domain.NewRevisionID(string(request.RevisionID)); err != nil {
 			return err
@@ -1021,7 +1059,7 @@ func (s *Store) GetTargetSnapshot(ctx context.Context, targetID domain.ProviderT
 	var id string
 	var features []byte
 	var protocolMajor, protocolMinor, discoveredAt, validUntil int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT target_id, provider_kind, config_fingerprint, protocol_major, protocol_minor,
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT target_id, provider_kind, config_fingerprint, protocol_major, protocol_minor,
 		features_json, discovery_json, discovered_at_us, valid_until_us
 		FROM labcentral_local_provider_targets WHERE target_id = ?`), targetID).Scan(
 		&id, &snapshot.ProviderKind, &snapshot.ConfigFingerprint, &protocolMajor, &protocolMinor,
@@ -1235,7 +1273,7 @@ func (s *Store) queueDestroy(ctx context.Context, request application.QueueDestr
 	}
 	if request.ExpirationDueAt.IsZero() {
 		var owned application.InstanceRecord
-		err := tx.QueryRowContext(ctx, s.bind(`SELECT i.project_id,i.owner_kind,i.owner_id,i.provider_target_id FROM labcentral_local_instances i JOIN labcentral_project_groups g ON i.owner_kind='team' AND i.owner_id=g.team_id WHERE i.instance_id=?`), request.InstanceID).Scan(&owned.ProjectID, &owned.OwnerKind, &owned.OwnerID, &owned.ProviderTargetID)
+		err := tx.QueryRowContext(ctx, s.bind(`SELECT i.project_id,i.owner_kind,i.owner_id,i.provider_target_id FROM labcentral_local_instances i WHERE i.owner_kind='team' AND i.instance_id=?`), request.InstanceID).Scan(&owned.ProjectID, &owned.OwnerKind, &owned.OwnerID, &owned.ProviderTargetID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return application.EnqueueResult{}, err
 		}
@@ -1244,7 +1282,7 @@ func (s *Store) queueDestroy(ctx context.Context, request application.QueueDestr
 			if e != nil {
 				return application.EnqueueResult{}, e
 			}
-			if e = s.requireInstanceOwnerAuthorizationTx(ctx, tx, owned, request.SubjectID, now); e != nil {
+			if e = s.requireInstanceAuthorityTx(ctx, tx, owned, request.SubjectID, now, false); e != nil {
 				return application.EnqueueResult{}, e
 			}
 		}
@@ -1446,12 +1484,12 @@ const instanceRecordSelect = `SELECT instance_id, revision_id, project_id, owner
 		FROM labcentral_local_instances`
 
 func (s *Store) GetInstance(ctx context.Context, id domain.InstanceID) (application.InstanceRecord, error) {
-	row := s.db.QueryRowContext(ctx, s.bind(instanceRecordSelect+` WHERE instance_id = ?`), id)
+	row := s.readDB().QueryRowContext(ctx, s.bind(instanceRecordSelect+` WHERE instance_id = ?`), id)
 	return scanInstance(row)
 }
 
 func (s *Store) ListInstances(ctx context.Context) ([]application.InstanceRecord, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(instanceRecordSelect+` ORDER BY created_at_us, instance_id`))
+	rows, err := s.readDB().QueryContext(ctx, s.bind(instanceRecordSelect+` ORDER BY created_at_us, instance_id`))
 	if err != nil {
 		return nil, err
 	}
@@ -1484,7 +1522,7 @@ func (s *Store) ListInstancesByID(ctx context.Context, ids []domain.InstanceID) 
 		placeholders = append(placeholders, "?")
 	}
 	query := instanceRecordSelect + ` WHERE instance_id IN (` + strings.Join(placeholders, ",") + `) ORDER BY created_at_us, instance_id`
-	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -1567,7 +1605,7 @@ func scanInstance(row scanner) (application.InstanceRecord, error) {
 }
 
 func (s *Store) ListResources(ctx context.Context, instanceID domain.InstanceID) ([]application.ResourceRecord, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT instance_id, resource_id, kind, ordinal, canonical_resource_json, provider_plan, phase,
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT instance_id, resource_id, kind, ordinal, canonical_resource_json, provider_plan, phase,
 		ownership_token, provider_state, observed_state_json, error_code, error_message, updated_at_us
 		FROM labcentral_local_resources WHERE instance_id = ? ORDER BY ordinal`), instanceID)
 	if err != nil {
@@ -1599,7 +1637,7 @@ func (s *Store) GetOperation(ctx context.Context, id domain.OperationID) (applic
 	var record application.OperationRecord
 	var operationID, instanceID, kind, state string
 	var generation, attempt, createdAt, updatedAt int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT operation.operation_id, operation.instance_id, operation.actor_id, operation.kind, job.state,
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT operation.operation_id, operation.instance_id, operation.actor_id, operation.kind, job.state,
 		job.desired_generation, job.attempt, operation.message, operation.error_code, operation.created_at_us, operation.updated_at_us
 		FROM labcentral_local_operations operation JOIN labcentral_jobs job ON job.operation_id = operation.operation_id
 		WHERE operation.operation_id = ?`), id).Scan(&operationID, &instanceID, &record.ActorID, &kind, &state, &generation, &attempt,
@@ -1713,7 +1751,7 @@ func (s *Store) finishClaim(ctx context.Context, claim jobsdb.ClaimedJob, err er
 	if claim.Action == application.ClaimGetInvocation {
 		var recovery application.InvocationRecord
 		var digest string
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT invocation_id, operation_id, resource_id, action, idempotency_key, request_digest, state, provider_result
+		err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT invocation_id, operation_id, resource_id, action, idempotency_key, request_digest, state, provider_result
 			FROM labcentral_runtime_invocations WHERE operation_id = ? AND state = 'unknown'
 			ORDER BY updated_at_us DESC, invocation_id DESC LIMIT 1`), claim.Operation.ID).Scan(
 			&recovery.ID, &recovery.OperationID, &recovery.ResourceID, &recovery.Action, &recovery.IdempotencyKey,
@@ -2053,8 +2091,32 @@ func waitTransactionRetry(ctx context.Context, attempt int) error {
 	}
 }
 
+// readDB serves committed reads only. Transactional checks always use their
+// transaction, and constructors for caller-owned/in-memory pools keep the
+// existing connection behavior. PostgreSQL already has a concurrent pool.
+func (s *Store) readDB() *sql.DB {
+	if s.readers != nil {
+		return s.readers
+	}
+	return s.db
+}
+
 func (s *Store) Close() error {
 	var failures []string
+	if s.checkpointCancel != nil {
+		s.checkpointCancel()
+		<-s.checkpointDone
+	}
+	if s.checkpointer != nil {
+		if err := s.checkpointer.Close(); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+	if s.readers != nil {
+		if err := s.readers.Close(); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
 			failures = append(failures, err.Error())
@@ -2092,7 +2154,7 @@ var _ application.Store = (*Store)(nil)
 // ListTargetAllocationKeys snapshots occupied claims for planning. The subsequent
 // transaction still owns uniqueness; stale snapshots use bounded conflict retries.
 func (s *Store) ListTargetAllocationKeys(ctx context.Context, target domain.ProviderTargetID) ([]application.AllocationKey, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT namespace,claim_value FROM labcentral_provider_allocation_claims WHERE target_id=? AND state<>'released' ORDER BY namespace,claim_value LIMIT 4097`), target)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT namespace,claim_value FROM labcentral_provider_allocation_claims WHERE target_id=? AND state<>'released' ORDER BY namespace,claim_value LIMIT 4097`), target)
 	if err != nil {
 		return nil, err
 	}

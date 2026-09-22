@@ -18,7 +18,7 @@ func imageImportMigration() []string {
 }
 func (s *Store) GetImageImportPlan(ctx context.Context, id domain.OperationID) (p app.ImageImportPlan, err error) {
 	var raw string
-	err = s.db.QueryRowContext(ctx, s.bind(`SELECT plan_json FROM labcentral_image_import_plans WHERE operation_id=?`), id).Scan(&raw)
+	err = s.readDB().QueryRowContext(ctx, s.bind(`SELECT plan_json FROM labcentral_image_import_plans WHERE operation_id=?`), id).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, app.ErrNotFound
 	}

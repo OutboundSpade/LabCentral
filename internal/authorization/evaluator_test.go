@@ -25,7 +25,7 @@ var implementedActions = []application.PermissionAction{
 	application.ActionInstanceRead,
 	application.ActionInstanceTTLExtend,
 	application.ActionInstanceDestroy,
-	application.ActionAccessSessionCreate,
+	application.ActionAccessSessionRead, application.ActionAccessSessionCreate,
 	application.ActionAccessSessionRevoke,
 	application.ActionQuotaManage,
 	application.ActionAuditRead,
@@ -78,7 +78,7 @@ func TestRoleMaximumPermissionMatrix(t *testing.T) {
 			scopeKind: application.ScopeProject, scopeID: "project.alpha", allowed: actionSet(
 				application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
 				application.ActionInstanceCreate, application.ActionInstanceBatchCreate, application.ActionInstanceRead,
-				application.ActionInstanceTTLExtend, application.ActionInstanceDestroy, application.ActionAccessSessionCreate,
+				application.ActionInstanceTTLExtend, application.ActionInstanceDestroy, application.ActionAccessSessionRead, application.ActionAccessSessionCreate,
 				application.ActionAccessSessionRevoke, application.ActionProviderTargetHealthRead,
 			),
 		},
@@ -87,7 +87,7 @@ func TestRoleMaximumPermissionMatrix(t *testing.T) {
 			scopeKind: application.ScopeProject, scopeID: "project.alpha", allowed: actionSet(
 				application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
 				application.ActionInstanceCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
-				application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
+				application.ActionInstanceDestroy, application.ActionAccessSessionRead, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
 				application.ActionProviderTargetHealthRead,
 			),
 		},
@@ -134,7 +134,7 @@ func TestParticipantOwnershipIsRequiredForEveryInstanceAction(t *testing.T) {
 
 	instanceActions := []application.PermissionAction{
 		application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-		application.ActionInstanceRead, application.ActionInstanceDestroy,
+		application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionAccessSessionRead,
 	}
 	owners := []struct {
 		name string
@@ -154,7 +154,8 @@ func TestParticipantOwnershipIsRequiredForEveryInstanceAction(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%s", action, owner.name), func(t *testing.T) {
 				request := fixture.request(role.subjectID, action)
 				request.OwnerKind, request.OwnerID = owner.kind, owner.id
-				assertDecision(t, fixture.evaluator.Authorize(context.Background(), request), owner.want)
+				want := owner.want && !(owner.kind == application.OwnerTeam && action == application.ActionInstanceDestroy)
+				assertDecision(t, fixture.evaluator.Authorize(context.Background(), request), want)
 			})
 		}
 	}
@@ -210,7 +211,7 @@ func TestNonParticipantRolesDoNotInheritParticipantOwnership(t *testing.T) {
 	}
 	for _, action := range []application.PermissionAction{
 		application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
-		application.ActionInstanceRead, application.ActionInstanceDestroy,
+		application.ActionInstanceRead, application.ActionInstanceDestroy, application.ActionAccessSessionRead,
 	} {
 		request := fixture.request("user.instructor", action)
 		request.OwnerKind, request.OwnerID = application.OwnerProject, "project.alpha"
@@ -593,4 +594,29 @@ func snapshotHasTeam(snapshot application.AuthorizationSnapshot, teamID string) 
 		}
 	}
 	return false
+}
+
+func TestGroupDestroyAllowsSeparateElevatedRole(t *testing.T) {
+	for _, elevated := range []application.Role{application.RoleInstructor, application.RolePlatformAdministrator} {
+		t.Run(string(elevated), func(t *testing.T) {
+			f := newAuthorizationFixture(t)
+			f.addUserRole(roleFixture{role: application.RoleParticipant, subjectID: "user.mixed", scopeKind: application.ScopeProject, scopeID: "project.alpha"})
+			snapshot := f.repository.snapshots["user.mixed"]
+			assignment := snapshot.Assignments[0]
+			assignment.ID, assignment.Role = "role.elevated", elevated
+			if elevated == application.RolePlatformAdministrator {
+				assignment.ScopeKind, assignment.ScopeID = application.ScopePlatform, "platform"
+			}
+			snapshot.Assignments = append(snapshot.Assignments, assignment)
+			f.repository.snapshots["user.mixed"] = snapshot
+			request := f.request("user.mixed", application.ActionInstanceDestroy)
+			request.OwnerKind, request.OwnerID = application.OwnerTeam, "team.alpha"
+			assertDecision(t, f.evaluator.Authorize(context.Background(), request), true)
+			if elevated == application.RoleInstructor {
+				snapshot.Assignments[1].ScopeID = "project.other"
+				f.repository.snapshots["user.mixed"] = snapshot
+				assertDecision(t, f.evaluator.Authorize(context.Background(), request), false)
+			}
+		})
+	}
 }

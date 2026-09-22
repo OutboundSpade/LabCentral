@@ -222,7 +222,7 @@ func TestOIDCRejectsRedirectedOversizedAndInsecureDiscovery(t *testing.T) {
 	}
 }
 
-func newOIDCTestServices(t *testing.T, provider *testOIDCProvider) (*localdb.Store, *authentication.Manager, *authentication.OIDCService) {
+func newOIDCTestServices(t *testing.T, provider *testOIDCProvider, provision ...bool) (*localdb.Store, *authentication.Manager, *authentication.OIDCService) {
 	t.Helper()
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:oidc-%d?mode=memory&cache=shared", time.Now().UnixNano()))
 	if err != nil {
@@ -241,8 +241,18 @@ func newOIDCTestServices(t *testing.T, provider *testOIDCProvider) (*localdb.Sto
 	if err != nil {
 		t.Fatal(err)
 	}
+	project := ""
+	if len(provision) > 0 && provision[0] {
+		project = "project.students"
+		if err := store.PutOrganization(context.Background(), application.OrganizationRecord{ID: "org.students", Name: "Students"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.PutProject(context.Background(), application.ProjectRecord{ID: "project.students", OrganizationID: "org.students", Name: "Students"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	service, err := authentication.NewOIDCService(context.Background(), store, manager, keyring, authentication.OIDCConfig{
-		Issuer: provider.server.URL, ClientID: "client", ClientSecret: "secret", RedirectURL: "https://lab.example/api/v1/auth/oidc/callback",
+		AutoProvisionProject: project, Issuer: provider.server.URL, ClientID: "client", ClientSecret: "secret", RedirectURL: "https://lab.example/api/v1/auth/oidc/callback",
 		HTTPClient: provider.server.Client(),
 	})
 	if err != nil {
@@ -252,6 +262,7 @@ func newOIDCTestServices(t *testing.T, provider *testOIDCProvider) (*localdb.Sto
 }
 
 type oidcTokenOptions struct {
+	name            string
 	nonce           string
 	issuer          string
 	audience        string
@@ -367,9 +378,10 @@ func (p *testOIDCProvider) token(response http.ResponseWriter, request *http.Req
 	raw, err := jwt.Signed(signer).Claims(jwt.Claims{
 		Issuer: issuer, Subject: "subject-1", Audience: audience, IssuedAt: jwt.NewNumericDate(now), Expiry: jwt.NewNumericDate(now.Add(5 * time.Minute)),
 	}).Claims(struct {
+		Name            string `json:"name,omitempty"`
 		Nonce           string `json:"nonce"`
 		AuthorizedParty string `json:"azp,omitempty"`
-	}{Nonce: claimNonce, AuthorizedParty: options.authorizedParty}).Serialize()
+	}{Name: options.name, Nonce: claimNonce, AuthorizedParty: options.authorizedParty}).Serialize()
 	if err != nil {
 		p.t.Errorf("sign ID token: %v", err)
 		http.Error(response, "token", http.StatusInternalServerError)
@@ -386,4 +398,31 @@ func writeJSONStatus(response http.ResponseWriter, status int, value any) {
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)
 	_ = json.NewEncoder(response).Encode(value)
+}
+
+func TestOIDCProvisionAndRefreshStudentName(t *testing.T) {
+	p := newTestOIDCProvider(t)
+	store, _, service := newOIDCTestServices(t, p, true)
+	ctx := context.Background()
+	for _, name := range []string{"Student Name", "Updated Name"} {
+		begin, err := service.Begin(ctx, "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, _ := url.Parse(begin.AuthorizationURL)
+		q := u.Query()
+		p.prepare(q.Get("nonce"), q.Get("code_challenge"), oidcTokenOptions{name: name})
+		r, err := service.Callback(ctx, q.Get("state"), "authorization-code", begin.BrowserBinding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		user, err := store.UserByID(ctx, r.Credentials.Session.UserID)
+		if err != nil || user.DisplayName != name {
+			t.Fatal(user, err)
+		}
+		snapshot, err := store.AuthorizationSnapshot(ctx, user.ID, time.Now())
+		if err != nil || len(snapshot.Assignments) != 1 || snapshot.Assignments[0].Role != application.RoleParticipant {
+			t.Fatal(snapshot, err)
+		}
+	}
 }

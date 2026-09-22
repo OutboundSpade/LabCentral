@@ -128,7 +128,7 @@ func (s *Store) UpdateOrganization(ctx context.Context, record application.Organ
 
 func (s *Store) organizationByID(ctx context.Context, id domain.OrganizationID) (application.OrganizationRecord, error) {
 	var record application.OrganizationRecord
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id, name, resource_version FROM labcentral_organizations WHERE organization_id = ?`), id).Scan(&record.ID, &record.Name, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT organization_id, name, resource_version FROM labcentral_organizations WHERE organization_id = ?`), id).Scan(&record.ID, &record.Name, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
 		return application.OrganizationRecord{}, application.ErrAuthRecordNotFound
 	} else if err != nil {
 		return application.OrganizationRecord{}, err
@@ -193,7 +193,7 @@ func (s *Store) UpdateProject(ctx context.Context, record application.ProjectRec
 
 func (s *Store) projectByID(ctx context.Context, id domain.ProjectID) (application.ProjectRecord, error) {
 	var record application.ProjectRecord
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT project_id, organization_id, name, resource_version FROM labcentral_projects WHERE project_id = ?`), id).Scan(&record.ID, &record.OrganizationID, &record.Name, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT project_id, organization_id, name, resource_version FROM labcentral_projects WHERE project_id = ?`), id).Scan(&record.ID, &record.OrganizationID, &record.Name, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
 		return application.ProjectRecord{}, application.ErrAuthRecordNotFound
 	} else if err != nil {
 		return application.ProjectRecord{}, err
@@ -258,7 +258,7 @@ func (s *Store) UpdateTeam(ctx context.Context, record application.TeamRecord, e
 
 func (s *Store) teamByID(ctx context.Context, id domain.TeamID) (application.TeamRecord, error) {
 	var record application.TeamRecord
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT team_id, organization_id, name, resource_version FROM labcentral_teams WHERE team_id = ?`), id).Scan(&record.ID, &record.OrganizationID, &record.Name, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT team_id, organization_id, name, resource_version FROM labcentral_teams WHERE team_id = ?`), id).Scan(&record.ID, &record.OrganizationID, &record.Name, &record.ResourceVersion); errors.Is(err, sql.ErrNoRows) {
 		return application.TeamRecord{}, application.ErrAuthRecordNotFound
 	} else if err != nil {
 		return application.TeamRecord{}, err
@@ -392,7 +392,7 @@ func (s *Store) membershipByID(ctx context.Context, id string) (application.Memb
 	var record application.MembershipRecord
 	var teamID string
 	var from, until int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT membership_id, user_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT membership_id, user_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version
 		FROM labcentral_memberships WHERE membership_id = ?`), id).Scan(&record.ID, &record.UserID, &record.OrganizationID, &teamID, &from, &until, &record.ResourceVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.MembershipRecord{}, application.ErrAuthRecordNotFound
@@ -561,7 +561,7 @@ func (s *Store) revokeRoleAssignment(ctx context.Context, id string, scopeKind a
 func (s *Store) roleAssignmentByID(ctx context.Context, id string) (application.RoleAssignmentRecord, error) {
 	var record application.RoleAssignmentRecord
 	var from, until int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT assignment_id, subject_kind, subject_id, scope_kind, scope_id, role, valid_from_us, valid_until_us, resource_version
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT assignment_id, subject_kind, subject_id, scope_kind, scope_id, role, valid_from_us, valid_until_us, resource_version
 		FROM labcentral_role_assignments WHERE assignment_id = ?`), id).Scan(&record.ID, &record.SubjectKind, &record.SubjectID, &record.ScopeKind, &record.ScopeID, &record.Role, &from, &until, &record.ResourceVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.RoleAssignmentRecord{}, application.ErrAuthRecordNotFound
@@ -676,7 +676,7 @@ func (s *Store) RevokeTargetGrant(ctx context.Context, id string, expected domai
 func (s *Store) targetGrantByID(ctx context.Context, id string) (application.TargetGrantRecord, error) {
 	var record application.TargetGrantRecord
 	var from, until int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version
 		FROM labcentral_provider_target_grants WHERE grant_id = ?`), id).Scan(&record.ID, &record.TargetID, &record.ScopeKind, &record.ScopeID, &from, &until, &record.ResourceVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.TargetGrantRecord{}, application.ErrAuthRecordNotFound

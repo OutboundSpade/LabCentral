@@ -161,7 +161,8 @@ func TestParticipantRuntimePreparationWaitsForApprovalAndRechecksAuthority(t *te
 	}()
 	defer func() { cancel(); <-done }()
 	var progress app.PreparationResult
-	deadline := time.Now().Add(12 * time.Second)
+	// Several dependent stages each respect the bounded preparation retry interval.
+	deadline := time.Now().Add(35 * time.Second)
 	for time.Now().Before(deadline) {
 		preparation, err = f.database.GetExtensionWork(ctx, preparation.ID)
 		if err != nil {
@@ -190,7 +191,7 @@ func TestParticipantRuntimePreparationWaitsForApprovalAndRechecksAuthority(t *te
 	if err = f.database.PutUser(ctx, app.UserRecord{ID: "user.auditor", Username: "auditor", DisplayName: "Auditor", Disabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	deadline = time.Now().Add(4 * time.Second)
+	deadline = time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		preparation, err = f.database.GetExtensionWork(ctx, preparation.ID)
 		if err != nil {

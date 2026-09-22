@@ -14,11 +14,18 @@ import (
 
 type Store struct {
 	db      *sql.DB
+	reader  *sql.DB
 	dialect Dialect
 }
 
 func New(db *sql.DB, dialect Dialect) (*Store, error) {
-	if db == nil {
+	return NewWithReader(db, db, dialect)
+}
+
+// NewWithReader separates committed reads from the serialized SQLite writer.
+// The caller owns both pools; transactions and claims always use db.
+func NewWithReader(db, reader *sql.DB, dialect Dialect) (*Store, error) {
+	if db == nil || reader == nil {
 		return nil, fmt.Errorf("jobs database is nil")
 	}
 	if dialect != DialectSQLite && dialect != DialectPostgreSQL {
@@ -30,7 +37,7 @@ func New(db *sql.DB, dialect Dialect) (*Store, error) {
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 	}
-	return &Store{db: db, dialect: dialect}, nil
+	return &Store{db: db, reader: reader, dialect: dialect}, nil
 }
 
 func (s *Store) bind(query string) string {
@@ -169,7 +176,7 @@ func (s *Store) EnqueueVersioned(ctx context.Context, operation domain.Operation
 }
 
 func (s *Store) Get(ctx context.Context, operationID domain.OperationID) (domain.Operation, error) {
-	row := s.db.QueryRowContext(ctx, s.bind(`SELECT operation_id, instance_id, state, desired_generation,
+	row := s.reader.QueryRowContext(ctx, s.bind(`SELECT operation_id, instance_id, state, desired_generation,
 		fencing_token, lease_until_us, attempt, recovery_required, payload, subject_kind, subject_id
 		FROM labcentral_jobs WHERE operation_id = ?`), operationID)
 	operation, _, _, err := scanOperation(row)
@@ -423,7 +430,7 @@ func (s *Store) BindIdempotency(ctx context.Context, binding IdempotencyBinding)
 		return IdempotencyResult{}, fmt.Errorf("read idempotency insert count: %w", err)
 	}
 	var digest, resultID string
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT request_digest, result_id
+	if err := s.reader.QueryRowContext(ctx, s.bind(`SELECT request_digest, result_id
 		FROM labcentral_idempotency_records
 		WHERE subject_id = ? AND route_action = ? AND idempotency_key = ?`),
 		binding.SubjectID, binding.RouteAction, binding.Key).Scan(&digest, &resultID); err != nil {
@@ -548,7 +555,7 @@ func (s *Store) ClaimOutbox(ctx context.Context, leaseOwner string, leaseDuratio
 	claim.Attempts = uint32(attempts)
 	claim.LeaseOwner = leaseOwner
 	var sequence int64
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT aggregate_id, aggregate_sequence
+	if err := s.reader.QueryRowContext(ctx, s.bind(`SELECT aggregate_id, aggregate_sequence
 		FROM labcentral_job_events WHERE event_id = ?`), claim.EventID).Scan(&claim.AggregateID, &sequence); err != nil {
 		return OutboxClaim{}, fmt.Errorf("read claimed outbox event: %w", err)
 	}

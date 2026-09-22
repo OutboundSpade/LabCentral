@@ -31,7 +31,7 @@ const installationRoot = process.argv[3] ?? output;
 const definitions = {
   "template-library": {
     title: "Template Library",
-    version: "1.3.2",
+    version: "1.3.3",
     route: "templates",
     icon: "library",
     requiredActions: ["template.create", "instance.batchCreate"],
@@ -50,6 +50,7 @@ const definitions = {
   },
   teams: {
     title: "Teams",
+    version: "1.3.3",
     route: "teams",
     icon: "users",
     requiredActions: ["template.read"],
@@ -67,6 +68,8 @@ const definitions = {
   },
   classroom: {
     title: "Classroom",
+    version: "1.3.3",
+    minimumHostVersion: 7,
     route: "classroom",
     icon: "graduation-cap",
     requiredActions: ["instance.batchCreate"],
@@ -77,6 +80,7 @@ const definitions = {
       "labs.read",
       "labs.create",
       "labs.manage",
+      "builds.read",
     ],
   },
 };
@@ -92,6 +96,7 @@ for (const [name, definition] of Object.entries(definitions)) {
     ["index.html", "shared/index.html"],
     ["style.css", "shared/style.css"],
     ["ui.js", "shared/ui.js"],
+    ["notes.js", "shared/notes.js"],
     ["launch.js", "shared/launch.js"],
     ["team-management.js", "shared/team-management.js"],
     ["editor.js", "shared/editor.js"],
@@ -128,7 +133,7 @@ for (const [name, definition] of Object.entries(definitions)) {
     requestedPermissions: permissions,
     browser: {
       apiVersion: "labcentral.browser/v1",
-      minimumHostVersion: 6,
+      minimumHostVersion: definition.minimumHostVersion ?? 6,
       assets,
       contributions: [
         {

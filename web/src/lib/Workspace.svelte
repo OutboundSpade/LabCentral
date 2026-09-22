@@ -1,5 +1,6 @@
 <script lang="ts">
   import { leaveFeatureDrafts } from "./feature-drafts";
+  import { featureRequest } from "./extension-bridge";
   import ExtensionPage from "./ExtensionPage.svelte";
   import ExtensionAccessView from "./ExtensionAccessView.svelte";
   import DeviceAuthorization from "./DeviceAuthorization.svelte";
@@ -87,6 +88,20 @@
   let providerOverride = $state("");
   let ttlMinutes = $state<number | undefined>();
   let activeOperation = $state<Operation>();
+  type Preparation = {
+    id: string;
+    state: string;
+    failureCode?: string;
+    request: {
+      preparation?: {
+        revisionId: string;
+        owners?: unknown[];
+        owner?: { kind: string; id: string };
+      };
+    };
+    result?: { stage?: string };
+  };
+  let preparations = $state<Preparation[]>([]);
   let search = $state("");
   let showEnded = $state(false);
   let detailId = $derived(page.url.searchParams.get("id") ?? "");
@@ -187,6 +202,7 @@
       session = undefined;
       loading = false;
       instances = [];
+      preparations = [];
 
       clearTimeout(refreshTimer);
     }
@@ -234,7 +250,11 @@
               id: "project.local",
               organizationId: "organization.local",
               name: "Local workspace",
-              allowedActions: ["template.read", "template.create", "team.manage"],
+              allowedActions: [
+                "template.read",
+                "template.create",
+                "team.manage",
+              ],
             },
           ]
         : await collection<Project>("/projects", "after");
@@ -288,6 +308,7 @@
       revisions = [];
 
       activeOperation = undefined;
+      preparations = [];
       instances = [];
       templates = [];
     }
@@ -387,11 +408,25 @@
   async function refresh(fresh = false) {
     const current = generation;
     try {
-      const labs = await collection<Instance>("/lab-instances", "cursor", {
-        fresh,
-      });
+      const [labs, work] = await Promise.all([
+        collection<Instance>("/lab-instances", "cursor", { fresh }),
+        projectId && server?.authMode !== "none"
+          ? api<{ items: Preparation[] }>(
+              `/deployment-preparations?projectId=${encodeURIComponent(projectId)}`,
+              { fresh },
+            )
+          : Promise.resolve({ items: [] as Preparation[] }),
+      ]);
       if (disposed || current !== generation) return;
       instances = labs.filter((i) => i.projectId === projectId);
+      preparations = work.items.filter(
+        (w) =>
+          !w.request.preparation?.owners?.length &&
+          (!w.request.preparation?.owner ||
+            (w.request.preparation.owner.kind === "user" &&
+              w.request.preparation.owner.id === session?.subjectId)) &&
+          w.state !== "succeeded",
+      );
       if (activeOperation && !terminal(activeOperation.state)) {
         const updated = await api<Operation>(
           `/operations/${activeOperation.id}`,
@@ -469,6 +504,36 @@
   }
   async function launch() {
     await action(async () => {
+      if (content?.recipes?.length) {
+        if (providerOverride.trim())
+          throw new Error(
+            "Image preparation uses template and environment defaults. Clear custom options before launching.",
+          );
+        const request = featureRequest(
+          "labs.prepare",
+          {
+            revisionId,
+            targetId,
+            inputs,
+            lifetime: {
+              ttlSeconds: ttlMinutes ? Math.round(ttlMinutes * 60) : 0,
+              persistent: false,
+            },
+            acknowledged: acknowledge,
+            idempotencyKey: crypto.randomUUID(),
+          },
+          { projectId },
+        );
+        await api(request.path, {
+          method: "POST",
+          headers: { "Idempotency-Key": request.idempotencyKey! },
+          body: JSON.stringify(request.body),
+        });
+        await refresh();
+        await goto("/");
+        notice = "Lab preparation queued.";
+        return;
+      }
       const response = await api<{ operation: Operation; instanceId?: string }>(
         "/lab-instances",
         {
@@ -747,6 +812,24 @@
             onchange={reloadProjects}
           />
         {:else if view === "labs"}
+          {#if preparations.length}
+            <section
+              class="mb-5 rounded-box border border-base-300 p-4"
+              aria-label="Lab preparation"
+            >
+              <h2 class="font-semibold">Preparing labs</h2>
+              {#each preparations as work (work.id)}
+                <p class="mt-2 text-sm">
+                  {revisionTemplates[work.request.preparation?.revisionId ?? ""]
+                    ?.name ?? "Lab"} · {terminal(work.state)
+                    ? work.failureCode || work.state
+                    : work.result?.stage === "awaiting-approval"
+                      ? "Waiting for image approval"
+                      : work.failureCode || work.result?.stage || work.state}
+                </p>
+              {/each}
+            </section>
+          {/if}
           <div class="mb-5 flex flex-wrap items-center justify-between gap-4">
             <label class="input w-full sm:w-80"
               ><Search size={16} /><input
@@ -805,6 +888,7 @@
                 ? revisionTemplates[detail.revisionId]?.description
                 : undefined}
               {administrator}
+              canEnd={detail?.ownerKind !== "team" || administrator || (project?.allowedActions?.includes("instance.batchCreate") ?? false)}
               browserConsole={server?.uiFeatures?.includes("browser-vnc") ??
                 false}
               {busy}
@@ -1028,7 +1112,11 @@
       </aside>
     </div>
   </div>
-  <dialog bind:this={endDialog} class="modal open:bg-neutral/40" aria-labelledby="end-title">
+  <dialog
+    bind:this={endDialog}
+    class="modal open:bg-neutral/40"
+    aria-labelledby="end-title"
+  >
     <div class="modal-box">
       <h2 id="end-title" class="text-xl font-semibold">End this lab?</h2>
       <p class="mt-4 text-sm leading-6 text-base-content/70">

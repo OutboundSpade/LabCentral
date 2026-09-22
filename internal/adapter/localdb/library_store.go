@@ -37,10 +37,10 @@ func scanLibrary(row scanner) (app.TemplateLibrary, error) {
 	return l, err
 }
 func (s *Store) GetLibrary(ctx context.Context, id string) (app.TemplateLibrary, error) {
-	return scanLibrary(s.db.QueryRowContext(ctx, s.bind(`SELECT `+libraryColumns+` FROM labcentral_template_libraries WHERE library_id=?`), id))
+	return scanLibrary(s.readDB().QueryRowContext(ctx, s.bind(`SELECT `+libraryColumns+` FROM labcentral_template_libraries WHERE library_id=?`), id))
 }
 func (s *Store) listLibraries(ctx context.Context, where string, args ...any) ([]app.TemplateLibrary, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT `+libraryColumns+` FROM labcentral_template_libraries WHERE `+where+` ORDER BY library_id LIMIT 100`), args...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT `+libraryColumns+` FROM labcentral_template_libraries WHERE `+where+` ORDER BY library_id LIMIT 100`), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (s *Store) SetLibraryPaused(ctx context.Context, id string, actor domain.Us
 	})
 }
 func (s *Store) LibraryEntries(ctx context.Context, id string) ([]app.LibraryEntry, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT entry_key,template_id,revision_id,available,commit_id FROM labcentral_library_entries WHERE library_id=? ORDER BY entry_key`), id)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT entry_key,template_id,revision_id,available,commit_id FROM labcentral_library_entries WHERE library_id=? ORDER BY entry_key`), id)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (s *Store) LibraryEntries(ctx context.Context, id string) ([]app.LibraryEnt
 	return out, rows.Err()
 }
 func (s *Store) LibraryHistory(ctx context.Context, id string) ([]app.ExtensionWork, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id JOIN labcentral_library_syncs ls ON ls.operation_id=w.operation_id WHERE ls.library_id=? ORDER BY w.created_at_us DESC,w.operation_id LIMIT 100`), id)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT `+workColumns+` FROM labcentral_extension_work w JOIN labcentral_jobs j ON j.operation_id=w.operation_id JOIN labcentral_library_syncs ls ON ls.operation_id=w.operation_id WHERE ls.library_id=? ORDER BY w.created_at_us DESC,w.operation_id LIMIT 100`), id)
 	if err != nil {
 		return nil, err
 	}

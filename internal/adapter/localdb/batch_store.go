@@ -149,7 +149,7 @@ func (s *Store) GetInstanceBatch(ctx context.Context, id domain.InstanceBatchID)
 	if _, err := domain.NewInstanceBatchID(string(id)); err != nil {
 		return application.InstanceBatchRecord{}, err
 	}
-	record, err := s.getInstanceBatch(ctx, s.db, id)
+	record, err := s.getInstanceBatch(ctx, s.readDB(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.InstanceBatchRecord{}, application.ErrNotFound
 	}
@@ -212,7 +212,7 @@ func (s *Store) InstanceBatchAccess(ctx context.Context, id domain.InstanceBatch
 		return application.InstanceBatchAccessRecord{}, application.ErrAuthRecordNotFound
 	}
 	access := application.InstanceBatchAccessRecord{BatchID: id}
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT project_id, provider_target_id
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT project_id, provider_target_id
 		FROM labcentral_instance_batches WHERE batch_id = ?`), id).Scan(&access.ProjectID, &access.TargetID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.InstanceBatchAccessRecord{}, application.ErrAuthRecordNotFound
@@ -220,7 +220,7 @@ func (s *Store) InstanceBatchAccess(ctx context.Context, id domain.InstanceBatch
 	if err != nil {
 		return application.InstanceBatchAccessRecord{}, err
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT owner_kind, owner_id
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT owner_kind, owner_id
 		FROM labcentral_instance_batch_items WHERE batch_id = ? ORDER BY ordinal`), id)
 	if err != nil {
 		return application.InstanceBatchAccessRecord{}, err
@@ -397,7 +397,7 @@ func (s *Store) appendInstanceBatchGovernanceTx(ctx context.Context, tx *sql.Tx,
 }
 
 func (s *Store) RecentInstanceBatchIDs(ctx context.Context, project domain.ProjectID) ([]domain.InstanceBatchID, error) {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT batch_id FROM labcentral_instance_batches WHERE project_id=? ORDER BY created_at_us DESC,batch_id DESC LIMIT 100`), project)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT batch_id FROM labcentral_instance_batches WHERE project_id=? ORDER BY created_at_us DESC,batch_id DESC LIMIT 100`), project)
 	if err != nil {
 		return nil, err
 	}

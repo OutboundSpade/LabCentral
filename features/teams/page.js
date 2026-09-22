@@ -167,7 +167,7 @@ await initialize(async () => {
     );
     stableList(parent, own, (l) =>
       labCard({ ...l, ownerName: g.name }, el("div"), {
-        end: true,
+        end: can("instance.batchCreate"),
         onchange: refresh,
       }),
     );
@@ -205,7 +205,7 @@ await initialize(async () => {
           actions,
         );
         actions.append(
-          button("Deploy group lab", () => openLaunch(g), "primary"),
+          ...(can("instance.create") ? [button("Deploy group lab", () => openLaunch(g), "primary")] : []),
           button(
             g.enrollmentOpen ? "Close enrollment" : "Open enrollment",
             async () => {
@@ -343,7 +343,7 @@ await initialize(async () => {
             actions = el("div", "", { class: "actions" });
           currentInfo.append(el("h3", g.name), actions);
           actions.append(
-            button("Deploy a group lab", () => openLaunch(g), "primary"),
+            ...(can("instance.create") ? [button("Deploy a group lab", () => openLaunch(g), "primary")] : []),
             button("Leave group", () => membership(g)),
           );
         } else

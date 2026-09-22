@@ -42,7 +42,7 @@ func (s *Service) Topology(ctx context.Context, subject domain.UserID, id domain
 	result := Topology{InstanceID: string(id), Generation: uint64(instance.Generation), Resources: []TopologyResource{}}
 	canAccess := false
 	if s.authorizer != nil {
-		_, err = s.authorizer.AuthorizeInstance(ctx, subject, application.ActionAccessSessionCreate, id)
+		_, err = s.authorizer.AuthorizeInstance(ctx, subject, application.ActionAccessSessionRead, id)
 		canAccess = err == nil
 	}
 	methods := map[string]bool{}

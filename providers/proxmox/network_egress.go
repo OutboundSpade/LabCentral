@@ -26,7 +26,7 @@ func validateNetworkEgress(version string, profile NetworkProfile) error {
 	}
 	prefix, err := netip.ParsePrefix(e.IPv4CIDR)
 	gateway, gatewayErr := netip.ParseAddr(e.Gateway)
-	if version != targetConfigV15 || e.Mode != "allow" || err != nil || gatewayErr != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || !prefix.Addr().IsPrivate() || prefix.Bits() < 16 || prefix.Bits() > 29 || !usableIPv4(prefix, gateway) || !sha256Pattern.MatchString(e.PolicyDigest) || !sha256Pattern.MatchString(e.ProbeDigest) || !e.InternetReachable || e.ManagementReachable || e.CrossInstanceReachable {
+	if (version != targetConfigV15 && version != targetConfigV16) || e.Mode != "allow" || err != nil || gatewayErr != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || !prefix.Addr().IsPrivate() || prefix.Bits() < 16 || prefix.Bits() > 29 || !usableIPv4(prefix, gateway) || !sha256Pattern.MatchString(e.PolicyDigest) || !sha256Pattern.MatchString(e.ProbeDigest) || !e.InternetReachable || e.ManagementReachable || e.CrossInstanceReachable {
 		return fmt.Errorf("egress requires a v1.5 private IPv4 gateway profile and qualified Internet, management and cross-instance probes")
 	}
 	return nil

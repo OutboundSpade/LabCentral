@@ -1,6 +1,7 @@
 import type { components } from "./api.generated";
 import {
   queryClient,
+  matchesRequestIdentity,
   readKey,
   readFreshness,
   requestEpoch,
@@ -62,12 +63,36 @@ function requestHeaders(init?: RequestInit): Headers {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, {
+  init?.signal?.throwIfAborted();
+  const beforeCSRF = cookie("__Host-labcentral-csrf");
+  const epoch = requestEpoch();
+  const send = () => fetch(`/api/v1${path}`, {
     ...init,
+    // Cancellation still discards the query result, but must not discard a
+    // committed credential rotation before its Set-Cookie headers arrive.
+    signal: AbortSignal.timeout(60_000),
     credentials: "same-origin",
     cache: "no-store",
     headers: requestHeaders(init),
   });
+  let response = await send();
+  // Rotation immediately revokes the old cookie. A concurrent GET may race
+  // the response installing its replacement; recover only the same identity.
+  // Mutations and custom-credential requests are never replayed.
+  if (response.status === 401 && beforeCSRF && !init?.headers &&
+      (init?.method ?? "GET").toUpperCase() === "GET" && !path.startsWith("/auth/")) {
+    for (let attempt = 0; attempt < 100 && cookie("__Host-labcentral-csrf") === beforeCSRF; attempt++) {
+      init?.signal?.throwIfAborted();
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (epoch === requestEpoch() && cookie("__Host-labcentral-csrf") && cookie("__Host-labcentral-csrf") !== beforeCSRF) {
+      if (path === "/session") response = await send();
+      else {
+        const current = await fetch("/api/v1/session", {credentials:"same-origin", cache:"no-store", signal:init?.signal});
+        if (current.ok && matchesRequestIdentity(await current.json()) && epoch === requestEpoch()) response = await send();
+      }
+    }
+  }
   if (!response.ok) {
     const problem = await response
       .json()
@@ -105,17 +130,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type ApiRequest = RequestInit & { fresh?: boolean };
 
+// A component can stop awaiting a shared read without aborting the query for
+// other components. QueryClient owns network cancellation on invalidation.
+function awaitSharedRead<T>(pending: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return pending;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
+    pending.then(
+      value => { signal.removeEventListener("abort", abort); resolve(value); },
+      error => { signal.removeEventListener("abort", abort); reject(error); },
+    );
+  });
+}
+
 export async function api<T>(
   path: string,
   options: ApiRequest = {},
 ): Promise<T> {
   const { fresh = false, ...init } = options;
+  init.signal?.throwIfAborted();
   const method = (init.method ?? "GET").toUpperCase();
   const mutation = !["GET", "HEAD", "OPTIONS"].includes(method);
   const authentication = path === "/session" || path.startsWith("/auth/");
   if (authentication && mutation) clearRequestCache();
   const epoch = requestEpoch();
-  // Custom request headers/signals and access-session data deliberately bypass
+  // Custom request headers and access-session data deliberately bypass
   // sharing. POST responses (especially one-use console tokens) never enter it.
   const cached =
     typeof window !== "undefined" &&
@@ -124,16 +165,36 @@ export async function api<T>(
     !path.startsWith("/access-sessions") &&
     !path.startsWith("/session/") &&
     !path.startsWith("/device/") &&
-    !init.headers &&
-    !init.signal;
+    !init.headers;
   try {
-    const result = cached
-      ? await queryClient.fetchQuery<T>({
+    const pending = (cached
+      ? queryClient.fetchQuery<T>({
           queryKey: readKey(path),
           queryFn: ({ signal }) => request<T>(path, { ...init, signal }),
           staleTime: fresh ? 0 : readFreshness(path),
         })
-      : await request<T>(path, init);
+      : request<T>(path, init)).catch(async cause => {
+        // Also invalidate if every component stopped awaiting this shared read.
+        if (cause instanceof ApiError && [401, 403].includes(cause.status)) {
+          let sameSession = false;
+          // A failed background mutation (e.g. retiring an old console) may
+          // have raced rotation. Do not log out sibling requests when the
+          // replacement cookie still authenticates the same identity/roles.
+          // The failed mutation is reported, never replayed.
+          if (cause.status === 401 && cause.code === "authentication_required" &&
+              !authentication && epoch === requestEpoch() && cookie("__Host-labcentral-csrf")) {
+            try {
+              const current = await fetch("/api/v1/session", {
+                credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(10_000),
+              });
+              sameSession = current.ok && matchesRequestIdentity(await current.json()) && epoch === requestEpoch();
+            } catch { /* An unverified identity still fails closed. */ }
+          }
+          if (!sameSession) clearRequestCache();
+        }
+        throw cause;
+      });
+    const result = cached ? await awaitSharedRead(pending, init.signal) : await pending;
     if (epoch !== requestEpoch())
       throw new ApiError(401, "Your session changed. Please sign in again.");
     if (
@@ -145,10 +206,6 @@ export async function api<T>(
     )
       bindRequestIdentity(result as unknown as Session);
     return result;
-  } catch (cause) {
-    if (cause instanceof ApiError && [401, 403].includes(cause.status))
-      clearRequestCache();
-    throw cause;
   } finally {
     // An uncertain transport outcome may still have committed on the server.
     if (mutation) await invalidateRequestCache();

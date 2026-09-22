@@ -15,7 +15,7 @@ func (s *Store) ReadOperations(ctx context.Context, q application.OperationQuery
 	}
 	where := ` WHERE (? = '' OR instance.project_id = ?)`
 	base := ` FROM labcentral_local_operations operation JOIN labcentral_jobs job ON job.operation_id = operation.operation_id JOIN labcentral_local_instances instance ON instance.instance_id = operation.instance_id`
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT COALESCE(SUM(CASE WHEN job.state='queued' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN job.state='running' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN job.state IN ('failed','partial','timed_out') THEN 1 ELSE 0 END),0)`+base+where), string(q.ProjectID), string(q.ProjectID)).Scan(&page.Queued, &page.Running, &page.Failed); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT COALESCE(SUM(CASE WHEN job.state='queued' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN job.state='running' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN job.state IN ('failed','partial','timed_out') THEN 1 ELSE 0 END),0)`+base+where), string(q.ProjectID), string(q.ProjectID)).Scan(&page.Queued, &page.Running, &page.Failed); err != nil {
 		return page, err
 	}
 	switch q.Filter {
@@ -33,7 +33,7 @@ func (s *Store) ReadOperations(ctx context.Context, q application.OperationQuery
 		args = append(args, q.AfterTime.UnixMicro(), q.AfterTime.UnixMicro(), string(q.AfterID))
 	}
 	args = append(args, int(q.Limit)+1)
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT operation.operation_id, operation.instance_id, operation.actor_id, operation.kind, job.state, job.desired_generation, job.attempt, operation.message, operation.error_code, operation.created_at_us, operation.updated_at_us`+base+where+` ORDER BY operation.created_at_us, operation.operation_id LIMIT ?`), args...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT operation.operation_id, operation.instance_id, operation.actor_id, operation.kind, job.state, job.desired_generation, job.attempt, operation.message, operation.error_code, operation.created_at_us, operation.updated_at_us`+base+where+` ORDER BY operation.created_at_us, operation.operation_id LIMIT ?`), args...)
 	if err != nil {
 		return page, err
 	}

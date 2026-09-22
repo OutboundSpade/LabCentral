@@ -250,7 +250,7 @@ func run(ctx context.Context, args []string) error {
 	accessManifest := pluginManifest{
 		APIVersion: "labcentral.io/plugin-manifest/v1", ID: accessPluginID, Version: pluginVersion,
 		Executable: "../" + accessProviderName, SHA256: accessProviderDigest, Categories: []string{"access"},
-		AccessKinds: []string{"browser-vnc"}, AccessMethods: []string{"vnc"}, EndpointSchemas: []string{"proxmox.vnc-endpoint/v1.0"},
+		AccessKinds: []string{"browser-vnc"}, AccessMethods: []string{"vnc"}, EndpointSchemas: []string{"proxmox.vnc-endpoint/v1.0", "proxmox.vnc-relay-endpoint/v1.0"},
 		ProtocolMajor: 1, MinimumProtocolMinor: 2, MaximumProtocolMinor: 2,
 		OperatingSystems: []string{cfg.goos}, Architectures: []string{cfg.goarch},
 		RequestedPermissions: []string{"loopback-http-listener", "proxmox-vnc-tls-endpoint", "private-core-authorization-callback"},

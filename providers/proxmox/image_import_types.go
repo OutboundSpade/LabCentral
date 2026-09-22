@@ -23,10 +23,10 @@ func (config TargetConfig) validateImageImport() error {
 	if p == nil {
 		return nil
 	}
-	if (config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15) || config.Pool == "" || !storageIDPattern.MatchString(p.StagingStorage) || p.MaximumArtifactBytes < 1<<20 || p.MaximumArtifactBytes > 32<<30 || p.MaximumDiskBytes < 1<<30 || p.MaximumDiskBytes > 128<<30 {
+	if (config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15 && config.SchemaVersion != targetConfigV16) || config.Pool == "" || !storageIDPattern.MatchString(p.StagingStorage) || p.MaximumArtifactBytes < 1<<20 || p.MaximumArtifactBytes > 32<<30 || p.MaximumDiskBytes < 1<<30 || p.MaximumDiskBytes > 128<<30 {
 		return fmt.Errorf("image import requires bounded v1.4 policy and an ownership pool")
 	}
-	if p.CPUModel != "" && (config.SchemaVersion != targetConfigV15 || !validImageCPUModel(p.CPUModel)) {
+	if p.CPUModel != "" && (config.SchemaVersion != targetConfigV15 && config.SchemaVersion != targetConfigV16 || !validImageCPUModel(p.CPUModel)) {
 		return fmt.Errorf("image import CPU model requires v1.5 and host or x86-64-v2-AES")
 	}
 	if runtime := p.ContainerRuntime; runtime != nil {
@@ -53,8 +53,10 @@ func (config TargetConfig) validateImageImport() error {
 // MutationDigestForConfig preserves every old inventory identity. The explicit
 // v1.4 projection binds only configured static templates: imported images are
 // validated individually against their immutable provider evidence instead.
+// v1.6 additionally checks explicit capacity minima and versions the projection
+// that excludes dynamic filesystem totals.
 func (inventory Inventory) MutationDigestForConfig(config TargetConfig) (string, error) {
-	if config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15 {
+	if config.SchemaVersion != targetConfigV14 && config.SchemaVersion != targetConfigV15 && config.SchemaVersion != targetConfigV16 {
 		return inventory.MutationDigest()
 	}
 	// Normalize the full inventory before filtering, so malformed discovery data
@@ -72,6 +74,9 @@ func (inventory Inventory) MutationDigestForConfig(config TargetConfig) (string,
 		}
 	}
 	inventory.Templates = filtered
+	if config.SchemaVersion == targetConfigV16 {
+		return inventory.capacityBoundMutationDigest(config)
+	}
 	digest, err := inventory.MutationDigest()
 	if err != nil {
 		return "", err

@@ -102,6 +102,7 @@ type RenderOptions struct {
 }
 
 type Service struct {
+	workLeaseDuration    time.Duration
 	sources              map[string]SourceBinding
 	builders             map[string]BuilderBinding
 	operationsAuthorizer application.Authorizer
@@ -847,4 +848,20 @@ func (s *Service) requireTargetAdmission(ctx context.Context, actor domain.UserI
 		}
 	}
 	return nil
+}
+
+// SetWorkLeaseDuration configures durable extension leases before workers start.
+// Heartbeats remain frequent; a longer lease only increases crash recovery delay.
+func (s *Service) SetWorkLeaseDuration(d time.Duration) error {
+	if d < 30*time.Second || d > 5*time.Minute {
+		return fmt.Errorf("worker lease duration must be between 30 seconds and 5 minutes")
+	}
+	s.workLeaseDuration = d
+	return nil
+}
+func (s *Service) workLease() time.Duration {
+	if s.workLeaseDuration == 0 {
+		return 30 * time.Second
+	}
+	return s.workLeaseDuration
 }

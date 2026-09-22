@@ -24,11 +24,11 @@ Organization contains Projects; Teams belong to an Organization and may be grant
 | Participant / Student | create within grants/quotas, view/use own or team labs, allowed lifecycle/access actions |
 | Viewer / Auditor | read permitted resources/events/audit; no access session unless separately granted |
 
-Fine-grained stable actions include `providerTarget.register|configure|health.read|grant`, `template.create|read|update|revision.publish`, `instance.create|batchCreate|read|start|stop|reset|ttl.extend|snapshot|restore|clone|destroy`, `accessSession.create|revoke`, `quota.manage`, `membership.manage`, `audit.read`.
+Fine-grained stable actions include `providerTarget.register|configure|health.read|grant`, `template.create|read|update|revision.publish`, `instance.create|batchCreate|read|start|stop|reset|ttl.extend|snapshot|restore|clone|destroy`, `accessSession.read|create|revoke`, `quota.manage`, `membership.manage`, `audit.read`.
 
 The implemented policy matrix grants template metadata/revision management to Lab Authors and scoped administrators, template reads to classroom roles, batch creation to instructors, own-instance TTL/access actions to participants, and scoped audit/event reads to administrators and viewers. Audit/event endpoints authorize the requested platform, organization, or project scope before issuing their filtered query; a project query must include its organization scope. Quota management, Instance TTL extension, classroom batch creation, and short-lived browser console access have production command paths. Quota handlers authorize the exact requested scope before store access; TTL mutation additionally repeats active actor, role, membership, owner relationship, and target-grant evaluation inside its serializable write transaction. Batch creation authorizes every requested owner before planning and repeats active actor, instructor/platform role, membership, owner scope, and target-grant checks inside the all-or-nothing write transaction. Controlled access rechecks the same live authority at one-time exchange and every 15-second lease, and closes within 30 seconds if the core cannot renew authorization.
 
-The evaluator emits one bounded generalized authorization decision per policy boundary call, including denials of missing or hidden resources. SQL-prefiltered Instance listing emits one summary decision rather than one record per candidate. Successful `audit.read` checks are the sole non-emitting success case because appending to the stream before each paginated read would prevent clients from ever exhausting the cursor; denied and failed audit reads are still recorded. Authenticated HTTP contexts bind the user actor to administrator transactions, while bootstrap and reconciliation use explicit system actors.
+ADR-0035 keeps successful routine metadata reads (`instance.read`, `template.read`, `providerTarget.health.read`, `audit.read`) off the durable audit writer. Every request still evaluates current authority. All denied/failed reads and all other policy boundary calls emit bounded authorization decisions; SQL-prefiltered instance listing uses one summary decision on failure. Mutations, administration and console access remain synchronously audited. Authenticated HTTP contexts bind the user actor to administrator transactions, while bootstrap and reconciliation use explicit system actors.
 
 Authorization evaluates actor, action, resource/scope ancestry, membership validity, instance ownership/shares, target grant, quota/policy constraints, and sensitive subfield. List endpoints apply the identical predicate in query filters and cannot reveal existence across tenants. Operations capture the actor and reauthorize at execution for destructive/credential-sensitive steps; loss of permission stops at a safe boundary.
 
@@ -53,3 +53,43 @@ updating the same identity tuple with its current resource version.
 ## Self-service project collaboration
 
 ADR-0029 adds project-limited self-service team enrollment without granting roles or organization membership. Existing administrative teams retain their semantics. Core continues to own every authorization decision. The new enrollment and driver-control contract is defined in [portable templates and collaboration](portable-template-collaboration.md).
+
+## Managed classroom onboarding (ADR-0034)
+
+`--oidc-auto-provision-project` opts into atomic first-login user, organization
+membership and participant-role creation for a verified issuer/subject. Display
+names use the verified name claim (preferred username fallback) and refresh at
+sign-in. No email/name account linking, role restoration or disabled-user revival
+is performed. Existing accounts retain their explicitly assigned authority.
+
+`--disable-participant-deployment` suspends participant validation/planning and
+launches. API permissions and transaction admission/preparation enforce the same
+policy. Students retain group enrollment, assigned-lab viewing and consoles.
+Instructors can manage project groups and deploy their labs. Restart all replicas
+with consistent settings to change the installation policy; omit the flag to
+restore the default participant deployment policy.
+
+Under [ADR-0036](../adr/0036-instructor-managed-group-lab-deletion.md), participant
+assignments cannot destroy team-owned labs. Students retain shared access and
+personal-lab deletion; instructors retain scoped group-lab deletion. Both the core
+lab details and Teams feature hide group deletion controls for students. Direct
+API requests use the same core authorization rule. Expiration remains automatic.
+
+Successful `accessSession.read` observations use the same ownership, role and target-grant checks as creation, without writing success audits. Denials, grants, revocations and control changes retain durable audit ([ADR-0037](../adr/0037-console-observation-and-lease-write-budget.md)).
+
+Stale public requests do not emit cookie deletion because response ordering could erase a concurrently rotated session. Explicit logout still clears cookies. The UI may recover a GET that raced rotation only after cookie change and fresh confirmation of the same identity/roles; mutations are not replayed and revoked server tokens remain invalid.
+
+Project capability hints are computed from current policy after authorizing the project read. Missing hypothetical permissions are not audited execution denials; actual attempted actions and denied project reads still are. See [ADR-0038](../adr/0038-retained-input-leases-and-capability-hints.md).
+
+Logical query cancellation discards stale results but allows the network
+response to deliver credential headers, with a bounded transport timeout.
+Static documents/assets do not authenticate or rotate cookies. A GET can wait
+up to ten seconds for a replacement cookie before failing authentication; it
+retries only after verifying the same current identity and roles. Independent
+requests remain concurrent so slow topology queries cannot block presence or
+other pages. Mutations are never replayed; revoked tokens remain invalid.
+A stale mutation's `authentication_required` response is still returned without
+replay. Before discarding sibling requests' identity, the UI verifies the current
+session. A valid same-identity/roles replacement cookie prevents a best-effort
+old-console revocation from logging out the new console. Failed verification,
+changed identity/roles and permission denials still invalidate the cache.

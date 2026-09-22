@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"time"
 
@@ -78,6 +79,41 @@ func (service *Service) DiscoverAccessEndpoint(ctx context.Context, request *plu
 	current, err := client.VMConfig(ctx, state.Node, state.VMID)
 	if err != nil || current.Digest != state.ConfigDigest || verifyOwnership(current.Description, *state.Ownership) != nil {
 		return fail("stale_access_binding", "Proxmox VNC resource ownership is stale")
+	}
+	if service.consoleRelay != nil {
+		websocketClient, ok := client.(interface {
+			VNCWebSocket(context.Context, string, uint32) (net.Conn, string, error)
+		})
+		if !ok {
+			return fail("access_proxy_unavailable", "Proxmox encrypted console is unavailable")
+		}
+		upstream, password, err := websocketClient.VNCWebSocket(ctx, state.Node, state.VMID)
+		if err != nil {
+			return fail("access_proxy_unavailable", "Proxmox encrypted console is unavailable")
+		}
+		expires := service.now().UTC().Add(time.Duration(config.ConsoleAccess.MaximumDurationSeconds) * time.Second)
+		grant, err := service.consoleRelay.Publish(upstream, expires)
+		if err != nil {
+			return fail("access_proxy_unavailable", "Proxmox console relay is unavailable")
+		}
+		providerDigest := hex.EncodeToString(request.GetResourceState().GetDigest())
+		contents, err := json.Marshal(accessendpoint.ProxmoxVNCRelay{
+			SchemaVersion: accessendpoint.ProxmoxVNCRelaySchema, TargetID: state.TargetID,
+			InstanceID: state.Ownership.InstanceID, LogicalResourceID: state.LogicalResourceID,
+			Method: "vnc", ProviderStateDigest: providerDigest,
+			RelayID: grant.ID, RelayToken: grant.Token, Password: password,
+		})
+		if err != nil {
+			return fail("invalid_access_endpoint", "Proxmox console relay endpoint could not be encoded")
+		}
+		digest := sha256.Sum256(contents)
+		return &pluginv1.DiscoverAccessEndpointResponse{
+			OpaqueConnectionData: contents, ValidUntil: timestamppb.New(expires),
+			EndpointSchema: &pluginv1.SchemaVersion{Name: "proxmox.vnc-relay-endpoint", Major: 1},
+			EndpointDigest: hex.EncodeToString(digest[:]), TargetId: state.TargetID,
+			LabInstanceId: state.Ownership.InstanceID, LogicalResourceId: state.LogicalResourceID,
+			Method: "vnc", ProviderStateDigest: providerDigest,
+		}, nil
 	}
 	proxy, err := client.VNCProxy(ctx, state.Node, state.VMID)
 	if err != nil {

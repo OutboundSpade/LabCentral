@@ -148,7 +148,7 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 }
 
 func (w *Worker) renewLease(ctx context.Context, fence Fence, failures chan<- error) {
-	interval := w.leaseDuration / 3
+	interval := min(w.leaseDuration/3, 10*time.Second)
 	if interval < 100*time.Millisecond {
 		interval = 100 * time.Millisecond
 	}
@@ -581,7 +581,10 @@ func (w *Worker) persistProviderResult(ctx context.Context, fence Fence, invocat
 	}
 	if result.Error != nil {
 		phase = domain.ResourceFailed
-		if action != "apply" {
+		if action != "apply" || (len(providerState) == 0 && resultHasOwnedLeftovers(result)) {
+			// A failed apply can leave an owned object without a usable state
+			// envelope. Persist the cleanup requirement so a later destroy does
+			// not mistake missing state for a resource that was never created.
 			phase = domain.ResourceCleanupFailed
 		}
 		invocationState = "failed"

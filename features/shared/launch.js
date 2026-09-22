@@ -1,3 +1,4 @@
+import { renderNotes } from "./notes.js";
 import { providerOptions } from "./editor.js";
 import {
   el,
@@ -48,6 +49,7 @@ export async function launchForm(
   const progress = el("div", "", { role: "status", class: "md:col-span-2" });
   form.append(progress);
   let parameters = [],
+    requiresBuilds = false,
     values = [],
     generation = 0,
     loadedRevision = "";
@@ -146,6 +148,7 @@ export async function launchForm(
     loadedRevision = "";
     inputsBox.replaceChildren();
     parameters = [];
+    requiresBuilds = false;
     values = [];
     if (!revision.value) return;
     const content = await request("templates.content", {
@@ -155,9 +158,10 @@ export async function launchForm(
     if (current !== generation) return;
     loadedRevision = revision.value;
     parameters = content.parameters ?? [];
+    requiresBuilds = (content.recipes ?? []).length > 0;
     renderInputs();
   }
-  const instructions = el("p", "", {
+  const instructions = el("div", "", {
     class: "whitespace-pre-wrap leading-relaxed",
   });
   const lesson = el("aside", "", {
@@ -168,9 +172,7 @@ export async function launchForm(
   lesson.append(el("h3", "Instructions"), instructions);
   settings.after(lesson);
   async function templateChanged() {
-    instructions.textContent =
-      templates.find((t) => t.id === template.value)?.description ||
-      "No instructions provided.";
+    renderNotes(instructions, templates.find((t) => t.id === template.value)?.description || "No instructions provided.");
     const current = ++generation;
     options(revision, []);
     inputsBox.replaceChildren();
@@ -212,6 +214,25 @@ export async function launchForm(
       if (batch) {
         const selected = owners?.() ?? [];
         if (!selected.length) throw new Error("Select students first.");
+        if (requiresBuilds) {
+          if (override?.read() !== undefined)
+            throw new Error(
+              "Image preparation uses template and environment defaults. Clear custom options before launching.",
+            );
+          const result = await mutate("labs.batchPrepare", {
+            revisionId: revision.value,
+            targetId: target.value,
+            inputs,
+            lifetime: {
+              ttlSeconds: minutes.value ? Number(minutes.value) * 60 : 0,
+              persistent: false,
+            },
+            acknowledged: ack.checked,
+            owners: selected,
+          });
+          await onlaunch?.(result);
+          return;
+        }
         const result = await mutate("labs.batchCreate", {
           revisionId: revision.value,
           targetId: target.value,

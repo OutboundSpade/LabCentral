@@ -18,7 +18,7 @@ func (s *Store) ReadOperationalSnapshot(ctx context.Context) (application.Operat
 		return application.OperationalSnapshot{}, fmt.Errorf("control-plane database is not initialized")
 	}
 	var nowMicros int64
-	if err := s.db.QueryRowContext(ctx, `SELECT `+s.nowMicros()).Scan(&nowMicros); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, `SELECT `+s.nowMicros()).Scan(&nowMicros); err != nil {
 		return application.OperationalSnapshot{}, fmt.Errorf("read operational snapshot database time: %w", err)
 	}
 	if nowMicros <= 0 {
@@ -53,7 +53,7 @@ func (s *Store) ReadOperationalSnapshot(ctx context.Context) (application.Operat
 		return application.OperationalSnapshot{}, err
 	}
 	var orphaned int64
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_provider_allocation_claims WHERE state = ?`), application.AllocationOrphaned).Scan(&orphaned); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_provider_allocation_claims WHERE state = ?`), application.AllocationOrphaned).Scan(&orphaned); err != nil {
 		return application.OperationalSnapshot{}, fmt.Errorf("read orphaned allocation telemetry: %w", err)
 	}
 	converted, err := operationalCount(orphaned)
@@ -65,7 +65,7 @@ func (s *Store) ReadOperationalSnapshot(ctx context.Context) (application.Operat
 }
 
 func (s *Store) readJobTelemetry(ctx context.Context, nowMicros int64, snapshot *application.OperationalSnapshot) error {
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT state, recovery_required, COUNT(*), MIN(available_at_us),
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT state, recovery_required, COUNT(*), MIN(available_at_us),
 		MIN(CASE WHEN state = ? AND lease_until_us <= ? THEN lease_until_us END)
 		FROM labcentral_jobs GROUP BY state, recovery_required`), domain.OperationRunning, nowMicros)
 	if err != nil {
@@ -120,7 +120,7 @@ func (s *Store) readJobTelemetry(ctx context.Context, nowMicros int64, snapshot 
 func (s *Store) readOutboxTelemetry(ctx context.Context, query string, nowMicros int64) (uint64, time.Duration, error) {
 	var count int64
 	var oldest sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, query).Scan(&count, &oldest); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, query).Scan(&count, &oldest); err != nil {
 		return 0, 0, err
 	}
 	converted, err := operationalCount(count)
@@ -131,7 +131,7 @@ func (s *Store) readOutboxTelemetry(ctx context.Context, query string, nowMicros
 }
 
 func (s *Store) readAccessTelemetry(ctx context.Context, snapshot *application.OperationalSnapshot) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT state, COUNT(*) FROM labcentral_access_sessions GROUP BY state`)
+	rows, err := s.readDB().QueryContext(ctx, `SELECT state, COUNT(*) FROM labcentral_access_sessions GROUP BY state`)
 	if err != nil {
 		return fmt.Errorf("read access-session telemetry: %w", err)
 	}
@@ -159,7 +159,7 @@ func (s *Store) readAccessTelemetry(ctx context.Context, snapshot *application.O
 }
 
 func (s *Store) readResourceTelemetry(ctx context.Context, snapshot *application.OperationalSnapshot) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT phase, COUNT(*) FROM labcentral_local_resources GROUP BY phase`)
+	rows, err := s.readDB().QueryContext(ctx, `SELECT phase, COUNT(*) FROM labcentral_local_resources GROUP BY phase`)
 	if err != nil {
 		return fmt.Errorf("read resource telemetry: %w", err)
 	}
@@ -195,7 +195,7 @@ func (s *Store) readResourceTelemetry(ctx context.Context, snapshot *application
 func (s *Store) readTargetTelemetry(ctx context.Context, nowMicros int64, snapshot *application.OperationalSnapshot) error {
 	var total, stale int64
 	var oldest sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT COUNT(*),
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT COUNT(*),
 		COALESCE(SUM(CASE WHEN valid_until_us <= ? THEN 1 ELSE 0 END), 0), MIN(discovered_at_us)
 		FROM labcentral_local_provider_targets`), nowMicros).Scan(&total, &stale, &oldest); err != nil {
 		return fmt.Errorf("read target capability telemetry: %w", err)

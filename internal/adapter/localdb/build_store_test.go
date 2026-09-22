@@ -251,6 +251,10 @@ func preparationYieldContract(t *testing.T, s *Store) {
 	if e = s.YieldExtensionWork(ctx, first); e != nil {
 		t.Fatal(e)
 	}
+	var remaining int64
+	if e = s.db.QueryRowContext(ctx, s.bind("SELECT available_at_us - "+s.nowMicros()+" FROM labcentral_jobs WHERE operation_id=?"), first.Work.ID).Scan(&remaining); e != nil || remaining < (4*time.Second).Microseconds() {
+		t.Fatalf("waiting work would churn durable writes: remaining=%d error=%v", remaining, e)
+	}
 	second, e := s.ClaimExtensionWork(ctx, "worker", "core-preparation/default", domain.WorkPreparation, time.Minute)
 	if e != nil {
 		t.Fatal(e)

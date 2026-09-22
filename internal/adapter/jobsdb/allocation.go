@@ -248,7 +248,7 @@ func (s *Store) ListClaims(ctx context.Context, instanceID domain.InstanceID) ([
 	if _, err := domain.NewInstanceID(string(instanceID)); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT target_id, namespace, claim_value, resource_id, plan_digest, state, fencing_token
+	rows, err := s.reader.QueryContext(ctx, s.bind(`SELECT target_id, namespace, claim_value, resource_id, plan_digest, state, fencing_token
 		FROM labcentral_provider_allocation_claims WHERE instance_id = ?
 		ORDER BY target_id, namespace, claim_value`), instanceID)
 	if err != nil {

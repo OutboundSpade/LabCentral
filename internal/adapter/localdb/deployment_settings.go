@@ -14,7 +14,7 @@ import (
 
 func (s *Store) GetDeploymentSettings(ctx context.Context, id domain.ProviderTargetID) (application.DeploymentSettings, error) {
 	var result application.DeploymentSettings
-	err := s.db.QueryRowContext(ctx, s.bind("SELECT maximum,resource_version FROM labcentral_target_deployment_settings WHERE target_id=?"), id).Scan(&result.MaxConcurrentDeployments, &result.ResourceVersion)
+	err := s.readDB().QueryRowContext(ctx, s.bind("SELECT maximum,resource_version FROM labcentral_target_deployment_settings WHERE target_id=?"), id).Scan(&result.MaxConcurrentDeployments, &result.ResourceVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = application.ErrNotFound
 	}

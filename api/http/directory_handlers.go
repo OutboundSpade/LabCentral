@@ -107,6 +107,21 @@ func registerDirectory(api huma.API, security *requestSecurity) {
 				return nil, huma.Error500InternalServerError("Projects could not be loaded")
 			}
 			for _, project := range candidates {
+				if reader, ok := security.options.Authorizer.(application.ProjectCapabilityReader); ok {
+					actions, err := reader.ProjectCapabilities(ctx, actor.user.ID, project.ID)
+					if errors.Is(err, authorization.ErrDenied) {
+						continue
+					}
+					if err != nil {
+						return nil, authorizationError(err, false)
+					}
+					output.Body.Items = append(output.Body.Items, ProjectChoiceDTO{ProjectRecord: project, AllowedActions: actions})
+					if len(output.Body.Items) == int(input.Limit) {
+						output.Body.NextCursor = string(project.ID)
+						return output, nil
+					}
+					continue
+				}
 				request := application.AuthorizationRequest{SubjectID: actor.user.ID, ScopeKind: application.ScopeProject, ScopeID: string(project.ID), Action: application.ActionTemplateRead}
 				if err := security.options.Authorizer.Authorize(ctx, request); err != nil {
 					if errors.Is(err, authorization.ErrDenied) {

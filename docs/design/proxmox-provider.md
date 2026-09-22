@@ -82,3 +82,7 @@ Signed qualification evidence v1.2 carries the matching typed egress profile;
 v1/v1.1 cannot certify egress. Fresh exact-target/profile/build authorization
 remains mandatory. The optional v1.5 image-import CPU model and imported-image
 drift checks are documented in [image imports](../plugins/proxmox-image-import.md).
+
+ADR-0032 adds target-config v1.6 and mutation-inventory v1.2 with exact reviewed
+storage capacity minima instead of immutable filesystem total counters. All
+legacy projections remain unchanged; see [the mutation contract](proxmox-qemu-mutation.md#capacity-bounded-storage-qualification).

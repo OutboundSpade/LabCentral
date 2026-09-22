@@ -1,10 +1,54 @@
 # LabCentral project state
 
-**Updated:** 2026-09-21
+**Updated:** 2026-09-22
 
 LabCentral is a Go control plane with a static SvelteKit UI, SQLite/PostgreSQL,
 durable jobs and separate provider/access plugins. Core owns authorization,
 quotas, lifetime and ownership; plugins translate infrastructure operations.
+
+`TASK-PERF-001` separates file-backed SQLite committed reads into a bounded
+read-only WAL pool while retaining one fully durable writer. Blocked-writer,
+identity and console checks passed, and the core-only update passed authenticated
+production read and health checks. Underlying disk stalls can still delay writes;
+this does not close the production load-validation gate.
+
+`TASK-PERF-002` adds configurable bounded worker leases and reduces preparation
+write churn. ADR-0035 removes synchronous audit writes from successful routine
+metadata reads while retaining current authorization and auditing of denials,
+mutations and access. Focused authorization/race and PostgreSQL preparation checks
+passed. A live four-VM launch reached Ready without lease retries while sampled
+authenticated list/detail requests stayed within 5–35 ms. This focused check does
+not close the broader load-validation gate. The favicon and Example Branch diagram
+now use the purple theme with concise network labels.
+
+`TASK-PERF-003` restores shared TanStack caching for component GETs with abort
+signals. Caller cancellation is independent; identity invalidation and uncached
+access credentials remain intact. Focused cache/type/build and browser checks
+passed; an authenticated production lab with five resources issued two topology
+reads and one shared extension-catalogue read over eleven seconds.
+
+`TASK-PERF-004` reproduces classroom failures with fifteen real participant
+browser contexts across five groups. ADR-0037–ADR-0039 separate console reads
+from writes, coordinate VM console launches, retain bounded input/authorization
+leases, make committed renewal responses retryable, and move SQLite checkpoints
+off the application writer. Cookie-response races and UI capability hint writes
+are also addressed. Focused database/race and UI checks pass. The testbed still
+experiences renewal failures when provisioning saturates shared storage; storage
+isolation and another simultaneous provisioning/console run remain required.
+This task and the broader production load gate remain open. The repeatable
+workload and cleanup guidance are in `tools/classroom-load/README.md`; exact
+measurements and recovery records remain private.
+
+`TASK-CLEANUP-001` retains failed applies with unconfirmed cleanup and no provider
+state as cleanup failures, preventing later destroy from falsely reporting
+absence. The focused worker regression, UI checks and production cleanup passed;
+the application now serves a branded flask favicon. Confirmed orphan VM removal
+and allocation reconciliation are recorded in protected operator records.
+
+`TASK-CLEANUP-002` recovered three interrupted-create leftovers through exact
+ownership checks, confirmed removal and bounded offline reconciliation. Ordinary
+destroy operations then completed and released all reservations. Recovery evidence
+and snapshots remain in protected operator records.
 
 ## Portable templates and collaboration
 
@@ -154,6 +198,66 @@ sequential in dependency order under [ADR-0021](docs/adr/0021-bounded-independen
 The container subset uses one VM per container, approved offline images and a
 static private network. Mounts, secrets and published ports are not supported.
 See [runtime guidance](docs/operations/container-vm-runtime.md).
+
+## Dynamic storage qualification
+
+`TASK-PROXMOX-007` is complete under ADR-0032. Target-config v1.6 adds reviewed
+storage capacity minima and a separately versioned inventory projection for
+filesystems with dynamic totals. Legacy target/signature behavior is retained.
+Affected unit/race/static checks, the full Go suite and exact-target clone,
+lifecycle, failure/restart, image-import and isolation checks pass. The provider
+reproduces byte-for-byte; explicit owner approval and signed activation are
+recorded outside source. A representative four-image classroom lab reached ready
+and passed application and network-access checks. The activated-release encrypted
+backup passed off-host transfer/signature verification, native restore, database
+integrity and isolated startup with the exact core release.
+
+`TASK-UI-014` routes build-backed personal and classroom launches through existing
+durable preparation APIs, retaining image approval and atomic batch admission.
+The bridge, API authorization, type/build and three-browser regressions pass;
+the exact deployed core/UI successfully launched a real classroom lab using
+approved images. The qualified WSS provider/access release passed authenticated
+production browser display, keyboard input and revocation; `TASK-UI-014` is complete.
+
+`TASK-ACCESS-001` is complete under ADR-0033's provider-owned WSS console relay. A live
+target verified TLS 1.3 through Proxmox's WebSocket API; its plain temporary TCP
+socket does not imply that browser consoles lack encryption. The additive local
+relay contract keeps API credentials in the provider and retains existing core
+authorization and shared-driver enforcement. Full Go, affected boundary/race,
+static and contract checks pass; both plugin binaries reproduce byte-for-byte.
+Exact-target lifecycle, failure/recovery, image import and isolation checks pass.
+An isolated browser rehearsal verified real display, independently confirmed
+keyboard input and revocation; production core authorization was not part of
+that rehearsal. Independent owner approval and production activation are recorded
+outside source. A focused authenticated production browser check verified display,
+keyboard input and session revocation; its temporary guest marker was removed.
+Existing core authorization and image approval remain enforced.
+
+## Managed classroom access
+
+`TASK-CLASSROOM-003` reserves team-owned lab deletion for instructors under
+ADR-0036. The API and destroy transaction reject participant authority; core and
+Teams screens hide the student control. Personal-lab deletion, group access and
+automatic expiration remain intact. Focused API/authorization race checks,
+SQLite/PostgreSQL membership tests and Chromium role visibility checks passed;
+the core and Teams update is deployed without changing provider qualification.
+
+`TASK-CLASSROOM-002` adds an operator-only [Example Branch incident tool](docs/operations/classroom-breaks.md)
+for independent Apache-stop, port-change and genuine synthetic SSH-login rounds
+across ready groups. It matches exact VM ownership against read-only inventory,
+retains per-group results and restores the original Apache configuration between
+rounds. Focused ownership checks and one live group rehearsal passed; that group
+was restored. Site configuration and evidence remain in protected operator records.
+Runtime services, provider qualification and public API contracts are unchanged.
+
+`TASK-CLASSROOM-001` is complete under ADR-0034: opt-in OIDC participant provisioning and
+name synchronization, reversible participant deployment denial with transactional
+admission checks, instructor project-group management, and atomic sole-console
+control requests. Student handovers render inert tables and operator-hosted network
+diagrams. Focused signed-OIDC, authorization, SQLite/PostgreSQL race and Chromium
+console checks passed. The unchanged qualified plugins are retained. Live OIDC
+name refresh, deployment policy, library synchronization and rendered handover
+checks passed after deployment; no additional guest lab was provisioned.
 
 ## Deployment records
 

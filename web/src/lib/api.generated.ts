@@ -3789,7 +3789,9 @@ export interface operations {
     };
     "post-access-sessions-by-id-console-release-control": {
         parameters: {
-            query?: never;
+            query?: {
+                onlyIfAlone?: boolean;
+            };
             header?: {
                 "Idempotency-Key"?: string;
             };
@@ -3823,7 +3825,9 @@ export interface operations {
     };
     "post-access-sessions-by-id-console-take-control": {
         parameters: {
-            query?: never;
+            query?: {
+                onlyIfAlone?: boolean;
+            };
             header?: {
                 "Idempotency-Key"?: string;
             };

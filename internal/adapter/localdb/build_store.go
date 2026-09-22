@@ -29,7 +29,7 @@ func (s *Store) YieldExtensionWorkProgress(ctx context.Context, c app.ExtensionW
 }
 func (s *Store) yieldExtensionWork(ctx context.Context, c app.ExtensionWorkClaim, result json.RawMessage) error {
 	return s.workTx(ctx, func(tx *sql.Tx) error {
-		r, e := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_jobs SET state='queued',lease_until_us=0,available_at_us=`+s.nowMicros()+`+1000000 WHERE operation_id=? AND lease_owner=? AND fencing_token=? AND state='running' AND lease_until_us>`+s.nowMicros()), c.Work.ID, c.LeaseOwner, c.Operation.FencingToken)
+		r, e := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_jobs SET state='queued',lease_until_us=0,available_at_us=`+s.nowMicros()+`+5000000 WHERE operation_id=? AND lease_owner=? AND fencing_token=? AND state='running' AND lease_until_us>`+s.nowMicros()), c.Work.ID, c.LeaseOwner, c.Operation.FencingToken)
 		if e != nil {
 			return e
 		}
@@ -37,7 +37,7 @@ func (s *Store) yieldExtensionWork(ctx context.Context, c app.ExtensionWorkClaim
 			return jobsdb.ErrFencingConflict
 		}
 		if result != nil {
-			if _, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_extension_work SET result_json=? WHERE operation_id=?`), string(result), c.Work.ID); err != nil {
+			if _, err := tx.ExecContext(ctx, s.bind(`UPDATE labcentral_extension_work SET result_json=? WHERE operation_id=? AND result_json<>?`), string(result), c.Work.ID, string(result)); err != nil {
 				return err
 			}
 		}
@@ -73,7 +73,7 @@ func (s *Store) PutImageBinding(ctx context.Context, c app.ExtensionWorkClaim, b
 func (s *Store) GetImageBinding(ctx context.Context, id string) (b app.StoredImageBinding, e error) {
 	var raw string
 	var approved, retired int
-	e = s.db.QueryRowContext(ctx, s.bind(`SELECT binding_id,project_id,target_id,provider_digest,import_operation_id,binding_json,opaque_binding,approved,retired FROM labcentral_image_bindings WHERE binding_id=?`), id).Scan(&b.ID, &b.ProjectID, &b.TargetID, &b.ProviderDigest, &b.ImportOperationID, &raw, &b.Binding.OpaqueBinding, &approved, &retired)
+	e = s.readDB().QueryRowContext(ctx, s.bind(`SELECT binding_id,project_id,target_id,provider_digest,import_operation_id,binding_json,opaque_binding,approved,retired FROM labcentral_image_bindings WHERE binding_id=?`), id).Scan(&b.ID, &b.ProjectID, &b.TargetID, &b.ProviderDigest, &b.ImportOperationID, &raw, &b.Binding.OpaqueBinding, &approved, &retired)
 	if e == sql.ErrNoRows {
 		return b, app.ErrNotFound
 	}

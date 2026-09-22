@@ -12,6 +12,7 @@ import (
 	"time"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/consolerelay"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -31,6 +32,13 @@ type Service struct {
 	sleep              func(time.Duration)
 	allowT0Mutation    bool
 	mutationAuthorizer MutationAuthorizer
+	consoleRelay       *consolerelay.Server
+}
+
+// ConfigureConsoleRelay selects an explicit provider-owned encrypted transport.
+// Call only during startup; qualification and ownership checks remain mandatory.
+func (service *Service) ConfigureConsoleRelay(relay *consolerelay.Server) {
+	service.consoleRelay = relay
 }
 
 func NewService() *Service {

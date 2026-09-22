@@ -312,7 +312,7 @@ func (s *Store) GetAccessSession(ctx context.Context, id domain.AccessSessionID)
 	if _, err := domain.NewAccessSessionID(string(id)); err != nil {
 		return application.AccessSessionRecord{}, err
 	}
-	return s.getAccessSession(ctx, s.db, id, false)
+	return s.getAccessSession(ctx, s.readDB(), id, false)
 }
 
 func (s *Store) ExchangeAccessToken(ctx context.Context, request application.AccessExchangeRequest) (application.AccessSessionRecord, bool, error) {
@@ -378,6 +378,10 @@ func (s *Store) RecheckAccessLease(ctx context.Context, request application.Acce
 	if err := validateAccessRecheck(request); err != nil {
 		return application.AccessSessionRecord{}, false, err
 	}
+	// Reauthorize every callback without rewriting an unchanged bounded lease. Never extend the existing deadline on this read path.
+	if record, retained, err := s.retainAccessLease(ctx, request); err != nil || retained {
+		return record, retained, err
+	}
 	authorized := false
 	record, err := s.mutateAccessSession(ctx, func(tx *sql.Tx) (application.AccessSessionRecord, error) {
 		current, err := s.getAccessSessionTx(ctx, tx, request.ID, true)
@@ -427,6 +431,56 @@ func (s *Store) RecheckAccessLease(ctx context.Context, request application.Acce
 		return current, err
 	})
 	return record, authorized, err
+}
+
+// retainAccessLease reads current authority and control in one snapshot.
+// Anything requiring a transition (including denial) uses the audited writer.
+func (s *Store) retainAccessLease(ctx context.Context, request application.AccessLeaseRecheckRequest) (record application.AccessSessionRecord, retained bool, err error) {
+	err = s.readTx(ctx, func(tx *sql.Tx) error {
+		// PostgreSQL may retry this snapshot after a serialization conflict.
+		record, retained = application.AccessSessionRecord{}, false
+		current, err := s.getAccessSessionTx(ctx, tx, request.ID, false)
+		if err != nil {
+			return err
+		}
+		if !current.SharedConsole || current.State != domain.AccessSessionActive ||
+			!accessCallbackMatches(current, request.Identity) ||
+			!keyedHashMatches(current.LeaseKeyID, current.LeaseHash, request.LeaseHashes) {
+			return nil
+		}
+		now, err := s.databaseNowTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		// Keep at least half a normal authorization lease for durable renewal.
+		if !current.LeaseExpiresAt.After(now.Add(application.DefaultAccessLeaseDuration/2)) ||
+			!current.ExpiresAt.After(now.Add(application.DefaultAccessLeaseDuration/2)) {
+			return nil
+		}
+		v, err := s.consoleLeaseTx(ctx, tx, current, false)
+		if err != nil {
+			return err
+		}
+		if v.holder == current.ID || v.requested == current.ID {
+			// Keep the original input deadline and fence. Renew durably while
+			// half its five-second lifetime remains, never on every poll.
+			until := time.UnixMicro(v.until)
+			if v.holder != current.ID || v.requested != current.ID ||
+				!until.After(now.Add(application.ConsoleInputLeaseDuration/2)) ||
+				until.After(current.LeaseExpiresAt) || until.After(current.ExpiresAt) {
+				return nil
+			}
+			current.InputLease = &application.ConsoleInputLease{Fence: v.fence, ValidFor: until.Sub(now)}
+		}
+		allowed, err := s.accessCurrentlyAuthorizedSnapshotTx(ctx, tx, current, now, false)
+		if err != nil || !allowed {
+			return err
+		}
+		current.LeaseRetained = true
+		record, retained = current, true
+		return nil
+	})
+	return
 }
 
 func (s *Store) EndAccessLease(ctx context.Context, request application.EndAccessLeaseRequest) (application.AccessSessionRecord, bool, error) {
@@ -576,7 +630,7 @@ func (s *Store) ListAccessSessionsForReconciliation(ctx context.Context, limit u
 	if limit == 0 || limit > 1000 {
 		return nil, fmt.Errorf("access reconciliation limit must be 1-1000")
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT access_session_id FROM labcentral_access_sessions
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT access_session_id FROM labcentral_access_sessions
 		WHERE (closure_required = 1 AND state <> 'pending') OR
  (state = 'pending' AND closure_required = 1 AND created_at_us <= `+s.nowMicros()+` - 30000000) OR
 			(state IN ('pending', 'ready', 'active') AND expires_at_us <= `+s.nowMicros()+`) OR
@@ -730,6 +784,10 @@ func accessCallbackMatches(record application.AccessSessionRecord, identity appl
 }
 
 func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, record application.AccessSessionRecord, now time.Time) (bool, error) {
+	return s.accessCurrentlyAuthorizedSnapshotTx(ctx, tx, record, now, true)
+}
+
+func (s *Store) accessCurrentlyAuthorizedSnapshotTx(ctx context.Context, tx *sql.Tx, record application.AccessSessionRecord, now time.Time, lock bool) (bool, error) {
 	if record.Method == "vnc" && !record.SharedConsole {
 		var count int
 		if err := tx.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_console_control WHERE instance_id=? AND resource_id=? AND generation=?`), record.InstanceID, record.ResourceID, record.ResourceGeneration).Scan(&count); err != nil {
@@ -754,7 +812,7 @@ func (s *Store) accessCurrentlyAuthorizedTx(ctx context.Context, tx *sql.Tx, rec
 		}
 	}
 
-	instance, digest, err := s.loadAccessResourceTx(ctx, tx, record.InstanceID, record.ResourceID, true)
+	instance, digest, err := s.loadAccessResourceTx(ctx, tx, record.InstanceID, record.ResourceID, lock)
 	if errors.Is(err, application.ErrAuthorityChanged) || errors.Is(err, application.ErrNotFound) {
 		return false, nil
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/OutboundSpade/LabCentral/access/novnc"
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/consolerelay"
 	pluginruntime "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/runtime"
 )
 
@@ -27,6 +28,8 @@ func main() {
 	publicOrigin := flags.String("public-origin", "", "browser-visible LabCentral HTTPS origin")
 	websocketBase := flags.String("websocket-base-path", "/access-proxy", "same-origin reverse-proxy path")
 	tailscaleProfileFile := flags.String("tailscale-upstream-profile", "", "optional operator-pinned Linux Tailscale console transport profile")
+	relayDirectory := flags.String("console-relay-directory", "", "protected same-host provider console relay directory")
+	relayProviderUID := flags.Int("console-relay-provider-uid", -1, "pinned provider UID for local console relay connections")
 	if err := flags.Parse(os.Args[1:]); err != nil || flags.NArg() != 0 || *publicOrigin == "" {
 		logger.Error("parse noVNC access plugin arguments")
 		os.Exit(1)
@@ -46,7 +49,15 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	service, err := novnc.New(novnc.Config{PublicOrigin: *publicOrigin, WebSocketBasePath: *websocketBase, TailscaleProfile: tailnet})
+	if (*relayDirectory == "") != (*relayProviderUID == -1) || *relayProviderUID < -1 || int64(*relayProviderUID) > 1<<32-1 {
+		logger.Error("console relay directory and provider UID must be configured together")
+		os.Exit(1)
+	}
+	var relay *consolerelay.Client
+	if *relayDirectory != "" {
+		relay = &consolerelay.Client{Directory: *relayDirectory, ProviderUID: uint32(*relayProviderUID)}
+	}
+	service, err := novnc.New(novnc.Config{PublicOrigin: *publicOrigin, WebSocketBasePath: *websocketBase, TailscaleProfile: tailnet, ConsoleRelay: relay})
 	if err != nil {
 		logger.Error("configure noVNC access plugin", "error", err)
 		os.Exit(1)
@@ -61,6 +72,9 @@ func main() {
 		AcceptedAccessEndpointSchemas: []*pluginv1.SchemaVersion{{Name: "proxmox.vnc-endpoint", Major: 1, Minor: 0}},
 		Schemas:                       []*pluginv1.SchemaVersion{{Name: "novnc.access-state", Major: 1, Minor: 0}},
 		Features:                      []string{"access-authorization-recheck-v1", "shared-console-control-v1"},
+	}
+	if relay != nil {
+		info.AcceptedAccessEndpointSchemas = append(info.AcceptedAccessEndpointSchemas, &pluginv1.SchemaVersion{Name: "proxmox.vnc-relay-endpoint", Major: 1})
 	}
 	pluginDone := make(chan error, 1)
 	go func() {

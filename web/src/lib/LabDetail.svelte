@@ -1,4 +1,5 @@
 <script lang="ts">
+ import InstructionNotes from "./InstructionNotes.svelte";
  import ResourceAccess from "./ResourceAccess.svelte";
  import ExtensionPanels from "./ExtensionPanels.svelte";
   import { Server, Terminal } from "@lucide/svelte";
@@ -10,6 +11,7 @@
     expires,
     instructions,
     administrator,
+    canEnd,
     browserConsole,
     busy,
     onopen,
@@ -20,6 +22,7 @@
     expires: string;
     instructions?: string;
     administrator: boolean;
+    canEnd: boolean;
     browserConsole: boolean;
     busy: boolean;
     onopen: (instance: Instance, resource: string) => void;
@@ -41,11 +44,7 @@
         class="mt-6 rounded-box border border-base-300 p-5"
       >
         <h3 class="font-semibold">Lab instructions</h3>
-        <p
-          class="mt-3 whitespace-pre-wrap text-sm leading-6 text-base-content/80"
-        >
-          {instructions}
-        </p>
+        <InstructionNotes content={instructions} />
       </section>{/if}{#if detail.errorMessage}<p
         role="alert"
         class="mt-4 text-error"
@@ -80,7 +79,7 @@
       </p>{/if}
 
     <ExtensionPanels instanceId={detail.id} />
-    {#if !["destroying", "destroyed"].includes(detail.phase)}<div
+    {#if canEnd && !["destroying", "destroyed"].includes(detail.phase)}<div
         class="mt-8 border-t border-base-300 pt-5"
       >
         <button

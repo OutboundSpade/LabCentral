@@ -37,6 +37,7 @@ type ChangeConsoleControl struct {
 	ActorID        domain.UserID
 	SessionID      domain.AccessSessionID
 	Take           bool
+	OnlyIfAlone    bool
 	IdempotencyKey string
 	RequestDigest  domain.SHA256Digest
 }

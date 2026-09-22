@@ -7,6 +7,7 @@ import (
 	app "github.com/OutboundSpade/LabCentral/internal/application"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestSQLiteConsoleControl(t *testing.T) {
@@ -42,6 +43,24 @@ func consoleControlContract(t *testing.T, s *Store) {
 			t.Fatal("initial connection must watch", err)
 		}
 		sessions[i] = active
+		// A simultaneous viewer must never be displaced by automatic acquisition.
+		autoKey := fmt.Sprintf("auto-initial-%d", i)
+		automatic, e := s.ChangeConsoleControl(ctx, app.ChangeConsoleControl{ActorID: "user.quota", SessionID: active.ID, Take: true, OnlyIfAlone: true, IdempotencyKey: autoKey, RequestDigest: testRequestDigest(autoKey)})
+		if e != nil {
+			t.Fatal(e)
+		}
+		if i == 0 {
+			if automatic.RequestedSessionID != active.ID {
+				t.Fatal("sole console did not request control")
+			}
+			_, e = s.ChangeConsoleControl(ctx, app.ChangeConsoleControl{ActorID: "user.quota", SessionID: active.ID, Take: false, IdempotencyKey: "auto-release", RequestDigest: testRequestDigest("auto-release")})
+			if e != nil {
+				t.Fatal(e)
+			}
+		} else if automatic.RequestedSessionID != "" {
+			t.Fatal("automatic request displaced another viewer")
+		}
+
 	}
 	renew := func(i int) app.AccessSessionRecord {
 		t.Helper()
@@ -52,8 +71,43 @@ func consoleControlContract(t *testing.T, s *Store) {
 		if err != nil || !ok {
 			t.Fatal("renew", ok, err)
 		}
-		tokens[i] = next
+		if !r.LeaseRetained {
+			tokens[i] = next
+		}
 		return r
+	}
+	// A watching client retains its original bounded lease without a write,
+	// even while the SQLite writer connection is occupied by unrelated work.
+	if s.readers != nil {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE labcentral_users SET display_name='pending' WHERE user_id='user.quota'`); err != nil {
+			t.Fatal(err)
+		}
+		oldCtx := ctx
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
+		r := renew(2)
+		cancel()
+		ctx = oldCtx
+		if err = tx.Rollback(); err != nil {
+			t.Fatal(err)
+		}
+		if !r.LeaseRetained {
+			t.Fatal("viewer waited for writer")
+		}
+	}
+	r := renew(2)
+	if !r.LeaseRetained || r.InputLease != nil || r.ResourceVersion != sessions[2].ResourceVersion || r.LeaseHash != sessions[2].LeaseHash || !r.LeaseExpiresAt.Equal(sessions[2].LeaseExpiresAt) {
+		t.Fatal("spectator recheck mutated or extended its lease")
+	}
+	if _, err := s.db.ExecContext(ctx, s.bind(`UPDATE labcentral_access_sessions SET lease_expires_at_us=? WHERE access_session_id=?`), time.Now().Add(6*time.Second).UnixMicro(), sessions[2].ID); err != nil {
+		t.Fatal(err)
+	}
+	if r = renew(2); r.LeaseRetained || r.LeaseHash == sessions[2].LeaseHash {
+		t.Fatal("due lease failed to rotate")
 	}
 	change := func(i int, take bool, key string) (app.ConsolePresence, error) {
 		return s.ChangeConsoleControl(ctx, app.ChangeConsoleControl{ActorID: "user.quota", SessionID: sessions[i].ID, Take: take, IdempotencyKey: key, RequestDigest: testRequestDigest(key)})
@@ -75,8 +129,12 @@ func consoleControlContract(t *testing.T, s *Store) {
 		t.Fatal(err)
 	}
 	first := renew(0)
-	if first.InputLease == nil || first.InputLease.Fence != 1 || first.InputLease.ValidFor > app.ConsoleInputLeaseDuration {
+	if first.LeaseRetained || first.InputLease == nil || first.InputLease.Fence != 1 || first.InputLease.ValidFor > app.ConsoleInputLeaseDuration {
 		t.Fatal("driver grant", first.InputLease)
+	}
+	retainedDriver := renew(0)
+	if !retainedDriver.LeaseRetained || retainedDriver.ResourceVersion != first.ResourceVersion || retainedDriver.InputLease == nil || retainedDriver.InputLease.Fence != first.InputLease.Fence || retainedDriver.InputLease.ValidFor > first.InputLease.ValidFor {
+		t.Fatal("driver observation extended or rewrote input authority")
 	}
 	if r := renew(1); r.InputLease != nil {
 		t.Fatal("viewer received input")
@@ -173,6 +231,11 @@ func consoleControlContract(t *testing.T, s *Store) {
 	}
 	if _, err = change(2, true, "take-stale-generation"); !errors.Is(err, app.ErrAuthorityChanged) {
 		t.Fatal("stale VM generation", err)
+	}
+	// A valid spectator token never bypasses a changed resource generation.
+	_, allowed, err := s.RecheckAccessLease(ctx, app.AccessLeaseRecheckRequest{GovernanceRecordIDs: governanceIDs("stale-viewer"), ID: sessions[2].ID, Identity: accessTestIdentity(), LeaseHashes: []app.KeyedTokenHash{tokens[2]}, NewLease: accessTestHash("stale-viewer"), LeaseDuration: app.DefaultAccessLeaseDuration})
+	if err != nil || allowed {
+		t.Fatal("stale spectator remained authorized", err)
 	}
 	var audits int
 	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM labcentral_audit_records WHERE action='console.control.activated'`).Scan(&audits); err != nil || audits < 3 {

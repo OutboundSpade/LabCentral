@@ -158,7 +158,7 @@
               resourceId,
               projectId,
               pluginInstance: extension.pluginInstance,
-              hostVersion: 6,
+              hostVersion: 7,
               allowedActions: [...allowedActions],
               subjectId,
               imageAdministrator:

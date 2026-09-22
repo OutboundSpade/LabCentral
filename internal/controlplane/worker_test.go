@@ -189,3 +189,59 @@ func (s *blockingClaimStore) ClaimTargets(ctx context.Context, owner string, _ t
 	<-ctx.Done()
 	return application.WorkClaim{}, ctx.Err()
 }
+
+// A provider may report an owned leftover without a usable state envelope.
+// Persisting that failure and then requesting destroy must not report absence.
+func TestDestroyRetainsFailedApplyWithoutProviderState(t *testing.T) {
+	ctx := context.Background()
+	for _, complete := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unconfirmed_cleanup", true: "confirmed_absence"}[complete], func(t *testing.T) {
+			s := &leftoverRegressionStore{resource: ResourceRecord{InstanceID: "instance.leftover", ID: "vm.leftover", Kind: domain.ResourceVM}}
+			w := &Worker{store: s, ids: CryptoIDs{}}
+			result := &application.ProviderResult{Error: &application.ProviderIssue{Code: "guest_not_ready", Message: "Guest did not become ready"}, CompensationAttempted: true, CompensationComplete: complete}
+			if err := w.persistProviderResult(ctx, Fence{}, "inv.failed", s.resource, "apply", result); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.destroy(ctx, Fence{}, "user.owner", InstanceRecord{ID: s.resource.InstanceID}); err != nil {
+				t.Fatal(err)
+			}
+			if complete {
+				if s.final.InstancePhase != domain.InstanceDestroyed {
+					t.Fatalf("confirmed absence did not destroy: %+v", s.final)
+				}
+			} else if s.final.InstancePhase != domain.InstanceDegraded || s.final.State != domain.OperationPartial || s.absenceSaved {
+				t.Fatalf("owned leftover was hidden: phase=%s operation=%s absence=%t", s.final.InstancePhase, s.final.State, s.absenceSaved)
+			}
+		})
+	}
+}
+
+type leftoverRegressionStore struct {
+	application.WorkerStore
+	resource     ResourceRecord
+	final        FinalizeRequest
+	absenceSaved bool
+}
+
+func (s *leftoverRegressionStore) ListClaims(context.Context, domain.InstanceID) ([]application.AllocationClaim, error) {
+	return nil, nil
+}
+func (s *leftoverRegressionStore) SaveResourceResult(_ context.Context, r ResourceResultUpdate) error {
+	s.resource.Phase = r.Phase
+	s.resource.ProviderState = r.ProviderState
+	return nil
+}
+func (s *leftoverRegressionStore) MarkInstancePhase(context.Context, Fence, domain.InstancePhase, string) error {
+	return nil
+}
+func (s *leftoverRegressionStore) ListResources(context.Context, domain.InstanceID) ([]ResourceRecord, error) {
+	return []ResourceRecord{s.resource}, nil
+}
+func (s *leftoverRegressionStore) SaveCoreResource(_ context.Context, _ Fence, _ domain.LogicalResourceID, p domain.ResourcePhase, _ []byte) error {
+	s.absenceSaved = p == domain.ResourceDestroyed
+	return nil
+}
+func (s *leftoverRegressionStore) Finalize(_ context.Context, r FinalizeRequest) error {
+	s.final = r
+	return nil
+}

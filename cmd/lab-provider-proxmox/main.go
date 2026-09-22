@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
+	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/consolerelay"
 	plugincontract "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/contract"
 	pluginruntime "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/runtime"
 	"github.com/OutboundSpade/LabCentral/providers/proxmox"
@@ -33,6 +34,8 @@ func main() {
 	qualificationDocument := flags.String("qualification-document", "", "signed qualification evidence")
 	qualificationTrust := flags.String("qualification-trust", "", "qualification reviewer trust policy")
 	journalDirectory := flags.String("initialize-journal-directory", "", "create and verify the configured shared invocation journal directory")
+	consoleRelayDirectory := flags.String("console-relay-directory", "", "protected same-host Unix directory for encrypted Proxmox WebSocket consoles")
+	consoleRelayPeerUID := flags.Int("console-relay-access-uid", -1, "pinned local access-plugin UID for console relay grants")
 	if err := flags.Parse(os.Args[1:]); err != nil || flags.NArg() != 0 {
 		logger.Error("parse Proxmox provider arguments")
 		os.Exit(1)
@@ -68,6 +71,19 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if (*consoleRelayDirectory == "") != (*consoleRelayPeerUID == -1) || *consoleRelayPeerUID < -1 || int64(*consoleRelayPeerUID) > 1<<32-1 {
+		logger.Error("console relay directory and access UID must be configured together")
+		os.Exit(1)
+	}
+	if *consoleRelayDirectory != "" {
+		relay, err := consolerelay.NewServer(*consoleRelayDirectory, uint32(*consoleRelayPeerUID))
+		if err != nil {
+			logger.Error("configure protected console relay")
+			os.Exit(1)
+		}
+		defer relay.Close()
+		service.ConfigureConsoleRelay(relay)
+	}
 	info := &pluginv1.PluginInfo{
 		PluginId:      proxmox.PluginID,
 		PluginVersion: proxmox.PluginVersion,
@@ -84,6 +100,8 @@ func main() {
 			{Name: "proxmox.target-config", Major: 1, Minor: 2},
 			{Name: "proxmox.target-config", Major: 1, Minor: 3},
 			{Name: "proxmox.target-config", Major: 1, Minor: 4},
+			{Name: "proxmox.target-config", Major: 1, Minor: 5},
+			{Name: "proxmox.target-config", Major: 1, Minor: 6},
 			{Name: "proxmox.api-token-credentials", Major: 1, Minor: 0},
 			{Name: "proxmox.capacity", Major: 1, Minor: 0},
 			{Name: "proxmox.validation-plan", Major: 1, Minor: 0},
@@ -92,6 +110,7 @@ func main() {
 			{Name: "proxmox.qemu-state", Major: 1, Minor: 0},
 			{Name: "proxmox.invocation-journal", Major: 1, Minor: 0},
 			{Name: "proxmox.vnc-endpoint", Major: 1, Minor: 0},
+			{Name: "proxmox.vnc-relay-endpoint", Major: 1, Minor: 0},
 		},
 		Features: []string{
 			"target-discovery",

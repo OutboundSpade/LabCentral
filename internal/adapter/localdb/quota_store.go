@@ -510,7 +510,7 @@ func (s *Store) GetQuotaLimit(ctx context.Context, scope application.QuotaScope,
 	if err := application.ValidateQuotaDimension(dimension); err != nil {
 		return application.QuotaLimitRecord{}, err
 	}
-	record, err := getQuotaLimitTx(ctx, s.db, s, scope, dimension, false)
+	record, err := getQuotaLimitTx(ctx, s.readDB(), s, scope, dimension, false)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.QuotaLimitRecord{}, application.ErrNotFound
 	}
@@ -521,7 +521,7 @@ func (s *Store) ListQuotaUsage(ctx context.Context, scope application.QuotaScope
 	if err := application.ValidateQuotaScope(scope); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT dimension, reserved_value, committed_value, retained_value, updated_at_us
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT dimension, reserved_value, committed_value, retained_value, updated_at_us
 		FROM labcentral_quota_usage WHERE scope_kind = ? AND scope_id = ? AND organization_id = ? ORDER BY dimension`),
 		scope.Kind, scope.ID, scope.OrganizationID)
 	if err != nil {
@@ -826,7 +826,7 @@ func (s *Store) GetLifetimePolicy(ctx context.Context, scope application.QuotaSc
 	if err := application.ValidateQuotaScope(scope); err != nil {
 		return application.LifetimePolicyRecord{}, err
 	}
-	record, err := getLifetimePolicyTx(ctx, s.db, s, scope, false)
+	record, err := getLifetimePolicyTx(ctx, s.readDB(), s, scope, false)
 	if errors.Is(err, sql.ErrNoRows) {
 		return application.LifetimePolicyRecord{}, application.ErrNotFound
 	}
@@ -1250,6 +1250,14 @@ func (s *Store) requireInstanceTTLRenewalAuthorizationTx(ctx context.Context, tx
 // whose accepted RBAC matrix is identical: administrators/instructors may act
 // within scope, while participants remain restricted to their user/team owner.
 func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql.Tx, instance application.InstanceRecord, actorID domain.UserID, now time.Time) error {
+	return s.requireInstanceAuthorityTx(ctx, tx, instance, actorID, now, true)
+}
+
+func (s *Store) requireInstanceAuthorityTx(ctx context.Context, tx *sql.Tx, instance application.InstanceRecord, actorID domain.UserID, now time.Time, allowParticipant bool) error {
+	participantAllowed := 0
+	if allowParticipant {
+		participantAllowed = 1
+	}
 	if instance.ProjectID == "project.local" && actorID == application.LocalAdminID {
 		return nil
 	}
@@ -1280,6 +1288,7 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 		FROM labcentral_role_assignments assignment CROSS JOIN instance_scope scope
 		WHERE assignment.valid_from_us <= ? AND (assignment.valid_until_us = 0 OR assignment.valid_until_us > ?)
 		AND assignment.role IN ('platform-administrator', 'instructor', 'participant')
+		AND (? = 1 OR assignment.role <> 'participant')
 		AND ((assignment.subject_kind = 'user' AND assignment.subject_id = ?)
 			OR (assignment.subject_kind = 'team' AND EXISTS (
 				SELECT 1 FROM active_memberships membership
@@ -1316,7 +1325,7 @@ func (s *Store) requireInstanceOwnerAuthorizationTx(ctx context.Context, tx *sql
 	var allowed int
 	err := tx.QueryRowContext(ctx, s.bind(query),
 		instance.ProjectID, actorID, nowMicros, nowMicros, instance.ProjectID, actorID,
-		nowMicros, nowMicros, actorID, instance.ProjectID,
+		nowMicros, nowMicros, participantAllowed, actorID, instance.ProjectID,
 		instance.OwnerKind, instance.OwnerID, instance.OwnerID,
 		instance.OwnerKind, instance.OwnerID, actorID, instance.OwnerKind, instance.OwnerID,
 		instance.ProviderTargetID, nowMicros, nowMicros, instance.ProjectID,
@@ -1634,7 +1643,7 @@ func (s *Store) listExpirationCandidates(ctx context.Context, limit uint32, expi
 	query := `SELECT instance_id, expires_at_us, expiration_warning_at_us, expiration_grace_seconds, resource_version
 		FROM labcentral_local_instances WHERE desired_lifecycle <> ? AND phase <> ? AND ` + where + `
 		ORDER BY ` + order + `, instance_id LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, s.bind(query), domain.LifecycleDestroyed, domain.InstanceDestroyed, limit)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), domain.LifecycleDestroyed, domain.InstanceDestroyed, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list expiration candidates: %w", err)
 	}

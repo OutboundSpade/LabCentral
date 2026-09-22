@@ -58,6 +58,15 @@ func (s *Service) CreateAccessSession(ctx context.Context, command AccessSession
 	if err != nil {
 		return AccessSessionLaunch{}, err
 	}
+	if command.Method == "vnc" {
+		if locker, ok := s.store.(application.AccessLaunchLocker); ok {
+			unlock, err := locker.LockAccessLaunch(ctx, command.InstanceID, command.ResourceID)
+			if err != nil {
+				return AccessSessionLaunch{}, err
+			}
+			defer unlock()
+		}
+	}
 	instance, resources, err := s.GetInstance(ctx, command.InstanceID)
 	if err != nil {
 		return AccessSessionLaunch{}, err
@@ -206,7 +215,7 @@ func (s *Service) GetAccessSession(ctx context.Context, subject domain.UserID, i
 	if s.authorizer == nil {
 		return AccessSessionRecord{}, ErrAccessUnavailable
 	}
-	if _, err := s.authorizer.AuthorizeInstance(ctx, subject, application.ActionAccessSessionCreate, record.InstanceID); err != nil {
+	if _, err := s.authorizer.AuthorizeInstance(ctx, subject, application.ActionAccessSessionRead, record.InstanceID); err != nil {
 		return AccessSessionRecord{}, err
 	}
 	return record, nil
@@ -286,10 +295,11 @@ func (s *Service) RecheckAccessLease(ctx context.Context, identity application.A
 	if err != nil || len(lease) < 43 || len(lease) > 256 || s.tokenHasher == nil {
 		return deniedAccessDecision(), nil
 	}
-	next, err := randomAccessSecret()
-	if err != nil {
-		return application.AccessAuthorizationDecision{}, err
-	}
+	// Keep the connection credential stable across renewal. A transaction may
+	// commit after the caller's deadline: losing its response must not lose the
+	// only usable credential. Every retry still checks current authority and
+	// the existing bounded lease expiry; expired leases cannot be revived.
+	next := lease
 	ids, err := s.newGovernanceRecordIDs()
 	if err != nil {
 		return application.AccessAuthorizationDecision{}, err
@@ -304,6 +314,9 @@ func (s *Service) RecheckAccessLease(ctx context.Context, identity application.A
 	}
 	if !allowed {
 		return deniedAccessDecision(), nil
+	}
+	if record.LeaseRetained {
+		next = lease
 	}
 	return accessAuthorizationDecision(record, next), nil
 }

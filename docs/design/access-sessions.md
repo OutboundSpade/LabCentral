@@ -95,6 +95,30 @@ to the encrypted tunnel, and the plugin permits only ports 5900–5999. There is
 no automatic TLS downgrade or management credential delivery to access.
 Default TLS transport and existing endpoint schemas remain unchanged.
 
+## Provider-owned WebSocket transport
+
+[ADR-0033](../adr/0033-provider-owned-proxmox-websocket-relay.md) adds an explicit
+encrypted path for targets whose temporary VNC socket is plain RFB. After the
+same fresh qualification and exact ownership checks, the provider requests
+`vncproxy` with WebSocket mode and connects to the exact `vncwebsocket` endpoint
+over verified WSS. The reusable API credential and upstream ticket remain in
+that provider process. Redirects and invalid certificates fail closed.
+
+The additive `proxmox.vnc-relay-endpoint/v1.0` envelope carries the existing
+target/resource/state binding plus an opaque relay ID, single-use grant and VNC
+challenge password. It contains no management URL or credential. The matching
+access process uses an operator-pinned same-host Unix directory and provider
+UID; the provider independently checks the access UID. The directory has one
+locked provider owner, stale owned sockets are removed on restart, and relay IDs
+cannot supply paths. At most 128 pending/live relays are allowed. Grants must be
+consumed within ten seconds; expiry, disconnect or process shutdown closes the
+upstream. Neither the local grant nor provider material reaches the browser.
+
+The existing access service performs VNC authentication and all browser launch,
+lease/revocation and shared-driver checks. This transport has no independent
+authorization policy and never falls back to a plaintext network socket. Core,
+HTTP API, persisted provider state and target-config formats are unchanged.
+
 Launch finalization uses the database clock as the maximum launch-token TTL.
 If the application clock is slightly ahead (including SQLite millisecond
 rounding), finalization shortens the requested launch deadline to that bound.
@@ -108,3 +132,21 @@ ADR-0024 adds namespaced descriptors, workload/network targets and one-time cred
 ## Fenced shared-console control
 
 ADR-0029 adds independently authenticated shared viewing and a single core-fenced driver per VM generation, enforced by the access plugin. Existing individual-session authorization and closure bounds remain. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md); the implemented negotiated protocol, API and lease timing are documented in [shared console control](../plugins/shared-console.md).
+
+### Sole-console control (ADR-0034)
+
+Each new browser connection begins as a viewer. It may request control once with
+`take-control?onlyIfAlone=true` when presence shows only its own active session.
+Core locks the existing driver lease and rechecks sole presence, current input
+expiry and pending requests atomically; a racing join/takeover cannot be displaced.
+Explicit release/view-only selection suppresses automatic requests for that
+connection. Reconnects make a fresh conditional request rather than restoring a
+prior lease. Provider/access bytes and their authorization protocol are unchanged.
+
+Shared consoles recheck current authority every second. Spectators may retain an unchanged token and deadline while more than 7.5 seconds remain; unchanged holders may also retain their existing fenced input deadline while more than 2.5 seconds remain (ADR-0038). Pending handoffs, due renewals and denials use the durable transaction. Read retention never grants input or extends authority. Session/presence observations use `accessSession.read`; actual grants, revocations and handoffs remain audited. See [ADR-0037](../adr/0037-console-observation-and-lease-write-budget.md).
+
+VNC creation serializes endpoint discovery through upstream authentication per instance/resource, preventing overlapping provider password setup. SQLite uses its single-process ownership boundary; PostgreSQL uses advisory coordination across replicas without authority-row locks. Existing streams are independent. Direct provider UI launches remain outside this coordination.
+
+[ADR-0038](../adr/0038-retained-input-leases-and-capability-hints.md) additionally permits a driver to return its unchanged fence and remaining input deadline while more than half the input lease remains. This still checks current authority each callback and never extends input authority without a durable transaction.
+
+Console renewal retains its existing opaque credential, rehashing with the current key on durable renewal. Lost committed responses are retryable without replacing the connection credential; current authority, expiry and generation checks still run on every callback. Expired leases cannot be revived. See [ADR-0039](../adr/0039-retryable-console-renewal-and-background-checkpoints.md).

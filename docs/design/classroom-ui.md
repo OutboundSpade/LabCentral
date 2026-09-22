@@ -1,5 +1,14 @@
 # Classroom interface and private testbed
 
+`TASK-UI-014` routes build-backed personal launches through existing version-2
+preparation, and build-backed classroom launches through the existing version-1
+author batch preparation. Both resolve and validate approved image bindings before
+normal admission; classroom admission remains atomic. Author privilege is required
+for batch preparation, while participant personal/team preparation remains separate.
+My labs and Classroom retain caller-scoped preparation status across reloads.
+Host contract 7 adds the typed classroom operation without changing the product API
+or Proxmox provider. Direct templates retain their existing launch behavior.
+
 Owner-approved on 2026-09-07 under TASK-UI-001 and TASK-TESTBED-001.
 
 The static SvelteKit/DaisyUI interface uses a single charcoal theme, restrained
@@ -107,7 +116,7 @@ TanStack Svelte Query 6.1.48 provides a shared QueryClient for the static
 browser application. The existing typed API adapter uses fetchQuery to reuse
 GET responses and deduplicate simultaneous reads across routes and components.
 Catalogue, project and roster data have 30-second freshness; labs, operations
-and batches one second; VM usage five seconds. Existing status/usage polling
+and batches one second; VM usage and lab topology five seconds. Existing status/usage polling
 continues. Explicit refresh bypasses freshness. Inactive queries expire from
 memory after one minute; browser reloads start with an empty cache.
 
@@ -121,6 +130,13 @@ Authentication responses, access-session data, custom-credential requests and
 all mutation responses bypass the cache. Console one-use tokens remain in the
 existing one-use handoff only, never in QueryCache or MutationCache. There is
 no persisted query cache, automatic command retry or change to server authority.
+
+`TASK-PERF-003` includes component-scoped AbortSignals in ordinary shared GET
+reads. Canceling one component stops only its wait; QueryClient owns cancellation
+of the shared network request during invalidation or identity changes. Resource
+rows therefore reuse one lab topology response, and extension panels reuse their
+catalogue rather than each bypassing the cache. Denials still clear identity data
+even if all callers have left. Access credentials and mutations remain uncached.
 
 
 ## Navigation continuity (TASK-UI-004)
@@ -309,3 +325,9 @@ actions occupy a single opaque sticky header, without separate offset rounding.
 Teams provides bounded multi-group preparation, enrollment and deletion, plus
 confirmed multi-lab cleanup through individually authorized existing APIs. See
 [feature packages](../plugins/feature-packages.md) for partial-failure semantics.
+
+Under [ADR-0036](../adr/0036-instructor-managed-group-lab-deletion.md), participant
+assignments cannot destroy team-owned labs. Students retain shared access and
+personal-lab deletion; instructors retain scoped group-lab deletion. Both the core
+lab details and Teams feature hide group deletion controls for students. Direct
+API requests use the same core authorization rule. Expiration remains automatic.

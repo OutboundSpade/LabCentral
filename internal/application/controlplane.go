@@ -309,6 +309,8 @@ const (
 )
 
 type AccessSessionRecord struct {
+	// LeaseRetained is a transient recheck result; no deadline or token was changed.
+	LeaseRetained        bool `json:"-"`
 	SharedConsole        bool
 	InputLease           *ConsoleInputLease
 	ID                   domain.AccessSessionID

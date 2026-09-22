@@ -46,10 +46,10 @@ func scanGatewayClient(row scanner) (app.GatewayClient, error) {
 	return c, nil
 }
 func (s *Store) GatewayClient(ctx context.Context, id string) (app.GatewayClient, error) {
-	return scanGatewayClient(s.db.QueryRowContext(ctx, s.bind(`SELECT client_id,name,disabled,secret_key_id,secret_hash FROM labcentral_gateway_clients WHERE client_id=?`), id))
+	return scanGatewayClient(s.readDB().QueryRowContext(ctx, s.bind(`SELECT client_id,name,disabled,secret_key_id,secret_hash FROM labcentral_gateway_clients WHERE client_id=?`), id))
 }
 func (s *Store) ListGatewayClients(ctx context.Context) ([]app.GatewayClient, error) {
-	rows, e := s.db.QueryContext(ctx, `SELECT client_id,name,disabled,secret_key_id,secret_hash FROM labcentral_gateway_clients ORDER BY client_id LIMIT 200`)
+	rows, e := s.readDB().QueryContext(ctx, `SELECT client_id,name,disabled,secret_key_id,secret_hash FROM labcentral_gateway_clients ORDER BY client_id LIMIT 200`)
 	if e != nil {
 		return nil, e
 	}
@@ -332,7 +332,7 @@ func scanGatewayGrant(row scanner) (g app.GatewayGrant, e error) {
 }
 func (s *Store) AuthenticateGatewayGrant(ctx context.Context, client string, hashes []app.KeyedTokenHash) (app.GatewayGrant, error) {
 	for _, h := range hashes {
-		g, e := scanGatewayGrant(s.db.QueryRowContext(ctx, s.bind(`SELECT `+grantCols+` FROM labcentral_gateway_grants g JOIN labcentral_gateway_clients c ON c.client_id=g.client_id JOIN labcentral_users u ON u.user_id=g.subject_id WHERE g.client_id=? AND g.token_key_id=? AND g.token_hash=? AND g.revoked=0 AND c.disabled=0 AND u.disabled=0 AND g.expires_at_us>`+s.nowMicros()), client, h.KeyID, h.Digest))
+		g, e := scanGatewayGrant(s.readDB().QueryRowContext(ctx, s.bind(`SELECT `+grantCols+` FROM labcentral_gateway_grants g JOIN labcentral_gateway_clients c ON c.client_id=g.client_id JOIN labcentral_users u ON u.user_id=g.subject_id WHERE g.client_id=? AND g.token_key_id=? AND g.token_hash=? AND g.revoked=0 AND c.disabled=0 AND u.disabled=0 AND g.expires_at_us>`+s.nowMicros()), client, h.KeyID, h.Digest))
 		if e == nil {
 			return g, nil
 		}
@@ -340,7 +340,7 @@ func (s *Store) AuthenticateGatewayGrant(ctx context.Context, client string, has
 	return app.GatewayGrant{}, app.ErrGatewayExpired
 }
 func (s *Store) ListGatewayGrants(ctx context.Context, subject domain.UserID) ([]app.GatewayGrant, error) {
-	rows, e := s.db.QueryContext(ctx, s.bind(`SELECT `+grantCols+` FROM labcentral_gateway_grants g JOIN labcentral_gateway_clients c ON c.client_id=g.client_id WHERE g.subject_id=? ORDER BY g.expires_at_us DESC,g.grant_id LIMIT 200`), subject)
+	rows, e := s.readDB().QueryContext(ctx, s.bind(`SELECT `+grantCols+` FROM labcentral_gateway_grants g JOIN labcentral_gateway_clients c ON c.client_id=g.client_id WHERE g.subject_id=? ORDER BY g.expires_at_us DESC,g.grant_id LIMIT 200`), subject)
 	if e != nil {
 		return nil, e
 	}

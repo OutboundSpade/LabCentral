@@ -173,7 +173,7 @@ func (s *Service) RunSourceWork(ctx context.Context, owner string, report func(e
 			if !ok {
 				return
 			}
-			claim, err := store.ClaimExtensionWork(ctx, owner, key, domain.WorkSource, 30*time.Second)
+			claim, err := store.ClaimExtensionWork(ctx, owner, key, domain.WorkSource, s.workLease())
 			if err != nil {
 				continue
 			}
@@ -209,7 +209,7 @@ func (s *Service) executeSource(parent context.Context, store app.ExtensionWorkS
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				if err := store.RenewExtensionWork(ctx, c, 30*time.Second); err != nil {
+				if err := store.RenewExtensionWork(ctx, c, s.workLease()); err != nil {
 					cancel()
 					return
 				}

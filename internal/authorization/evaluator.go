@@ -74,6 +74,13 @@ func (e *Evaluator) evaluate(ctx context.Context, request application.Authorizat
 		return recordScope, ErrDenied
 	}
 	for _, assignment := range snapshot.Assignments {
+		// Shared labs are instructor-managed: enrollment grants access, not deletion.
+		if assignment.Role == application.RoleParticipant && request.OwnerKind == application.OwnerTeam && request.Action == application.ActionInstanceDestroy {
+			continue
+		}
+		if snapshot.ParticipantDeploymentDisabled && assignment.Role == application.RoleParticipant && (request.Action == application.ActionInstanceCreate || request.Action == application.ActionInstancePlan || request.Action == application.ActionInstanceValidate) {
+			continue
+		}
 		if !roleAllows(assignment.Role, request.Action) || !assignmentCovers(assignment, hierarchy, request, snapshot) {
 			continue
 		}
@@ -102,11 +109,15 @@ type authorizationDecisionPayload struct {
 }
 
 func (e *Evaluator) recordDecision(ctx context.Context, request application.AuthorizationRequest, scope application.RecordScope, decisionErr error) error {
-	// Recording a successful read into the same stream being paged would make
-	// cursor exhaustion impossible: every next-page request would append a new
-	// tail record. Denied and failed audit reads remain security events.
-	if request.Action == application.ActionAuditRead && decisionErr == nil {
-		return nil
+	// Routine metadata polling must not enter the durable writer queue. Keep
+	// an explicit allowlist: mutations, access grants, denials and failures
+	// retain synchronous audit recording (ADR-0035, ADR-0037).
+	if decisionErr == nil {
+		switch request.Action {
+		case application.ActionAuditRead, application.ActionInstanceRead,
+			application.ActionTemplateRead, application.ActionProviderTargetHealthRead, application.ActionAccessSessionRead:
+			return nil
+		}
 	}
 	outcome := application.AuditSucceeded
 	decision := "allowed"
@@ -365,9 +376,11 @@ func roleAllows(role application.Role, action application.PermissionAction) bool
 		}
 	case application.RoleInstructor:
 		switch action {
+		case application.ActionTeamManage:
+			return true
 		case application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
 			application.ActionInstanceCreate, application.ActionInstanceBatchCreate, application.ActionInstanceRead,
-			application.ActionInstanceTTLExtend, application.ActionInstanceDestroy, application.ActionAccessSessionCreate,
+			application.ActionInstanceTTLExtend, application.ActionInstanceDestroy, application.ActionAccessSessionRead, application.ActionAccessSessionCreate,
 			application.ActionAccessSessionRevoke, application.ActionProviderTargetHealthRead:
 			return true
 		}
@@ -375,7 +388,7 @@ func roleAllows(role application.Role, action application.PermissionAction) bool
 		switch action {
 		case application.ActionTemplateRead, application.ActionInstanceValidate, application.ActionInstancePlan,
 			application.ActionInstanceCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
-			application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
+			application.ActionInstanceDestroy, application.ActionAccessSessionRead, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
 			application.ActionProviderTargetHealthRead:
 			return true
 		}
@@ -393,7 +406,7 @@ func knownAction(action application.PermissionAction) bool {
 		application.ActionTemplateRevisionPublish,
 		application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
 		application.ActionInstanceBatchCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
-		application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
+		application.ActionInstanceDestroy, application.ActionAccessSessionRead, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke,
 		application.ActionQuotaManage, application.ActionAuditRead, application.ActionMembershipManage,
 		application.ActionRoleAssignmentManage, application.ActionOrganizationManage, application.ActionProjectManage,
 		application.ActionTeamManage:
@@ -440,7 +453,7 @@ func requiresOwnerRelationship(role application.Role, action application.Permiss
 	switch action {
 	case application.ActionInstanceValidate, application.ActionInstancePlan, application.ActionInstanceCreate,
 		application.ActionInstanceBatchCreate, application.ActionInstanceRead, application.ActionInstanceTTLExtend,
-		application.ActionInstanceDestroy, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke:
+		application.ActionInstanceDestroy, application.ActionAccessSessionRead, application.ActionAccessSessionCreate, application.ActionAccessSessionRevoke:
 		return true
 	default:
 		return false
@@ -486,7 +499,7 @@ func requiresTargetGrant(action application.PermissionAction) bool {
 	return action == application.ActionInstanceValidate || action == application.ActionInstancePlan ||
 		action == application.ActionInstanceCreate || action == application.ActionInstanceBatchCreate ||
 		action == application.ActionInstanceDestroy || action == application.ActionInstanceTTLExtend ||
-		action == application.ActionAccessSessionCreate || action == application.ActionAccessSessionRevoke
+		action == application.ActionAccessSessionRead || action == application.ActionAccessSessionCreate || action == application.ActionAccessSessionRevoke
 }
 
 func hasTargetGrant(request application.AuthorizationRequest, hierarchy application.ScopeHierarchy, snapshot application.AuthorizationSnapshot) bool {

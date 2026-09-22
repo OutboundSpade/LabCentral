@@ -75,6 +75,21 @@ func TestParticipantPreparationDoesNotGrantAuthorOrImagePrivileges(t *testing.T)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("foreign owner: %d %s", response.Code, response.Body.String())
 	}
+	// Classroom's typed bridge uses the existing author-only batch preparation.
+	batch := map[string]any{"projectId": "project.alpha", "preparation": map[string]any{
+		"version": 1, "revisionId": revision.ID, "targetId": string(controlplane.LocalDockerTarget),
+		"inputs": []any{}, "acknowledged": true, "lifetime": map[string]any{"ttlSeconds": 3600},
+		"owners": []any{map[string]any{"Kind": "user", "ID": "user.author"}, map[string]any{"Kind": "user", "ID": "user.auditor"}},
+	}}
+	response = author.request(http.MethodPost, "/api/v1/deployment-preparations", batch, "", "classroom-batch-prepare")
+	requireGovernanceStatus(t, response, 200)
+	var classroom app.ExtensionWork
+	decodeGovernanceResponse(t, response, &classroom)
+	if classroom.Request.Preparation.Version != 1 || len(classroom.Request.Preparation.Owners) != 2 || classroom.Request.Preparation.Owners[1].ID != "user.auditor" {
+		t.Fatal("batch owner contract was not preserved")
+	}
+	response = participant.request(http.MethodPost, "/api/v1/deployment-preparations", batch, "", "participant-batch-prepare")
+	requireGovernanceStatus(t, response, http.StatusForbidden)
 	response = participant.request(http.MethodPost, "/api/v1/builds", map[string]any{"projectId": "project.alpha", "revisionId": revision.ID, "recipeId": "base"}, "", "participant-build")
 	requireGovernanceStatus(t, response, http.StatusForbidden)
 	response = participant.request(http.MethodPost, "/api/v1/lab-templates", map[string]any{"projectId": "project.alpha", "name": "forbidden"}, "", "participant-author")

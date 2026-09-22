@@ -1,6 +1,128 @@
 formatVersion: 1
-lastUpdated: "2026-09-21"
+lastUpdated: "2026-09-22"
 tasks:
+  - id: TASK-PERF-004
+    title: Reproduce and resolve five-group classroom console load failures
+    status: in_progress
+    dependencies: [TASK-PERF-003, TASK-CLASSROOM-003, TASK-ACCESS-001]
+    relatedAdrs: [ADR-0006, ADR-0024, ADR-0029, ADR-0033, ADR-0035, ADR-0037, ADR-0038, ADR-0039]
+    relatedDocuments: [docs/design/access-sessions.md, docs/design/persistence-and-artifacts.md, docs/operations/classroom-testbed.md]
+    acceptanceCriteria:
+      - Exercise fifteen distinct participants across five groups using real browser consoles and page activity; correlate latency, reconnects, lease outcomes and host I/O.
+      - Fix reproduced causes without weakening authorization, audit of actual access transitions, revocation or durability; retain repeatable load evidence and focused regressions.
+      - Deploy verified artifacts, repeat the sustained classroom scenario, and remove only test-owned accounts, sessions and labs.
+      - Resolve measured shared-storage flush latency before accepting provisioning alongside active classroom consoles.
+  - id: TASK-CLASSROOM-003
+    title: Reserve group lab deletion for instructors
+    status: complete
+    dependencies: [TASK-CLASSROOM-001]
+    relatedAdrs: [ADR-0036]
+    relatedDocuments: [docs/design/auth-tenancy-rbac.md, docs/design/classroom-ui.md]
+    acceptanceCriteria:
+      - Deny participant destruction of team-owned labs while retaining personal ownership and scoped instructor authority.
+      - Hide group deletion controls from students in the core UI and Teams feature; verify authorization and deploy the changes.
+  - id: TASK-CLASSROOM-002
+    title: Provide instructor-operated Example Branch incident rounds
+    status: complete
+    dependencies: [TASK-CLASSROOM-001]
+    relatedAdrs: [ADR-0015, ADR-0018]
+    relatedDocuments: [docs/operations/classroom-breaks.md]
+    acceptanceCriteria:
+      - Discover ready group labs and match exact resource ownership before guest administration with operator credentials kept outside runtime services.
+      - Independently stop Apache, move its listener, or perform a real synthetic SSH login across selected groups, with reset and per-group results.
+      - Provide instructor commands and answers; exercise one representative group and restore it without rebuilding images or changing provider qualification.
+  - id: TASK-PERF-003
+    title: Deduplicate component polling through the shared query cache
+    status: complete
+    dependencies: [TASK-PERF-002]
+    relatedAdrs: [ADR-0009, ADR-0023]
+    relatedDocuments: [docs/design/classroom-ui.md]
+    acceptanceCriteria:
+      - Share ordinary GET requests even when components supply cancellation signals, without one component canceling another's request.
+      - Retain identity invalidation and uncached access credentials; verify request counts on a multi-resource lab page and deploy the UI update.
+  - id: TASK-CLEANUP-002
+    title: Recover owned leftovers from interrupted production lab creation
+    status: complete
+    dependencies: [TASK-CLEANUP-001, TASK-PERF-002]
+    relatedAdrs: [ADR-0006, ADR-0018]
+    relatedDocuments: [docs/operations/recovery.md]
+    acceptanceCriteria:
+      - Match remaining VMs to exact installation, instance, resource and ownership token before removing them.
+      - Preserve an offline recovery snapshot and reconcile only independently confirmed absent resources; finalize labs through the ordinary API and release reservations.
+      - Verify the three failed labs are destroyed and unrelated infrastructure and templates are preserved.
+  - id: TASK-PERF-002
+    title: Resolve live provisioning stalls and simplify classroom network branding
+    status: complete
+    dependencies: [TASK-PERF-001, TASK-CLEANUP-001]
+    relatedAdrs: [ADR-0006, ADR-0018, ADR-0021, ADR-0035]
+    relatedDocuments: [docs/design/reconciliation-and-jobs.md, docs/design/deployment.md]
+    acceptanceCriteria:
+      - Identify the remaining stall from live provisioning evidence and correct it without weakening durability, ownership or qualification.
+      - Use the purple application theme for the favicon and a concise Example Branch topology containing only machine and network details.
+      - Deploy the settled changes and perform focused checks during real provisioning.
+  - id: TASK-CLEANUP-001
+    title: Preserve failed-deployment leftovers and refresh the application icon
+    status: complete
+    dependencies: [TASK-PERF-001, TASK-CLASSROOM-001]
+    relatedAdrs: [ADR-0006, ADR-0018]
+    relatedDocuments: [docs/design/reconciliation-and-jobs.md]
+    acceptanceCriteria:
+      - Keep failed apply resources with unconfirmed cleanup visible and retain their allocations through a later destroy request.
+      - Reconcile confirmed owned leftovers from deleted labs and verify their absence without touching templates or unrelated machines.
+      - Deploy a flask favicon consistent with the application branding and pass focused worker and UI checks.
+  - id: TASK-PERF-001
+    title: Keep SQLite API reads responsive during durable provisioning writes
+    status: complete
+    dependencies: [TASK-CLASSROOM-001]
+    relatedAdrs: [ADR-0006, ADR-0021]
+    relatedDocuments: [docs/design/persistence-and-artifacts.md]
+    acceptanceCriteria:
+      - Use bounded read-only WAL connections for committed reads while retaining one fully durable writer and transactional authorization checks.
+      - Verify reads during an occupied writer, committed visibility, read-only enforcement and affected persistence contracts; deploy the core without changing qualified plugins.
+  - id: TASK-CLASSROOM-001
+    title: Provision students and prepare instructor-managed classroom access
+    status: complete
+    dependencies: [TASK-ACCESS-001, TASK-UI-014]
+    relatedAdrs: [ADR-0010, ADR-0029, ADR-0034]
+    relatedDocuments: [docs/design/auth-tenancy-rbac.md, docs/design/access-sessions.md]
+    acceptanceCriteria:
+      - Provision exact OIDC identities as project participants, sync names, and preserve disabled users and revoked roles.
+      - Support reversible participant deployment denial at API and transactional admission while preserving group lab access and instructor management.
+      - Automatically request sole-console control with an atomic no-takeover guard.
+      - Publish student machine addresses, synthetic credentials and a network diagram; deploy with focused authorization and browser checks.
+  - id: TASK-ACCESS-001
+    title: Relay authenticated Proxmox WebSocket consoles without credential delegation
+    status: complete
+    dependencies: [TASK-PROXMOX-007, TASK-COLLAB-002]
+    relatedAdrs: [ADR-0018, ADR-0019, ADR-0024, ADR-0029, ADR-0033]
+    relatedDocuments: [docs/design/access-sessions.md, docs/operations/proxmox-deployment.md]
+    acceptanceCriteria:
+      - Open verified provider-owned WSS only after current qualification, permissions and exact ownership/resource checks; never delegate management credentials.
+      - Negotiate a typed invocation-only local relay envelope with pinned peer UIDs, one-use grants, bounded lifetime/capacity and cleanup on disconnect or restart.
+      - Retain direct TLS/tailnet, browser authorization leases, revocation and shared-driver enforcement; cover rejection and cleanup with normal/race tests.
+      - Qualify the exact changed provider, deploy approved artifacts and verify browser display/input and revocation against an authorized live VM.
+  - id: TASK-UI-014
+    title: Prepare build-backed personal and classroom launches
+    status: complete
+    dependencies: [TASK-UI-013, TASK-TEMPLATE-008]
+    relatedAdrs: [ADR-0026, ADR-0028]
+    relatedDocuments: [docs/design/classroom-ui.md, docs/plugins/feature-packages.md]
+    acceptanceCriteria:
+      - Route build-backed personal launches through participant preparation and classroom launches through existing author batch preparation, retaining atomic batch admission and approval checks.
+      - Preserve direct launch and provider overrides for templates without builds; reject unsupported overrides instead of silently discarding them.
+      - Show durable preparation progress and failures after navigation or reload, with typed host-scoped requests and declared package compatibility.
+      - Pass affected bridge, type/build and browser checks, then deploy the exact artifact and verify a live build-backed classroom launch and console.
+  - id: TASK-PROXMOX-007
+    title: Support capacity-bounded qualification on dynamic filesystems
+    status: complete
+    dependencies: [TASK-PROXMOX-006, TASK-TEMPLATE-004, TASK-LAB-001]
+    relatedAdrs: [ADR-0018, ADR-0028, ADR-0030, ADR-0032]
+    relatedDocuments: [providers/proxmox, docs/design/proxmox-qemu-mutation.md, docs/operations/proxmox-deployment.md]
+    acceptanceCriteria:
+      - Add an explicit versioned capacity projection with reviewed storage minima, preserving all prior signatures and target semantics.
+      - Reject missing, unknown, below-minimum and structurally changed storage; retain actual discovery capacity and exact staging coverage.
+      - Pass affected normal/race and exact-target clone, lifecycle, failure, image-import and isolation checks before production enablement review.
+      - Prepare required source images and complete an authorized representative deployment after target and image approval; preserve existing infrastructure and recovery evidence.
   - id: TASK-LAB-001
     title: Deliver the Example Branch competition lab
     status: complete

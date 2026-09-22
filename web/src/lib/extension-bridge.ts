@@ -17,6 +17,7 @@ export const featurePermissions: Record<string, string> = {
   "labs.get": "labs.read",
   "labs.destroy": "labs.manage",
   "labs.batchCreate": "labs.create",
+  "labs.batchPrepare": "labs.create",
   "labs.batchGet": "labs.read",
   "operations.get": "labs.read",
   "templates.list": "templates.read",
@@ -482,17 +483,34 @@ export function featureRequest(
       return get(
         `/projects/${id(projectId)}/members?targetId=${id(data.targetId)}&limit=200${data.after ? `&after=${id(data.after)}` : ""}`,
       );
+    case "labs.batchPrepare":
     case "labs.prepare": {
+      const batch = method === "labs.batchPrepare";
       closed(data, [
         "revisionId",
         "targetId",
         "inputs",
         "lifetime",
         "acknowledged",
-        "owner",
+        batch ? "owners" : "owner",
         "idempotencyKey",
       ]);
       let owner: { kind: string; id: string } | undefined;
+      let owners: { Kind: string; ID: string }[] | undefined;
+      if (batch) {
+        if (
+          !Array.isArray(data.owners) ||
+          !data.owners.length ||
+          data.owners.length > 100
+        )
+          throw new Error("Invalid owners");
+        owners = data.owners.map((value) => ({
+          Kind: "user",
+          ID: decodeURIComponent(id(value)),
+        }));
+        if (new Set(owners.map((value) => value.ID)).size !== owners.length)
+          throw new Error("Duplicate owners");
+      }
       if (data.owner !== undefined) {
         const value = object(data.owner);
         closed(value, ["kind", "id"]);
@@ -512,10 +530,11 @@ export function featureRequest(
       return post("/deployment-preparations", {
         projectId,
         preparation: {
-          version: 2,
+          version: batch ? 1 : 2,
           revisionId: decodeURIComponent(id(data.revisionId)),
           targetId: decodeURIComponent(id(data.targetId)),
           owner,
+          owners,
           inputs: inputValues(data.inputs).map((v) => ({
             Name: v.name,
             Kind: v.kind,

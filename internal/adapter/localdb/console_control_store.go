@@ -69,6 +69,7 @@ func (s *Store) renewConsoleInputTx(ctx context.Context, tx *sql.Tx, r *app.Acce
 	if err != nil {
 		return err
 	}
+	before := v
 	n := now.UnixMicro()
 	if v.holder == v.requested && v.holder != "" && v.until <= n {
 		v.requested = ""
@@ -97,10 +98,13 @@ func (s *Store) renewConsoleInputTx(ctx context.Context, tx *sql.Tx, r *app.Acce
 		v.requestUntil = 0
 		r.InputLease = &app.ConsoleInputLease{Fence: v.fence, ValidFor: until.Sub(now)}
 	}
+	if v == before {
+		return nil
+	}
 	return s.saveConsoleLeaseTx(ctx, tx, *r, v)
 }
 func (s *Store) consoleActorTx(ctx context.Context, tx *sql.Tx, actor domain.UserID, id domain.AccessSessionID, active bool) (r app.AccessSessionRecord, now time.Time, err error) {
-	r, err = s.getAccessSessionTx(ctx, tx, id, true)
+	r, err = s.getAccessSessionTx(ctx, tx, id, active)
 	if err != nil {
 		return
 	}
@@ -121,7 +125,7 @@ func (s *Store) consoleActorTx(ctx context.Context, tx *sql.Tx, actor domain.Use
 		return
 	}
 	var allowed bool
-	allowed, err = s.accessCurrentlyAuthorizedTx(ctx, tx, r, now)
+	allowed, err = s.accessCurrentlyAuthorizedSnapshotTx(ctx, tx, r, now, active)
 	if err == nil && !allowed {
 		err = app.ErrAuthorityChanged
 	}
@@ -158,7 +162,7 @@ func (s *Store) consolePresenceTx(ctx context.Context, tx *sql.Tx, r app.AccessS
 	return out, rows.Err()
 }
 func (s *Store) ConsolePresence(ctx context.Context, actor domain.UserID, id domain.AccessSessionID) (out app.ConsolePresence, err error) {
-	err = s.workTx(ctx, func(tx *sql.Tx) error {
+	err = s.readTx(ctx, func(tx *sql.Tx) error {
 		r, now, e := s.consoleActorTx(ctx, tx, actor, id, false)
 		if e != nil {
 			return e
@@ -195,6 +199,16 @@ func (s *Store) ChangeConsoleControl(ctx context.Context, r app.ChangeConsoleCon
 		v, e := s.consoleLeaseTx(ctx, tx, current, true)
 		if e != nil {
 			return e
+		}
+		if r.Take && r.OnlyIfAlone {
+			presence, e := s.consolePresenceTx(ctx, tx, current, now)
+			if e != nil {
+				return e
+			}
+			if len(presence.Participants) != 1 || presence.Participants[0].SessionID != current.ID || v.until > now.UnixMicro() || (v.requested != "" && v.requestUntil > now.UnixMicro()) {
+				out = presence
+				return s.bindIdempotency(ctx, tx, r.ActorID, action, r.IdempotencyKey, r.RequestDigest, string(r.SessionID))
+			}
 		}
 		if r.Take {
 			if v.until <= now.UnixMicro() {

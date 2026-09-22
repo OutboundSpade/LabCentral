@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-18
 - **Supersedes:** ADR-0010 (self-service project team relationship); ADR-0024 (shared console driver leases)
-- **Superseded by:** None
+- **Superseded by:** ADR-0034 and [ADR-0036](0036-instructor-managed-group-lab-deletion.md) (only the scopes explicitly identified there)
 
 ## Decision
 

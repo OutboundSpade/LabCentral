@@ -154,3 +154,14 @@ remains open under TASK-PROD-004.
 ## Owned image import extension
 
 ADR-0028 extends the original fixed-template subset with separately qualified owned imports, per-resource bindings and reference-aware image retirement. Its implementation is a later task and does not imply current target capability. The accepted additions are defined in [portable templates and collaboration](portable-template-collaboration.md).
+
+## Capacity-bounded storage qualification
+
+[ADR-0032](../adr/0032-proxmox-storage-capacity-qualification.md) adds target-config
+v1.6 with mandatory exact `storageCapacityFloors` coverage for disk and staging
+storages. Fresh discovery must report each configured storage at or above its
+reviewed `minimumTotalBytes`. Mutation-inventory v1.2 excludes dynamic total
+counters while retaining structural storage/infrastructure facts and configured
+static templates. Real capacity remains in discovery. Older target versions and
+signed inventory identities retain their existing behavior. Changed provider
+bytes and configuration still require fresh signed exact-target qualification.

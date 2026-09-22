@@ -340,14 +340,14 @@ func (s *Store) GetAuditRecord(ctx context.Context, id string) (application.Audi
 	if len(id) == 0 || len(id) > 128 {
 		return application.AuditRecord{}, fmt.Errorf("audit ID must be 1-128 bytes")
 	}
-	return scanAuditRecord(s.db.QueryRowContext(ctx, s.bind(auditRecordSelect+` WHERE audit_id = ?`), id))
+	return scanAuditRecord(s.readDB().QueryRowContext(ctx, s.bind(auditRecordSelect+` WHERE audit_id = ?`), id))
 }
 
 func (s *Store) GetEventRecord(ctx context.Context, id string) (application.EventRecord, error) {
 	if len(id) == 0 || len(id) > 128 {
 		return application.EventRecord{}, fmt.Errorf("event ID must be 1-128 bytes")
 	}
-	return scanEventRecord(s.db.QueryRowContext(ctx, s.bind(eventRecordSelect+` WHERE event_id = ?`), id))
+	return scanEventRecord(s.readDB().QueryRowContext(ctx, s.bind(eventRecordSelect+` WHERE event_id = ?`), id))
 }
 
 const auditRecordSelect = `SELECT audit_id, stream_position, schema_version, category, action, outcome,
@@ -367,7 +367,7 @@ func (s *Store) ListAuditRecords(ctx context.Context, filter application.AuditRe
 	query, arguments := buildRecordQuery(auditRecordSelect, "category", string(filter.Category), filter.Scope,
 		filter.ActorID, filter.AggregateType, filter.AggregateID, filter.OccurredFrom,
 		filter.OccurredBefore, filter.After, filter.Limit)
-	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return application.AuditRecordPage{}, fmt.Errorf("list audit records: %w", err)
 	}
@@ -398,7 +398,7 @@ func (s *Store) ListEventRecords(ctx context.Context, filter application.EventRe
 	query, arguments := buildRecordQuery(eventRecordSelect, "event_type", filter.Type, filter.Scope,
 		filter.ActorID, filter.AggregateType, filter.AggregateID, filter.OccurredFrom,
 		filter.OccurredBefore, filter.After, filter.Limit)
-	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return application.EventRecordPage{}, fmt.Errorf("list event records: %w", err)
 	}

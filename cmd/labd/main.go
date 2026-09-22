@@ -56,6 +56,7 @@ const (
 )
 
 type config struct {
+	workerLeaseDuration          time.Duration
 	extensionAssetOrigin         string
 	extensionAssetListen         string
 	providerConcurrency          string
@@ -105,6 +106,8 @@ type config struct {
 	bootstrapDisplayName         string
 	bootstrapPasswordFile        string
 	bootstrapOIDCSubject         string
+	oidcAutoProvisionProject     string
+	disableParticipantDeployment bool
 	oidcIssuer                   string
 	oidcClientID                 string
 	oidcClientSecretFile         string
@@ -301,6 +304,10 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 	if err != nil {
 		return err
 	}
+	if err := control.SetWorkLeaseDuration(configuration.workerLeaseDuration); err != nil {
+		return err
+	}
+
 	if configuration.authMode == "none" {
 		authenticationOptions.Authorizer, err = authorization.NewLocal(store, targets.IDs()...)
 		if err != nil {
@@ -423,7 +430,7 @@ func runConfigured(logger *slog.Logger, configuration config) error {
 		go sweepAccessSessions(expirationContext, control, logger, telemetry)
 	}
 	worker, err := controlplane.NewWorkerWithTargets(store, targets, ids, controlplane.WorkerOptions{
-		Owner: configuration.replicaID, Authorizer: authenticationOptions.Authorizer,
+		Owner: configuration.replicaID, LeaseDuration: configuration.workerLeaseDuration, Authorizer: authenticationOptions.Authorizer,
 		OnError: func(err error) {
 			telemetry.ObserveBackground("durable_worker", err)
 			logger.Error("durable worker iteration failed", "error", err)
@@ -685,6 +692,7 @@ func parseFlags() config {
 	flag.StringVar(&result.dataDir, "data-dir", "./labcentral-data", "local SQLite, artifact, and runtime directory")
 	flag.StringVar(&result.deploymentMode, "deployment-mode", deploymentModeSingleNode, "deployment topology: single-node or multi-replica")
 	flag.StringVar(&result.postgresDSNFile, "postgres-dsn-file", "", "owner-only file containing the PostgreSQL connection URL")
+	flag.DurationVar(&result.workerLeaseDuration, "worker-lease-duration", 30*time.Second, "durable worker lease duration (30s–5m); heartbeats remain at most 10s apart")
 	flag.StringVar(&result.replicaID, "replica-id", "local-worker", "stable unique worker identity; required explicitly in multi-replica mode")
 	flag.StringVar(&result.artifactMode, "artifact-mode", artifactModeLocal, "artifact topology: local-filesystem or shared-filesystem")
 	flag.StringVar(&result.artifactDir, "artifact-dir", "", "artifact root; defaults beneath data-dir in single-node mode")
@@ -722,6 +730,8 @@ func parseFlags() config {
 	flag.StringVar(&result.bootstrapDisplayName, "bootstrap-display-name", "Bootstrap administrator", "initial administrator display name")
 	flag.StringVar(&result.bootstrapPasswordFile, "bootstrap-password-file", "", "owner-only initial local administrator password file")
 	flag.StringVar(&result.bootstrapOIDCSubject, "bootstrap-oidc-subject", "", "initial administrator's exact pre-linked OIDC subject")
+	flag.StringVar(&result.oidcAutoProvisionProject, "oidc-auto-provision-project", "", "project for new OIDC participant accounts")
+	flag.BoolVar(&result.disableParticipantDeployment, "disable-participant-deployment", false, "allow only instructors and administrators to deploy labs")
 	flag.StringVar(&result.oidcIssuer, "oidc-issuer", "", "exact HTTPS OIDC issuer")
 	flag.StringVar(&result.oidcClientID, "oidc-client-id", "", "OIDC client ID")
 	flag.StringVar(&result.oidcClientSecretFile, "oidc-client-secret-file", "", "owner-only OIDC client secret file")
@@ -731,6 +741,9 @@ func parseFlags() config {
 }
 
 func validateConfig(configuration config) error {
+	if configuration.workerLeaseDuration != 0 && (configuration.workerLeaseDuration < 30*time.Second || configuration.workerLeaseDuration > 5*time.Minute) {
+		return fmt.Errorf("worker lease duration must be between 30 seconds and 5 minutes")
+	}
 	if err := validateObservabilityConfig(configuration); err != nil {
 		return err
 	}
@@ -790,7 +803,7 @@ func validateConfig(configuration config) error {
 	}
 	switch configuration.authMode {
 	case httpapi.AuthModeNone:
-		if configuration.publicOrigin != "" || configuration.sessionKeyringFile != "" || configuration.bootstrapPasswordFile != "" || configuration.bootstrapOIDCSubject != "" || configuration.oidcIssuer != "" || configuration.oidcClientID != "" || configuration.oidcClientSecretFile != "" || configuration.trustedProxyCIDRs != "" {
+		if configuration.publicOrigin != "" || configuration.sessionKeyringFile != "" || configuration.bootstrapPasswordFile != "" || configuration.bootstrapOIDCSubject != "" || configuration.oidcAutoProvisionProject != "" || configuration.oidcIssuer != "" || configuration.oidcClientID != "" || configuration.oidcClientSecretFile != "" || configuration.trustedProxyCIDRs != "" {
 			return fmt.Errorf("authentication and trusted-proxy options require --auth-mode=local or oidc")
 		}
 	case httpapi.AuthModeLocal, httpapi.AuthModeOIDC:
@@ -801,7 +814,7 @@ func validateConfig(configuration config) error {
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.String() != configuration.publicOrigin {
 			return fmt.Errorf("--public-origin must be an exact HTTPS origin without path, query, user information, or fragment")
 		}
-		if configuration.authMode == httpapi.AuthModeLocal && (configuration.bootstrapOIDCSubject != "" || configuration.oidcIssuer != "" || configuration.oidcClientID != "" || configuration.oidcClientSecretFile != "") {
+		if configuration.authMode == httpapi.AuthModeLocal && (configuration.bootstrapOIDCSubject != "" || configuration.oidcAutoProvisionProject != "" || configuration.oidcIssuer != "" || configuration.oidcClientID != "" || configuration.oidcClientSecretFile != "") {
 			return fmt.Errorf("OIDC options require --auth-mode=oidc")
 		}
 		if configuration.authMode == httpapi.AuthModeOIDC && (configuration.oidcIssuer == "" || configuration.oidcClientID == "" || configuration.oidcClientSecretFile == "" || configuration.bootstrapPasswordFile != "") {
@@ -868,6 +881,9 @@ func validateObservabilityConfig(configuration config) error {
 }
 
 func withRuntimeDefaults(configuration config) config {
+	if configuration.workerLeaseDuration == 0 {
+		configuration.workerLeaseDuration = 30 * time.Second
+	}
 	if configuration.observabilityListen == "" {
 		configuration.observabilityListen = "127.0.0.1:9090"
 	}
@@ -951,6 +967,9 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 	if err != nil {
 		return httpapi.AuthenticationOptions{}, err
 	}
+	if err := store.ConfigureParticipantDeployment(ctx, !configuration.disableParticipantDeployment); err != nil {
+		return httpapi.AuthenticationOptions{}, err
+	}
 	hasUsers, err := store.HasUsers(ctx)
 	if err != nil {
 		return httpapi.AuthenticationOptions{}, fmt.Errorf("inspect authentication bootstrap state: %w", err)
@@ -972,7 +991,7 @@ func configureHTTPAuthentication(ctx context.Context, configuration config, stor
 		clientSecret := string(secretBytes)
 		clear(secretBytes)
 		oidcService, err = authentication.NewOIDCService(ctx, store, manager, keyring, authentication.OIDCConfig{
-			Issuer: configuration.oidcIssuer, ClientID: configuration.oidcClientID, ClientSecret: clientSecret,
+			AutoProvisionProject: configuration.oidcAutoProvisionProject, Issuer: configuration.oidcIssuer, ClientID: configuration.oidcClientID, ClientSecret: clientSecret,
 			RedirectURL: configuration.publicOrigin + "/api/v1/auth/oidc/callback",
 		})
 		if err != nil {

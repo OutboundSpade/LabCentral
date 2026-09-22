@@ -67,6 +67,51 @@ test("explicit refresh and stale live status fetch again", async () => {
   expect(calls.length).toBe(3);
 });
 
+test("component abort signals share reads and cancel only their own waiter", async () => {
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  let networkSignal: AbortSignal | null | undefined;
+  handler = async (_path, init) => { networkSignal = init.signal; await wait; return json({ items: [] }); };
+  const controllers = Array.from({ length: 6 }, () => new AbortController());
+  const reads = controllers.map(c => api('/extensions/browser', { signal: c.signal }));
+  const canceled = reads[0].catch(error => error);
+  controllers[0].abort();
+  expect(await canceled).toBeInstanceOf(DOMException);
+  expect(networkSignal?.aborted).toBe(false);
+  release();
+  await Promise.all(reads.slice(1));
+  await api('/extensions/browser', { signal: new AbortController().signal });
+  expect(calls).toHaveLength(1);
+  await expect(api('/never-started', { signal: controllers[0].signal })).rejects.toThrow();
+  expect(calls).toHaveLength(1);
+});
+
+test("staggered resource rows reuse topology for five seconds", async () => {
+  const read = () => api('/lab-instances/example/topology', { signal: new AbortController().signal });
+  await read();
+  const q = queryClient.getQueryCache().getAll()[0];
+  q.setState({ dataUpdatedAt: Date.now() - 2000 });
+  await read();
+  expect(calls).toHaveLength(1);
+  q.setState({ dataUpdatedAt: Date.now() - 6000 });
+  await Promise.all([read(), read(), read(), read()]);
+  expect(calls).toHaveLength(2);
+});
+
+test("a denied shared read clears identity data even after its caller leaves", async () => {
+  await api('/projects');
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  handler = async () => { await wait; return json({ detail: 'Denied' }, 403); };
+  const abort = new AbortController();
+  const read = api('/private', { signal: abort.signal }).catch(() => undefined);
+  abort.abort();
+  await read;
+  release();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+});
+
 test("writes including uncertain failures invalidate prior reads and are never retried or cached", async () => {
   await api("/lab-instances");
   await api("/lab-instances/actions/create", { method: "POST" });
@@ -228,4 +273,81 @@ test("malformed and excessive validation details stay bounded", async () => {
     expect(error.message.split("\n")).toHaveLength(9);
     expect(error.message.length).toBeLessThan(11000);
   });
+});
+
+test("cookie rotation retries a denied GET only after confirming the same identity", async () => {
+  Object.defineProperty(globalThis,"document",{value:{cookie:"__Host-labcentral-csrf=before"}, configurable:true});
+  let reads=0;
+  handler=async path=>{
+    if(path.endsWith('/session')) return json({subjectId:'user.one',roles:['participant']});
+    if(++reads===1){document.cookie='__Host-labcentral-csrf=after';return json({},401);}
+    return json({ok:true});
+  };
+  try {expect(await api<{ok:boolean}>('/projects')).toEqual({ok:true});expect(reads).toBe(2);}
+  finally {Reflect.deleteProperty(globalThis,'document');}
+});
+
+test("rotation recovery never retries into a different user's cache or replays a write", async () => {
+  Object.defineProperty(globalThis,"document",{value:{cookie:"__Host-labcentral-csrf=before"}, configurable:true});
+  let reads=0;
+  handler=async path=>{
+    if(path.endsWith('/session')) return json({subjectId:'user.two',roles:['participant']});
+    reads++;document.cookie='__Host-labcentral-csrf=after';return json({},401);
+  };
+  try {
+    await expect(api('/projects')).rejects.toBeInstanceOf(ApiError);expect(reads).toBe(1);
+    await expect(api('/access-sessions',{method:'POST'})).rejects.toBeInstanceOf(ApiError);expect(reads).toBe(2);
+  } finally {Reflect.deleteProperty(globalThis,'document');}
+});
+
+test("query cancellation preserves the response carrying credential rotation", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let networkSignal: AbortSignal | null | undefined;
+  handler = async (_path, init) => { networkSignal = init.signal; await pending; return json({items: []}); };
+  const read = api('/projects').catch(() => undefined);
+  await queryClient.cancelQueries({queryKey: ['api']});
+  expect(networkSignal?.aborted).toBe(false);
+  release();
+  await read;
+  expect(queryClient.getQueryCache().getAll().every(q => q.state.data === undefined)).toBe(true);
+});
+
+test("a stale background mutation cannot log out a concurrently recovering console", async () => {
+  Object.defineProperty(globalThis,"document",{value:{cookie:"__Host-labcentral-csrf=before"}, configurable:true});
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let presentations = 0, mutations = 0;
+  handler = async path => {
+    if (path.endsWith('/session')) return json({subjectId:'user.one',roles:['participant']});
+    if (path.endsWith('/presentation')) {
+      if (++presentations === 1) { await pending; return json({code:'authentication_required'},401); }
+      return json({streamPath:'/console/stream'});
+    }
+    mutations++;
+    document.cookie='__Host-labcentral-csrf=after';
+    return json({code:'authentication_required'},401);
+  };
+  try {
+    const consoleRead = api('/access-sessions/current/presentation');
+    await expect(api('/access-sessions/old/actions/revoke',{method:'POST'})).rejects.toBeInstanceOf(ApiError);
+    release();
+    expect(await consoleRead).toEqual({streamPath:'/console/stream'});
+    expect(mutations).toBe(1);
+    expect(presentations).toBe(2);
+  } finally { release(); Reflect.deleteProperty(globalThis,'document'); }
+});
+
+test("a denied mutation still clears cached identity when session verification changes or fails", async () => {
+  Object.defineProperty(globalThis,"document",{value:{cookie:"__Host-labcentral-csrf=current"}, configurable:true});
+  try {
+    for (const session of [{subjectId:'user.two',roles:['participant']},{subjectId:'user.one',roles:['instructor']},null]) {
+      bindRequestIdentity({subjectId:'user.one',roles:['participant']});
+      handler = async () => json({items:['private']});
+      await api('/projects');
+      handler = async path => path.endsWith('/session') ? json(session,session ? 200 : 401) : json({code:'authentication_required'},401);
+      await expect(api('/access-sessions/old/actions/revoke',{method:'POST'})).rejects.toBeInstanceOf(ApiError);
+      expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    }
+  } finally { Reflect.deleteProperty(globalThis,'document'); }
 });

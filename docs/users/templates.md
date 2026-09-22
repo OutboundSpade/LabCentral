@@ -1,5 +1,12 @@
 # Template examples and requirements
 
+Templates that build their own images are prepared before deployment. My labs
+shows preparation progress, including any required administrator image approval.
+Classroom shows these requests in Launch activity and requires author privileges
+in addition to classroom launch access for build-backed batches. Reloading either
+page preserves the request. These templates use the template and environment
+defaults; clear custom provider options before launching them.
+
 | Example | Environment | Exercise |
 | --- | --- | --- |
 | [Debian starter](../../examples/classroom-debian/lab.yaml) | Qualified Proxmox | One Linux workstation |
@@ -87,3 +94,9 @@ Template Library is an author/instructor feature. For a new single-file exercise
 authors can choose an existing template in Browse, then select **Author → Use as
 starting point** to edit a new draft without changing the original. Multi-file
 packages retain **Make independent copy** to preserve their complete source closure.
+
+Student handovers support plain text, headings, inline code and tables in the lab,
+console and template views. A diagram link of the form
+`![Network](/student-guides/example.svg)` displays an operator-installed SVG image;
+raw HTML and arbitrary remote images are not interpreted. Open the image to see it
+at full size. Use only exercise credentials in handovers, never production secrets.

@@ -112,3 +112,22 @@ validation error. SQLite/PostgreSQL regressions cover three VMs sharing an
 allocation namespace, successful execution and owned cleanup.
 
 Planning first snapshots occupied target allocation keys (held, committed and orphaned; released keys are reusable). The existing eight retries address newly concurrent claims, rather than sequentially discovering old allocations. The transaction remains authoritative. A bounded snapshot of 4096 keys fails explicitly above its supported size.
+
+`TASK-CLEANUP-001` persists an incomplete failed apply without provider state as
+`cleanup_failed`, rather than treating its absent state envelope as evidence that
+nothing was created. A later destroy keeps the instance degraded and retains
+claims until ownership-verified cleanup or invocation recovery proves absence.
+This preserves the existing provider-state and qualification contracts.
+
+`TASK-PERF-002` adds the operator setting `--worker-lease-duration` (30 seconds
+to five minutes, default 30 seconds) for instance and extension work. Instance
+heartbeats remain at most ten seconds apart, and extension heartbeats remain five
+seconds apart. A longer lease tolerates transient durable-write queues at the cost
+of slower crash recovery; fencing and ownership checks remain mandatory. Waiting
+extension work yields for five seconds rather than rewriting progress each second,
+and identical progress JSON is not rewritten. On storage with high flush latency,
+reduce target deployment concurrency before increasing it again under measured load.
+
+ADR-0035 removes durable authorization records for successful routine metadata
+reads so browser polling does not compete with these worker writes. Denials,
+mutations and access authorization retain synchronous recording.

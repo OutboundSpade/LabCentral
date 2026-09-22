@@ -5958,6 +5958,15 @@
         "operationId": "post-access-sessions-by-id-console-release-control",
         "parameters": [
           {
+            "explode": false,
+            "in": "query",
+            "name": "onlyIfAlone",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
             "in": "path",
             "name": "id",
             "required": true,
@@ -6013,6 +6022,15 @@
       "post": {
         "operationId": "post-access-sessions-by-id-console-take-control",
         "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "onlyIfAlone",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
           {
             "in": "path",
             "name": "id",

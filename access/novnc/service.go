@@ -26,6 +26,7 @@ import (
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	accessendpoint "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/accessendpoint"
+	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/consolerelay"
 	pluginruntime "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/runtime"
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -47,21 +48,23 @@ type Config struct {
 	DialContext       func(context.Context, string, string) (net.Conn, error)
 	Now               func() time.Time
 	TailscaleProfile  *TailscaleProfile
+	ConsoleRelay      *consolerelay.Client
 }
 
 type Service struct {
 	pluginv1.UnimplementedAccessServiceServer
 	pluginv1.UnimplementedPluginRuntimeServiceServer
 
-	origin     *url.URL
-	basePath   string
-	dial       func(context.Context, string, string) (net.Conn, error)
-	now        func() time.Time
-	tailscale  *TailscaleProfile
-	mu         sync.Mutex
-	callbacks  *pluginruntime.AccessCallbacks
-	sessions   map[string]*session
-	createLock [64]sync.Mutex
+	origin       *url.URL
+	basePath     string
+	dial         func(context.Context, string, string) (net.Conn, error)
+	now          func() time.Time
+	tailscale    *TailscaleProfile
+	consoleRelay *consolerelay.Client
+	mu           sync.Mutex
+	callbacks    *pluginruntime.AccessCallbacks
+	sessions     map[string]*session
+	createLock   [64]sync.Mutex
 }
 
 type session struct {
@@ -116,7 +119,15 @@ func New(config Config) (*Service, error) {
 		}
 		tailnet = &copy
 	}
-	return &Service{origin: origin, basePath: basePath, dial: dial, now: now, tailscale: tailnet, sessions: make(map[string]*session)}, nil
+	var relay *consolerelay.Client
+	if config.ConsoleRelay != nil {
+		copy := *config.ConsoleRelay
+		if err := copy.Validate(); err != nil {
+			return nil, err
+		}
+		relay = &copy
+	}
+	return &Service{origin: origin, basePath: basePath, dial: dial, now: now, tailscale: tailnet, consoleRelay: relay, sessions: make(map[string]*session)}, nil
 }
 
 func (service *Service) ConfigureCallbacks(callbacks pluginruntime.AccessCallbacks) error {
@@ -150,7 +161,7 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 	}
 	if request == nil || request.GetContext() == nil || request.GetConsoleControlVersion() > 1 || !identifierPattern.MatchString(request.GetAccessSessionId()) ||
 		!identifierPattern.MatchString(request.GetSubjectId()) || request.GetMethod() != "vnc" || request.GetAudience() != service.origin.String() ||
-		request.GetEndpointSchema().GetName() != "proxmox.vnc-endpoint" || request.GetEndpointSchema().GetMajor() != 1 || request.GetEndpointSchema().GetMinor() != 0 ||
+		(request.GetEndpointSchema().GetName() != "proxmox.vnc-endpoint" && request.GetEndpointSchema().GetName() != "proxmox.vnc-relay-endpoint") || request.GetEndpointSchema().GetMajor() != 1 || request.GetEndpointSchema().GetMinor() != 0 ||
 		len(request.GetOpaqueConnectionData()) == 0 || len(request.GetOpaqueConnectionData()) > 64<<10 || !validSHA256(request.GetEndpointDigest()) ||
 		!validSHA256(request.GetProviderStateDigest()) || request.GetExpiresAt() == nil || !request.GetExpiresAt().IsValid() {
 		return fail("invalid_access_request", "VNC access request is invalid")
@@ -160,11 +171,23 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 		return fail("invalid_endpoint_digest", "VNC endpoint digest does not match")
 	}
 	var endpoint accessendpoint.ProxmoxVNC
-	if err := decodeClosedJSON(request.GetOpaqueConnectionData(), &endpoint); err != nil || endpoint.SchemaVersion != accessendpoint.ProxmoxVNCSchema ||
-		endpoint.TargetID != request.GetContext().GetProviderTargetId() || endpoint.InstanceID != request.GetContext().GetLabInstanceId() ||
+	var relayEndpoint *accessendpoint.ProxmoxVNCRelay
+	if request.GetEndpointSchema().GetName() == "proxmox.vnc-relay-endpoint" {
+		var relay accessendpoint.ProxmoxVNCRelay
+		if service.consoleRelay == nil || decodeClosedJSON(request.GetOpaqueConnectionData(), &relay) != nil || relay.SchemaVersion != accessendpoint.ProxmoxVNCRelaySchema {
+			return fail("invalid_access_endpoint", "VNC relay endpoint binding is invalid")
+		}
+		relayEndpoint = &relay
+		endpoint = accessendpoint.ProxmoxVNC{TargetID: relay.TargetID, InstanceID: relay.InstanceID,
+			LogicalResourceID: relay.LogicalResourceID, Method: relay.Method,
+			ProviderStateDigest: relay.ProviderStateDigest, Password: relay.Password}
+	} else if err := decodeClosedJSON(request.GetOpaqueConnectionData(), &endpoint); err != nil || endpoint.SchemaVersion != accessendpoint.ProxmoxVNCSchema ||
+		endpoint.Host == "" || endpoint.ServerName == "" || endpoint.Port < 5900 || endpoint.CACertificatePEM == "" {
+		return fail("invalid_access_endpoint", "VNC endpoint binding is invalid")
+	}
+	if endpoint.TargetID != request.GetContext().GetProviderTargetId() || endpoint.InstanceID != request.GetContext().GetLabInstanceId() ||
 		endpoint.LogicalResourceID != request.GetContext().GetLogicalResourceId() || endpoint.Method != request.GetMethod() ||
-		endpoint.ProviderStateDigest != request.GetProviderStateDigest() || endpoint.Host == "" || endpoint.ServerName == "" || endpoint.Port < 5900 ||
-		endpoint.CACertificatePEM == "" || endpoint.Password == "" || len(endpoint.Password) > 256 {
+		endpoint.ProviderStateDigest != request.GetProviderStateDigest() || endpoint.Password == "" || len(endpoint.Password) > 256 {
 		return fail("invalid_access_endpoint", "VNC endpoint binding is invalid")
 	}
 	expires := request.GetExpiresAt().AsTime().UTC()
@@ -185,7 +208,24 @@ func (service *Service) CreateAccess(ctx context.Context, request *pluginv1.Crea
 		endpoint.Password = ""
 		return fail("access_session_unavailable", "VNC access session cannot issue new launch material")
 	}
-	upstream, err := service.connectUpstream(ctx, endpoint)
+	var upstream net.Conn
+	var err error
+	if relayEndpoint != nil {
+		upstream, err = service.consoleRelay.Connect(ctx, consolerelay.Grant{ID: relayEndpoint.RelayID, Token: relayEndpoint.RelayToken})
+		if err == nil {
+			_ = upstream.SetDeadline(time.Now().Add(8 * time.Second))
+			err = authenticateUpstream(upstream, endpoint.Password)
+			if err != nil {
+				_ = upstream.Close()
+			} else {
+				_ = upstream.SetDeadline(time.Time{})
+			}
+		}
+		relayEndpoint.Password = ""
+		relayEndpoint.RelayToken = ""
+	} else {
+		upstream, err = service.connectUpstream(ctx, endpoint)
+	}
 	endpoint.Password = ""
 	if err != nil {
 		slog.Warn("VNC upstream connection failed", "stage", upstreamFailureStage(err))

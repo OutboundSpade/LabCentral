@@ -6,6 +6,7 @@ universal target guarantees.
 
 | Subject | Primary source | Supported claim |
 |---|---|---|
+| Proxmox encrypted WebSocket console | [QEMU API `vncproxy` and `vncwebsocket`](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu.pm) | WebSocket mode returns a temporary port/ticket; `vncwebsocket` checks `VM.Console` and a ticket bound to user, VM and port. The provider can authenticate the WSS request with its server-side API token; it must not delegate that reusable token to a browser/access plugin. An authorized PVE 9.2.11 target was measured using verified TLS 1.3 and RFB 3.8 through WSS while its separate temporary TCP socket was plain RFB. Retrieved and measured 2026-09-21. |
 | Proxmox architecture/API/network/storage | [Proxmox VE Administration Guide](https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf) | PVE exposes REST through `pveproxy`; QEMU VMs, bridges/VLAN tags, clusters and storage capabilities are provider primitives. |
 | Proxmox API paths and schemas | [Proxmox VE API Viewer](https://pve.proxmox.com/pve-docs/api-viewer/) | The current API exposes read-only `GET` schemas for `/version`, `/nodes`, and per-node storage, network, and QEMU inventory; storage accepts content/enabled/format filters. |
 | Proxmox API-token authentication | [Proxmox VE user-management guide: API Tokens](https://pve.proxmox.com/pve-docs/chapter-pveum.html#pveum_tokens) | API tokens support separate ACLs and expiry; requests use `Authorization: PVEAPIToken=USER@REALM!TOKENID=UUID`; effective permissions are bounded by both the token and backing user. |
@@ -122,6 +123,7 @@ Console transport sources retrieved 2026-09-07:
 
 - [TanStack QueryClient](https://tanstack.com/query/v5/docs/reference/QueryClient) — fetchQuery freshness, query cancellation, invalidation and cache clearing; verified against installed `@tanstack/query-core` 5.102.8 source and regression tests.
 - [Svelte QueryClientProvider](https://github.com/TanStack/query/blob/main/packages/svelte-query/src/QueryClientProvider.svelte) — shared client context and mount/unmount lifecycle; verified against installed `@tanstack/svelte-query` 6.1.48 source. No server-side UI runtime or cache persistence is added.
+- [Query cancellation](https://tanstack.com/query/v5/docs/framework/react/guides/query-cancellation), retrieved 2026-09-21 and checked against installed query-core 5.102.8: QueryClient owns the query function's AbortSignal. Component-local cancellation must not cancel a shared query needed by other consumers.
 
 
 Navigation continuity reference (retrieved 2026-09-08):
@@ -203,3 +205,18 @@ Retrieved 2026-09-20:
 - [QEMU CPU models](https://www.qemu.org/docs/master/system/qemu-cpu-models.html): the disposable inner TCG builder selects `max` for the additional AlmaLinux CPU baseline; deployment CPU compatibility is checked separately.
 - PyPI release metadata for [CFFI 2.1.1](https://pypi.org/pypi/cffi/2.1.1/json), [MarkupSafe 3.0.3](https://pypi.org/pypi/markupsafe/3.0.3/json) and [PyYAML 6.0.3](https://pypi.org/pypi/pyyaml/6.0.3/json): additive CPython 3.12 wheel hashes, verified against downloaded bytes and offline installations alongside the existing Python 3.13 closure.
 - [Proxmox CPU configuration](https://raw.githubusercontent.com/proxmox/qemu-server/master/src/PVE/QemuServer/CPUConfig.pm): the REST CPU type default remains `kvm64`; v1.5 imports explicitly bind the operator-selected model when a newer guest baseline requires it. Retrieved 2026-09-20.
+
+## Dynamic filesystem capacity (retrieved 2026-09-21)
+
+- [OpenZFS Linux statvfs implementation](https://github.com/openzfs/zfs/blob/master/module/os/linux/zfs/zfs_vfsops.c): reported total blocks derive from referenced plus available bytes, so total capacity is not universally an immutable storage identity.
+- [Proxmox directory storage status](https://github.com/proxmox/pve-storage/blob/master/src/PVE/Storage/Plugin.pm): status returns filesystem total/available/used values. ADR-0032 binds structural facts and explicit minimum capacity instead of exact dynamic totals for the new target version.
+
+- [Proxmox virtual machine disk controllers and I/O threads](https://github.com/proxmox/pve-docs/blob/master/qm.adoc), retrieved 2026-09-21: VirtIO SCSI single supports a dedicated disk I/O thread; separating storage handling from the main event loop is recommended for performance. This informs the control-plane VM configuration, not a change to qualified workload-provider behavior.
+
+### Shared VNC startup (retrieved 2026-09-21)
+
+- [Proxmox `qm` source](https://github.com/proxmox/qemu-server/blob/master/src/PVE/CLI/qm.pm): `vncproxy` sets the VM VNC password and a 30-second authentication deadline before proxying. This supports serializing resource-scoped endpoint discovery through upstream authentication; it does not imply an established console expires after 30 seconds. See ADR-0037.
+
+- [Proxmox datacenter bandwidth schema](https://github.com/proxmox/pve-cluster/blob/master/src/PVE/DataCenterConfig.pm) and [QEMU clone implementation](https://github.com/proxmox/qemu-server/blob/master/src/PVE/API2/Qemu.pm): clone bandwidth is expressed in KiB/s and inherited from storage/datacenter configuration unless explicitly overridden. Retrieved 2026-09-21. Limits must leave enough throughput to complete within the provider task budget; tuning does not replace SSD-backed control-plane storage.
+
+- SQLite WAL checkpoint concurrency and commit latency: https://www.sqlite.org/wal.html (retrieved 2026-09-21). PASSIVE checkpointing can run on a separate connection; FULL continues to sync each committed WAL transaction.

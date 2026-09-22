@@ -28,6 +28,7 @@ func registerConsoleControl(api huma.API, s *controlplane.Service) {
 		return &output{CacheControl: "no-store", Body: out}, nil
 	})
 	type changeInput struct {
+		OnlyIfAlone    bool   `query:"onlyIfAlone" default:"false"`
 		ID             string `path:"id" minLength:"1" maxLength:"128"`
 		IdempotencyKey string `header:"Idempotency-Key" minLength:"8" maxLength:"128"`
 	}
@@ -41,7 +42,7 @@ func registerConsoleControl(api huma.API, s *controlplane.Service) {
 			if !ok {
 				return nil, huma.Error401Unauthorized("Authentication required")
 			}
-			out, err := s.ChangeConsoleControl(ctx, p.user.ID, domain.AccessSessionID(in.ID), take, in.IdempotencyKey)
+			out, err := s.ChangeConsoleControlConditional(ctx, p.user.ID, domain.AccessSessionID(in.ID), take, in.OnlyIfAlone, in.IdempotencyKey)
 			if err != nil {
 				return nil, apiError(err)
 			}

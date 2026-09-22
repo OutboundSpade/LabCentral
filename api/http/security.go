@@ -118,6 +118,12 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 			return
 		}
 		public := publicAuthenticationPath(request.URL.Path)
+		// Static documents and assets carry no authenticated data. Authenticating
+		// them could rotate a cookie on a navigation the browser then cancels.
+		if public && !strings.HasPrefix(request.URL.Path, "/api/") {
+			next.ServeHTTP(response, request)
+			return
+		}
 		mutating := request.Method != http.MethodGet && request.Method != http.MethodHead && request.Method != http.MethodOptions
 		bearerToken, bearerSupplied, bearerErr := requestBearerToken(request)
 		if bearerErr != nil {
@@ -177,7 +183,9 @@ func (s *requestSecurity) wrap(next http.Handler) http.Handler {
 		}
 		if err != nil {
 			if public && !bearerSupplied {
-				appendCookies(headerAppender{response}, expiredCookies())
+				// A stale concurrent request must not erase cookies installed by
+				// a successful rotation or sign-in response. Invalid credentials
+				// remain unauthorized; explicit logout still expires cookies.
 				next.ServeHTTP(response, request)
 				return
 			}

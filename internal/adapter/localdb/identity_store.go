@@ -41,7 +41,7 @@ func (s *Store) EnsureAuthenticationMode(ctx context.Context, mode string) error
 
 func (s *Store) RefuseAuthenticationDowngrade(ctx context.Context) error {
 	var recorded string
-	err := s.db.QueryRowContext(ctx, `SELECT setting_value FROM labcentral_installation_settings WHERE setting_key = 'authentication_mode'`).Scan(&recorded)
+	err := s.readDB().QueryRowContext(ctx, `SELECT setting_value FROM labcentral_installation_settings WHERE setting_key = 'authentication_mode'`).Scan(&recorded)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -53,7 +53,7 @@ func (s *Store) RefuseAuthenticationDowngrade(ctx context.Context) error {
 
 func (s *Store) HasUsers(ctx context.Context) (bool, error) {
 	var exists int
-	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM labcentral_users LIMIT 1`).Scan(&exists)
+	err := s.readDB().QueryRowContext(ctx, `SELECT 1 FROM labcentral_users LIMIT 1`).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -217,7 +217,7 @@ func (s *Store) UserByID(ctx context.Context, id domain.UserID) (application.Use
 	if _, err := domain.NewUserID(string(id)); err != nil {
 		return application.UserRecord{}, err
 	}
-	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us, resource_version
+	return scanUser(s.readDB().QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us, resource_version
 		FROM labcentral_users WHERE user_id = ?`), id))
 }
 
@@ -225,7 +225,7 @@ func (s *Store) UserByUsername(ctx context.Context, username string) (applicatio
 	if !identityNamePattern.MatchString(username) {
 		return application.UserRecord{}, application.ErrAuthRecordNotFound
 	}
-	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us, resource_version
+	return scanUser(s.readDB().QueryRowContext(ctx, s.bind(`SELECT user_id, username, display_name, password_hash, disabled, created_at_us, updated_at_us, resource_version
 		FROM labcentral_users WHERE username = ?`), username))
 }
 
@@ -261,7 +261,7 @@ func (s *Store) LinkExternalIdentity(ctx context.Context, record application.Ext
 		return fmt.Errorf("link external identity: %w", err)
 	}
 	var userID string
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT user_id FROM labcentral_auth_identities WHERE issuer = ? AND subject = ?`), record.Issuer, record.Subject).Scan(&userID); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT user_id FROM labcentral_auth_identities WHERE issuer = ? AND subject = ?`), record.Issuer, record.Subject).Scan(&userID); err != nil {
 		return err
 	}
 	if userID != string(record.UserID) {
@@ -271,7 +271,7 @@ func (s *Store) LinkExternalIdentity(ctx context.Context, record application.Ext
 }
 
 func (s *Store) UserByExternalIdentity(ctx context.Context, issuer, subject string) (application.UserRecord, error) {
-	return scanUser(s.db.QueryRowContext(ctx, s.bind(`SELECT users.user_id, users.username, users.display_name, users.password_hash,
+	return scanUser(s.readDB().QueryRowContext(ctx, s.bind(`SELECT users.user_id, users.username, users.display_name, users.password_hash,
 		users.disabled, users.created_at_us, users.updated_at_us, users.resource_version
 		FROM labcentral_auth_identities identities JOIN labcentral_users users ON users.user_id = identities.user_id
 		WHERE identities.issuer = ? AND identities.subject = ?`), issuer, subject))
@@ -346,7 +346,7 @@ func (s *Store) PutMembership(ctx context.Context, record application.Membership
 		}
 	}
 	var groupCount int
-	if err := s.db.QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_project_groups WHERE team_id=?`), record.TeamID).Scan(&groupCount); err != nil {
+	if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT COUNT(*) FROM labcentral_project_groups WHERE team_id=?`), record.TeamID).Scan(&groupCount); err != nil {
 		return err
 	}
 	if groupCount != 0 {
@@ -392,7 +392,7 @@ func (s *Store) PutRoleAssignment(ctx context.Context, record application.RoleAs
 				AND (memberships.valid_until_us = 0 OR memberships.valid_until_us > ?) LIMIT 1`
 			arguments = []any{record.SubjectID, organizationID, from, from}
 		}
-		if err := s.db.QueryRowContext(ctx, s.bind(query), arguments...).Scan(&exists); err != nil {
+		if err := s.readDB().QueryRowContext(ctx, s.bind(query), arguments...).Scan(&exists); err != nil {
 			return fmt.Errorf("role assignment subject is not eligible for its scope")
 		}
 	case application.SubjectTeam:
@@ -400,7 +400,7 @@ func (s *Store) PutRoleAssignment(ctx context.Context, record application.RoleAs
 			return fmt.Errorf("team subjects cannot receive platform roles")
 		}
 		var subjectOrganization string
-		if err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_teams WHERE team_id = ?`), record.SubjectID).Scan(&subjectOrganization); err != nil || subjectOrganization != string(organizationID) {
+		if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_teams WHERE team_id = ?`), record.SubjectID).Scan(&subjectOrganization); err != nil || subjectOrganization != string(organizationID) {
 			return fmt.Errorf("role assignment team does not belong to its scope")
 		}
 	}
@@ -439,8 +439,11 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 		return application.AuthorizationSnapshot{}, application.ErrAuthRecordNotFound
 	}
 	result := application.AuthorizationSnapshot{User: user}
+	if err := s.readDB().QueryRowContext(ctx, `SELECT CASE WHEN EXISTS(SELECT 1 FROM labcentral_installation_settings WHERE setting_key='participant_deployment' AND setting_value='disabled') THEN 1 ELSE 0 END`).Scan(&result.ParticipantDeploymentDisabled); err != nil {
+		return result, err
+	}
 	nowMicros := now.UTC().UnixMicro()
-	rows, err := s.db.QueryContext(ctx, s.bind(`SELECT membership_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version
+	rows, err := s.readDB().QueryContext(ctx, s.bind(`SELECT membership_id, organization_id, COALESCE(team_id, ''), valid_from_us, valid_until_us, resource_version
 		FROM labcentral_memberships WHERE user_id = ? AND valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?)
 		ORDER BY organization_id, team_id, membership_id`), userID, nowMicros, nowMicros)
 	if err != nil {
@@ -461,7 +464,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	if err := rows.Close(); err != nil {
 		return application.AuthorizationSnapshot{}, err
 	}
-	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT assignment_id, subject_kind, subject_id, scope_kind, scope_id, role, valid_from_us, valid_until_us, resource_version
+	rows, err = s.readDB().QueryContext(ctx, s.bind(`SELECT assignment_id, subject_kind, subject_id, scope_kind, scope_id, role, valid_from_us, valid_until_us, resource_version
 		FROM labcentral_role_assignments assignments
 		WHERE valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?) AND
 		((subject_kind = 'user' AND subject_id = ?) OR (subject_kind = 'team' AND subject_id IN
@@ -483,7 +486,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	if err := rows.Close(); err != nil {
 		return application.AuthorizationSnapshot{}, err
 	}
-	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT project_id,team_id FROM labcentral_project_enrollments WHERE user_id=? ORDER BY project_id,team_id`), userID)
+	rows, err = s.readDB().QueryContext(ctx, s.bind(`SELECT project_id,team_id FROM labcentral_project_enrollments WHERE user_id=? ORDER BY project_id,team_id`), userID)
 	if err != nil {
 		return application.AuthorizationSnapshot{}, err
 	}
@@ -502,7 +505,7 @@ func (s *Store) AuthorizationSnapshot(ctx context.Context, userID domain.UserID,
 	if err := rows.Close(); err != nil {
 		return application.AuthorizationSnapshot{}, err
 	}
-	rows, err = s.db.QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version
+	rows, err = s.readDB().QueryContext(ctx, s.bind(`SELECT grant_id, target_id, scope_kind, scope_id, valid_from_us, valid_until_us, resource_version
 		FROM labcentral_provider_target_grants WHERE valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?)
 		ORDER BY target_id, scope_kind, scope_id`), nowMicros, nowMicros)
 	if err != nil {
@@ -531,21 +534,21 @@ func (s *Store) ResolveScope(ctx context.Context, kind application.ScopeKind, id
 		return application.ScopeHierarchy{Kind: kind, ID: id}, nil
 	case application.ScopeOrganization:
 		var organizationID string
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_organizations WHERE organization_id = ?`), id).Scan(&organizationID)
+		err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_organizations WHERE organization_id = ?`), id).Scan(&organizationID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return application.ScopeHierarchy{}, application.ErrAuthRecordNotFound
 		}
 		return application.ScopeHierarchy{Kind: kind, ID: id, OrganizationID: domain.OrganizationID(organizationID)}, err
 	case application.ScopeProject:
 		var projectID, organizationID string
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT project_id, organization_id FROM labcentral_projects WHERE project_id = ?`), id).Scan(&projectID, &organizationID)
+		err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT project_id, organization_id FROM labcentral_projects WHERE project_id = ?`), id).Scan(&projectID, &organizationID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return application.ScopeHierarchy{}, application.ErrAuthRecordNotFound
 		}
 		return application.ScopeHierarchy{Kind: kind, ID: id, OrganizationID: domain.OrganizationID(organizationID), ProjectID: domain.ProjectID(projectID)}, err
 	case application.ScopeTeam:
 		var teamID, organizationID string
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT team_id, organization_id FROM labcentral_teams WHERE team_id = ?`), id).Scan(&teamID, &organizationID)
+		err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT team_id, organization_id FROM labcentral_teams WHERE team_id = ?`), id).Scan(&teamID, &organizationID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return application.ScopeHierarchy{}, application.ErrAuthRecordNotFound
 		}
@@ -585,7 +588,7 @@ func (s *Store) SessionByTokenHash(ctx context.Context, tokenHash string, now ti
 	var record application.SessionRecord
 	var userID string
 	var expires, revoked, created int64
-	err := s.db.QueryRowContext(ctx, s.bind(`SELECT sessions.session_id, sessions.user_id, sessions.credential_kind, sessions.token_hash, sessions.csrf_hash,
+	err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT sessions.session_id, sessions.user_id, sessions.credential_kind, sessions.token_hash, sessions.csrf_hash,
 		sessions.key_id, sessions.expires_at_us, sessions.rotated_from_id, sessions.revoked_at_us, sessions.created_at_us
 		FROM labcentral_sessions sessions JOIN labcentral_users users ON users.user_id = sessions.user_id
 		WHERE sessions.token_hash = ? AND sessions.expires_at_us > ? AND sessions.revoked_at_us = 0 AND users.disabled = 0`), tokenHash, now.UTC().UnixMicro()).Scan(
@@ -897,12 +900,12 @@ func (s *Store) ConsumeOIDCFlow(ctx context.Context, stateHash, browserHash, key
 }
 
 func (s *Store) InstanceAccess(ctx context.Context, instanceID domain.InstanceID) (application.InstanceAccessRecord, error) {
-	return scanInstanceAccess(s.db.QueryRowContext(ctx, s.bind(`SELECT instance_id, project_id, owner_kind, owner_id, provider_target_id
+	return scanInstanceAccess(s.readDB().QueryRowContext(ctx, s.bind(`SELECT instance_id, project_id, owner_kind, owner_id, provider_target_id
 		FROM labcentral_local_instances WHERE instance_id = ?`), instanceID))
 }
 
 func (s *Store) OperationInstanceAccess(ctx context.Context, operationID domain.OperationID) (application.InstanceAccessRecord, error) {
-	return scanInstanceAccess(s.db.QueryRowContext(ctx, s.bind(`SELECT instance.instance_id, instance.project_id, instance.owner_kind,
+	return scanInstanceAccess(s.readDB().QueryRowContext(ctx, s.bind(`SELECT instance.instance_id, instance.project_id, instance.owner_kind,
 		instance.owner_id, instance.provider_target_id FROM labcentral_local_operations operation
 		JOIN labcentral_local_instances instance ON instance.instance_id = operation.instance_id
 		WHERE operation.operation_id = ?`), operationID))
@@ -991,7 +994,7 @@ func (s *Store) ListInstanceAccessFiltered(ctx context.Context, filter applicati
 	query := `SELECT instance.instance_id, instance.project_id, instance.owner_kind, instance.owner_id, instance.provider_target_id
 		FROM labcentral_local_instances instance JOIN labcentral_projects project ON project.project_id = instance.project_id
 		WHERE ` + strings.Join(conditions, " OR ") + ` ORDER BY instance.created_at_us, instance.instance_id`
-	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -1029,7 +1032,7 @@ func (s *Store) OwnerBelongsToScope(ctx context.Context, kind application.OwnerK
 	switch kind {
 	case application.OwnerUser:
 		var exists int
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT 1 FROM labcentral_memberships
+		err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT 1 FROM labcentral_memberships
 			WHERE user_id = ? AND organization_id = ? AND valid_from_us <= ? AND (valid_until_us = 0 OR valid_until_us > ?) LIMIT 1`),
 			ownerID, hierarchy.OrganizationID, now.UTC().UnixMicro(), now.UTC().UnixMicro()).Scan(&exists)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1038,7 +1041,7 @@ func (s *Store) OwnerBelongsToScope(ctx context.Context, kind application.OwnerK
 		return err == nil, err
 	case application.OwnerTeam:
 		var organizationID, projectID string
-		err := s.db.QueryRowContext(ctx, s.bind(`SELECT t.organization_id,COALESCE(g.project_id,'') FROM labcentral_teams t LEFT JOIN labcentral_project_groups g ON g.team_id=t.team_id WHERE t.team_id=?`), ownerID).Scan(&organizationID, &projectID)
+		err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT t.organization_id,COALESCE(g.project_id,'') FROM labcentral_teams t LEFT JOIN labcentral_project_groups g ON g.team_id=t.team_id WHERE t.team_id=?`), ownerID).Scan(&organizationID, &projectID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
@@ -1152,17 +1155,17 @@ func (s *Store) scopeOrganization(ctx context.Context, kind application.ScopeKin
 		}
 	case application.ScopeOrganization:
 		var organizationID string
-		if err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_organizations WHERE organization_id = ?`), id).Scan(&organizationID); err == nil {
+		if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_organizations WHERE organization_id = ?`), id).Scan(&organizationID); err == nil {
 			return domain.OrganizationID(organizationID), nil
 		}
 	case application.ScopeProject:
 		var organizationID string
-		if err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), id).Scan(&organizationID); err == nil {
+		if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_projects WHERE project_id = ?`), id).Scan(&organizationID); err == nil {
 			return domain.OrganizationID(organizationID), nil
 		}
 	case application.ScopeTeam:
 		var organizationID string
-		if err := s.db.QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_teams WHERE team_id = ?`), id).Scan(&organizationID); err == nil {
+		if err := s.readDB().QueryRowContext(ctx, s.bind(`SELECT organization_id FROM labcentral_teams WHERE team_id = ?`), id).Scan(&organizationID); err == nil {
 			return domain.OrganizationID(organizationID), nil
 		}
 	}

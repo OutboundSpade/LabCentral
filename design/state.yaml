@@ -1,7 +1,7 @@
 formatVersion: 1
 project: LabCentral
 phase: phase_3_production_topology_in_progress
-lastUpdated: "2026-09-21"
+lastUpdated: "2026-09-22"
 acceptedAdrs:
   - ADR-0001
   - ADR-0002
@@ -30,6 +30,14 @@ acceptedAdrs:
   - ADR-0029
   - ADR-0030
   - ADR-0031
+  - ADR-0032
+  - ADR-0033
+  - ADR-0034
+  - ADR-0035
+  - ADR-0036
+  - ADR-0037
+  - ADR-0038
+  - ADR-0039
 proposedAdrs: []
 supersededAdrs: [ADR-0011, ADR-0012, ADR-0014, ADR-0017]
 documents:
@@ -246,6 +254,16 @@ milestones:
   - id: MILESTONE-PROXMOX-PRODUCTION-SINGLE-OPERATOR
     status: complete
 completedTasks:
+  - TASK-CLASSROOM-003
+  - TASK-CLASSROOM-002
+  - TASK-PERF-003
+  - TASK-CLEANUP-002
+  - TASK-PERF-002
+  - TASK-CLEANUP-001
+  - TASK-PERF-001
+  - TASK-CLASSROOM-001
+  - TASK-ACCESS-001
+  - TASK-UI-014
   - TASK-LAB-001
   - TASK-TEMPLATE-009
   - TASK-TEMPLATE-008
@@ -310,6 +328,7 @@ completedTasks:
   - TASK-PROXMOX-004
   - TASK-PROXMOX-005
   - TASK-PROXMOX-006
+  - TASK-PROXMOX-007
   - TASK-PROD-001
   - TASK-PROD-002
   - TASK-PROD-003
@@ -322,8 +341,14 @@ completedTasks:
   - TASK-UI-013
   - TASK-DEPLOY-001
 currentTasks:
+  - TASK-PERF-004
   - TASK-PROD-004
   - TASK-PROD-005
 # Template/collaboration, private GitHub binding and the four-VM lab passed.
+# TASK-PROXMOX-007 qualification, owner-approved activation, representative
+# application deployment and activated-release native recovery verification passed.
+# TASK-UI-014 live classroom launch and production console acceptance passed.
+# TASK-ACCESS-001 exact-build qualification, owner-approved activation and
+# authenticated production browser display/input/revocation passed.
 # Existing production load, recovery, failover and publisher gates remain open.
-nextRecommendedTasks: [TASK-PROD-004, TASK-PROD-005]
+nextRecommendedTasks: [TASK-PERF-004, TASK-PROD-004, TASK-PROD-005]

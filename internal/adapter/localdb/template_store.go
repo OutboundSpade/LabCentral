@@ -196,7 +196,7 @@ func (s *Store) GetLabTemplate(ctx context.Context, id domain.TemplateID) (appli
 	if _, err := domain.NewTemplateID(string(id)); err != nil {
 		return application.LabTemplateRecord{}, err
 	}
-	record, err := scanLabTemplate(s.db.QueryRowContext(ctx, s.bind(`SELECT template_id, project_id, name, description,
+	record, err := scanLabTemplate(s.readDB().QueryRowContext(ctx, s.bind(`SELECT template_id, project_id, name, description,
 		resource_version, created_by, created_at_us, updated_at_us
 		FROM labcentral_lab_templates WHERE template_id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -223,7 +223,7 @@ func (s *Store) ListLabTemplates(ctx context.Context, request application.LabTem
 	}
 	query += ` ORDER BY created_at_us, template_id LIMIT ?`
 	arguments = append(arguments, uint64(request.Limit)+1)
-	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return application.LabTemplatePage{}, fmt.Errorf("list Lab Templates: %w", err)
 	}
@@ -361,7 +361,7 @@ func (s *Store) GetTemplateRevision(ctx context.Context, id domain.RevisionID) (
 	if _, err := domain.NewRevisionID(string(id)); err != nil {
 		return application.TemplateRevisionRecord{}, err
 	}
-	record, err := scanTemplateRevision(s.db.QueryRowContext(ctx, s.bind(`SELECT revision_id, template_id, revision_number,
+	record, err := scanTemplateRevision(s.readDB().QueryRowContext(ctx, s.bind(`SELECT revision_id, template_id, revision_number,
 		bundle_artifact_ref, bundle_digest, bundle_size_bytes, author_api_version, renderer_version, canonical_version,
 		canonical_digest, representation_json, published_by, created_at_us
 		FROM labcentral_template_revisions WHERE revision_id = ?`), id))
@@ -389,7 +389,7 @@ func (s *Store) ListTemplateRevisions(ctx context.Context, request application.T
 	}
 	query += ` ORDER BY revision_number, revision_id LIMIT ?`
 	arguments = append(arguments, uint64(request.Limit)+1)
-	rows, err := s.db.QueryContext(ctx, s.bind(query), arguments...)
+	rows, err := s.readDB().QueryContext(ctx, s.bind(query), arguments...)
 	if err != nil {
 		return application.TemplateRevisionPage{}, fmt.Errorf("list Template Revisions: %w", err)
 	}

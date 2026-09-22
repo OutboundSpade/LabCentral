@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,7 @@ import (
 
 	pluginv1 "github.com/OutboundSpade/LabCentral/api/plugin/v1"
 	accessendpoint "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/accessendpoint"
+	"github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/consolerelay"
 	pluginruntime "github.com/OutboundSpade/LabCentral/pkg/plugin-sdk-go/runtime"
 	"github.com/coder/websocket"
 	"google.golang.org/grpc"
@@ -32,13 +34,32 @@ import (
 )
 
 func TestAccessProxyConsumesProviderCredentialAndRequiresCoreExchange(t *testing.T) {
+	t.Run("direct", func(t *testing.T) { testAuthorizedConsoleTransport(t, false) })
+	t.Run("provider-relay", func(t *testing.T) { testAuthorizedConsoleTransport(t, true) })
+}
+func testAuthorizedConsoleTransport(t *testing.T, useRelay bool) {
 	upstreamAddress, caPEM, upstreamDone := startTestRFBServer(t, "vnc-secret-canary")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	origin := "http://" + listener.Addr().String()
-	service, err := New(Config{PublicOrigin: origin})
+	cfg := Config{PublicOrigin: origin}
+	var relay *consolerelay.Server
+	if useRelay {
+		dir, err := os.MkdirTemp("/tmp", "lcr-access-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		relay, err = consolerelay.NewServer(dir, uint32(os.Getuid()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = relay.Close() })
+		cfg.ConsoleRelay = &consolerelay.Client{Directory: dir, ProviderUID: uint32(os.Getuid())}
+	}
+	service, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +78,24 @@ func TestAccessProxyConsumesProviderCredentialAndRequiresCoreExchange(t *testing
 	})
 
 	request := testCreateRequest(t, upstreamAddress, caPEM, "vnc-secret-canary", origin)
+	if useRelay {
+		roots := x509.NewCertPool()
+		roots.AppendCertsFromPEM([]byte(caPEM))
+		upstream, err := tls.Dial("tcp", upstreamAddress, &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: "localhost"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		grant, err := relay.Publish(upstream, time.Now().Add(time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		endpoint := accessendpoint.ProxmoxVNCRelay{SchemaVersion: accessendpoint.ProxmoxVNCRelaySchema, TargetID: "target.test", InstanceID: "instance.test", LogicalResourceID: "vm.test", Method: "vnc", ProviderStateDigest: request.ProviderStateDigest, RelayID: grant.ID, RelayToken: grant.Token, Password: "vnc-secret-canary"}
+		request.OpaqueConnectionData, _ = json.Marshal(endpoint)
+		digest := sha256.Sum256(request.OpaqueConnectionData)
+		request.EndpointDigest = hex.EncodeToString(digest[:])
+		request.EndpointSchema.Name = "proxmox.vnc-relay-endpoint"
+	}
+
 	created, err := service.CreateAccess(context.Background(), request)
 	if err != nil || created.GetError() != nil {
 		t.Fatalf("create access = %#v, %v", created, err)
