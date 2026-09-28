@@ -321,7 +321,7 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 				cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+c.Environment.Proxmox.CAFile)
 			}
 		}
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
 		cmd.Cancel = func() error {
 			if cmd.Process == nil {
 				return nil
