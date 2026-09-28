@@ -69,6 +69,10 @@ State is relative to `/var/lib/labcentral` and must already exist. Kinds are
 `instance`, `build`, or `image`; cleanup maps to destroy, abandon, or image removal.
 Use the image cache key for build/image IDs. These requests cannot run arbitrary
 commands and use the library's ownership and retained-image checks.
+A `recover` request can also switch public origins with
+`{"version":1,"kind":"origins","app":"https://labs.example.org","desktop":"https://desktop.example.org"}`.
+It retains the previous configuration and redeploys the same verified artifact;
+register the callback and prepare DNS before using it.
 
 Nightly backups briefly stop the application and provider, archive state and
 credentials together, then restart the service. This closes desktop transports
@@ -76,6 +80,11 @@ while retaining workspaces. Backups use encrypted private S3 and seven-day
 retention. `tools/hosted/restore.py ARCHIVE SHA256 EMPTY_DIRECTORY` verifies and
 restores an offline copy. Fence the original host before starting a restored
 worker; two hosts must never mutate the same allocation namespace.
+After a fresh backup with no active meeting or infrastructure jobs, a `recover`
+request `{"version":1,"kind":"restore-check"}` downloads and verifies that backup,
+checks the offline state, temporarily fences the original application, starts the
+restored copy, verifies health and the OIDC redirect, then restarts the original.
+The check briefly interrupts application access.
 
 ## Install from source
 

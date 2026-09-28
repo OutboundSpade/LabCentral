@@ -23,7 +23,8 @@ type Service struct {
 	mu        sync.Mutex // coordinates membership authorization and in-process desktop handles
 	desktops  map[string]*desktopSession
 	tickets   map[string]launchTicket
-	authMu    sync.Mutex
+	authLocks sync.Map
+	loginMu   sync.Mutex
 	userLocks sync.Map
 	jobMu     sync.Mutex
 	jobCancel context.CancelFunc
@@ -127,8 +128,10 @@ func (s *Service) session(ctx context.Context, r *http.Request) (Session, error)
 	return s.checkedSession(ctx, digest(c.Value))
 }
 func (s *Service) checkedSession(ctx context.Context, id string) (Session, error) {
-	s.authMu.Lock()
-	defer s.authMu.Unlock()
+	value, _ := s.authLocks.LoadOrStore(id, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
 	var v Session
 	if e := s.Store.Get(ctx, "session", id, &v); e != nil {
 		return v, e
@@ -162,13 +165,13 @@ type loginAttempt struct {
 }
 
 func (s *Service) login(w http.ResponseWriter, r *http.Request) {
-	s.authMu.Lock()
+	s.loginMu.Lock()
 	_, err := s.Store.DB.ExecContext(r.Context(), `DELETE FROM objects WHERE kind='login' AND json_extract(body,'$.Expires') < ?`, time.Now().UTC().Format(time.RFC3339Nano))
 	var count int
 	if err == nil {
 		err = s.Store.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM objects WHERE kind='login'`).Scan(&count)
 	}
-	s.authMu.Unlock()
+	s.loginMu.Unlock()
 	if err != nil || count >= 1000 {
 		writeError(w, 503, "Sign-in is busy. Please retry shortly.")
 		return
@@ -190,12 +193,12 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var a loginAttempt
-	s.authMu.Lock()
+	s.loginMu.Lock()
 	e = s.Store.Get(r.Context(), "login", digest(state), &a)
 	if e == nil {
 		e = s.Store.Delete(r.Context(), "login", digest(state))
 	}
-	s.authMu.Unlock()
+	s.loginMu.Unlock()
 	if e != nil || !a.Expires.After(time.Now()) {
 		writeError(w, 400, "Sign-in expired. Start again.")
 		return

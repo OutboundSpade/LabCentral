@@ -253,7 +253,9 @@ requests directly to the IDP while retaining canonical issuer verification and
 browser authorization URLs. HTTP-only secure host cookies contain opaque session IDs;
 tokens remain server-side. Exact-origin CSRF checks protect writes. Userinfo checks
 refresh group authorization every four minutes; desktop policy checks run every
-20 seconds and fail closed on revocation or unverifiable identity. API credentials
+20 seconds and fail closed on revocation or unverifiable identity. Checks run
+concurrently across users and cancel unauthorized transports immediately; durable
+guest cleanup proceeds independently through the worker. API credentials
 used to bootstrap OIDC provider and temporary acceptance users are not runtime inputs.
 
 One durable worker executes provisioning and cleanup. It preserves the reserved

@@ -119,7 +119,8 @@ func (s *Service) recoverAccess(ctx context.Context) error {
 		}
 		unlock := s.lockUser(record.UserID)
 		s.mu.Lock()
-		active := s.desktops[record.ID] != nil
+		desktop := s.desktops[record.ID]
+		active := desktop != nil && desktop.ctx.Err() == nil
 		s.mu.Unlock()
 		if active {
 			unlock()
@@ -128,6 +129,11 @@ func (s *Service) recoverAccess(ctx context.Context) error {
 		e = s.Engine.CloseAccess(ctx, record.ID)
 		if e == nil {
 			e = s.Store.Delete(ctx, "desktop", record.ID)
+			if e == nil {
+				s.mu.Lock()
+				delete(s.desktops, record.ID)
+				s.mu.Unlock()
+			}
 		}
 		unlock()
 		if e != nil {

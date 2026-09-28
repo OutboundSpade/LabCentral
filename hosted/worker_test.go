@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/oauth2"
 	"testing"
 	"time"
 )
@@ -80,5 +81,80 @@ func TestDesktopRecoveryRetainsUnknownOutcomes(t *testing.T) {
 	}
 	if engine.closed != 2 {
 		t.Fatal("repeated completed cleanup", engine.closed)
+	}
+}
+
+type blockedIdentity struct {
+	Identity
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (i blockedIdentity) Refresh(ctx context.Context, _ *oauth2.Token) (User, *oauth2.Token, error) {
+	i.entered <- struct{}{}
+	select {
+	case <-i.release:
+		return User{}, nil, errors.New("identity unavailable")
+	case <-ctx.Done():
+		return User{}, nil, ctx.Err()
+	}
+}
+func TestAllDesktopsFailClosedWithoutWaitingForGuestCleanup(t *testing.T) {
+	s, _, engine := serviceFor(t)
+	identity := blockedIdentity{entered: make(chan struct{}, 20), release: make(chan struct{})}
+	s.Identity = identity
+	ctx := context.Background()
+	var desktops []*desktopSession
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprint(i)
+		session := Session{ID: id, User: User{ID: id}, Expires: time.Now().Add(time.Hour), Checked: time.Now().Add(-5 * time.Minute)}
+		if err := s.Store.Put(ctx, "session", id, session); err != nil {
+			t.Fatal(err)
+		}
+		dctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		record := accessRecord{ID: id, UserID: id, SessionID: id, Expires: time.Now().Add(time.Hour)}
+		d := &desktopSession{record: record, ctx: dctx, cancel: cancel}
+		s.desktops[id] = d
+		desktops = append(desktops, d)
+		if err := s.Store.Put(ctx, "desktop", id, record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan struct{})
+	go func() { s.revalidateDesktops(ctx); close(done) }()
+	defer close(identity.release)
+	for i := 0; i < 20; i++ {
+		select {
+		case <-identity.entered:
+		case <-time.After(time.Second):
+			t.Fatal("identity refresh serialized across unrelated users")
+		}
+	}
+	for i := 0; i < 20; i++ {
+		identity.release <- struct{}{}
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("revocation waited for infrastructure cleanup")
+	}
+	for _, d := range desktops {
+		if d.ctx.Err() == nil {
+			t.Fatal("unauthorized transport remains active")
+		}
+	}
+	if engine.closed != 0 {
+		t.Fatal("authorization loop performed blocking guest cleanup")
+	}
+	job, err := s.Store.NextJob(ctx)
+	if err != nil || job == nil || job.Kind != "access-cleanup" {
+		t.Fatal(job, err)
+	}
+	if err := s.recoverAccess(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if engine.closed != 20 || len(s.desktops) != 0 {
+		t.Fatal("durable cleanup did not close revoked sessions", engine.closed)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,7 +44,7 @@ func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
 	s.mu.Lock()
 	d := s.desktops[id]
 	s.mu.Unlock()
-	if d != nil && (!d.info.Expires.After(time.Now()) || d.record.SessionID != v.ID) {
+	if d != nil && (d.ctx.Err() != nil || !d.info.Expires.After(time.Now()) || d.record.SessionID != v.ID) {
 		if e = s.revokeUser(r.Context(), v.User.ID); e != nil {
 			writeError(w, 503, "Your previous desktop is closing. Please retry.")
 			return
@@ -280,20 +281,24 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 		list = append(list, d)
 	}
 	s.mu.Unlock()
+	// Authorize concurrently, independently of infrastructure and guest cleanup.
+	// Cancellation closes transports immediately; the durable worker retries cleanup.
+	var checks sync.WaitGroup
 	for _, d := range list {
-		if !s.desktopAuthorized(ctx, d) {
-			unlock := s.lockUser(d.record.UserID)
-			if !s.desktopAuthorized(ctx, d) {
-				_ = s.revokeUser(ctx, d.record.UserID)
+		checks.Go(func() {
+			check, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			if !s.desktopAuthorized(check, d) {
+				d.cancel()
 			}
-			unlock()
-		}
+		})
 	}
+	checks.Wait()
 	s.mu.Lock()
 	records, _ := s.Store.List(ctx, "desktop")
 	for _, b := range records {
 		var a accessRecord
-		if json.Unmarshal(b, &a) == nil && s.desktops[a.ID] == nil {
+		if json.Unmarshal(b, &a) == nil && (s.desktops[a.ID] == nil || s.desktops[a.ID].ctx.Err() != nil) {
 			_, _ = s.Store.Enqueue(ctx, "access-cleanup", "pending")
 			break
 		}
