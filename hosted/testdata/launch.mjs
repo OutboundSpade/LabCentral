@@ -25,6 +25,9 @@ try {
  assert((await tab.locator('#status').innerText()).startsWith('Connecting'));
  await tab.evaluate(()=>window.fixtureFirstFrame());
  assert((await tab.locator('#status').innerText()).startsWith('Connected'));
+ assert(await tab.getByRole('button',{name:'Copy from desktop'}).isDisabled());
+ assert(!await tab.evaluate(()=>window.fixtureClipboardCapture));
+ await tab.evaluate(()=>window.fixtureClipboardEstablished());
  assert(await tab.evaluate(()=>window.fixtureClipboardCapture&&window.fixtureClipboardAuto));
  await tab.getByRole('button',{name:'Copy from desktop'}).click();
  assert(await tab.evaluate(()=>window.fixtureClipboardCopy));

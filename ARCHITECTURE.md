@@ -326,7 +326,8 @@ Connected only after the SDK reports its first rendered frame, and sizes the
 remote display from a viewport independent of SDK-managed elements. If the server
 retains a larger resolution, client-side scaling keeps the entire display visible;
 the SDK maps pointer coordinates through that scale. The SDK captures native
-clipboard paste events and automatically synchronizes supported clipboard data.
+clipboard paste events after its clipboard channel is established and synchronizes
+supported local clipboard data when the desktop regains focus.
 A user-initiated Copy from desktop action calls `syncClipboards()` for browsers
 that require a gesture; browser permissions and supported formats still apply.
 Clipboard content is not persisted or logged by the application.

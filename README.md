@@ -17,7 +17,8 @@ team, read the Example Branch handover, and open an individual desktop on their
 team's workstation. Files survive disconnects until the administrator's meeting
 deadline destroys the lab. DCV disconnects clients after sixty minutes without
 keyboard or pointer input; reopening the desktop resumes the retained workspace.
-Use Ctrl+V (⌘V on macOS) to paste into the desktop. The **Copy from desktop**
+After copying locally, click inside the desktop and use Ctrl+V (⌘V on macOS)
+to paste. Terminals use Ctrl+Shift+V. The **Copy from desktop**
 button synchronizes its clipboard to your browser; allow clipboard permission when prompted.
 `labcentral-users` admits students; `labcentral-admins` additionally
 admits administrators. Switching teams revokes the old desktop before membership
