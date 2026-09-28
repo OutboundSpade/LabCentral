@@ -167,9 +167,10 @@ func (p *Process) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.
 
 type Server struct {
 	wire.UnimplementedPlatformServer
-	Provider lc.Provider
-	mu       sync.RWMutex
-	owners   sync.Map
+	Provider  lc.Provider
+	mu        sync.RWMutex
+	owners    sync.Map
+	resources sync.Map
 }
 
 func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wire.Reply]) error {
@@ -208,6 +209,18 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 	} else {
 		ownerLock.Lock()
 		defer ownerLock.Unlock()
+	}
+	// Response loss may overlap a retry of the same VM. Only distinct machines
+	// may run together; their provider journals must still have one writer.
+	if machineDelete {
+		value, _ := s.resources.LoadOrStore(c.Owner+"/"+c.Prior.ID, make(chan struct{}, 1))
+		lock := value.(chan struct{})
+		select {
+		case lock <- struct{}{}:
+			defer func() { <-lock }()
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		}
 	}
 	if err := stream.Context().Err(); err != nil {
 		return err
