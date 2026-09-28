@@ -163,6 +163,13 @@ Native idempotency keys are used where supported. Provider journals persist
 subresource intent and results with fsync and atomic rename. An uncertain create
 is discovered through its exact recorded ownership identity; timeout is never
 interpreted as nonexistence. Ambiguous/missing results retain allocations.
+AWS default-route creation verifies the recorded route table's owner and VPC,
+reconciles an existing matching route, and rejects conflicting routes. Explicit
+authorization denials are retried for up to 31 seconds to tolerate propagation of
+tag-conditioned authorization; persistent denials retain the original error and
+recovery intent. Transport failures are not retried as confirmed rejections.
+Operator recovery skips preparation for obsolete, ending or expired meetings;
+maintenance status includes each current team's readiness.
 
 Successful earlier deployment steps remain after a later failure. Recovery resumes
 the original operation; destroy first reconciles uncertain creates and then removes

@@ -258,8 +258,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	ns.Route = route
-	_, err = a.CreateRoute(ctx, &ec2.CreateRouteInput{RouteTableId: &route, DestinationCidrBlock: aw.String("0.0.0.0/0"), GatewayId: &igw})
-	if err != nil && !apiCode(err, "RouteAlreadyExists") {
+	if err = ensureInternetRoute(ctx, a, owner, vpc, route, igw, waitRouteRetry); err != nil {
 		return lc.Result{}, err
 	}
 	rt, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{route}})

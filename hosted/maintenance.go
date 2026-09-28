@@ -36,12 +36,20 @@ func Maintain(ctx context.Context, root, operation string) (any, error) {
 		}
 		var active int
 		e = st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&active)
+		if e != nil {
+			return nil, e
+		}
+		var teams []Team
+		if m != nil {
+			teams, e = st.Teams(ctx, m.ID)
+		}
 		return struct {
 			Meeting          *Meeting          `json:"meeting"`
+			Teams            []Team            `json:"teams"`
 			Jobs             []Job             `json:"jobs"`
 			ActiveJobs       int               `json:"activeJobs"`
 			IdentityFailures []json.RawMessage `json:"identityFailures"`
-		}{m, jobs, active, diagnostics}, e
+		}{m, teams, jobs, active, diagnostics}, e
 	}
 	tx, e := st.DB.BeginTx(ctx, nil)
 	if e != nil {
@@ -50,7 +58,13 @@ func Maintain(ctx context.Context, root, operation string) (any, error) {
 	defer tx.Rollback()
 	switch operation {
 	case "recover":
-		_, e = tx.ExecContext(ctx, `UPDATE jobs SET status='queued' WHERE status='failed' AND NOT EXISTS (SELECT 1 FROM jobs active WHERE active.kind=jobs.kind AND active.target=jobs.target AND active.status IN ('queued','running')) AND id IN (SELECT id FROM jobs j WHERE j.status='failed' AND j.created=(SELECT MAX(j2.created) FROM jobs j2 WHERE j2.kind=j.kind AND j2.target=j.target))`)
+		_, e = tx.ExecContext(ctx, `UPDATE jobs SET status='queued' WHERE status='failed'
+		AND (kind NOT IN ('prepare','end') OR EXISTS (
+		 SELECT 1 FROM objects WHERE kind='meeting' AND id='current'
+		 AND json_extract(body,'$.id')=jobs.target
+		 AND json_extract(body,'$.status')!='ended'
+		 AND (jobs.kind='end' OR (json_extract(body,'$.status')!='ending' AND json_extract(body,'$.expires')>?))))
+		AND NOT EXISTS (SELECT 1 FROM jobs active WHERE active.kind=jobs.kind AND active.target=jobs.target AND active.status IN ('queued','running')) AND id IN (SELECT id FROM jobs j WHERE j.status='failed' AND j.created=(SELECT MAX(j2.created) FROM jobs j2 WHERE j2.kind=j.kind AND j2.target=j.target))`, time.Now().UTC().Format(time.RFC3339Nano))
 	case "cleanup":
 		var b []byte
 		e = tx.QueryRowContext(ctx, `SELECT body FROM objects WHERE kind='meeting' AND id='current'`).Scan(&b)
