@@ -414,3 +414,5 @@ fixtures establish layout and UI flow only. Five-team provisioning requires the
 configured region to have at least twelve VPCs and sixty-four standard vCPUs of
 quota. Budgets provide alerts, not a spending cap. Nightly backups briefly stop
 the service, closing transports; users reconnect to their retained workspaces.
+
+A typed maintenance `cancel-build` request fences the hosted worker before cancelling a specific template build and queued duplicates. Meeting assignments and other jobs remain intact; native build journals remain available for explicit cleanup.
