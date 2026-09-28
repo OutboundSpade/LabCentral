@@ -1,7 +1,0 @@
-#cloud-config
-hostname: attacker
-users:
-  - name: student
-    lock_passwd: true
-    sudo: "ALL=(ALL) NOPASSWD:ALL"
-

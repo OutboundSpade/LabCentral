@@ -1,7 +1,0 @@
-formatVersion: 1
-cases:
-  - id: TEST-PARSER-001
-    file: duplicate-key.yaml
-    expectedCode: duplicate_yaml_key
-    expectedPath: metadata.name
-

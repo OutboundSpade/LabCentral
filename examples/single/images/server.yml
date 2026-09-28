@@ -1,0 +1,19 @@
+- name: Prepare a web server
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+    - name: Explain the lab
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        mode: '0644'
+        content: '<h1>LabCentral</h1><p>The same playbook runs on AWS and Proxmox.</p>'
+    - name: Start nginx at boot
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true

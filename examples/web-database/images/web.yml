@@ -1,0 +1,14 @@
+- name: Prepare the web and database client machine
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install the web server and PostgreSQL client
+      ansible.builtin.apt:
+        name: [nginx, postgresql-client]
+        state: present
+        update_cache: true
+    - name: Start nginx at boot
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true

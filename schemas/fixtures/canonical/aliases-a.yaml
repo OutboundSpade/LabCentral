@@ -1,5 +1,0 @@
-alpha: &shared
-  label: café
-  count: 1.0
-beta: *shared
-

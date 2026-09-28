@@ -1,0 +1,14 @@
+{
+  "go": "1.27.1",
+  "packer": "1.14.3",
+  "plugins": {
+    "github.com/hashicorp/amazon": "1.8.1",
+    "github.com/hashicorp/proxmox": "1.2.3",
+    "github.com/hashicorp/ansible": "1.1.4"
+  },
+  "ansibleCore": "2.19.3",
+  "noVNC": "1.6.0",
+  "protoc": "29.3",
+  "protocGenGo": "1.36.11",
+  "protocGenGoGRPC": "1.5.1"
+}

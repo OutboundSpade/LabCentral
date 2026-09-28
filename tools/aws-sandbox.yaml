@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Operator-owned LabCentral v2 build network and DCV licensing profile
+Parameters:
+  OperatorCIDR:
+    Type: String
+    AllowedPattern: '(?:[0-9]{1,3}\.){3}[0-9]{1,3}/32'
+    Description: Public IPv4 address of the operator with /32 suffix
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+Resources:
+  BuildVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.76.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{Key: Name, Value: labcentral-v2-build}]
+  BuildSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref BuildVPC
+      CidrBlock: 10.76.0.0/24
+      AvailabilityZone: !Ref AvailabilityZone
+      MapPublicIpOnLaunch: true
+  Gateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref BuildVPC
+      InternetGatewayId: !Ref Gateway
+  BuildRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref BuildVPC
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref BuildRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Gateway
+  RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref BuildRouteTable
+      SubnetId: !Ref BuildSubnet
+  BuildSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Operator SSH and build package downloads
+      VpcId: !Ref BuildVPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref OperatorCIDR}
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+  DCVLicenseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RegionalDCVLicense
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::dcv-license.${AWS::Region}/*'
+  DCVLicenseProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref DCVLicenseRole]
+Outputs:
+  BuildSubnetID: {Value: !Ref BuildSubnet}
+  BuildSecurityGroupID: {Value: !Ref BuildSecurityGroup}
+  DesktopProfileName: {Value: !Ref DCVLicenseProfile}
+  DesktopRoleARN: {Value: !GetAtt DCVLicenseRole.Arn}

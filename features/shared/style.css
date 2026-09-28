@@ -1,3 +1,0 @@
-/* Compiled independently by package.mjs using the published theme and controls. */
-@import "tailwindcss" source(none);
-@plugin "daisyui" { themes: false; }

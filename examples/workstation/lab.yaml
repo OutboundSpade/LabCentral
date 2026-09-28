@@ -1,0 +1,17 @@
+version: 2
+name: investigation-workstation
+inputs:
+  welcome:
+    type: string
+    default: Welcome to your investigation lab.
+images:
+  workstation:
+    base: ubuntu-24.04
+    playbook: images/workstation.yml
+machines:
+  workstation:
+    image: workstation
+    cpu: 2
+    memory: 4Gi
+    disk: 20Gi
+    access: [ssh, desktop]

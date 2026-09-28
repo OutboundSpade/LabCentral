@@ -1,0 +1,15 @@
+- name: Prepare an investigation workstation
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install investigation tools
+      ansible.builtin.apt:
+        name: [tcpdump, curl, jq, mousepad]
+        state: present
+        update_cache: true
+    - name: Write the welcome message
+      ansible.builtin.copy:
+        dest: /etc/motd
+        mode: '0644'
+        content: '{{ welcome }}'

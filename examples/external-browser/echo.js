@@ -1,6 +1,0 @@
-import {connect} from './sdk.js';
-const bridge=await connect();const context=await bridge.request('context.read');let handle;
-document.querySelector('#status').textContent='Bridge ready';
-bridge.subscribe(event=>{if(event.type==='stream.open'){handle=event.handle;document.querySelector('#status').textContent='Authorized stream open';document.querySelector('#echo').disabled=false;}else if(event.type==='stream.data'){document.querySelector('#output').textContent+=new TextDecoder().decode(event.data);}else if(event.type==='stream.closed'){handle=undefined;document.querySelector('#status').textContent='Stream closed';document.querySelector('#echo').disabled=true;}});
-document.querySelector('#connect').onclick=async()=>{try{const topology=await bridge.request('topology.read');const resource=topology.resources.find(r=>(!context.resourceId||r.id===context.resourceId)&&r.actions.some(a=>a.method==='org.example.echo'));if(!resource)throw new Error('No authorized action');await bridge.request('access.create',{resourceId:resource.id,accessMethod:'org.example.echo'});}catch(e){document.querySelector('#status').textContent=e.message;}};
-document.querySelector('#echo').onclick=()=>bridge.request('access.stream.write',{handle,data:new TextEncoder().encode('fixture echo\n').buffer});

@@ -1,0 +1,23 @@
+- name: Prepare the database machine
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install PostgreSQL
+      ansible.builtin.apt:
+        name: postgresql
+        state: present
+        update_cache: true
+    - name: Accept private lab connections
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/16/main/postgresql.conf
+        regexp: '^#?listen_addresses\s*='
+        line: "listen_addresses = '*'"
+    - name: Require passwords on IPv4 connections
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/16/main/pg_hba.conf
+        line: 'host all all 0.0.0.0/0 scram-sha-256'
+    - name: Start PostgreSQL at boot
+      ansible.builtin.systemd_service:
+        name: postgresql
+        enabled: true

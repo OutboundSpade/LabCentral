@@ -1,9 +1,0 @@
-apiVersion: labcentral.bundle/v1alpha1
-kind: LabBundle
-entrypoint: lab.yaml
-files:
-  - {path: lab.yaml, size: 2321, sha256: 0476311fb149dbc9787801968da8497ada54c00eb895bed72c5e94cfb98143bd, mediaType: application/yaml}
-  - {path: README.md, size: 1891, sha256: 602ef7828e4e44d1d254563e708056c8873933bfb1f543d9c60ff1bdb01e2bfb, mediaType: text/markdown}
-  - {path: guest/attacker-cloud-init.yaml, size: 116, sha256: 03fd3a706610e196fba92e94d91a384455bc6fd97817e5c12e17e7f6992ad82b, mediaType: text/cloud-config}
-  - {path: guest/target-cloud-init.yaml, size: 120, sha256: 0bd2330e9153553f5eabb43186409f6ecd7a3cae67578168e6d02abbc001203e, mediaType: text/cloud-config}
-  - {path: guest/router.ign, size: 233, sha256: 3ef0724ebae5476a6140b1047e0ea0e3aa43dc291e22a7d65941c6b354657dc8, mediaType: application/json}

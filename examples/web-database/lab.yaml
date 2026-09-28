@@ -1,0 +1,22 @@
+version: 2
+name: web-database
+images:
+  web:
+    base: ubuntu-24.04
+    playbook: images/web.yml
+  database:
+    base: ubuntu-24.04
+    playbook: images/database.yml
+machines:
+  web:
+    image: web
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]
+  database:
+    image: database
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]

@@ -1,9 +1,0 @@
-- name: Configure the lab workstation
-  hosts: all
-  become: true
-  tasks:
-    - name: Add lab instructions
-      ansible.builtin.copy:
-        dest: /etc/motd
-        content: "Built from a portable LabCentral playbook.\n"
-        mode: "0644"

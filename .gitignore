@@ -1,17 +1,7 @@
-/web/node_modules/
-/web/.svelte-kit/
-/dist/
 /bin/
-.env
+/dist/
+/.local/
 *.db
 *.db-shm
 *.db-wal
-*.lock
-!web/bun.lock
-!tools/builders/ansible-requirements.lock
-
-__pycache__/
-
-# Generated UI and local runtime state
-/web/build/
-/labcentral-data/
+.env

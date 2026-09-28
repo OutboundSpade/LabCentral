@@ -1,0 +1,191 @@
+# LabCentral v2 architecture
+
+This is the living architecture document. The v2 implementation is independent
+of the previous implementation; Git retains its history. No legacy migration or
+compatibility behavior is part of this design.
+
+## Scope and boundaries
+
+One Linux amd64 operator runs a Go library and optional CLI against AWS EC2 or
+Proxmox. Initial guests are Ubuntu 24.04 amd64. Labs contain images, named machines,
+one private IPv4 segment, access requirements, and optional typed Ansible inputs.
+The same source directory is intended to work unchanged on both platforms.
+
+```
+author source + operator environment
+                  |
+           public Go library ---- SQLite intent journal + private credentials
+                  |
+        typed v2 gRPC over private Unix socket
+                  |
+          platform process ---- provider-owned recovery journal
+            |           |
+       native APIs    pinned Packer ---- guest-local Ansible
+            |
+       owned lab VMs ---- verified SSH / authenticated loopback browser relay
+```
+
+The CLI handles presentation and confirmation. The library accepts contexts,
+returns typed results/errors, and emits structured progress. Root portable types
+import no provider SDK. `platform/aws` uses the AWS SDK, `platform/proxmox` a bounded
+HTTPS API client, `build` generates platform-owned Packer configuration, and `access`
+handles SSH and desktop transports. The public process client also allows an
+external application to use the same implementation.
+
+The provider never opens the library database. It owns a separate mutation
+journal for native subresources. The current provider executable routes both
+platforms in one separate process; splitting it into platform-specific binaries
+is possible without moving portable logic into adapters. The provider is trusted
+operator code, not a sandbox for arbitrary third-party executables. The protocol
+is generated from typed Go structures, uses explicit version 2 envelopes, bounds
+message size, and rejects unsupported versions. Resource-specific opaque bytes
+are adapter state, never author-supplied portable manifests.
+
+## Source, environment and plans
+
+Strict YAML rejects unknown/duplicate fields, aliases, multiple documents,
+unsupported topology, out-of-bound resources, missing files, and undeclared inputs.
+Source snapshots reject symlinks and unsafe paths and have bounded size/file count.
+The digest binds file bytes to the parsed lab. Plans bind source, effective input
+values, environment, base identities, and build toolchain; modified plans are
+revalidated before mutation. AWS instance selection uses an operator allowlist and
+reports allocated capacity. Proxmox reserves disjoint VMIDs and per-VLAN /24s.
+
+Environment files contain target identifiers, credential references, base bindings,
+network requirements, and toolchain pins. They belong outside tracked source.
+State contains snapshots, effective plans, provenance, operation records, retained
+resource references, and allocations. SSH private keys live separately from the
+SQLite records. Input values are not a secret-storage interface.
+
+Sharing is through Git or local directories. There is no package manifest service,
+registry, template expression language, loop expansion, inheritance, or author
+Packer extension. Ansible remains ordinary author code running inside build guests.
+
+## Builds
+
+Packer 1.14.3 with amazon 1.8.1, proxmox 1.2.3, and ansible 1.1.4 produces AMIs or
+Proxmox templates. The fixed bootstrap installs pinned ansible-core in a guest
+virtual environment. `ansible-local` receives a generated variables file; author
+values do not enter host shell commands. Build infrastructure credentials remain
+in the operator/provider/Packer processes. Builds have bounded logs and timeouts.
+Source directories and logs are private operator records.
+
+Each build reserves an owner identity and native identifiers before mutation.
+Native tags, descriptions, explicit VMIDs, image names, and keypair identities
+support discovery after interruption. A captured image is unpublished until a
+disposable instance passes SSH/cloud-init readiness and declared desktop service
+checks and cleanup succeeds. Validation checkpoints preserve progress across
+cleanup interruption. Cached artifacts are checked for identity/existence before
+reuse. Mutable package repositories prevent promises of byte-identical rebuilds.
+
+Proxmox clone builds preserve the base root disk. The environment must provide a
+base large enough for installed software and a working guest agent before Packer
+needs IP discovery. Deployment can grow disks. No mandatory image export, disk
+conversion, or nested virtualization is used.
+
+Primary sources, retrieved 2026-09-27:
+[amazon-ebs](https://developer.hashicorp.com/packer/integrations/hashicorp/amazon/latest/components/builder/ebs),
+[proxmox-clone](https://developer.hashicorp.com/packer/integrations/hashicorp/proxmox/latest/components/builder/clone),
+[ansible-local](https://developer.hashicorp.com/packer/integrations/hashicorp/ansible/latest/components/provisioner/ansible-local),
+[pinned Proxmox clone configuration](https://github.com/hashicorp/packer-plugin-proxmox/blob/v1.2.3/builder/proxmox/clone/config.go).
+
+## Native networking and access
+
+Each AWS lab owns its VPC, subnet, route table, Internet gateway, and security group.
+Public IPv4 is ephemeral. Operator CIDRs limit SSH/DCV ingress; same-group rules
+permit lab communication; default general egress is removed. IMDSv2 is required.
+Non-desktop guests have no instance profile. Desktop profiles must contain a
+single inline regional DCV-license read permission and no managed policies; the
+adapter adds a narrowly scoped S3 endpoint. Build networking belongs to the operator
+and is checked separately from runtime networking.
+
+AWS DNS and metadata traffic are special cases outside ordinary security-group
+filtering. This is not an air gap. Role contents and host/network administration
+remain trusted operator responsibilities, including changes made after validation.
+Sources retrieved 2026-09-27:
+[security-group behavior](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html),
+[DCV licensing](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html),
+[short-lived AWS CLI authentication](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html).
+
+Proxmox uses one configured node/storage/pool, an exclusive VMID range, and existing
+isolated VLANs. VM rules default to DROP with intra-lab and operator SSH allowances.
+The cluster firewall and VLAN-aware bridge are checked; physical isolation and
+operator routes require external verification. The adapter never changes host
+bridges, routing, or global firewall policy. A disabled cluster firewall is a hard
+preflight failure. HTTPS verifies server identity by default; an explicit environment
+opt-out is reserved for operator-authorized targets.
+Source retrieved 2026-09-27:
+[Proxmox firewall documentation](https://pve.proxmox.com/wiki/Firewall).
+
+SSH uses per-instance keys and pinned host identities, no agent forwarding, terminal
+resize and remote exit status. Machine-name mappings are written at first boot.
+DCV runs system authentication and named per-access virtual sessions. Its certificate
+is fetched over verified SSH and pinned by the loopback TLS proxy. Image capture
+removes generated DCV certificates so guests generate their own identity. Proxmox uses a
+bundled noVNC 1.6.0 client and encrypted upstream console connection; management
+tokens remain in the provider process. Both paths create temporary guest login
+accounts and disclose passwords only in explicit access output.
+
+Loopback relays enforce a single-use launch token, authenticated cookie, exact
+Host/Origin checks, expiry, and closure of active connections. Closing access
+removes its temporary guest session/account; after a process crash, recovery uses
+the durable access intent. Browser access is local, with no general web server,
+team authorization, shared-console coordination, or implied AWS boot-console support.
+Source retrieved 2026-09-27:
+[DCV TLS certificate handling](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-cert.html)
+(retrieved 2026-09-28),
+[noVNC source and licensing](https://github.com/novnc/noVNC/tree/v1.6.0).
+
+## Durability and cleanup
+
+SQLite uses WAL and FULL synchronization. A state-root file lock serializes mutations;
+status queries remain available. Native create intent is recorded before calls.
+Native idempotency keys are used where supported. Provider journals persist
+subresource intent and results with fsync and atomic rename. An uncertain create
+is discovered through its exact recorded ownership identity; timeout is never
+interpreted as nonexistence. Ambiguous/missing results retain allocations.
+
+Successful earlier deployment steps remain after a later failure. Recovery resumes
+the original operation; destroy first reconciles uncertain creates and then removes
+owned resources in reverse dependency order. Image removal is separate and checks
+retained instance references. AMI snapshots and Proxmox template disks are included
+in image cleanup. Failed cleanup leaves a recoverable record. There is no scheduler;
+operator failure can leave resources and charges active.
+
+One state root exclusively owns its configured allocation ranges. Cross-operator
+locking and reservation are deferred. Deletion or corruption of local state is
+outside automatic recovery guarantees; backups must include provider journals and
+credentials. Uncertain mutations that cannot be authoritatively reconciled require
+operator investigation instead of releasing possibly live resource identities.
+
+## Acceptance
+
+The implementation includes the library, CLI, typed process protocol, SQLite
+journal, AWS/Proxmox adapters, Packer configuration generation, SSH, browser relays,
+three portable examples, and an independent Go consumer. Local tests exercise
+schema rejection, ownership, response loss, interrupted cleanup, allocation
+collisions, concurrent access, plugin transport, role policy and relay authentication.
+Real pinned Packer configuration validation is available as an opt-in test.
+
+**Release acceptance remains incomplete.** Live AWS credentials have not been
+configured. Initial Proxmox discovery found missing target prerequisites; no
+end-to-end deployment or isolation result is claimed. The following require
+explicitly configured test targets and evidence outside tracked source:
+
+- All three unchanged examples build/deploy/access/destroy on both platforms.
+- Real provider interruption, response loss, stale ownership and cleanup scenarios.
+- Network probes for intra-lab traffic, operator ingress, egress and cross-lab denial.
+- DCV/noVNC display, keyboard, guest authentication, replay, disconnect and revocation.
+- Full template/AMI/snapshot/disk cleanup and a zero-unreported-leftovers inventory.
+- Packaging of the exact live-verified Linux amd64 binaries and toolchain checksums.
+
+Service readiness checks are not browser acceptance. Adapter tests are not live
+provider evidence. `make package` produces a development archive; it is not a
+release qualification step. Do not label it a stable release until these checks pass.
+
+## Proposals after the foundation
+
+Multi-user APIs, teams, classroom governance, an application web UI, registries,
+additional platforms, Windows, routed/multiple NIC topologies and EC2 Image Builder
+are deferred. They should use the public library without putting product policy
+into portable lab declarations. These are proposals, not implemented contracts.

@@ -1,7 +1,0 @@
-name: private-network
-resources:
-  networks:
-    - name: private
-      kind: isolated
-      ipam: providerManaged
-      egress: {mode: deny}

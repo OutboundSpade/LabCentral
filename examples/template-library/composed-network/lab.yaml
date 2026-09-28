@@ -1,9 +1,0 @@
-apiVersion: labs.labcentral.io/v1alpha1
-kind: Lab
-metadata:
-  name: composed-network
-spec:
-  uses:
-    - name: team
-      componentRef: private-network
-  resources: {}

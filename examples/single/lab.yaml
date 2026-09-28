@@ -1,0 +1,13 @@
+version: 2
+name: single-server
+images:
+  server:
+    base: ubuntu-24.04
+    playbook: images/server.yml
+machines:
+  server:
+    image: server
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]

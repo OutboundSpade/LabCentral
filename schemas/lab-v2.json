@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LabCentral v2 lab source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "images", "machines"],
+  "properties": {
+    "version": {"const": 2},
+    "name": {"$ref": "#/$defs/name"},
+    "description": {"type": "string"},
+    "images": {
+      "type": "object", "minProperties": 1, "maxProperties": 32,
+      "propertyNames": {"$ref": "#/$defs/name"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false, "required": ["base"],
+        "properties": {
+          "base": {"type": "string", "pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+          "playbook": {"type": "string", "pattern": "^[a-zA-Z0-9_./-]+$"}
+        }
+      }
+    },
+    "machines": {
+      "type": "object", "minProperties": 1, "maxProperties": 32,
+      "propertyNames": {"$ref": "#/$defs/name"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["image", "cpu", "memory", "disk"],
+        "properties": {
+          "image": {"$ref": "#/$defs/name"},
+          "cpu": {"type": "integer", "minimum": 1, "maximum": 64},
+          "memory": {"type": "string", "pattern": "^[1-9][0-9]*(Mi|Gi)$"},
+          "disk": {"type": "string", "pattern": "^[1-9][0-9]*(Mi|Gi)$"},
+          "access": {"type": "array", "uniqueItems": true, "items": {"enum": ["ssh", "desktop"]}}
+        }
+      }
+    },
+    "network": {"type": "object", "additionalProperties": false, "properties": {"internet": {"const": false}}},
+    "inputs": {
+      "type": "object", "propertyNames": {"$ref": "#/$defs/name"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false, "required": ["type"],
+        "properties": {
+          "type": {"enum": ["string", "integer", "boolean"]},
+          "default": {"type": "string"},
+          "required": {"type": "boolean"}
+        }
+      }
+    }
+  },
+  "$defs": {"name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,47}$"}}
+}
