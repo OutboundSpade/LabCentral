@@ -68,7 +68,10 @@ Proxmox templates. The fixed bootstrap installs pinned ansible-core in a guest
 virtual environment. `ansible-local` receives a generated variables file; author
 values do not enter host shell commands. Build infrastructure credentials remain
 in the operator/provider/Packer processes. Builds have bounded logs and timeouts.
-Source directories and logs are private operator records.
+Source directories and logs are private operator records. The platform desktop
+installation omits optional recommended packages to keep build and guest overhead
+bounded. Desktop build-policy revisions participate in the cache key without
+invalidating unchanged server images.
 
 Each build reserves an owner identity and native identifiers before mutation.
 Native tags, descriptions, explicit VMIDs, image names, and keypair identities

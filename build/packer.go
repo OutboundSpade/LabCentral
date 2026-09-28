@@ -237,7 +237,7 @@ func Generate(c lc.Command, dir string) (Config, error) {
 		Arguments []string `json:"extra_arguments"`
 	}{"ansible-local", "sudo /opt/labcentral-ansible/bin/ansible-playbook", filepath.Join(dir, "source", im.Playbook), filepath.Join(dir, "source"), []string{"--extra-vars=@/tmp/labcentral-inputs.json"}}))
 	if im.Desktop {
-		desktop := []string{"set -eu", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 lightdm dbus-x11 xorg", "printf '%s\\n' 'exec startxfce4' | sudo tee /etc/skel/.xsession >/dev/null"}
+		desktop := []string{"set -eu", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xfce4 lightdm dbus-x11 xorg", "printf '%s\\n' 'exec startxfce4' | sudo tee /etc/skel/.xsession >/dev/null"}
 		if c.Environment.Platform == "aws" {
 			if !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(b.DCVSHA256) || !strings.HasPrefix(b.DCVURL, "https://") || strings.ContainsAny(b.DCVURL, "'\n\r ") {
 				return cfg, fmt.Errorf("AWS desktop build requires a pinned HTTPS DCV archive")

@@ -125,3 +125,31 @@ func TestSharedExamplesValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestDesktopPolicyInvalidatesOnlyDesktopBuilds(t *testing.T) {
+	for _, name := range []string{"single", "workstation"} {
+		source, err := Load("examples/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		env := testEnvironment()
+		env.AWS.DesktopProfile = "license-only"
+		env.Build = BuildConfig{Packer: "/packer", PackerSHA256: strings.Repeat("a", 64), PluginDirectory: "/plugins", ToolchainID: "toolchain", AnsibleVersion: "2.19.3", TimeoutSeconds: 3600}
+		plan, err := PlanLab(source, env, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		image := plan.Images[0]
+		key := image.CacheKey
+		image.CacheKey = ""
+		previous := digest(struct {
+			S string
+			I PlannedImage
+			E Environment
+			V []InputValue
+		}{source.Digest, image, env, plan.Inputs})
+		if (key != previous) != image.Desktop {
+			t.Fatal("desktop policy must invalidate desktop images while preserving unchanged server builds", name)
+		}
+	}
+}

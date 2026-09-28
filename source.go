@@ -380,12 +380,17 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 				return p, problem(Invalid, "environment.build", "pinned Packer, plugin directory, toolchain ID, Ansible version and timeout are required")
 			}
 		}
+		policy := ""
+		if im.Desktop {
+			policy = "xfce-minimal-1"
+		}
 		im.CacheKey = digest(struct {
-			S string
-			I PlannedImage
-			E Environment
-			V []InputValue
-		}{s.Digest, im, e, p.Inputs})
+			S      string
+			I      PlannedImage
+			E      Environment
+			V      []InputValue
+			Policy string `json:"policy,omitempty"`
+		}{s.Digest, im, e, p.Inputs, policy})
 		p.Images = append(p.Images, im)
 	}
 	for _, n := range sortedKeys(s.Lab.Machines) {
