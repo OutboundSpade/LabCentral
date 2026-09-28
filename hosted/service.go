@@ -239,9 +239,19 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/teams/", 303)
 }
 func (s *Service) logout(w http.ResponseWriter, r *http.Request, v Session) {
-	_ = s.Store.Delete(r.Context(), "session", v.ID)
+	release, err := s.lockSession(r.Context(), v.ID)
+	if err != nil {
+		writeError(w, 503, "Sign-out could not be saved. Please retry.")
+		return
+	}
+	err = s.Store.Delete(r.Context(), "session", v.ID)
+	release()
+	if err != nil {
+		writeError(w, 503, "Sign-out could not be saved. Please retry.")
+		return
+	}
 	unlock := s.lockUser(v.User.ID)
-	err := s.revokeUser(r.Context(), v.User.ID)
+	err = s.revokeUser(r.Context(), v.User.ID)
 	unlock()
 	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral", Path: "/", Secure: true, HttpOnly: true, MaxAge: -1})
 	if err != nil {

@@ -2,9 +2,11 @@ package hosted
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"golang.org/x/oauth2"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -78,5 +80,37 @@ func TestCancelledBrowserRequestDoesNotLoseRotatedToken(t *testing.T) {
 	}
 	if session.Token.RefreshToken != "rotated" || time.Since(session.Checked) > time.Minute {
 		t.Fatal("rotated token was not committed")
+	}
+}
+
+func TestLogoutWaitsForRefreshAndCannotResurrectSession(t *testing.T) {
+	s, _, _ := serviceFor(t)
+	identity := rotatingIdentity{started: make(chan struct{}), release: make(chan struct{})}
+	s.Identity = identity
+	var session Session
+	ctx := context.Background()
+	if err := s.Store.Get(ctx, "session", digest("cookie"), &session); err != nil {
+		t.Fatal(err)
+	}
+	session.Checked = time.Now().Add(-5 * time.Minute)
+	if err := s.Store.Put(ctx, "session", session.ID, session); err != nil {
+		t.Fatal(err)
+	}
+	refreshed := make(chan error, 1)
+	go func() { _, err := s.checkedSession(ctx, session.ID); refreshed <- err }()
+	<-identity.started
+	done := make(chan struct{})
+	w := httptest.NewRecorder()
+	go func() { s.logout(w, httptest.NewRequest("POST", "/auth/logout", nil), session); close(done) }()
+	close(identity.release)
+	if err := <-refreshed; err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if err := s.Store.Get(ctx, "session", session.ID, &session); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("logout session remained", err)
 	}
 }
