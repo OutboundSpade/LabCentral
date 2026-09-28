@@ -69,6 +69,9 @@ State is relative to `/var/lib/labcentral` and must already exist. Kinds are
 `instance`, `build`, or `image`; cleanup maps to destroy, abandon, or image removal.
 Use the image cache key for build/image IDs. These requests cannot run arbitrary
 commands and use the library's ownership and retained-image checks.
+For a failed native build, a `recover` request with `kind: "build-log"`, `state`,
+and its `owner` prints a bounded diagnostic tail and the build cache key, omitting
+credential-related lines. Keep diagnostic workflow logs private.
 A `recover` request can also switch public origins with
 `{"version":1,"kind":"origins","app":"https://labs.example.org","desktop":"https://desktop.example.org"}`.
 It retains the previous configuration and redeploys the same verified artifact;
