@@ -106,6 +106,9 @@ Sources retrieved 2026-09-27:
 [security-group behavior](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html),
 [DCV licensing](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html),
 [short-lived AWS CLI authentication](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html).
+Console browser login can feed both SDK and Packer through a separate
+credential-process profile. Source retrieved 2026-09-28:
+[AWS console login and process credentials](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html).
 
 Proxmox uses one configured node/storage/pool, an exclusive VMID range, and existing
 isolated VLANs. VM rules default to DROP with intra-lab and operator SSH allowances.
@@ -167,10 +170,15 @@ schema rejection, ownership, response loss, interrupted cleanup, allocation
 collisions, concurrent access, plugin transport, role policy and relay authentication.
 Real pinned Packer configuration validation is available as an opt-in test.
 
-**Release acceptance remains incomplete.** Live AWS credentials have not been
-configured. Initial Proxmox discovery found missing target prerequisites; no
-end-to-end deployment or isolation result is claimed. The following require
-explicitly configured test targets and evidence outside tracked source:
+**Release acceptance remains incomplete.** The unchanged single-server example
+has completed a live AWS Packer/Ansible build, disposable image validation and
+deployment. Focused checks passed for verified SSH, nginx, required IMDSv2, and
+denied public HTTP ingress and egress. Temporary build and validation VMs and the
+validation network were removed; the requested lab, image and operator build
+infrastructure remain retained. This does not
+establish cross-lab isolation or full lifecycle acceptance. Initial Proxmox discovery
+found missing target prerequisites. Detailed evidence remains outside tracked source.
+The following still require live verification:
 
 - All three unchanged examples build/deploy/access/destroy on both platforms.
 - Real provider interruption, response loss, stale ownership and cleanup scenarios.

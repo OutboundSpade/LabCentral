@@ -102,6 +102,23 @@ aws sso login --profile labcentral-v2
 aws sts get-caller-identity --profile labcentral-v2
 ```
 
+For browser-based console login with AWS CLI 2.32 or newer, use a separate login
+profile and a credential-process profile shared by the SDK and Packer:
+
+```sh
+aws login --remote --profile labcentral-v2-login --region us-east-1
+aws configure set credential_process \
+  'aws configure export-credentials --profile labcentral-v2-login --format process' \
+  --profile labcentral-v2
+aws configure set region us-east-1 --profile labcentral-v2
+aws sts get-caller-identity --profile labcentral-v2
+```
+
+This is an alternative to the SSO setup above. Enter the returned authorization
+code into the waiting CLI. The CLI refreshes temporary credentials for the login
+session; repeat login when the session expires.
+[AWS console login documentation](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html).
+
 For initial sandbox testing, the operator role needs EC2 lifecycle permissions
 (the EC2-only `AmazonEC2FullAccess` policy is a practical starting point in this
 isolated account). Add `iam:GetInstanceProfile`, `iam:ListAttachedRolePolicies`,
