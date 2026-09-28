@@ -27,6 +27,7 @@ try {
  for(const width of [1365,390]){
   await tab.setViewportSize({width,height:900});
   await tab.waitForFunction(width=>window.fixtureResolution?.[0]===width,width);
+  await tab.waitForFunction(()=>{const d=document.querySelector('#dcv-display').getBoundingClientRect(),v=document.querySelector('#desktop-viewport').getBoundingClientRect();return d.width<=v.width+.1&&d.height<=v.height+.1});
   assert(await tab.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(process.env.LABCENTRAL_BROWSER_EVIDENCE) await tab.screenshot({path:process.env.LABCENTRAL_BROWSER_EVIDENCE+`/desktop-fixture-${width}.png`});
  }

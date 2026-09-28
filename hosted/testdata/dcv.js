@@ -6,6 +6,6 @@ export default {
   const display=document.getElementById(options.divId);
   display.style.width='800px';display.style.height='600px';
   window.fixtureFirstFrame=()=>options.callbacks.firstFrame();
-  return {async requestResolution(width,height){window.fixtureResolution=[width,height];display.style.width=width+'px';display.style.height=height+'px'}};
+  return {async requestResolution(width,height){window.fixtureResolution=[width,height];if(width<640)throw new Error('server minimum resolution');display.style.width=width+'px';display.style.height=height+'px'}};
  }
 };

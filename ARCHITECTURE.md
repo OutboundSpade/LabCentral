@@ -298,10 +298,13 @@ A failed asynchronous launch is retried once only after confirmed session absenc
 unknown outcomes remain errors. Reconnects recheck the native session and replace
 a failed session and relay while preserving the home directory. The browser shows
 Connected only after the SDK reports its first rendered frame, and sizes the
-remote display from a viewport independent of SDK-managed elements.
+remote display from a viewport independent of SDK-managed elements. If the server
+retains a larger resolution, client-side scaling keeps the entire display visible;
+the SDK maps pointer coordinates through that scale.
 Sources retrieved 2026-09-28:
 [DCV virtual-session startup](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html),
-[SDK connection callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html).
+[SDK connection callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html),
+[SDK display scaling](https://docs.aws.amazon.com/dcv/latest/websdkguide/connection-class.html).
 Revocation
 closes sessions, kills guest processes and locks the account; destroying the VM
 removes retained workspaces. Teammates have training administration of shared
