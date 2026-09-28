@@ -105,6 +105,38 @@ func openFake(t *testing.T, root string, f *fakeProvider) *Engine {
 	t.Cleanup(func() { e.Close() })
 	return e
 }
+func TestValidatedPlanCanDeployIndependentInstances(t *testing.T) {
+	ctx := context.Background()
+	f := freshFake()
+	e := openFake(t, t.TempDir(), f)
+	p, err := PlanLab(testSource(t), testEnvironment(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := digest(p)
+	hosts := map[string]bool{}
+	clients := map[string]bool{}
+	for range 5 {
+		instance, err := e.Deploy(ctx, p)
+		if err != nil || instance.Status != "ready" {
+			t.Fatalf("reusing the validated plan failed: %s %v", instance.Status, err)
+		}
+		if digest(p) != original {
+			t.Fatal("deployment changed the caller's validated plan")
+		}
+		machine := instance.Plan.Machines[0]
+		if machine.NativeImage == "" || machine.Address == "" || machine.HostPublicKey == "" || machine.PublicKey == "" {
+			t.Fatal("deployment did not resolve its own machine identity")
+		}
+		if hosts[machine.HostPublicKey] || clients[machine.PublicKey] {
+			t.Fatal("independent instances shared guest or operator credentials")
+		}
+		hosts[machine.HostPublicKey], clients[machine.PublicKey] = true, true
+	}
+	if f.creates != 10 {
+		t.Fatalf("expected five independent networks and machines, got %d resources", f.creates)
+	}
+}
 func TestLostCreateResponseRecoversWithoutDuplicate(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

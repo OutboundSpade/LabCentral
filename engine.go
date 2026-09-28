@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/v2/internal/privatefile"
@@ -234,6 +235,9 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		for _, im := range images {
 			native[im.Name] = im.Resource.ID
 		}
+		// Native images, addresses and guest identities belong to this deployment.
+		// A caller can reuse the validated plan for other independent instances.
+		p.Machines = slices.Clone(p.Machines)
 		inst = Instance{ID: instanceID, Name: p.Source.Lab.Name, Status: "preparing", Created: time.Now().UTC(), Plan: p}
 		for n := range inst.Plan.Machines {
 			inst.Plan.Machines[n].NativeImage = native[inst.Plan.Machines[n].Spec.Image]

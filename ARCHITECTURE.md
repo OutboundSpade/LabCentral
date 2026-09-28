@@ -48,7 +48,10 @@ unsupported topology, out-of-bound resources, missing files, and undeclared inpu
 Source snapshots reject symlinks and unsafe paths and have bounded size/file count.
 The digest binds file bytes to the parsed lab. Plans bind source, effective input
 values, environment, base identities, and build toolchain; modified plans are
-revalidated before mutation. AWS instance selection uses an operator allowlist and
+revalidated before mutation. Deployment copies machine entries before adding
+native image references, addresses and keys, so one validated plan can deploy
+independent team instances without changing the caller's plan.
+AWS instance selection uses an operator allowlist and
 reports allocated capacity. Proxmox reserves disjoint VMIDs and per-VLAN /24s.
 
 Environment files contain target identifiers, credential references, base bindings,
