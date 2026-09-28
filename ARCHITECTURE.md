@@ -230,7 +230,11 @@ still requires an administrator; runtime cannot pass its own management role to 
 Hosted deployment, recovery, cleanup and backup use `Hosted maintenance` workflow
 dispatches. Installation identifiers belong in protected operator records and
 GitHub repository variables, not source. Application rollout consumes an exact,
-checksum-verified release archive. Production DNS remains an explicit cutover step.
+checksum-verified release archive. The trusted `main` maintenance workflow has
+GitHub Contents write permission because draft releases require push access; it
+uses that access to download staged artifacts, without publishing them
+([GitHub release visibility](https://docs.github.com/en/rest/releases/releases#list-releases),
+retrieved 2026-09-28). Production DNS remains an explicit cutover step.
 
 Primary sources, retrieved 2026-09-28:
 [AWS role guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html),
