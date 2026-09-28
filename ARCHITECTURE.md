@@ -307,6 +307,11 @@ Sources retrieved 2026-09-28:
 [DCV virtual-session startup](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html),
 [SDK connection callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html),
 [SDK display scaling](https://docs.aws.amazon.com/dcv/latest/websdkguide/connection-class.html).
+DCV retains its default sixty-minute idle-client timeout. Reconnecting resumes
+the workspace; the meeting deadline controls VM and disk removal. Active-use
+acceptance must send actual keyboard and pointer input throughout the hour.
+Source retrieved 2026-09-28:
+[DCV idle-client timeout](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-disconnect.html).
 Revocation
 closes sessions, kills guest processes and locks the account; destroying the VM
 removes retained workspaces. Teammates have training administration of shared

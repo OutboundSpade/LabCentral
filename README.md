@@ -14,7 +14,9 @@ listed in [ARCHITECTURE.md](ARCHITECTURE.md#acceptance).
 The hosted application lets competition members sign in with OIDC provider, choose a
 team, read the Example Branch handover, and open an individual desktop on their
 team's workstation. Files survive disconnects until the administrator's meeting
-deadline destroys the lab. `labcentral-users` admits students; `labcentral-admins` additionally
+deadline destroys the lab. DCV disconnects clients after sixty minutes without
+keyboard or pointer input; reopening the desktop resumes the retained workspace.
+`labcentral-users` admits students; `labcentral-admins` additionally
 admits administrators. Switching teams revokes the old desktop before membership
 changes. Administrators refresh the private template repository, build a pinned
 revision once, then prepare teams from those images.
