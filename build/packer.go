@@ -242,7 +242,7 @@ func Generate(c lc.Command, dir string) (Config, error) {
 			if !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(b.DCVSHA256) || !strings.HasPrefix(b.DCVURL, "https://") || strings.ContainsAny(b.DCVURL, "'\n\r ") {
 				return cfg, fmt.Errorf("AWS desktop build requires a pinned HTTPS DCV archive")
 			}
-			desktop = append(desktop, "curl --fail --proto '=https' --tlsv1.2 --max-time 300 '"+b.DCVURL+"' -o /tmp/dcv.tgz", "printf '%s\\n' '"+b.DCVSHA256+"  /tmp/dcv.tgz' | sha256sum -c -", "mkdir /tmp/dcv-package; tar xzf /tmp/dcv.tgz -C /tmp/dcv-package --strip-components=1", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/dcv-package/*dcv-server*.deb /tmp/dcv-package/*dcv-web-viewer*.deb /tmp/dcv-package/*dcv-xdcv*.deb", "printf '%s\\n' '[security]' 'authentication=\"system\"' | sudo tee /etc/dcv/dcv.conf >/dev/null", "sudo systemctl enable dcvserver", "rm -rf /tmp/dcv-package /tmp/dcv.tgz")
+			desktop = append(desktop, "curl --fail --proto '=https' --tlsv1.2 --max-time 300 '"+b.DCVURL+"' -o /tmp/dcv.tgz", "printf '%s\\n' '"+b.DCVSHA256+"  /tmp/dcv.tgz' | sha256sum -c -", "mkdir /tmp/dcv-package; tar xzf /tmp/dcv.tgz -C /tmp/dcv-package --strip-components=1", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y /tmp/dcv-package/*dcv-server*.deb /tmp/dcv-package/*dcv-web-viewer*.deb /tmp/dcv-package/*xdcv*.deb", "printf '%s\\n' '[security]' 'authentication=\"system\"' | sudo tee /etc/dcv/dcv.conf >/dev/null", "sudo systemctl enable dcvserver", "rm -rf /tmp/dcv-package /tmp/dcv.tgz")
 		}
 		cfg.Provisioners = append(cfg.Provisioners, raw(struct {
 			Type   string   `json:"type"`
@@ -252,7 +252,7 @@ func Generate(c lc.Command, dir string) (Config, error) {
 	cfg.Provisioners = append(cfg.Provisioners, raw(struct {
 		Type   string   `json:"type"`
 		Inline []string `json:"inline"`
-	}{"shell", []string{"set -eu", "sudo rm -f /tmp/labcentral-inputs.json", "sudo find /root /home -type f -name authorized_keys -delete", "sudo rm -f /etc/ssh/ssh_host_*", "if systemctl list-unit-files dcvserver.service --no-legend | grep -q dcvserver; then sudo systemctl stop dcvserver; sudo rm -f /etc/dcv/dcv.pem /etc/dcv/dcv.key; fi", "sudo cloud-init clean --logs --machine-id", "sudo sync"}}))
+	}{"shell", []string{"set -eu", "sudo rm -f /tmp/labcentral-inputs.json", "sudo find /root /home -type f -name authorized_keys -delete", "sudo rm -f /etc/ssh/ssh_host_*", "if systemctl list-unit-files dcvserver.service --no-legend | grep -q dcvserver; then sudo systemctl stop dcvserver; sudo rm -f /etc/dcv/dcv.pem /etc/dcv/dcv.key /var/lib/dcv/.config/NICE/dcv/private/dcv.pem /var/lib/dcv/.config/NICE/dcv/private/dcv.key; fi", "sudo cloud-init clean --logs --machine-id", "sudo sync"}}))
 	return cfg, nil
 }
 func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {

@@ -85,8 +85,8 @@ func Wait(ctx context.Context, address, user string, private []byte, host string
 }
 
 type limitedOutput struct {
-	mu sync.Mutex
-	bytes.Buffer
+	mu       sync.Mutex
+	buffer   bytes.Buffer
 	Exceeded bool
 }
 
@@ -94,11 +94,17 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	n := len(p)
-	remaining := (1 << 20) - w.Len()
+	remaining := (1 << 20) - w.buffer.Len()
 	if remaining < n {
 		w.Exceeded = true
 		p = p[:remaining]
 	}
-	_, e := w.Buffer.Write(p)
+	_, e := w.buffer.Write(p)
 	return n, e
+}
+
+func (w *limitedOutput) Bytes() []byte {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]byte(nil), w.buffer.Bytes()...)
 }

@@ -27,9 +27,20 @@ func fixture(t *testing.T, platform string) (lc.Command, string) {
 	return lc.Command{Owner: "build-test", Image: lc.PlannedImage{Name: "base", Playbook: "images/base.yml", DiskGiB: 20, Base: lc.Base{ID: "2000", User: "ubuntu"}}, Machine: lc.PlannedMachine{VMID: 2001}, Environment: lc.Environment{Platform: platform, AWS: lc.AWSConfig{Region: "us-east-1"}, Proxmox: lc.ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local-lvm", Pool: "test", TokenID: "test@pve!test"}, Build: lc.BuildConfig{AnsibleVersion: "2.19.3", Bridge: "vmbr-build", InstanceType: "t3.medium", SubnetID: "subnet-01234567890123456", SecurityGroupID: "sg-01234567890123456"}}}, dir
 }
 func TestGeneratedPackerConfiguration(t *testing.T) {
-	for _, platform := range []string{"aws", "proxmox"} {
-		t.Run(platform, func(t *testing.T) {
+	for _, scenario := range []struct {
+		platform string
+		desktop  bool
+	}{{"aws", false}, {"aws", true}, {"proxmox", false}, {"proxmox", true}} {
+		name := scenario.platform
+		if scenario.desktop {
+			name += "-desktop"
+		}
+		t.Run(name, func(t *testing.T) {
+			platform := scenario.platform
 			c, dir := fixture(t, platform)
+			c.Image.Desktop = scenario.desktop
+			c.Environment.Build.DCVURL = "https://example.invalid/dcv.tgz"
+			c.Environment.Build.DCVSHA256 = strings.Repeat("0", 64)
 			if platform == "aws" {
 				c.Image.Base.ID = "ami-01234567890123456"
 			}

@@ -114,12 +114,12 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	defer sshClient.Close()
 	username := dcvName(c)
 	password := random()
-	script := "sudo useradd --create-home --shell /bin/bash " + username + " && printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd && sudo dcv create-session --type virtual --owner " + username + " " + username
+	script := "sudo useradd --create-home --shell /bin/bash " + username + " && printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd && sudo dcv create-session --type virtual --user " + username + " --owner " + username + " " + username
 	if _, e = remote.Run(ctx, sshClient, script); e != nil {
 		return nil, info, fmt.Errorf("DCV session creation failed: %w", e)
 	}
 	// Read the instance certificate over an SSH connection with an exact host key.
-	cert, e := remote.Run(ctx, sshClient, "sudo openssl x509 -in /etc/dcv/dcv.pem -outform PEM")
+	cert, e := remote.Run(ctx, sshClient, "sudo openssl x509 -in /var/lib/dcv/.config/NICE/dcv/private/dcv.pem -outform PEM")
 	if e != nil {
 		_ = closeDCV(context.Background(), c)
 		return nil, info, fmt.Errorf("read DCV certificate: %w", e)
@@ -134,6 +134,28 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	}
 	pin := sha256.Sum256(parsed.Raw)
 	target, _ := url.Parse("https://" + net.JoinHostPort(c.Prior.Address, "8443"))
+	proxy, transport := dcvProxy(target, pin)
+	relay, e := NewRelay(context.Background(), proxy)
+	if e != nil {
+		_ = closeDCV(context.Background(), c)
+		return nil, info, e
+	}
+	var once sync.Once
+	closer := func() error {
+		var err error
+		once.Do(func() {
+			_ = relay.Close()
+			transport.CloseIdleConnections()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			err = closeDCV(ctx, c)
+		})
+		return err
+	}
+	info = Info{URL: relay.URL, Username: username, Password: password}
+	return &desktop{relay, closer}, info, nil
+}
+func dcvProxy(target *url.URL, pin [sha256.Size]byte) (*httputil.ReverseProxy, *http.Transport) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
 		if len(cs.PeerCertificates) == 0 {
 			return fmt.Errorf("missing DCV certificate")
@@ -162,26 +184,9 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
 		http.Error(w, "desktop upstream unavailable", 502)
 	}
-	relay, e := NewRelay(context.Background(), proxy)
-	if e != nil {
-		_ = closeDCV(context.Background(), c)
-		return nil, info, e
-	}
-	var once sync.Once
-	closer := func() error {
-		var err error
-		once.Do(func() {
-			_ = relay.Close()
-			transport.CloseIdleConnections()
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			err = closeDCV(ctx, c)
-		})
-		return err
-	}
-	info = Info{URL: relay.URL, Username: username, Password: password}
-	return &desktop{relay, closer}, info, nil
+	return proxy, transport
 }
+
 func closeDCV(ctx context.Context, c lc.Command) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -191,8 +196,32 @@ func closeDCV(ctx context.Context, c lc.Command) error {
 	}
 	defer sshClient.Close()
 	name := dcvName(c)
-	_, e = remote.Run(ctx, sshClient, "sudo dcv close-session "+name+"; if id "+name+" >/dev/null 2>&1; then sudo userdel --force --remove "+name+"; fi")
-	return e
+	cleanup := "sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
+		"if id " + name + " >/dev/null 2>&1; then " +
+		"uid=$(id -u " + name + "); " +
+		"sudo loginctl terminate-user \"$uid\" >/dev/null 2>&1 || true; " +
+		"sudo pkill -KILL -u \"$uid\" >/dev/null 2>&1 || true; " +
+		"n=0; while pgrep -u \"$uid\" >/dev/null; do n=$((n+1)); test \"$n\" -lt 100 || exit 1; sleep 0.1; done; " +
+		"sudo userdel --remove " + name + "; fi"
+	if _, e = remote.Run(ctx, sshClient, cleanup); e != nil {
+		return e
+	}
+	output, e := remote.Run(ctx, sshClient, "sudo dcv list-sessions -j")
+	if e != nil {
+		return e
+	}
+	var sessions []struct {
+		ID string `json:"id"`
+	}
+	if e = json.Unmarshal(output, &sessions); e != nil {
+		return fmt.Errorf("DCV session removal unconfirmed: %w", e)
+	}
+	for _, session := range sessions {
+		if session.ID == name {
+			return fmt.Errorf("DCV session still exists")
+		}
+	}
+	return nil
 }
 func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 	var info Info

@@ -5,6 +5,11 @@ try {
  const page=await browser.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(String(e)));
  await page.goto(process.argv[2]);
+ // DCV's embedded decoder must also work under this shared relay policy.
+ await page.evaluate(async()=>{
+  const bytes=await (await fetch('data:application/wasm;base64,AGFzbQEAAAA=')).arrayBuffer();
+  await WebAssembly.compile(bytes);
+ });
  await page.waitForFunction(()=>document.querySelector('#status').hidden,{timeout:15000});
  await page.locator('canvas').click();
  await page.keyboard.press('a');

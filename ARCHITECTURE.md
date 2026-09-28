@@ -122,7 +122,9 @@ Source retrieved 2026-09-27:
 
 SSH uses per-instance keys and pinned host identities, no agent forwarding, terminal
 resize and remote exit status. Machine-name mappings are written at first boot.
-DCV runs system authentication and named per-access virtual sessions. Its certificate
+DCV runs system authentication and named per-access virtual sessions. Both session
+ownership and the desktop process user are set to the temporary guest account.
+Plans disclose the regional S3 licensing exception. Its certificate
 is fetched over verified SSH and pinned by the loopback TLS proxy. Image capture
 removes generated DCV certificates so guests generate their own identity. Proxmox uses a
 bundled noVNC 1.6.0 client and encrypted upstream console connection; management
@@ -131,11 +133,17 @@ accounts and disclose passwords only in explicit access output.
 
 Loopback relays enforce a single-use launch token, authenticated cookie, exact
 Host/Origin checks, expiry, and closure of active connections. Closing access
-removes its temporary guest session/account; after a process crash, recovery uses
+removes its temporary guest session/account; DCV revocation terminates the user's
+remaining processes before deleting the account and verifies session absence.
+After a process crash, recovery uses
 the durable access intent. Browser access is local, with no general web server,
 team authorization, shared-console coordination, or implied AWS boot-console support.
 Source retrieved 2026-09-27:
 [DCV TLS certificate handling](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-cert.html)
+(retrieved 2026-09-28),
+[DCV virtual-session users](https://docs.aws.amazon.com/dcv/latest/adminguide/managing-sessions-start.html)
+(retrieved 2026-09-28),
+[DCV packages and published checksums](https://www.amazondcv.com/)
 (retrieved 2026-09-28),
 [noVNC source and licensing](https://github.com/novnc/noVNC/tree/v1.6.0).
 
@@ -170,20 +178,23 @@ schema rejection, ownership, response loss, interrupted cleanup, allocation
 collisions, concurrent access, plugin transport, role policy and relay authentication.
 Real pinned Packer configuration validation is available as an opt-in test.
 
-**Release acceptance remains incomplete.** The unchanged single-server example
-has completed a live AWS Packer/Ansible build, disposable image validation and
-deployment. Focused checks passed for verified SSH, nginx, required IMDSv2, and
-denied public HTTP ingress and egress. Temporary build and validation VMs and the
-validation network were removed; the requested lab, image and operator build
-infrastructure remain retained. This does not
-establish cross-lab isolation or full lifecycle acceptance. Initial Proxmox discovery
+**Release acceptance remains incomplete.** The unchanged single-server and
+workstation examples have completed live AWS Packer/Ansible builds, disposable
+image validation and deployment. Focused checks passed for verified SSH, nginx,
+required IMDSv2, and denied public HTTP ingress and egress. Live DCV checks cover
+display, guest authentication, keyboard input, launch-token replay, foreign origins,
+disconnect and revocation. An expired AWS login interrupted validation cleanup;
+recovery resumed that cleanup and reused the image without duplicating the build.
+Temporary build and validation VMs and networks were removed; the requested labs,
+images and operator build infrastructure remain retained. This does not establish
+cross-lab isolation or full lifecycle acceptance. Initial Proxmox discovery
 found missing target prerequisites. Detailed evidence remains outside tracked source.
 The following still require live verification:
 
 - All three unchanged examples build/deploy/access/destroy on both platforms.
 - Real provider interruption, response loss, stale ownership and cleanup scenarios.
 - Network probes for intra-lab traffic, operator ingress, egress and cross-lab denial.
-- DCV/noVNC display, keyboard, guest authentication, replay, disconnect and revocation.
+- Live Proxmox/noVNC display, keyboard, guest authentication, replay, disconnect and revocation.
 - Full template/AMI/snapshot/disk cleanup and a zero-unreported-leftovers inventory.
 - Packaging of the exact live-verified Linux amd64 binaries and toolchain checksums.
 

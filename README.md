@@ -107,6 +107,7 @@ profile and a credential-process profile shared by the SDK and Packer:
 
 ```sh
 aws login --remote --profile labcentral-v2-login --region us-east-1
+aws configure set region us-east-1 --profile labcentral-v2-login
 aws configure set credential_process \
   'aws configure export-credentials --profile labcentral-v2-login --format process' \
   --profile labcentral-v2
@@ -200,6 +201,20 @@ noninteractive execution. Deploy builds missing images and previews that work.
 Use `--json` for versioned results and progress records. The library never prompts,
 prints, or opens a browser. Desktop access prints a one-use loopback URL and guest
 credentials; keep the command running and press Ctrl-C to revoke the session.
+
+For the graphical workstation:
+
+```sh
+labcentral deploy --environment "$HOME/.config/labcentral/aws.yaml" examples/workstation
+labcentral access INSTANCE_ID workstation desktop
+```
+
+Open the printed URL once and sign in with the printed guest credentials. The
+desktop runs as that temporary guest account. The relay listens only on the
+operator's loopback interface. If your browser is on another computer, forward
+the printed port over SSH to the operator and use the same `127.0.0.1` URL and
+port; do not expose the relay on a public interface. Closing access removes the
+temporary account and session. Files in that account's home are temporary.
 
 State defaults to `~/.local/state/labcentral/v2`. Use `--state` for a separate root.
 Each target allocation range belongs to one state root; multiple independent

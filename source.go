@@ -443,6 +443,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 	p.Notices = []string{"Instances and native images remain billable until removed; no background cleanup service is installed.", "Builds may access package repositories; runtime general Internet egress is denied."}
 	if e.Platform == "aws" {
 		p.Notices = append(p.Notices, "Public IPv4 is billed. AWS DNS and metadata are not filtered by security groups; this is not an air gap.")
+		if e.AWS.DesktopProfile != "" {
+			p.Notices = append(p.Notices, "DCV desktop machines receive a license-only instance role. This lab allows HTTPS to S3 through an endpoint restricted to the regional DCV licensing bucket.")
+		}
 	}
 	return p, nil
 }
