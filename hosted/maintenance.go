@@ -23,10 +23,16 @@ func Maintain(ctx context.Context, root, operation string) (any, error) {
 			return nil, e
 		}
 		jobs, e := st.Jobs(ctx)
+		if e != nil {
+			return nil, e
+		}
+		var active int
+		e = st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&active)
 		return struct {
-			Meeting *Meeting `json:"meeting"`
-			Jobs    []Job    `json:"jobs"`
-		}{m, jobs}, e
+			Meeting    *Meeting `json:"meeting"`
+			Jobs       []Job    `json:"jobs"`
+			ActiveJobs int      `json:"activeJobs"`
+		}{m, jobs, active}, e
 	}
 	tx, e := st.DB.BeginTx(ctx, nil)
 	if e != nil {

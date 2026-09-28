@@ -23,7 +23,8 @@ type Service struct {
 	mu        sync.Mutex // coordinates membership authorization and in-process desktop handles
 	desktops  map[string]*desktopSession
 	tickets   map[string]launchTicket
-	authLocks sync.Map
+	authMu    sync.Mutex
+	authLocks map[string]*sessionLock
 	loginMu   sync.Mutex
 	userLocks sync.Map
 	jobMu     sync.Mutex
@@ -128,10 +129,11 @@ func (s *Service) session(ctx context.Context, r *http.Request) (Session, error)
 	return s.checkedSession(ctx, digest(c.Value))
 }
 func (s *Service) checkedSession(ctx context.Context, id string) (Session, error) {
-	value, _ := s.authLocks.LoadOrStore(id, &sync.Mutex{})
-	lock := value.(*sync.Mutex)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock, err := s.lockSession(ctx, id)
+	if err != nil {
+		return Session{}, err
+	}
+	defer unlock()
 	var v Session
 	if e := s.Store.Get(ctx, "session", id, &v); e != nil {
 		return v, e
