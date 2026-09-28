@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -114,5 +115,94 @@ func TestIdentityDiagnosticsNeverIncludeUpstreamSecrets(t *testing.T) {
 		if strings.Contains(string(data), "secret") || failure.Status != code {
 			t.Fatal(string(data))
 		}
+	}
+}
+
+func TestOIDCRefreshBoundsConcurrentUpstreamWorkAndCancelsWaiters(t *testing.T) {
+	var active, maximum, calls atomic.Int32
+	entered := make(chan struct{}, 20)
+	release := make(chan struct{})
+	issuer := "https://issuer.example.invalid"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "userinfo_endpoint": issuer + "/userinfo"})
+	})
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+		n := active.Add(1)
+		defer active.Add(-1)
+		calls.Add(1)
+		for old := maximum.Load(); n > old; old = maximum.Load() {
+			if maximum.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		writeJSON(w, 200, claims{Sub: "student", Groups: []string{"labcentral-users"}})
+	})
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	old := http.DefaultTransport
+	http.DefaultTransport = server.Client().Transport
+	defer func() { http.DefaultTransport = old }()
+	o, err := NewOIDC(context.Background(), Config{Issuer: issuer, BackchannelOrigin: server.URL, ClientID: "client", Origin: "https://labs.invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := &oauth2.Token{AccessToken: "access", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+	done := make(chan error, 20)
+	for range 4 {
+		go func() { _, _, err := o.Refresh(context.Background(), token); done <- err }()
+	}
+	for range 4 {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("refresh did not reach upstream")
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err = o.Refresh(ctx, token); err == nil {
+		t.Fatal("cancelled waiter accepted", err)
+	}
+	if calls.Load() != 4 {
+		t.Fatal("cancelled waiter reached upstream")
+	}
+	for range 16 {
+		go func() { _, _, err := o.Refresh(context.Background(), token); done <- err }()
+	}
+	close(release)
+	for range 20 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if maximum.Load() > 4 || calls.Load() != 20 {
+		t.Fatalf("upstream maximum %d, calls %d", maximum.Load(), calls.Load())
+	}
+}
+
+func TestIdentityTimeoutReportsPhaseWithoutRequestSecrets(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	defer server.Close()
+	status := new(identityHTTPStatus)
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), identityStatusKey{}, status), 50*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL+"/?secret=must-not-log", nil)
+	req.Header.Set("Authorization", "Bearer must-not-log")
+	client := http.Client{Transport: identityStatusTransport{http.DefaultTransport}}
+	_, err := client.Do(req)
+	if err == nil {
+		t.Fatal("expected timeout")
+	}
+	failure := status.failure("userinfo", err)
+	data, _ := json.Marshal(failure)
+	if failure.Phase != "response" || failure.Category != "timeout" || strings.Contains(string(data), "must-not-log") {
+		t.Fatal(string(data))
 	}
 }
