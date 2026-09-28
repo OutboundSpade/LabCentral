@@ -116,6 +116,13 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	if e == nil {
 		out.Templates, e = s.templates(ctx)
 	}
+	if e == nil && out.Meeting != nil {
+		var template Template
+		if s.Store.Get(ctx, "template", out.Meeting.Template, &template) == nil && template.Name == "branch-services" {
+			out.Exercises = exerciseDefinitions()
+			out.ExerciseRuns, e = s.exerciseRuns(ctx, out.Teams)
+		}
+	}
 	if e != nil {
 		writeError(w, 503, "Administrator data is unavailable.")
 		return
@@ -243,6 +250,19 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 	if e != nil || status != "failed" {
 		writeError(w, 409, "Only a failed job can be retried.")
 		return
+	}
+	if kind == "exercise" {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var run ExerciseRun
+		var latest string
+		m, err := s.Store.Meeting(r.Context())
+		if err != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) ||
+			s.Store.Get(r.Context(), "exercise", target, &run) != nil || run.MeetingID != m.ID ||
+			s.Store.Get(r.Context(), "exercise-current", run.TeamID, &latest) != nil || latest != run.ID {
+			writeError(w, 409, "This exercise is expired or superseded. Select a current team action.")
+			return
+		}
 	}
 	j, e := s.Store.Enqueue(r.Context(), kind, target)
 	if e != nil {

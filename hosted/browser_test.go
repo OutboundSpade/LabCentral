@@ -2,6 +2,8 @@ package hosted
 
 import (
 	"context"
+	"fmt"
+	lc "github.com/OutboundSpade/LabCentral/v2"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -55,6 +57,36 @@ func TestHostedBrowserLaunch(t *testing.T) {
 	app.StartTLS()
 	display.StartTLS()
 	cmd := exec.CommandContext(ctx, "node", "testdata/launch.mjs", app.URL, display.URL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("browser: %v\n%s", err, out)
+	} else {
+		t.Log(string(out))
+	}
+}
+
+func TestHostedExerciseBrowser(t *testing.T) {
+	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
+		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
+	}
+	s, teams := exerciseFixture(t)
+	s.Config.WebRoot = filepath.Join("..", "web", "build")
+	s.exerciseRunner = func(_ context.Context, team Team, run ExerciseRun, _ lc.Source) (string, error) {
+		if team.ID == teams[1].ID {
+			return "", fmt.Errorf("Web SSH connection unavailable; retry or reset")
+		}
+		return "Baseline and symptoms verified", nil
+	}
+	app := httptest.NewUnstartedServer(nil)
+	defer app.Close()
+	s.Config.Origin = "https://" + app.Listener.Addr().String()
+	app.Config.Handler = s.Handler()
+	app.StartTLS()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	cmd := exec.CommandContext(ctx, "node", "testdata/exercises.mjs", app.URL)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("browser: %v\n%s", err, out)
 	} else {

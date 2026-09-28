@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -146,6 +148,8 @@ func (s *Service) runJob(ctx context.Context, j Job) error {
 	switch j.Kind {
 	case "access-cleanup":
 		return s.recoverAccess(ctx)
+	case "exercise":
+		return s.runExercise(ctx, j)
 	case "refresh":
 		return s.syncSource(ctx)
 	case "build":
@@ -207,6 +211,10 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 			}
 			if e != nil {
 				failures = append(failures, fmt.Errorf("%s: %w", t.Name, e))
+				continue
+			}
+			if e = os.Remove(filepath.Join(s.Config.Root, "exercise-keys", digest(t.InstanceID)+".pem")); e != nil && !os.IsNotExist(e) {
+				failures = append(failures, fmt.Errorf("%s exercise credential cleanup: %w", t.Name, e))
 				continue
 			}
 			if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ended' WHERE id=?`, t.ID); e != nil {

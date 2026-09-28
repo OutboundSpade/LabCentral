@@ -33,6 +33,18 @@ identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC
 sign-in, retained workspaces, team switching, revocation, network isolation,
 Example Branch exercises, cleanup and backup restoration.
 
+Administrators can select ready teams under **Manage meeting → Exercises** to
+stop Apache, move it to port 8080, or simulate an SSH intrusion. Every break first
+restores and verifies the exercise baseline. **Reset web server** restores the
+Apache listener/site, homepage, and synthetic support account; it removes the
+exercise key and artifact while preserving bank data, publications, desktops,
+and historical logs. **Check recovery** verifies the website from the workstation
+and checks for remaining intrusion artifacts. Controls, results and instructor
+walkthroughs require administrator authorization. This is a targeted exercise
+reset, not a full VM restore; unrelated package or SSH configuration damage can
+require operator recovery. Exercises use the meeting's pinned source and do not
+require new images.
+
 Operator setup uses the native CloudFormation templates in `tools/hosted/`.
 `identity.yaml` requires the repository's exact `sub_claim_prefix` from
 `gh api repos/OWNER/REPOSITORY/actions/oidc/customization/sub`; immutable GitHub

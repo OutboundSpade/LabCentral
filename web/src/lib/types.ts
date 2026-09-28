@@ -69,6 +69,8 @@ export interface AdminView {
   teams: Team[];
   jobs: Job[];
   templates: Template[];
+  exercises: ExerciseDefinition[];
+  exerciseRuns: ExerciseRun[];
 }
 export interface CreateMeeting {
   name: string;
@@ -89,4 +91,25 @@ export interface TargetRequest {
 export interface Launch {
   url: string;
   ticket: string;
+}
+export interface ExerciseDefinition {
+  id: string;
+  name: string;
+  description: string;
+  walkthrough: string;
+}
+export interface ExerciseRun {
+  id: string;
+  meetingID: string;
+  teamID: string;
+  action: string;
+  status: string;
+  report: string;
+  requestedBy: string;
+  started: string;
+  updated: string;
+}
+export interface ExerciseRequest {
+  action: string;
+  teamIDs: string[];
 }

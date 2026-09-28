@@ -420,3 +420,46 @@ func TestDestroyParallelMachinesPreservesFailedIntentAndNetwork(t *testing.T) {
 		t.Fatal("access not retired after VM absence", err)
 	}
 }
+
+func TestSSHOperationCoordinatesWithDestruction(t *testing.T) {
+	ctx := context.Background()
+	e := openFake(t, t.TempDir(), freshFake())
+	p, err := PlanLab(testSource(t), testEnvironment(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := e.Deploy(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- e.WithSSHMaterial(ctx, inst.ID, inst.Plan.Machines[0].Name, func(_ Instance, _ PlannedMachine, _ Resource, key []byte) error {
+			if len(key) == 0 {
+				return fmt.Errorf("missing key")
+			}
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	<-entered
+	if err = e.Destroy(ctx, inst.ID); err == nil {
+		t.Fatal("destroy overlapped SSH operation")
+	}
+	close(release)
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+	if err = e.Destroy(ctx, inst.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = e.WithSSHMaterial(ctx, inst.ID, inst.Plan.Machines[0].Name, func(Instance, PlannedMachine, Resource, []byte) error {
+		t.Fatal("destroyed instance exposed SSH credentials")
+		return nil
+	}); err == nil {
+		t.Fatal("destroyed instance accepted")
+	}
+}

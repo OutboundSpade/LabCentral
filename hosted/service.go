@@ -16,21 +16,22 @@ import (
 )
 
 type Service struct {
-	Config    Config
-	Store     *Store
-	Engine    Engine
-	Identity  Identity
-	env       lc.Environment
-	mu        sync.Mutex // coordinates membership authorization and in-process desktop handles
-	desktops  map[string]*desktopSession
-	tickets   map[string]launchTicket
-	authMu    sync.Mutex
-	authLocks map[string]*sessionLock
-	loginMu   sync.Mutex
-	userLocks sync.Map
-	jobMu     sync.Mutex
-	jobCancel context.CancelFunc
-	jobKind   string
+	Config         Config
+	Store          *Store
+	Engine         Engine
+	Identity       Identity
+	env            lc.Environment
+	mu             sync.Mutex // coordinates membership authorization and in-process desktop handles
+	desktops       map[string]*desktopSession
+	tickets        map[string]launchTicket
+	authMu         sync.Mutex
+	authLocks      map[string]*sessionLock
+	loginMu        sync.Mutex
+	userLocks      sync.Map
+	jobMu          sync.Mutex
+	jobCancel      context.CancelFunc
+	jobKind        string
+	exerciseRunner func(context.Context, Team, ExerciseRun, lc.Source) (string, error)
 }
 
 func New(ctx context.Context, c Config, e Engine) (*Service, error) {
@@ -82,6 +83,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/templates/refresh", s.authorized(true, s.refreshTemplates))
 	mux.HandleFunc("POST /api/admin/templates/build", s.authorized(true, s.buildTemplate))
 	mux.HandleFunc("POST /api/admin/jobs/retry", s.authorized(true, s.retryJob))
+	mux.HandleFunc("POST /api/admin/exercises", s.authorized(true, s.startExercises))
 	mux.Handle("/", http.FileServer(http.Dir(s.Config.WebRoot)))
 	origin, _ := url.Parse(s.Config.Origin)
 	desktop, _ := url.Parse(s.Config.DesktopOrigin)

@@ -310,6 +310,33 @@ transport outcomes. A rejected create can be retried; a timeout still requires
 discovery. AWS creation permissions cover tagged outputs and separately authorize
 their already-owned parent resources ([EC2 authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html), retrieved 2026-09-28).
 
+Three fixed Example Branch exercises live in the hosted service: stop Apache,
+change its listener and virtual host to 8080, and perform a controlled SSH login
+with a synthetic support-account key and harmless homepage/file changes. Exercise
+names, walkthroughs, records and mutation endpoints are administrator-only;
+student API responses contain none of them. Guest administrators can inspect the
+effects and evidence inside their own VM.
+
+A transaction reserves selected ready teams and persists each exercise intent
+with its durable job. The worker rechecks the meeting, deadline and latest team
+operation on every replay. Superseded jobs cannot reapply a break after a reset;
+completed jobs do not repeat mutations. A failed team does not prevent other
+selected teams from running. End-of-meeting cleanup cancels exercises and retains
+priority. The library's caller-owned SSH callback holds the same instance lock
+as destruction and access changes without adding hosted policy to the library.
+
+Fixed guest programs receive pinned template files as data through verified SSH.
+They restore Apache configuration, the homepage and the synthetic support account,
+remove the exercise key/artifact, and verify baseline web access from the
+workstation before applying a break. Guest commands have a timeout and a guest
+lock so an interrupted transport cannot cause overlapping scripts. Exercise SSH
+private keys stay in protected application storage, outside guest commands and
+API output, and are removed after VM destruction. Intrusion logins generate real
+SSH authentication events; reset preserves historical logs, bank data, published
+documents and desktops. This targeted reset does not promise to repair arbitrary
+package or SSH-daemon damage. No generic remote-command HTTP endpoint or author
+execution on the control host is introduced.
+
 Repository import uses a dedicated read-only deploy key and verified GitHub host
 keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates and
 snapshots source, then builds native images once for reuse. Imports never update

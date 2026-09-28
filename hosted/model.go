@@ -100,10 +100,12 @@ type Overview struct {
 	Lab        LabView    `json:"lab"`
 }
 type AdminView struct {
-	Meeting   *Meeting   `json:"meeting"`
-	Teams     []Team     `json:"teams"`
-	Jobs      []Job      `json:"jobs"`
-	Templates []Template `json:"templates"`
+	Meeting      *Meeting             `json:"meeting"`
+	Teams        []Team               `json:"teams"`
+	Jobs         []Job                `json:"jobs"`
+	Templates    []Template           `json:"templates"`
+	Exercises    []ExerciseDefinition `json:"exercises"`
+	ExerciseRuns []ExerciseRun        `json:"exerciseRuns"`
 }
 type CreateMeeting struct {
 	Name      string `json:"name"`
