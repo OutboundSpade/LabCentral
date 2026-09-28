@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,8 +14,9 @@ import (
 
 type Journal struct{ Root string }
 type record struct {
-	Done   bool            `json:"done"`
-	Result json.RawMessage `json:"result,omitempty"`
+	Rejected bool            `json:"rejected,omitempty"`
+	Done     bool            `json:"done"`
+	Result   json.RawMessage `json:"result,omitempty"`
 }
 
 func (j Journal) path(key string) string {
@@ -68,24 +70,26 @@ func Do[T any](ctx context.Context, j Journal, key string, create func() (T, err
 		if e = json.Unmarshal(b, &r); e != nil {
 			return zero, e
 		}
-		if r.Done {
-			e = json.Unmarshal(r.Result, &zero)
-			return zero, e
+		if !r.Rejected {
+			if r.Done {
+				e = json.Unmarshal(r.Result, &zero)
+				return zero, e
+			}
+			v, found, e := find()
+			if e != nil {
+				return zero, e
+			}
+			if !found {
+				return zero, fmt.Errorf("recovery_required: uncertain mutation %s; no authoritative result yet", key)
+			}
+			b, e = json.Marshal(v)
+			if e != nil {
+				return zero, e
+			}
+			return v, j.write(p, record{Done: true, Result: b})
 		}
-		v, found, e := find()
-		if e != nil {
-			return zero, e
-		}
-		if !found {
-			return zero, fmt.Errorf("recovery_required: uncertain mutation %s; no authoritative result yet", key)
-		}
-		b, e = json.Marshal(v)
-		if e != nil {
-			return zero, e
-		}
-		return v, j.write(p, record{true, b})
 	}
-	if !os.IsNotExist(e) {
+	if e != nil && !os.IsNotExist(e) {
 		return zero, e
 	}
 	if e = ctx.Err(); e != nil {
@@ -96,13 +100,19 @@ func Do[T any](ctx context.Context, j Journal, key string, create func() (T, err
 	}
 	v, e := create()
 	if e != nil {
+		var rejected *rejectedError
+		if errors.As(e, &rejected) {
+			if save := j.write(p, record{Rejected: true}); save != nil {
+				return zero, errors.Join(e, save)
+			}
+		}
 		return zero, e
 	}
 	b, e = json.Marshal(v)
 	if e != nil {
 		return zero, e
 	}
-	return v, j.write(p, record{true, b})
+	return v, j.write(p, record{Done: true, Result: b})
 }
 
 // Save atomically stores an adapter-owned checkpoint with a durable rename.
@@ -122,8 +132,19 @@ func (j Journal) Load(key string, value any) error {
 	if err = json.Unmarshal(b, &r); err != nil {
 		return err
 	}
+	if r.Rejected {
+		return os.ErrNotExist
+	}
 	if !r.Done {
 		return fmt.Errorf("incomplete checkpoint")
 	}
 	return json.Unmarshal(r.Result, value)
 }
+
+// Rejected marks an authoritative API denial that guarantees no mutation occurred.
+// Adapters must never use this for timeouts, transport errors or ambiguous failures.
+func Rejected(err error) error { return &rejectedError{err} }
+
+type rejectedError struct{ error }
+
+func (e *rejectedError) Unwrap() error { return e.error }

@@ -168,7 +168,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	owner := c.Owner
 	key := c.Operation
 	ns := networkState{}
-	vpc, err := journal.Do(ctx, p.Journal, key+"/vpc", func() (string, error) {
+	vpc, err := doEC2(ctx, p.Journal, key+"/vpc", func() (string, error) {
 		r, e := a.CreateVpc(ctx, &ec2.CreateVpcInput{CidrBlock: aw.String("10.77.0.0/24"), TagSpecifications: specs(t.ResourceTypeVpc, owner, "network")})
 		if e != nil {
 			return "", e
@@ -194,7 +194,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err = ec2.NewVpcAvailableWaiter(a).Wait(ctx, &ec2.DescribeVpcsInput{VpcIds: []string{vpc}}, 2*time.Minute); err != nil {
 		return lc.Result{}, err
 	}
-	subnet, err := journal.Do(ctx, p.Journal, key+"/subnet", func() (string, error) {
+	subnet, err := doEC2(ctx, p.Journal, key+"/subnet", func() (string, error) {
 		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &vpc, AvailabilityZone: aw.String(c.Environment.AWS.Zone), CidrBlock: aw.String("10.77.0.0/24"), TagSpecifications: specs(t.ResourceTypeSubnet, owner, "network")})
 		if e != nil {
 			return "", e
@@ -214,7 +214,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	ns.Subnet = subnet
-	igw, err := journal.Do(ctx, p.Journal, key+"/gateway", func() (string, error) {
+	igw, err := doEC2(ctx, p.Journal, key+"/gateway", func() (string, error) {
 		r, e := a.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{TagSpecifications: specs(t.ResourceTypeInternetGateway, owner, "network")})
 		if e != nil {
 			return "", e
@@ -238,7 +238,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err != nil && !apiCode(err, "Resource.AlreadyAssociated") {
 		return lc.Result{}, err
 	}
-	route, err := journal.Do(ctx, p.Journal, key+"/route", func() (string, error) {
+	route, err := doEC2(ctx, p.Journal, key+"/route", func() (string, error) {
 		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: specs(t.ResourceTypeRouteTable, owner, "network")})
 		if e != nil {
 			return "", e
@@ -278,7 +278,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			return lc.Result{}, err
 		}
 	}
-	sg, err := journal.Do(ctx, p.Journal, key+"/sg", func() (string, error) {
+	sg, err := doEC2(ctx, p.Journal, key+"/sg", func() (string, error) {
 		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner), Description: aw.String("LabCentral v2 owned lab"), TagSpecifications: specs(t.ResourceTypeSecurityGroup, owner, "network")})
 		if e != nil {
 			return "", e
@@ -352,7 +352,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			Action    string
 			Resource  string
 		}{{"Allow", "*", "s3:GetObject", "arn:aws:s3:::dcv-license." + c.Environment.AWS.Region + "/*"}}})
-		ep, err := journal.Do(ctx, p.Journal, key+"/endpoint", func() (string, error) {
+		ep, err := doEC2(ctx, p.Journal, key+"/endpoint", func() (string, error) {
 			r, e := a.CreateVpcEndpoint(ctx, &ec2.CreateVpcEndpointInput{VpcId: &vpc, VpcEndpointType: t.VpcEndpointTypeGateway, ServiceName: aw.String("com.amazonaws." + c.Environment.AWS.Region + ".s3"), RouteTableIds: []string{route}, PolicyDocument: aw.String(string(policy)), ClientToken: aw.String(owner + "-s3"), TagSpecifications: specs(t.ResourceTypeVpcEndpoint, owner, "network")})
 			if e != nil {
 				return "", e
@@ -707,7 +707,7 @@ func (p *Provider) PrepareBuild(ctx context.Context, c lc.Command, publicKey str
 		return err
 	}
 	name := "labcentral-" + c.Owner
-	_, err = journal.Do(ctx, p.Journal, c.Operation+"/build-key", func() (string, error) {
+	_, err = doEC2(ctx, p.Journal, c.Operation+"/build-key", func() (string, error) {
 		r, e := a.ImportKeyPair(ctx, &ec2.ImportKeyPairInput{KeyName: &name, PublicKeyMaterial: []byte(publicKey), TagSpecifications: specs(t.ResourceTypeKeyPair, c.Owner, "build-key")})
 		if e != nil {
 			return "", e
