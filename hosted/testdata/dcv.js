@@ -8,6 +8,7 @@ export default {
   display.style.width='800px';display.style.height='600px';
   window.fixtureFirstFrame=()=>options.callbacks.firstFrame();
   const connection={captureClipboardEvents(enabled){window.fixtureClipboardCapture=enabled},syncClipboards(){window.fixtureClipboardCopy=true;return true},async requestResolution(width,height){window.fixtureResolution=[width,height];if(width<640)throw new Error('server minimum resolution');display.style.width=width+'px';display.style.height=height+'px'}};
+  document.addEventListener('paste',event=>{if(window.fixtureClipboardCapture){window.fixturePastedText=event.clipboardData.getData('text/plain');event.preventDefault();options.callbacks.clipboardEvent(connection,{name:'paste'})}});
   window.fixtureClipboardEstablished=()=>options.callbacks.clipboardEvent(connection,{name:'established'});
   return connection;
  }

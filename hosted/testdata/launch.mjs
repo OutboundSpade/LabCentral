@@ -1,7 +1,8 @@
-const {chromium}=await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE);
+const {chromium,firefox}=await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE);
+const isFirefox=process.env.LABCENTRAL_BROWSER==='firefox';
 import assert from 'node:assert/strict';
 const [app,desktop]=process.argv.slice(2);
-const browser=await chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox'],ignoreDefaultArgs:['--disable-popup-blocking']});
+const browser=await (isFirefox?firefox.launch({headless:true,executablePath:process.env.LABCENTRAL_FIREFOX}):chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox'],ignoreDefaultArgs:['--disable-popup-blocking']}));
 try {
  const context=await browser.newContext({ignoreHTTPSErrors:true}); // Local TLS fixtures only.
  await context.route('**/favicon.ico',route=>route.fulfill({status:204}));
@@ -31,14 +32,25 @@ try {
  assert(await tab.evaluate(()=>window.fixtureClipboardCapture&&window.fixtureClipboardAuto));
  await tab.getByRole('button',{name:'Copy from desktop'}).click();
  assert(await tab.evaluate(()=>window.fixtureClipboardCopy));
+ // Use the browser's native clipboard: copy in a separate local text field,
+ // then paste with real keyboard events, without clipboard permissions or mocks.
+ const source=await context.newPage();await source.goto(app+'/');await source.evaluate(()=>{const field=document.createElement('textarea');field.id='clipboard-source';document.body.appendChild(field)});
+ await source.locator('#clipboard-source').fill('Firefox paste — first line\nsecond line');await source.locator('#clipboard-source').selectText();await source.keyboard.press('Control+c');
+ await tab.bringToFront();await tab.getByRole('button',{name:'Paste to desktop',exact:true}).click();await tab.getByRole('textbox',{name:'Paste text here with Ctrl+V or ⌘V.'}).waitFor();
+ await tab.keyboard.press('Control+v');await tab.waitForFunction(()=>window.fixturePastedText==='Firefox paste — first line\nsecond line');
+ assert(!await tab.getByRole('dialog').isVisible());assert.equal(await tab.locator('#paste-text').inputValue(),'');await source.close();
  for(const width of [1365,390]){
   await tab.setViewportSize({width,height:900});
   await tab.waitForFunction(width=>window.fixtureResolution?.[0]===width,width);
   await tab.waitForFunction(()=>{const d=document.querySelector('#dcv-display').getBoundingClientRect(),v=document.querySelector('#desktop-viewport').getBoundingClientRect();return d.width<=v.width+.1&&d.height<=v.height+.1});
   assert(await tab.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  if(process.env.LABCENTRAL_BROWSER_EVIDENCE) await tab.screenshot({path:process.env.LABCENTRAL_BROWSER_EVIDENCE+`/desktop-fixture-${width}.png`});
+  await tab.getByRole('button',{name:'Paste to desktop',exact:true}).click();
+  if(process.env.LABCENTRAL_BROWSER_EVIDENCE) await tab.screenshot({path:process.env.LABCENTRAL_BROWSER_EVIDENCE+`/paste-${isFirefox?'firefox':'chromium'}-${width}.png`});
+  await tab.keyboard.press('Escape');assert(!await tab.getByRole('dialog').isVisible());
  }
+ await tab.getByRole('button',{name:'Paste to desktop',exact:true}).click();await tab.locator('#paste-text').fill('must be cleared');
  await tab.evaluate(()=>window.fixtureDisconnect());
+ assert(!await tab.getByRole('dialog').isVisible());assert.equal(await tab.locator('#paste-text').inputValue(),'');assert(await tab.getByRole('button',{name:'Paste to desktop',exact:true}).isDisabled());
  assert(await tab.getByRole('button',{name:'Copy from desktop'}).isDisabled());
  const replay=await context.request.post(desktop+'/launch',{headers:{Origin:app},form:{ticket:'browser-ticket'},maxRedirects:0});
  assert.equal(replay.status(),403);

@@ -317,12 +317,19 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 	s.mu.Unlock()
 }
 
-const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting…</p><button id="clipboard" type="button" disabled title="Copy from the desktop. Paste with Ctrl+V or ⌘V.">Copy from desktop</button><button id="fullscreen" type="button">Full screen</button></header><main id="desktop-viewport" aria-label="Remote desktop"><div id="dcv-display"></div></main><script type="module" src="/client.js"></script></body></html>`
+const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting…</p><button id="clipboard" type="button" disabled title="Copy from the desktop. Paste with Ctrl+V or ⌘V.">Copy from desktop</button><button id="paste" type="button" disabled>Paste to desktop</button><button id="fullscreen" type="button">Full screen</button></header><main id="desktop-viewport" aria-label="Remote desktop"><div id="dcv-display"></div></main><dialog id="paste-dialog" aria-labelledby="paste-title"><h2 id="paste-title">Paste to desktop</h2><p><label for="paste-text">Paste text here with Ctrl+V or ⌘V.</label></p><textarea id="paste-text" rows="4" cols="28" spellcheck="false" autocomplete="off" aria-describedby="paste-help"></textarea><p id="paste-help">Then paste inside the desktop.<br>Terminals use Ctrl+Shift+V.</p><form method="dialog"><button>Cancel</button></form></dialog><script type="module" src="/client.js"></script></body></html>`
 const desktopCSS = `:root{font-family:system-ui,sans-serif;color-scheme:dark;color:#eceaf0;background:#15141b}*{box-sizing:border-box}body{margin:0;height:100dvh;display:flex;flex-direction:column}header{display:flex;align-items:center;gap:1rem;padding:.65rem 1rem;background:#1c1a24;flex-wrap:wrap;font-size:.85rem}header p{flex:1;margin:0}a{color:#c5a3ef;font-weight:600}button{border:1px solid #454051;border-radius:.5rem;padding:.4rem .7rem;background:#25222f;color:inherit;cursor:pointer}a:focus-visible,button:focus-visible{outline:3px solid #c5a3ef;outline-offset:3px}main{flex:1;min-height:0;overflow:hidden;position:relative}#dcv-display{width:100%;height:100%;transform-origin:top left}main:fullscreen{width:100vw;height:100vh} @media(max-width:480px){header{gap:.5rem;font-size:.75rem}header p{flex-basis:45%}button:disabled{opacity:.5;cursor:default}}`
 const desktopJS = `import dcv from '/dcvjs/dcv.js';
 const status=document.getElementById('status');
 let credentials,connection;
 const copy=document.getElementById('clipboard');
+const paste=document.getElementById('paste');
+const pasteDialog=document.getElementById('paste-dialog');
+const pasteText=document.getElementById('paste-text');
+paste.onclick=()=>{if(connection){pasteText.value='';pasteDialog.showModal();connection.captureClipboardEvents(true);pasteText.focus()}};
+pasteDialog.addEventListener('close',()=>{pasteText.value=''});
+pasteDialog.addEventListener('keydown',event=>event.stopPropagation());
+pasteDialog.addEventListener('keyup',event=>event.stopPropagation());
 copy.onclick=()=>{if(connection&&!connection.syncClipboards()){copy.title='Copy text inside the desktop, then try again.'}};
 const display=document.getElementById('dcv-display');
 const viewport=document.getElementById('desktop-viewport');
@@ -338,6 +345,6 @@ try {
  dcv.authenticate(location.origin,{promptCredentials:(auth)=>auth.sendCredentials({username:credentials.username,password:credentials.password}),error:()=>{credentials=null;status.textContent='Connection ended. Return to your lab to reconnect.'},success:async(_,sessions)=>{
  const session=sessions.find(s=>s.sessionId===credentials.sessionID);credentials=null;
  if(!session){status.textContent='Your desktop is unavailable. Return to your lab to reconnect.';return}
- try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;connection=null;status.textContent='Disconnected. Return to your lab to reconnect.'}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
+ try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false;paste.disabled=false}else if(event.name==='paste'&&pasteDialog.open){pasteDialog.close();status.textContent='Connected · clipboard ready; paste inside the desktop.'}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;paste.disabled=true;pasteDialog.close();pasteText.value='';connection=null;status.textContent='Disconnected. Return to your lab to reconnect.'}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
  }});
 }catch{status.textContent='Access ended. Return to your lab to reconnect.'}`

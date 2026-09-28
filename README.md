@@ -20,6 +20,8 @@ keyboard or pointer input; reopening the desktop resumes the retained workspace.
 After copying locally, click inside the desktop and use Ctrl+V (⌘V on macOS)
 to paste. Terminals use Ctrl+Shift+V. The **Copy from desktop**
 button synchronizes its clipboard to your browser; allow clipboard permission when prompted.
+In Firefox or Safari, first choose **Paste to desktop** and paste your text into
+the box. After it closes, paste inside the desktop. This fallback transfers text only.
 `labcentral-users` admits students; `labcentral-admins` additionally
 admits administrators. Switching teams revokes the old desktop before membership
 changes. Administrators refresh the private template repository, build a pinned

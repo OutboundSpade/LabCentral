@@ -330,7 +330,13 @@ clipboard paste events after its clipboard channel is established and synchroniz
 supported local clipboard data when the desktop regains focus.
 A user-initiated Copy from desktop action calls `syncClipboards()` for browsers
 that require a gesture; browser permissions and supported formats still apply.
-Clipboard content is not persisted or logged by the application.
+Firefox and Safari use a Paste to desktop dialog: a user-initiated native paste
+event feeds the SDK clipboard handler, then the student pastes into the guest.
+This text-only fallback requires no background browser clipboard-read permission.
+The dialog clears on paste, cancellation and disconnect; clipboard content is
+not persisted or logged by the application.
+[DCV browser clipboard differences](https://docs.aws.amazon.com/dcv/latest/userguide/using-copy-paste.html)
+(retrieved 2026-09-28).
 Sources retrieved 2026-09-28:
 [DCV virtual-session startup](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html),
 [SDK connection callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html),
