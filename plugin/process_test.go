@@ -118,3 +118,63 @@ func TestAccessProceedsDuringUnrelatedProvisioning(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type deletionProvider struct {
+	entered chan string
+	release chan struct{}
+}
+
+func (p deletionProvider) Execute(ctx context.Context, c lc.Command, _ lc.Observer) (lc.Result, error) {
+	p.entered <- c.Prior.Kind
+	if c.Prior.Kind == "machine" {
+		select {
+		case <-p.release:
+		case <-ctx.Done():
+			return lc.Result{}, ctx.Err()
+		}
+	}
+	return lc.Result{Absent: true}, nil
+}
+func TestMachineDeletionConcurrencyAndNetworkFence(t *testing.T) {
+	p := deletionProvider{make(chan string, 4), make(chan struct{})}
+	server := &Server{Provider: p}
+	env := lc.Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]lc.Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: lc.AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []lc.InstanceType{{Name: "t3.medium", CPU: 2, MemoryMiB: 4096}}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := make(chan error, 3)
+	execute := func(kind, id string) {
+		c := &wire.Command{}
+		if err := wireconvert.Encode(lc.Command{Action: "resource.destroy", Owner: "lab", Environment: env, Prior: lc.Resource{Kind: kind, ID: id, Owner: "lab"}}, c); err != nil {
+			done <- err
+			return
+		}
+		done <- server.Execute(&wire.Request{Version: 2, Command: c}, testStream{ctx: ctx})
+	}
+	go execute("machine", "one")
+	go execute("machine", "two")
+	for n := 0; n < 2; n++ {
+		select {
+		case kind := <-p.entered:
+			if kind != "machine" {
+				t.Fatal(kind)
+			}
+		case <-ctx.Done():
+			t.Fatal("machine deletions serialized")
+		}
+	}
+	go execute("network", "net")
+	select {
+	case <-p.entered:
+		t.Fatal("network crossed machine fence")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(p.release)
+	for n := 0; n < 3; n++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if kind := <-p.entered; kind != "network" {
+		t.Fatal(kind)
+	}
+}

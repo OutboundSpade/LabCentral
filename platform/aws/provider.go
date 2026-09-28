@@ -531,7 +531,10 @@ func (p *Provider) destroy(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		if _, err = a.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{r.ID}}); err != nil {
 			return lc.Result{}, err
 		}
-		err = ec2.NewInstanceTerminatedWaiter(a).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.ID}}, 10*time.Minute)
+		err = ec2.NewInstanceTerminatedWaiter(a, func(o *ec2.InstanceTerminatedWaiterOptions) {
+			o.MinDelay = 2 * time.Second
+			o.MaxDelay = 5 * time.Second
+		}).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.ID}}, 10*time.Minute)
 		if err == nil {
 			err = cleanupVolumes(ctx, a, c)
 		}
@@ -749,7 +752,10 @@ func (p *Provider) CleanupBuild(ctx context.Context, c lc.Command) error {
 			if _, err = a.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{id}}); err != nil {
 				return err
 			}
-			if err = ec2.NewInstanceTerminatedWaiter(a).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{id}}, 10*time.Minute); err != nil {
+			if err = ec2.NewInstanceTerminatedWaiter(a, func(o *ec2.InstanceTerminatedWaiterOptions) {
+				o.MinDelay = 2 * time.Second
+				o.MaxDelay = 5 * time.Second
+			}).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{id}}, 10*time.Minute); err != nil {
 				return err
 			}
 		}

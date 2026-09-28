@@ -166,7 +166,12 @@ interpreted as nonexistence. Ambiguous/missing results retain allocations.
 
 Successful earlier deployment steps remain after a later failure. Recovery resumes
 the original operation; destroy first reconciles uncertain creates and then removes
-owned resources in reverse dependency order. Image removal is separate and checks
+owned resources in reverse dependency order. Up to four independent machines are
+deleted concurrently; each mutation retains its own durable intent. Networking
+waits until every machine is confirmed absent. AWS termination is polled every
+two to five seconds. Guest-session cleanup is attempted first, but an unreachable
+guest cannot block owned VM termination; access records remain until the VM and
+its dependencies are confirmed removed. Image removal is separate and checks
 retained instance references. AMI snapshots and Proxmox template disks are included
 in image cleanup. Failed cleanup leaves a recoverable record. The CLI has no scheduler; operator failure can leave resources and charges active.
 The hosted worker enforces persisted meeting deadlines while its host runs and
@@ -251,6 +256,11 @@ GitHub Contents write permission because draft releases require push access; it
 uses that access to download staged artifacts, without publishing them
 ([GitHub release visibility](https://docs.github.com/en/rest/releases/releases#list-releases),
 retrieved 2026-09-28). Production DNS remains an explicit cutover step.
+Trusted maintenance may import a fenced standalone engine journal into a fresh
+private namespace for cleanup using the host role. Imports allow only the checked
+SQLite schema and hashed provider JSON journals, never executable files or keys.
+They cannot overwrite hosted state, and every subsequent deletion rechecks native
+ownership. Identical import retries are idempotent.
 
 Primary sources, retrieved 2026-09-28:
 [AWS role guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html),
@@ -285,7 +295,8 @@ used to bootstrap OIDC provider and temporary acceptance users are not runtime i
 One durable worker executes provisioning and cleanup. It preserves the reserved
 engine instance ID across retries, reconciles incomplete work, and prioritizes
 meeting destruction over ordinary queued work. Ending a meeting interrupts active
-provisioning; failed cleanup remains reported and retryable. Page reads and
+provisioning; failed cleanup remains reported and retryable. Ending visits every
+team even if an earlier team fails, retaining only unresolved cleanup for retries. Page reads and
 unrelated desktop launches do not share that worker's infrastructure lock.
 Provider journals distinguish explicit AWS authorization rejection from uncertain
 transport outcomes. A rejected create can be retried; a timeout still requires
@@ -296,7 +307,8 @@ Repository import uses a dedicated read-only deploy key and verified GitHub host
 keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates and
 snapshots source, then builds native images once for reuse. Imports never update
 running labs. Markdown disables raw HTML. The UI is prerendered route HTML with
-SSR enabled during generation, no SPA fallback, and full-page navigation.
+SSR enabled during generation, no SPA fallback, and full-page navigation. A dark
+neutral theme with purple actions keeps the interface focused on team and lab tasks.
 
 Desktop launch tickets are one-use and expire after one minute. The separate
 origin exchanges them for host-only cookies bound to the application session,
@@ -313,7 +325,11 @@ a failed session and relay while preserving the home directory. The browser show
 Connected only after the SDK reports its first rendered frame, and sizes the
 remote display from a viewport independent of SDK-managed elements. If the server
 retains a larger resolution, client-side scaling keeps the entire display visible;
-the SDK maps pointer coordinates through that scale.
+the SDK maps pointer coordinates through that scale. The SDK captures native
+clipboard paste events and automatically synchronizes supported clipboard data.
+A user-initiated Copy from desktop action calls `syncClipboards()` for browsers
+that require a gesture; browser permissions and supported formats still apply.
+Clipboard content is not persisted or logged by the application.
 Sources retrieved 2026-09-28:
 [DCV virtual-session startup](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html),
 [SDK connection callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html),

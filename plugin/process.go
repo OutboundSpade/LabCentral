@@ -168,7 +168,7 @@ func (p *Process) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.
 type Server struct {
 	wire.UnimplementedPlatformServer
 	Provider lc.Provider
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	owners   sync.Map
 }
 
@@ -188,19 +188,29 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 			return sendError(stream, e)
 		}
 	}
-	// Infrastructure stays single-writer, but access to unrelated running labs
-	// must not wait behind a native image build. Same-owner effects still serialize.
+	// Only independent machine deletions share infrastructure execution. Network
+	// deletion, creation and builds remain exclusive. Access retains owner fencing.
+	machineDelete := c.Action == "resource.destroy" && c.Prior.Kind == "machine"
 	if c.Action != "access.open" && c.Action != "access.close" {
-		s.mu.Lock()
-		defer s.mu.Unlock()
+		if machineDelete {
+			s.mu.RLock()
+			defer s.mu.RUnlock()
+		} else {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+		}
 	}
-	value, _ := s.owners.LoadOrStore(c.Owner, make(chan struct{}, 1))
-	lock := value.(chan struct{})
-	select {
-	case lock <- struct{}{}:
-		defer func() { <-lock }()
-	case <-stream.Context().Done():
-		return stream.Context().Err()
+	value, _ := s.owners.LoadOrStore(c.Owner, &sync.RWMutex{})
+	ownerLock := value.(*sync.RWMutex)
+	if machineDelete {
+		ownerLock.RLock()
+		defer ownerLock.RUnlock()
+	} else {
+		ownerLock.Lock()
+		defer ownerLock.Unlock()
+	}
+	if err := stream.Context().Err(); err != nil {
+		return err
 	}
 	var sendErr error
 	result, e := s.Provider.Execute(stream.Context(), c, func(event lc.Event) {

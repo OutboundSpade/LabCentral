@@ -3,27 +3,27 @@
 @plugin '@tailwindcss/typography';
 @plugin 'daisyui' { themes: false; }
 @plugin 'daisyui/theme' {
- name: 'cdc'; default: true; prefersdark: false; color-scheme: light;
- --color-base-100: oklch(100% 0 0);
- --color-base-200: oklch(97% 0.005 295);
- --color-base-300: oklch(90% 0.01 295);
- --color-base-content: oklch(25% 0.025 295);
- --color-primary: oklch(43% 0.16 300);
- --color-primary-content: oklch(99% 0 0);
- --color-secondary: oklch(54% 0.08 290);
- --color-secondary-content: oklch(99% 0 0);
+ name: 'cdc'; default: true; prefersdark: false; color-scheme: dark;
+ --color-base-100: oklch(19% 0.012 285);
+ --color-base-200: oklch(23% 0.014 285);
+ --color-base-300: oklch(33% 0.018 285);
+ --color-base-content: oklch(94% 0.006 285);
+ --color-primary: oklch(76% 0.13 300);
+ --color-primary-content: oklch(20% 0.04 300);
+ --color-secondary: oklch(76% 0.05 290);
+ --color-secondary-content: oklch(20% 0.025 295);
  --color-accent: oklch(80% 0.10 85);
- --color-accent-content: oklch(25% 0.025 295);
- --color-neutral: oklch(25% 0.025 295);
- --color-neutral-content: oklch(99% 0 0);
- --color-info: oklch(48% 0.13 250);
- --color-info-content: oklch(99% 0 0);
- --color-success: oklch(44% 0.10 155);
- --color-success-content: oklch(99% 0 0);
+ --color-accent-content: oklch(20% 0.025 295);
+ --color-neutral: oklch(27% 0.02 285);
+ --color-neutral-content: oklch(94% 0.006 285);
+ --color-info: oklch(76% 0.12 250);
+ --color-info-content: oklch(20% 0.03 250);
+ --color-success: oklch(76% 0.12 155);
+ --color-success-content: oklch(20% 0.03 155);
  --color-warning: oklch(82% 0.14 85);
- --color-warning-content: oklch(25% 0.025 295);
- --color-error: oklch(48% 0.18 25);
- --color-error-content: oklch(99% 0 0);
+ --color-warning-content: oklch(20% 0.025 295);
+ --color-error: oklch(76% 0.14 25);
+ --color-error-content: oklch(20% 0.03 25);
  --radius-selector: 0.25rem; --radius-field: 0.5rem; --radius-box: 0.75rem;
  --size-selector: 0.25rem; --size-field: 0.25rem; --border: 1px; --depth: 0; --noise: 0;
 }

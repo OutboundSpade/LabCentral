@@ -2,12 +2,14 @@ package labcentral
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type fakeProvider struct {
@@ -334,5 +336,87 @@ func TestBuildRecoveryAndNewGenerationAfterRemoval(t *testing.T) {
 	}
 	if images[0].ID == old.ID || f.creates != 2 {
 		t.Fatal("deleted build generation was reused")
+	}
+}
+
+type parallelDestroyProvider struct {
+	entered  chan string
+	release  chan struct{}
+	mu       sync.Mutex
+	failed   bool
+	machines int
+	network  bool
+}
+
+func (p *parallelDestroyProvider) Execute(ctx context.Context, c Command, o Observer) (Result, error) {
+	if c.Action != "resource.destroy" {
+		return Result{}, fmt.Errorf("unexpected action %s", c.Action)
+	}
+	if c.Prior.Kind == "machine" {
+		p.entered <- c.Prior.ID
+		select {
+		case <-p.release:
+		case <-ctx.Done():
+			return Result{}, ctx.Err()
+		}
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if c.Prior.ID == "one" && !p.failed {
+			p.failed = true
+			return Result{}, errors.New("lost termination response")
+		}
+		p.machines++
+		return Result{Absent: true}, nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.network = true
+	return Result{Absent: true}, nil
+}
+func TestDestroyParallelMachinesPreservesFailedIntentAndNetwork(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	p := &parallelDestroyProvider{entered: make(chan string, 4), release: make(chan struct{})}
+	e, err := Open(t.TempDir(), p, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	i := Instance{ID: "lab", Status: "ready", Resources: []Resource{{Kind: "network", Name: "private", ID: "net", Owner: "lab"}, {Kind: "machine", Name: "one", ID: "one", Owner: "lab"}, {Kind: "machine", Name: "two", ID: "two", Owner: "lab"}}}
+	if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
+		t.Fatal(err)
+	}
+	// Missing SSH material must not keep billable VMs alive, but access intent must
+	// remain until their destruction is confirmed.
+	if err = e.state.Put(ctx, "access", "session", Command{Operation: "session", Owner: "lab"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- e.Destroy(ctx, "lab") }()
+	for n := 0; n < 2; n++ {
+		select {
+		case <-p.entered:
+		case <-ctx.Done():
+			t.Fatal("machine deletions serialized")
+		}
+	}
+	close(p.release)
+	if err = <-done; err == nil {
+		t.Fatal("unknown deletion reported successful")
+	}
+	if p.network {
+		t.Fatal("network removed while a VM outcome was unknown")
+	}
+	if err = e.state.Get(ctx, "access", "session", new(Command)); err != nil {
+		t.Fatal("access intent lost", err)
+	}
+	if err = e.Destroy(ctx, "lab"); err != nil {
+		t.Fatal(err)
+	}
+	if !p.network || p.machines != 2 {
+		t.Fatal("successful machine repeated or dependency skipped", p.machines)
+	}
+	if err = e.state.Get(ctx, "access", "session", new(Command)); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("access not retired after VM absence", err)
 	}
 }

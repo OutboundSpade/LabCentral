@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	lc "github.com/OutboundSpade/LabCentral/v2"
 	"golang.org/x/oauth2"
 	"testing"
 	"time"
@@ -156,5 +157,55 @@ func TestAllDesktopsFailClosedWithoutWaitingForGuestCleanup(t *testing.T) {
 	}
 	if engine.closed != 20 || len(s.desktops) != 0 {
 		t.Fatal("durable cleanup did not close revoked sessions", engine.closed)
+	}
+}
+
+type cleanupEngine struct {
+	Engine
+	failed string
+	calls  []string
+}
+
+func (e *cleanupEngine) Inspect(context.Context, string) (lc.Instance, error) {
+	return lc.Instance{}, nil
+}
+func (e *cleanupEngine) Destroy(_ context.Context, id string) error {
+	e.calls = append(e.calls, id)
+	if id == e.failed {
+		return errors.New("termination unknown")
+	}
+	return nil
+}
+func TestEndContinuesOtherTeamsAfterUnknownCleanup(t *testing.T) {
+	s, _, _ := serviceFor(t)
+	teams := setupMeeting(t, s.Store)
+	ctx := context.Background()
+	for i := range teams {
+		teams[i].InstanceID = teams[i].ID
+		if _, err := s.Store.DB.Exec(`UPDATE teams SET instance_id=? WHERE id=?`, teams[i].ID, teams[i].ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := &cleanupEngine{failed: teams[0].ID}
+	s.Engine = engine
+	if err := s.meetingOperation(ctx, Job{Kind: "end", Target: "meeting"}); err == nil {
+		t.Fatal("unknown cleanup reported complete")
+	}
+	if len(engine.calls) != len(teams) {
+		t.Fatal("failed team blocked unrelated cleanup", engine.calls)
+	}
+	current, _ := s.Store.Teams(ctx, "meeting")
+	for _, team := range current {
+		if team.ID != engine.failed && team.Status != "ended" {
+			t.Fatal("successful cleanup not saved")
+		}
+	}
+	engine.failed = ""
+	if err := s.meetingOperation(ctx, Job{Kind: "end", Target: "meeting"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := s.Store.Meeting(ctx)
+	if m.Status != "ended" {
+		t.Fatal(m.Status)
 	}
 }

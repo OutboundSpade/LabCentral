@@ -21,9 +21,9 @@ try{
    if(path==='/api/team'){currentTeam=JSON.parse(req.postData()).teamID;switched=true}
    await route.fulfill({json:{ok:true}});
   });
-  await page.goto('http://127.0.0.1:5173/');await page.getByRole('heading',{name:/Your team.*Your next challenge/}).waitFor();await page.screenshot({path:`${evidence}/home-${width}.png`,fullPage:true});authenticated=true;
+  await page.goto('http://127.0.0.1:5173/');await page.getByRole('heading',{name:'Your lab awaits.'}).waitFor();await page.screenshot({path:`${evidence}/home-${width}.png`,fullPage:true});authenticated=true;
   for(const [route,heading] of [['teams/','Choose your team'],['lab/','Your lab'],['admin/','Manage meeting'],['admin/templates/','Lab templates']]){
-   await page.goto('http://127.0.0.1:5173/'+route);await page.getByRole('heading',{name:heading,exact:true}).waitFor();await page.waitForTimeout(250);
+   await page.goto('http://127.0.0.1:5173/'+route);await page.getByRole('heading',{name:heading,exact:true}).waitFor();await page.getByRole('button',{name:route==='teams/'?'Team full':route==='lab/'?'Open desktop':route==='admin/'?'End meeting':'Refresh from GitHub',exact:true}).waitFor();
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow on '+route);
    await page.screenshot({path:`${evidence}/${route.replaceAll('/','-')}${width}.png`,fullPage:true});
    if(route==='teams/'){await page.getByRole('button',{name:'Team full'}).waitFor();assert(await page.getByRole('button',{name:'Team full'}).isDisabled())}

@@ -182,23 +182,22 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 	}
 	if j.Kind == "end" {
 		records, e := s.Store.List(ctx, "desktop")
-		if e == nil {
-			for _, b := range records {
-				var a accessRecord
-				if e = json.Unmarshal(b, &a); e != nil {
-					break
-				}
-				unlock := s.lockUser(a.UserID)
-				e = s.revokeUser(ctx, a.UserID)
-				unlock()
-				if e != nil {
-					break
-				}
-			}
-		}
 		if e != nil {
 			return e
 		}
+		var failures []error
+		for _, b := range records {
+			var a accessRecord
+			if e = json.Unmarshal(b, &a); e != nil {
+				failures = append(failures, e)
+				continue
+			}
+			unlock := s.lockUser(a.UserID)
+			e = s.revokeUser(ctx, a.UserID)
+			unlock()
+			// Engine destruction retains access cleanup intent until VM absence.
+		}
+		// A failed team must not keep unrelated teams running and accruing charges.
 		for _, t := range teams {
 			_, e = s.Engine.Inspect(ctx, t.InstanceID)
 			if errors.Is(e, sql.ErrNoRows) {
@@ -207,12 +206,17 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 				e = s.Engine.Destroy(ctx, t.InstanceID)
 			}
 			if e != nil {
-				return e
+				failures = append(failures, fmt.Errorf("%s: %w", t.Name, e))
+				continue
 			}
 			if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ended' WHERE id=?`, t.ID); e != nil {
-				return e
+				failures = append(failures, e)
 			}
 		}
+		if e = errors.Join(failures...); e != nil {
+			return e
+		}
+
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		m.Status = "ended"

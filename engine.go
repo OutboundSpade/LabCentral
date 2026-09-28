@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/v2/internal/privatefile"
@@ -36,7 +37,13 @@ func Open(root string, p Provider, o Observer) (*Engine, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Engine{s, p, o}, nil
+	// Progress consumers need not be concurrency-safe.
+	var observerMu sync.Mutex
+	var observer Observer
+	if o != nil {
+		observer = func(event Event) { observerMu.Lock(); defer observerMu.Unlock(); o(event) }
+	}
+	return &Engine{s, p, observer}, nil
 }
 func (e *Engine) Close() error { return e.state.Close() }
 func (e *Engine) emit(stage, id, msg string) {
@@ -469,9 +476,9 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	if i.Status == "destroyed" {
 		return nil
 	}
-	if err := e.closeInstanceAccess(ctx, i.ID); err != nil {
-		return err
-	}
+	// Guest cleanup is best effort before termination. Native VM absence also
+	// revokes its sessions; keep access intent until that absence is confirmed.
+	_ = e.closeInstanceAccess(ctx, i.ID)
 	i.Status = "destroying"
 	if err := e.state.Put(ctx, "instance", i.ID, i); err != nil {
 		return err
@@ -508,14 +515,61 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
 		return err
 	}
+	// Machines share only their network. Finish every machine deletion before
+	// touching dependencies; keep successful steps durable when a sibling fails.
+	destroy := func(r Resource) error {
+		_, err := e.invoke(ctx, Command{Action: "resource.destroy", Operation: i.ID + "/destroy/" + r.Kind + "/" + r.Name, Owner: i.ID, Environment: i.Plan.Environment, Prior: r})
+		return err
+	}
+	var failures []error
+	var mu sync.Mutex
+	var workers sync.WaitGroup
+	slots := make(chan struct{}, 4)
+	for _, r := range i.Resources {
+		if r.Kind != "machine" {
+			continue
+		}
+		workers.Go(func() {
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				mu.Lock()
+				failures = append(failures, ctx.Err())
+				mu.Unlock()
+				return
+			}
+			if err := destroy(r); err != nil {
+				mu.Lock()
+				failures = append(failures, err)
+				mu.Unlock()
+			}
+		})
+	}
+	workers.Wait()
+	if err := errors.Join(failures...); err != nil {
+		return err
+	}
 	for n := len(i.Resources) - 1; n >= 0; n-- {
-		r := i.Resources[n]
-		res, err := e.invoke(ctx, Command{Action: "resource.destroy", Operation: i.ID + "/destroy/" + r.Kind + "/" + r.Name, Owner: i.ID, Environment: i.Plan.Environment, Prior: r})
-		if err != nil {
+		if r := i.Resources[n]; r.Kind != "machine" {
+			if err := destroy(r); err != nil {
+				return err
+			}
+		}
+	}
+	records, err := e.state.List(ctx, "access")
+	if err != nil {
+		return err
+	}
+	for _, b := range records {
+		var c Command
+		if err = json.Unmarshal(b, &c); err != nil {
 			return err
 		}
-		if !res.Absent {
-			return problem(RecoveryRequired, r.ID, "provider did not confirm absence")
+		if c.Owner == i.ID {
+			if err = e.state.Delete(ctx, "access", c.Operation); err != nil {
+				return err
+			}
 		}
 	}
 	if err = e.state.Release(ctx, i.ID); err != nil {
