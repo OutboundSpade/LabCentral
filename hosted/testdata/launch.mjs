@@ -1,0 +1,26 @@
+const {chromium}=await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE);
+import assert from 'node:assert/strict';
+const [app,desktop]=process.argv.slice(2);
+const browser=await chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox'],ignoreDefaultArgs:['--disable-popup-blocking']});
+try {
+ const context=await browser.newContext({ignoreHTTPSErrors:true}); // Local TLS fixtures only.
+ const page=await context.newPage();
+ const team={id:'team',name:'Team 1',capacity:4,members:1,status:'ready'};
+ await page.route('**/api/me',route=>route.fulfill({json:{user:{id:'student',name:'Student',admin:false},csrf:'csrf',meeting:{name:'Practice',status:'ready',expires:new Date(Date.now()+3600000).toISOString()},membership:{teamID:'team'},teams:[team],lab:{team,teammates:[],machines:[],handover:'# Handover'}}}));
+ await page.route('**/api/access',route=>route.fulfill({json:{url:desktop+'/launch',ticket:'browser-ticket'}}));
+ await page.goto(app+'/lab/');
+ const popup=context.waitForEvent('page');
+ const request=context.waitForEvent('request',r=>r.url()===desktop+'/launch');
+ await page.getByRole('button',{name:'Open desktop',exact:true}).click();
+ const launch=await request;
+ assert.equal(launch.method(),'POST');
+ assert.equal((await launch.allHeaders()).origin,app);
+ assert([undefined,app+'/'].includes((await launch.allHeaders()).referer));
+ const tab=await popup;
+ await tab.waitForURL(desktop+'/');
+ assert.equal(await tab.evaluate(()=>window.opener),null);
+ assert((await context.cookies(desktop)).some(c=>c.name==='__Host-labcentral_desktop'&&c.httpOnly&&c.secure));
+ const replay=await context.request.post(desktop+'/launch',{headers:{Origin:app},form:{ticket:'browser-ticket'},maxRedirects:0});
+ assert.equal(replay.status(),403);
+ console.log('PASS real browser cross-origin launch, origin-only referrer, cookie exchange and replay denial');
+} finally {await browser.close()}

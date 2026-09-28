@@ -86,7 +86,9 @@ func (s *Service) Handler() http.Handler {
 	desktop, _ := url.Parse(s.Config.DesktopOrigin)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "no-referrer")
+		// Cross-origin desktop POSTs need a non-null Origin. Send only the origin,
+		// never application paths, login parameters or launch tickets as a referrer.
+		w.Header().Set("Referrer-Policy", "strict-origin")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Host == desktop.Host {
 			s.desktopHandler(w, r)

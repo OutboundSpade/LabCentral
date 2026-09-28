@@ -286,7 +286,9 @@ SSR enabled during generation, no SPA fallback, and full-page navigation.
 
 Desktop launch tickets are one-use and expire after one minute. The separate
 origin exchanges them for host-only cookies bound to the application session,
-user, team, instance and expiry. Every HTTP request is authorized; established
+user, team, instance and expiry. Every HTTP request is authorized. Desktop
+launch forms retain the application Origin through a `strict-origin` referrer
+policy, which excludes paths and query parameters. Established
 WebSockets are cancelled after revocation. The pinned official DCV Web Client SDK
 uses transient guest credentials without a second sign-in. A student's deterministic
 workspace identity permits reconnects and retains the home directory. Revocation
