@@ -97,7 +97,7 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 }
 func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	ctx := r.Context()
-	var out AdminView
+	out := AdminView{Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}}
 	var e error
 	out.Meeting, e = s.Store.Meeting(ctx)
 	if e == nil && out.Meeting != nil {

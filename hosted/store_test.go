@@ -223,3 +223,20 @@ func TestPublicContractDoesNotExposeEngineState(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+
+func TestAdministratorEmptyStateUsesCollections(t *testing.T) {
+	s := &Service{Store: testStore(t)}
+	w := httptest.NewRecorder()
+	s.admin(w, httptest.NewRequest(http.MethodGet, "https://labs.invalid/api/admin", nil), Session{})
+	var data struct {
+		Teams     []Team     `json:"teams"`
+		Jobs      []Job      `json:"jobs"`
+		Templates []Template `json:"templates"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || data.Teams == nil || data.Jobs == nil || data.Templates == nil {
+		t.Fatal("empty admin response contains null collections", w.Body.String())
+	}
+}

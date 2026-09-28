@@ -1,6 +1,14 @@
 <script lang="ts">
  import {Monitor,Server,Clock,ExternalLink,Users,BookOpen,Square} from '@lucide/svelte';import MarkdownIt from 'markdown-it';import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';import {session,api,refresh,date} from '$lib/api';import type {Launch} from '$lib/types';let error=$state('');let busy=$state(false);const markdown=new MarkdownIt({html:false,linkify:false});let handover=$derived(markdown.render($session?.lab.handover??''));
- async function open(){busy=true;error='';try{const result=await api<Launch>('/api/access',{});const form=document.createElement('form');form.method='POST';form.action=result.url;form.target='_blank';const input=document.createElement('input');input.type='hidden';input.name='ticket';input.value=result.ticket;form.append(input);document.body.append(form);form.submit();form.remove()}catch(e){error=(e as Error).message}finally{busy=false}}
+ async function open(){
+  // Reserve the tab during the click; provisioning can outlast browser user activation.
+  const tab=window.open('about:blank','_blank');
+  if(!tab){error='Allow a new tab for LabCentral, then open your desktop again.';return}
+  tab.opener=null;tab.document.title='Starting your desktop · LabCentral';tab.document.body.textContent='Starting your desktop. This can take a minute…';
+  busy=true;error='';
+  try{const result=await api<Launch>('/api/access',{});if(tab.closed)throw new Error('Desktop tab closed. Open it again when you are ready.');const form=tab.document.createElement('form');form.method='POST';form.action=result.url;const input=tab.document.createElement('input');input.type='hidden';input.name='ticket';input.value=result.ticket;form.append(input);tab.document.body.replaceChildren(form);form.submit()}
+  catch(e){tab.close();error=(e as Error).message}finally{busy=false}
+ }
  async function close(){busy=true;error='';try{await api('/api/access/close',{})}catch(e){error=(e as Error).message}finally{busy=false}}
 </script>
 <svelte:head><title>Your lab · LabCentral</title></svelte:head>
