@@ -208,3 +208,31 @@ Multi-user APIs, teams, classroom governance, an application web UI, registries,
 additional platforms, Windows, routed/multiple NIC topologies and EC2 Image Builder
 are deferred. They should use the public library without putting product policy
 into portable lab declarations. These are proposals, not implemented contracts.
+
+## Hosted team service (implementation in progress)
+
+The hosted milestone adds a separate application layer around the public library:
+OIDC provider authentication, transactional team membership, a durable infrastructure
+worker, and user-owned desktop workspaces. The library remains independent of
+HTTP and identity policy. This milestone targets AWS; Proxmox remains a library
+and CLI platform. The hosted service and twenty-user acceptance are not yet qualified.
+
+Native CloudFormation under `tools/hosted/` defines one t3.medium control host,
+encrypted retained EBS, an encrypted private S3 bucket with seven-day backup
+retention, HTTPS ingress, and account spending alerts. The host uses an EC2 role;
+GitHub Actions exchanges its `main` branch identity for temporary maintenance
+credentials. The maintenance role permits a fixed SSM document against hosts
+marked as this service and release uploads to the installation bucket. No permanent
+AWS keys or browser-login refresh dependency are introduced. Infrastructure setup
+still requires an administrator; runtime cannot pass its own management role to labs.
+
+Hosted deployment, recovery, cleanup and backup use `Hosted maintenance` workflow
+dispatches. Installation identifiers belong in protected operator records and
+GitHub repository variables, not source. Application rollout consumes an exact,
+checksum-verified release archive. Production DNS remains an explicit cutover step.
+
+Primary sources, retrieved 2026-09-28:
+[AWS role guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html),
+[GitHub OIDC on AWS](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws),
+[DCV Web SDK](https://docs.aws.amazon.com/dcv/latest/websdkguide/getting-started.html),
+[SvelteKit static generation](https://svelte.dev/docs/kit/adapter-static).
