@@ -26,13 +26,22 @@ func Maintain(ctx context.Context, root, operation string) (any, error) {
 		if e != nil {
 			return nil, e
 		}
+		failures, e := st.List(ctx, "identity-failure")
+		if e != nil {
+			return nil, e
+		}
+		var diagnostics []json.RawMessage
+		for _, b := range failures {
+			diagnostics = append(diagnostics, json.RawMessage(b))
+		}
 		var active int
 		e = st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')`).Scan(&active)
 		return struct {
-			Meeting    *Meeting `json:"meeting"`
-			Jobs       []Job    `json:"jobs"`
-			ActiveJobs int      `json:"activeJobs"`
-		}{m, jobs, active}, e
+			Meeting          *Meeting          `json:"meeting"`
+			Jobs             []Job             `json:"jobs"`
+			ActiveJobs       int               `json:"activeJobs"`
+			IdentityFailures []json.RawMessage `json:"identityFailures"`
+		}{m, jobs, active, diagnostics}, e
 	}
 	tx, e := st.DB.BeginTx(ctx, nil)
 	if e != nil {
@@ -84,4 +93,13 @@ func Maintain(ctx context.Context, root, operation string) (any, error) {
 	return struct {
 		Status string `json:"status"`
 	}{"queued"}, nil
+}
+
+// Keep the latest event per bounded category; operator-only, credential-free.
+func (s *Service) recordIdentityFailure(ctx context.Context, failure identityError) {
+	record := struct {
+		Time    time.Time     `json:"time"`
+		Failure identityError `json:"failure"`
+	}{time.Now().UTC(), failure}
+	_ = s.Store.Put(ctx, "identity-failure", failure.Stage+"-"+failure.Category, record)
 }

@@ -3,6 +3,7 @@ package hosted
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"io"
@@ -145,8 +146,19 @@ func (s *Service) checkedSession(ctx context.Context, id string) (Session, error
 		return v, fmt.Errorf("session expired")
 	}
 	if time.Since(v.Checked) >= 4*time.Minute {
+		// Refresh token rotation and its durable write must finish even when a
+		// browser abandons a request. Session locking also serializes logout.
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
+		defer cancel()
+		ctx = refreshCtx
 		u, t, e := s.Identity.Refresh(ctx, v.Token)
 		if e != nil || u.ID != v.User.ID {
+			diagnostic := identityError{Stage: "authorization", Category: "rejected"}
+			var typed *identityError
+			if errors.As(e, &typed) {
+				diagnostic = *typed
+			}
+			s.recordIdentityFailure(ctx, diagnostic)
 			_ = s.Store.Delete(ctx, "session", id)
 			return v, fmt.Errorf("identity could not be verified")
 		}

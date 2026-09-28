@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,5 +104,15 @@ func TestOIDCValidatesSignedClaimsAndPKCE(t *testing.T) {
 	groups = []string{"labcentral-admins"}
 	if u, _, e := o.Refresh(context.Background(), token); e != nil || !u.Admin {
 		t.Fatal(u, e)
+	}
+}
+
+func TestIdentityDiagnosticsNeverIncludeUpstreamSecrets(t *testing.T) {
+	for _, code := range []int{400, 401, 429, 500} {
+		failure := identityFailure("token", code, fmt.Errorf("secret-token response body"))
+		data, _ := json.Marshal(failure)
+		if strings.Contains(string(data), "secret") || failure.Status != code {
+			t.Fatal(string(data))
+		}
 	}
 }

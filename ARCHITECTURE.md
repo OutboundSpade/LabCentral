@@ -263,7 +263,9 @@ signature and expiry. An explicit HTTPS backchannel origin can route machine
 requests directly to the IDP while retaining canonical issuer verification and
 browser authorization URLs. HTTP-only secure host cookies contain opaque session IDs;
 tokens remain server-side. Exact-origin CSRF checks protect writes. Userinfo checks
-refresh group authorization every four minutes; desktop policy checks run every
+refresh group authorization every four minutes; token refresh and persistence use a
+bounded context independent of browser cancellation. Operator status exposes only
+fixed failure categories and HTTP status codes, never identity responses or tokens; desktop policy checks run every
 20 seconds and fail closed on revocation or unverifiable identity. Checks run
 concurrently across users and cancel unauthorized transports immediately; durable
 guest cleanup proceeds independently through the worker. API credentials

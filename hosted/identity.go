@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -45,7 +47,7 @@ func (c claims) user() (User, error) {
 	return u, nil
 }
 func NewOIDC(ctx context.Context, c Config) (*OIDC, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second, Transport: http.DefaultTransport}
 	if c.BackchannelOrigin != "" {
 		target, e := url.Parse(c.BackchannelOrigin)
 		issuer, e2 := url.Parse(c.Issuer)
@@ -54,6 +56,7 @@ func NewOIDC(ctx context.Context, c Config) (*OIDC, error) {
 		}
 		client.Transport = &backchannelTransport{issuer.Host, target.Host, http.DefaultTransport}
 	}
+	client.Transport = identityStatusTransport{client.Transport}
 	ctx = oidc.ClientContext(ctx, client)
 	p, e := oidc.NewProvider(ctx, c.Issuer)
 	if e != nil {
@@ -89,19 +92,22 @@ func (o *OIDC) Exchange(ctx context.Context, code, verifier, nonce string) (User
 	return u, t, e
 }
 func (o *OIDC) Refresh(ctx context.Context, t *oauth2.Token) (User, *oauth2.Token, error) {
+	status := new(identityHTTPStatus)
+	ctx = context.WithValue(ctx, identityStatusKey{}, status)
 	ctx = oidc.ClientContext(ctx, o.http)
 	source := o.oauth.TokenSource(ctx, t)
 	next, e := source.Token()
 	if e != nil {
-		return User{}, nil, e
+		return User{}, nil, identityFailure("token", status.code, e)
 	}
+	status.code = 0
 	info, e := o.provider.UserInfo(ctx, oauth2.StaticTokenSource(next))
 	if e != nil {
-		return User{}, nil, e
+		return User{}, next, identityFailure("userinfo", status.code, e)
 	}
 	var c claims
 	if e = info.Claims(&c); e != nil {
-		return User{}, nil, e
+		return User{}, next, identityFailure("claims", status.code, e)
 	}
 	u, e := c.user()
 	return u, next, e
@@ -132,4 +138,42 @@ func (t *backchannelTransport) RoundTrip(r *http.Request) (*http.Response, error
 		copy.Host = t.originHost
 	}
 	return t.base.RoundTrip(copy)
+}
+
+// Diagnostics contain only fixed categories and HTTP status, never token bodies,
+// response text, endpoint queries, user details or authentication headers.
+type identityError struct {
+	Stage    string `json:"stage"`
+	Status   int    `json:"status,omitempty"`
+	Category string `json:"category"`
+}
+
+func (e *identityError) Error() string { return "identity " + e.Stage + ": " + e.Category }
+func identityFailure(stage string, status int, err error) *identityError {
+	category := "rejected"
+	var network net.Error
+	if errors.Is(err, context.Canceled) {
+		category = "cancelled"
+	} else if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &network) && network.Timeout() {
+		category = "timeout"
+	} else if status == 429 {
+		category = "rate_limited"
+	} else if status >= 500 {
+		category = "upstream_unavailable"
+	} else if status == 0 {
+		category = "transport"
+	}
+	return &identityError{stage, status, category}
+}
+
+type identityStatusKey struct{}
+type identityHTTPStatus struct{ code int }
+type identityStatusTransport struct{ base http.RoundTripper }
+
+func (t identityStatusTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(r)
+	if status, ok := r.Context().Value(identityStatusKey{}).(*identityHTTPStatus); ok && response != nil {
+		status.code = response.StatusCode
+	}
+	return response, err
 }
