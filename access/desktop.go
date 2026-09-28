@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/dcv"
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
 	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
 	"github.com/coder/websocket"
@@ -33,6 +34,7 @@ type Info struct {
 type desktop struct {
 	relay *Relay
 	close func() error
+	ready func(context.Context) (bool, error)
 	info  Info
 }
 type Manager struct {
@@ -75,7 +77,23 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 	existing := m.sessions[c.Operation]
 	m.mu.Unlock()
 	if existing != nil && existing.info.Expires.After(time.Now()) {
-		return accessResult(c, existing.info), nil
+		ready := true
+		var err error
+		if existing.ready != nil {
+			ready, err = existing.ready(ctx)
+		}
+		if err != nil {
+			return lc.Result{}, err
+		}
+		if ready {
+			return accessResult(c, existing.info), nil
+		}
+		if err = existing.close(); err != nil {
+			return lc.Result{}, err
+		}
+		m.mu.Lock()
+		delete(m.sessions, c.Operation)
+		m.mu.Unlock()
 	}
 	if c.Prior.Owner != c.Owner || c.Prior.Name != c.Machine.Name {
 		return lc.Result{}, fmt.Errorf("ownership_mismatch: access")
@@ -139,9 +157,12 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	username := dcvName(c)
 	password := random()
 	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
-	script := "set -eu; if id " + username + " >/dev/null 2>&1; then test \"$(getent passwd " + username + " | cut -d: -f5)\" = " + marker + "; else sudo useradd --create-home --shell /bin/bash --comment " + marker + " " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd; sudo dcv close-session " + username + " >/dev/null 2>&1 || true; sudo dcv create-session --type virtual --user " + username + " --owner " + username + " " + username
+	script := "set -eu; if id " + username + " >/dev/null 2>&1; then test \"$(getent passwd " + username + " | cut -d: -f5)\" = " + marker + "; else sudo useradd --create-home --shell /bin/bash --comment " + marker + " " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd; sudo dcv close-session " + username + " >/dev/null 2>&1 || true"
 	if _, e = remote.Run(ctx, sshClient, script); e != nil {
 		return nil, info, fmt.Errorf("DCV session creation failed: %w", e)
+	}
+	if e = dcv.Start(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, sshClient, command) }, username, username); e != nil {
+		return nil, info, fmt.Errorf("DCV session readiness failed: %w", e)
 	}
 	// Read the instance certificate over an SSH connection with an exact host key.
 	cert, e := remote.Run(ctx, sshClient, "sudo openssl x509 -in /var/lib/dcv/.config/NICE/dcv/private/dcv.pem -outform PEM")
@@ -176,7 +197,15 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		return closeDCV(ctx, c)
 	}
 	info = Info{URL: relay.URL, Username: username, Password: password}
-	return &desktop{relay: relay, close: closer}, info, nil
+	ready := func(ctx context.Context) (bool, error) {
+		client, err := remote.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+		if err != nil {
+			return false, err
+		}
+		defer client.Close()
+		return dcv.Ready(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, username)
+	}
+	return &desktop{relay: relay, close: closer, ready: ready}, info, nil
 }
 func dcvProxy(target *url.URL, pin [sha256.Size]byte) (*httputil.ReverseProxy, *http.Transport) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {

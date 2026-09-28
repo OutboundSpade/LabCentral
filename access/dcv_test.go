@@ -1,12 +1,16 @@
 package access
 
 import (
+	"context"
 	"crypto/sha256"
+	"errors"
+	lc "github.com/OutboundSpade/LabCentral/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 )
 
 func TestDCVProxyPinsCertificateAndKeepsRelayCookieLocal(t *testing.T) {
@@ -58,6 +62,27 @@ func TestDCVProxyPinsCertificateAndKeepsRelayCookieLocal(t *testing.T) {
 		}
 		if received.Host != target.Host || received.Header.Get("Origin") != target.String() {
 			t.Fatal("wrong upstream authority")
+		}
+	}
+}
+
+func TestCachedDesktopReadinessPreservesUnknownOutcomes(t *testing.T) {
+	for _, unknown := range []bool{false, true} {
+		m := NewManager()
+		closed := false
+		checked := false
+		d := &desktop{info: Info{ID: "operation", Expires: time.Now().Add(time.Hour)}, close: func() error { closed = true; return nil }, ready: func(context.Context) (bool, error) {
+			checked = true
+			if unknown {
+				return false, errors.New("unreachable")
+			}
+			return true, nil
+		}}
+		m.sessions["operation"] = d
+		c := lc.Command{Action: "access.open", Operation: "operation", Owner: "owner", Prior: lc.Resource{Owner: "owner", Name: "workstation"}, Machine: lc.PlannedMachine{Name: "workstation"}}
+		_, err := m.Execute(context.Background(), c)
+		if (err != nil) != unknown || !checked || closed || m.sessions["operation"] != d {
+			t.Fatalf("unknown=%v err=%v checked=%v closed=%v", unknown, err, checked, closed)
 		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/dcv"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	"github.com/OutboundSpade/LabCentral/v2/internal/privatefile"
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
@@ -125,6 +126,12 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 			}
 		}
 		_, err = remote.Run(ctx, client, command)
+		if err == nil && c.Image.Desktop && c.Environment.Platform == "aws" {
+			_, err = remote.Run(ctx, client, "sudo dcv close-session labcentral-validation >/dev/null 2>&1 || true")
+			if err == nil {
+				err = dcv.Start(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, "lab", "labcentral-validation")
+			}
+		}
 		client.Close()
 	}
 	receipt.ChecksDone = true

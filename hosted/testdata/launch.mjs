@@ -20,6 +20,16 @@ try {
  await tab.waitForURL(desktop+'/');
  assert.equal(await tab.evaluate(()=>window.opener),null);
  assert((await context.cookies(desktop)).some(c=>c.name==='__Host-labcentral_desktop'&&c.httpOnly&&c.secure));
+ await tab.waitForFunction(()=>typeof window.fixtureFirstFrame==='function');
+ assert((await tab.locator('#status').innerText()).startsWith('Connecting'));
+ await tab.evaluate(()=>window.fixtureFirstFrame());
+ assert((await tab.locator('#status').innerText()).startsWith('Connected'));
+ for(const width of [1365,390]){
+  await tab.setViewportSize({width,height:900});
+  await tab.waitForFunction(width=>window.fixtureResolution?.[0]===width,width);
+  assert(await tab.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  if(process.env.LABCENTRAL_BROWSER_EVIDENCE) await tab.screenshot({path:process.env.LABCENTRAL_BROWSER_EVIDENCE+`/desktop-fixture-${width}.png`});
+ }
  const replay=await context.request.post(desktop+'/launch',{headers:{Origin:app},form:{ticket:'browser-ticket'},maxRedirects:0});
  assert.equal(replay.status(),403);
  console.log('PASS real browser cross-origin launch, origin-only referrer, cookie exchange and replay denial');

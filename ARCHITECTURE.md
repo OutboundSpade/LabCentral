@@ -80,7 +80,8 @@ Each build reserves an owner identity and native identifiers before mutation.
 Native tags, descriptions, explicit VMIDs, image names, and keypair identities
 support discovery after interruption. A captured image is unpublished until a
 disposable instance passes SSH/cloud-init readiness and declared desktop service
-checks and cleanup succeeds. Validation checkpoints preserve progress across
+checks and cleanup succeeds. AWS desktop validation also creates a virtual session
+and waits for its running X display. Validation checkpoints preserve progress across
 cleanup interruption. Cached artifacts are checked for identity/existence before
 reuse. Mutable package repositories prevent promises of byte-identical rebuilds.
 
@@ -291,7 +292,17 @@ launch forms retain the application Origin through a `strict-origin` referrer
 policy, which excludes paths and query parameters. Established
 WebSockets are cancelled after revocation. The pinned official DCV Web Client SDK
 uses transient guest credentials without a second sign-in. A student's deterministic
-workspace identity permits reconnects and retains the home directory. Revocation
+workspace identity permits reconnects and retains the home directory. Launches
+wait for DCV to report a running X display while holding the per-instance lock.
+A failed asynchronous launch is retried once only after confirmed session absence;
+unknown outcomes remain errors. Reconnects recheck the native session and replace
+a failed session and relay while preserving the home directory. The browser shows
+Connected only after the SDK reports its first rendered frame, and sizes the
+remote display from a viewport independent of SDK-managed elements.
+Sources retrieved 2026-09-28:
+[DCV virtual-session startup](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html),
+[SDK connection callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html).
+Revocation
 closes sessions, kills guest processes and locks the account; destroying the VM
 removes retained workspaces. Teammates have training administration of shared
 machines, so their workspaces are not a security boundary.

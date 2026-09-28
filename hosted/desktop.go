@@ -51,36 +51,42 @@ func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
 		}
 		d = nil
 	}
-	if d == nil {
-		expiry := meeting.Expires
-		if v.Expires.Before(expiry) {
-			expiry = v.Expires
-		}
-		record := accessRecord{id, v.User.ID, v.ID, team.ID, team.InstanceID, expiry}
-		if e = s.Store.Put(r.Context(), "desktop", id, record); e != nil {
-			writeError(w, 503, "Could not reserve your desktop.")
-			return
-		}
-		openCtx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
-		defer cancel()
-		info, e := s.Engine.OpenDesktopWithOptions(openCtx, team.InstanceID, "workstation", lc.AccessOptions{Principal: v.User.ID, Expires: expiry.Format(time.RFC3339), RetainWorkspace: true})
-		if e != nil {
-			writeError(w, 503, "Your desktop could not start. Retry shortly; your files are retained.")
-			return
-		}
-		if info.ID != id {
-			writeError(w, 503, "Desktop identity mismatch.")
-			return
-		}
-		d, e = newDesktop(record, info)
-		if e != nil {
+	expiry := meeting.Expires
+	if v.Expires.Before(expiry) {
+		expiry = v.Expires
+	}
+	record := accessRecord{id, v.User.ID, v.ID, team.ID, team.InstanceID, expiry}
+	if e = s.Store.Put(r.Context(), "desktop", id, record); e != nil {
+		writeError(w, 503, "Could not reserve your desktop.")
+		return
+	}
+	// Recheck the native session even when a local relay is cached. A guest
+	// session can exit independently while its retained workspace remains.
+	openCtx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	info, e := s.Engine.OpenDesktopWithOptions(openCtx, team.InstanceID, "workstation", lc.AccessOptions{Principal: v.User.ID, Expires: expiry.Format(time.RFC3339), RetainWorkspace: true})
+	if e != nil {
+		writeError(w, 503, "Your desktop could not start. Retry shortly; your files are retained.")
+		return
+	}
+	if info.ID != id {
+		writeError(w, 503, "Desktop identity mismatch.")
+		return
+	}
+	if d == nil || d.info.URL != info.URL {
+		next, err := newDesktop(record, info)
+		if err != nil {
 			_ = s.Engine.CloseAccess(context.Background(), id)
 			writeError(w, 503, "Desktop connection could not be established. Retry shortly.")
 			return
 		}
 		s.mu.Lock()
-		s.desktops[id] = d
+		s.desktops[id] = next
 		s.mu.Unlock()
+		if d != nil {
+			d.cancel()
+		}
+		d = next
 	}
 	ticket := randomID(32)
 	s.mu.Lock()
@@ -311,15 +317,16 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 	s.mu.Unlock()
 }
 
-const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting to your workspace…</p><button id="fullscreen" type="button">Full screen</button></header><main id="dcv-display" aria-label="Remote desktop"></main><script type="module" src="/client.js"></script></body></html>`
-const desktopCSS = `:root{font-family:system-ui,sans-serif;color:#262232;background:#111018}*{box-sizing:border-box}body{margin:0;height:100dvh;display:flex;flex-direction:column}header{display:flex;align-items:center;gap:1rem;padding:.65rem 1rem;background:#fff;font-size:.85rem}header p{flex:1;margin:0}a{color:#6032a0;font-weight:600}button{border:1px solid #dad6e2;border-radius:.5rem;padding:.4rem .7rem;background:white;color:inherit;cursor:pointer}a:focus-visible,button:focus-visible{outline:3px solid #7344ae;outline-offset:3px}main{flex:1;min-height:0;overflow:hidden}main:fullscreen{width:100vw;height:100vh} @media(max-width:480px){header{gap:.5rem;font-size:.75rem}}`
+const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting to your workspace…</p><button id="fullscreen" type="button">Full screen</button></header><main id="desktop-viewport" aria-label="Remote desktop"><div id="dcv-display"></div></main><script type="module" src="/client.js"></script></body></html>`
+const desktopCSS = `:root{font-family:system-ui,sans-serif;color:#262232;background:#111018}*{box-sizing:border-box}body{margin:0;height:100dvh;display:flex;flex-direction:column}header{display:flex;align-items:center;gap:1rem;padding:.65rem 1rem;background:#fff;font-size:.85rem}header p{flex:1;margin:0}a{color:#6032a0;font-weight:600}button{border:1px solid #dad6e2;border-radius:.5rem;padding:.4rem .7rem;background:white;color:inherit;cursor:pointer}a:focus-visible,button:focus-visible{outline:3px solid #7344ae;outline-offset:3px}main{flex:1;min-height:0;overflow:hidden;position:relative}#dcv-display{width:100%;height:100%}main:fullscreen{width:100vw;height:100vh} @media(max-width:480px){header{gap:.5rem;font-size:.75rem}}`
 const desktopJS = `import dcv from '/dcvjs/dcv.js';
 const status=document.getElementById('status');
 let credentials,connection;
 const display=document.getElementById('dcv-display');
-document.getElementById('fullscreen').onclick=()=>display.requestFullscreen?.();
-const resize=()=>{if(connection){connection.requestResolution(Math.max(640,display.clientWidth),Math.max(480,display.clientHeight))?.catch(()=>{})}};
-new ResizeObserver(resize).observe(display);
+const viewport=document.getElementById('desktop-viewport');
+document.getElementById('fullscreen').onclick=()=>viewport.requestFullscreen?.();
+const resize=()=>{if(connection){connection.requestResolution(Math.max(320,viewport.clientWidth),Math.max(240,viewport.clientHeight))?.catch(()=>{})}};
+new ResizeObserver(resize).observe(viewport);
 dcv.setLogLevel(dcv.LogLevel.ERROR);
 try {
  const response=await fetch('/credentials',{cache:'no-store'});
@@ -327,6 +334,6 @@ try {
  dcv.authenticate(location.origin,{promptCredentials:(auth)=>auth.sendCredentials({username:credentials.username,password:credentials.password}),error:()=>{credentials=null;status.textContent='Connection ended. Return to your lab to reconnect.'},success:async(_,sessions)=>{
  const session=sessions.find(s=>s.sessionId===credentials.sessionID);credentials=null;
  if(!session){status.textContent='Your desktop is unavailable. Return to your lab to reconnect.';return}
- try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',callbacks:{disconnect:()=>{status.textContent='Disconnected. Return to your lab to reconnect.'}}});resize();status.textContent='Connected · Files are retained until the meeting ends.'}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
+ try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',callbacks:{firstFrame:()=>{resize();status.textContent='Connected · Files are retained until the meeting ends.'},disconnect:()=>{status.textContent='Disconnected. Return to your lab to reconnect.'}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
  }});
 }catch{status.textContent='Access ended. Return to your lab to reconnect.'}`
