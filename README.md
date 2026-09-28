@@ -5,9 +5,10 @@ LabCentral combines an embeddable Go library and CLI with a small hosted service
 for CDC team practice. AWS EC2 and Proxmox VMs are library platforms; the hosted
 service currently targets AWS. Images stay native to their platform.
 
-**Development implementation; not a qualified release.** Local tests do not establish
-live AWS/Proxmox portability or browser usability. The current acceptance gaps are
-listed in [ARCHITECTURE.md](ARCHITECTURE.md#acceptance).
+The hosted AWS service is available at **https://labs.example.org**. Its live
+acceptance passed with twenty independent desktops across five teams for one hour.
+Cross-platform library qualification remains incomplete; see
+[ARCHITECTURE.md](ARCHITECTURE.md#acceptance).
 
 ## CDC team labs
 
@@ -23,8 +24,9 @@ revision once, then prepare teams from those images.
 
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
 `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
-identity, APIs, jobs and desktop authorization. **Hosted live acceptance is in
-progress; the twenty-user release is not qualified yet.**
+identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC
+sign-in, retained workspaces, team switching, revocation, network isolation,
+Example Branch exercises, cleanup and backup restoration.
 
 Operator setup uses the native CloudFormation templates in `tools/hosted/`.
 `identity.yaml` requires the repository's exact `sub_claim_prefix` from

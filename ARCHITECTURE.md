@@ -187,29 +187,38 @@ schema rejection, ownership, response loss, interrupted cleanup, allocation
 collisions, concurrent access, plugin transport, role policy and relay authentication.
 Real pinned Packer configuration validation is available as an opt-in test.
 
-**Release acceptance remains incomplete.** The unchanged single-server and
-workstation examples have completed live AWS Packer/Ansible builds, disposable
-image validation and deployment. Focused checks passed for verified SSH, nginx,
-required IMDSv2, and denied public HTTP ingress and egress. Live DCV checks cover
-display, guest authentication, keyboard input, launch-token replay, foreign origins,
-disconnect and revocation. An expired AWS login interrupted validation cleanup;
-recovery resumed that cleanup and reused the image without duplicating the build.
-Temporary build and validation VMs and networks were removed; the requested labs,
-images and operator build infrastructure remain retained. This does not establish
-cross-lab isolation or full lifecycle acceptance. Initial Proxmox discovery
-found missing target prerequisites. Detailed evidence remains outside tracked source.
-The following still require live verification:
+**The hosted AWS milestone passed live acceptance on 2026-09-28.** Twenty real
+OIDC identities used independent DCV desktops across five four-machine Example
+Bank labs for 3,602 continuous seconds with keyboard and pointer input. All twenty
+workspace files survived reconnects. Warm launches completed within five seconds;
+authenticated page reads remained available during the run. Checks covered
+transactional team capacity, switching and old-team access denial, launch replay,
+foreign origins, CSRF, logout and group revocation. Group removal closed active
+access within two minutes.
 
-- All three unchanged examples build/deploy/access/destroy on both platforms.
-- Real provider interruption, response loss, stale ownership and cleanup scenarios.
-- Network probes for intra-lab traffic, operator ingress, egress and cross-lab denial.
-- Live Proxmox/noVNC display, keyboard, guest authentication, replay, disconnect and revocation.
-- Full template/AMI/snapshot/disk cleanup and a zero-unreported-leftovers inventory.
-- Packaging of the exact live-verified Linux amd64 binaries and toolchain checksums.
+Live exercise checks covered banking, ledger transactions, FTP publishing and
+workstation handover files. Native probes verified intra-lab traffic, cross-lab
+denial, control-host-only management ingress, denied general Internet egress and
+DCV licensing access. The acceptance labs were destroyed and their exact owned
+VM, disk and VPC inventories reconciled. Native images remain explicitly retained
+for reuse. Consistent backup restoration passed state integrity, service startup,
+meeting reads and the OIDC redirect. The deployed archive contains the exact
+verified Linux amd64 binaries and pinned native toolchain with checksums.
+Detailed evidence, installation identifiers and cost records remain outside source.
 
-Service readiness checks are not browser acceptance. Adapter tests are not live
-provider evidence. `make package` produces a development archive; it is not a
-release qualification step. Do not label it a stable release until these checks pass.
+The wider portable-library release remains incompletely qualified. Live AWS
+single-server and workstation builds, deployment, verified SSH and browser access
+have passed, including interrupted cleanup recovery. The following still require
+live verification:
+
+- All three unchanged portable examples completing their lifecycle on Proxmox.
+- The full provider interruption, response-loss, stale-ownership and cleanup matrix.
+- Proxmox isolation and noVNC display, keyboard, authentication and revocation.
+- Explicit removal of retained image artifacts with complete native inventory checks.
+
+Service readiness and local adapter tests do not establish live platform acceptance.
+The hosted AWS result does not establish AWS/Proxmox portability or qualify a
+standalone cross-platform release.
 
 ## Proposals after the foundation
 
@@ -223,7 +232,7 @@ The hosted milestone adds a separate application layer around the public library
 OIDC provider authentication, transactional team membership, a durable infrastructure
 worker, and user-owned desktop workspaces. The library remains independent of
 HTTP and identity policy. This milestone targets AWS; Proxmox remains a library
-and CLI platform. The hosted service and twenty-user acceptance are not yet qualified.
+and CLI platform. The hosted AWS twenty-user acceptance is described above.
 
 Native CloudFormation under `tools/hosted/` defines one t3.medium control host,
 encrypted retained EBS, an encrypted private S3 bucket with seven-day backup
@@ -319,8 +328,8 @@ closes sessions, kills guest processes and locks the account; destroying the VM
 removes retained workspaces. Teammates have training administration of shared
 machines, so their workspaces are not a security boundary.
 
-Hosted release acceptance still requires real OIDC/passkeys, twenty simultaneously
-connected desktops across five groups for sixty minutes, application exercises,
-network isolation, reconnect/switch/revocation, cleanup inventory and backup restore.
-A local browser fixture establishes layout and UI flow only. AWS quota approval
-must precede five-team provisioning. Budgets provide alerts, not a spending cap.
+Hosted acceptance uses real OIDC/passkeys and rendered DCV sessions; local browser
+fixtures establish layout and UI flow only. Five-team provisioning requires the
+configured region to have at least twelve VPCs and sixty-four standard vCPUs of
+quota. Budgets provide alerts, not a spending cap. Nightly backups briefly stop
+the service, closing transports; users reconnect to their retained workspaces.
