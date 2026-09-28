@@ -2,14 +2,17 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	_ "modernc.org/sqlite"
 	"net/url"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 type Store struct {
@@ -56,13 +59,22 @@ PRAGMA user_version=2;`)
 }
 func (s *Store) Close() error { return s.DB.Close() }
 func (s *Store) Lock() (func(), error) {
-	f, e := os.OpenFile(filepath.Join(s.Root, "mutation.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	return s.LockKey("mutation")
+}
+
+// LockKey coordinates a resource across independent library clients/processes.
+func (s *Store) LockKey(key string) (func(), error) {
+	name := fmt.Sprintf("lock-%x", sha256.Sum256([]byte(key)))
+	if key == "mutation" {
+		name = "mutation.lock"
+	}
+	f, e := os.OpenFile(filepath.Join(s.Root, name), os.O_CREATE|os.O_RDWR, 0600)
 	if e != nil {
 		return nil, e
 	}
 	if e = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
 		f.Close()
-		return nil, fmt.Errorf("another mutation is running")
+		return nil, fmt.Errorf("another mutation is running: %w", e)
 	}
 	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
@@ -198,4 +210,27 @@ func (s *Store) Release(ctx context.Context, owner string) error {
 func (s *Store) ReleaseValue(ctx context.Context, scope, owner string, value int) error {
 	_, e := s.DB.ExecContext(ctx, `DELETE FROM claims WHERE scope=? AND owner=? AND value=?`, scope, owner, value)
 	return e
+}
+
+// LockKeyContext queues contending access requests while preserving cancellation.
+func (s *Store) LockKeyContext(ctx context.Context, key string) (func(), error) {
+	for {
+		if e := ctx.Err(); e != nil {
+			return nil, e
+		}
+		unlock, e := s.LockKey(key)
+		if e == nil {
+			return unlock, nil
+		}
+		if !errors.Is(e, syscall.EWOULDBLOCK) {
+			return nil, e
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

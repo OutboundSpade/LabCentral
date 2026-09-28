@@ -231,6 +231,7 @@ type Command struct {
 	Network          Resource       `json:"network"`
 	VLAN             int            `json:"vlan"`
 	Recovery         bool           `json:"recovery"`
+	Access           AccessOptions  `json:"access"`
 }
 type Result struct {
 	Resource Resource `json:"resource"`

@@ -136,8 +136,8 @@ Host/Origin checks, expiry, and closure of active connections. Closing access
 removes its temporary guest session/account; DCV revocation terminates the user's
 remaining processes before deleting the account and verifies session absence.
 After a process crash, recovery uses
-the durable access intent. Browser access is local, with no general web server,
-team authorization, shared-console coordination, or implied AWS boot-console support.
+the durable access intent. The CLI browser relay is local. The hosted service wraps it with team authorization
+and a separate desktop origin, described below. It does not provide an AWS boot console.
 Source retrieved 2026-09-27:
 [DCV TLS certificate handling](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-cert.html)
 (retrieved 2026-09-28),
@@ -149,8 +149,9 @@ Source retrieved 2026-09-27:
 
 ## Durability and cleanup
 
-SQLite uses WAL and FULL synchronization. A state-root file lock serializes mutations;
-status queries remain available. Native create intent is recorded before calls.
+SQLite uses WAL and FULL synchronization. A state-root file lock serializes infrastructure mutations;
+per-instance locks coordinate access and destruction without blocking unrelated
+running labs during builds. Status queries remain available. Native create intent is recorded before calls.
 Native idempotency keys are used where supported. Provider journals persist
 subresource intent and results with fsync and atomic rename. An uncertain create
 is discovered through its exact recorded ownership identity; timeout is never
@@ -160,8 +161,9 @@ Successful earlier deployment steps remain after a later failure. Recovery resum
 the original operation; destroy first reconciles uncertain creates and then removes
 owned resources in reverse dependency order. Image removal is separate and checks
 retained instance references. AMI snapshots and Proxmox template disks are included
-in image cleanup. Failed cleanup leaves a recoverable record. There is no scheduler;
-operator failure can leave resources and charges active.
+in image cleanup. Failed cleanup leaves a recoverable record. The CLI has no scheduler; operator failure can leave resources and charges active.
+The hosted worker enforces persisted meeting deadlines while its host runs and
+immediately queues overdue cleanup after restart.
 
 One state root exclusively owns its configured allocation ranges. Cross-operator
 locking and reservation are deferred. Deletion or corruption of local state is
@@ -204,12 +206,11 @@ release qualification step. Do not label it a stable release until these checks 
 
 ## Proposals after the foundation
 
-Multi-user APIs, teams, classroom governance, an application web UI, registries,
-additional platforms, Windows, routed/multiple NIC topologies and EC2 Image Builder
-are deferred. They should use the public library without putting product policy
+Registries, additional hosted platforms, Windows, routed/multiple NIC topologies,
+classroom governance beyond meeting/team membership, and EC2 Image Builder are deferred. They should use the public library without putting product policy
 into portable lab declarations. These are proposals, not implemented contracts.
 
-## Hosted team service (implementation in progress)
+## Hosted team service
 
 The hosted milestone adds a separate application layer around the public library:
 OIDC provider authentication, transactional team membership, a durable infrastructure
@@ -236,3 +237,49 @@ Primary sources, retrieved 2026-09-28:
 [GitHub OIDC on AWS](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws),
 [DCV Web SDK](https://docs.aws.amazon.com/dcv/latest/websdkguide/getting-started.html),
 [SvelteKit static generation](https://svelte.dev/docs/kit/adapter-static).
+
+
+The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
+memberships, template revisions, jobs and desktop ownership. SQLite transactions
+reserve destination capacity before a team switch. Access is blocked while the
+switch is pending; guest revocation must succeed before committing membership.
+Per-user locks serialize those changes with that user's launch. Provider plugins
+receive explicit principal, expiry and workspace-retention options, never team
+policy or database access. CLI access remains disposable by default.
+
+OIDC uses authorization code, PKCE, state and nonce with verified issuer, audience,
+signature and expiry. An explicit HTTPS backchannel origin can route machine
+requests directly to the IDP while retaining canonical issuer verification and
+browser authorization URLs. HTTP-only secure host cookies contain opaque session IDs;
+tokens remain server-side. Exact-origin CSRF checks protect writes. Userinfo checks
+refresh group authorization every four minutes; desktop policy checks run every
+20 seconds and fail closed on revocation or unverifiable identity. API credentials
+used to bootstrap OIDC provider and temporary acceptance users are not runtime inputs.
+
+One durable worker executes provisioning and cleanup. It preserves the reserved
+engine instance ID across retries, reconciles incomplete work, and prioritizes
+meeting destruction over ordinary queued work. Ending a meeting interrupts active
+provisioning; failed cleanup remains reported and retryable. Page reads and
+unrelated desktop launches do not share that worker's infrastructure lock.
+
+Repository import uses a dedicated read-only deploy key and verified GitHub host
+keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates and
+snapshots source, then builds native images once for reuse. Imports never update
+running labs. Markdown disables raw HTML. The UI is prerendered route HTML with
+SSR enabled during generation, no SPA fallback, and full-page navigation.
+
+Desktop launch tickets are one-use and expire after one minute. The separate
+origin exchanges them for host-only cookies bound to the application session,
+user, team, instance and expiry. Every HTTP request is authorized; established
+WebSockets are cancelled after revocation. The pinned official DCV Web Client SDK
+uses transient guest credentials without a second sign-in. A student's deterministic
+workspace identity permits reconnects and retains the home directory. Revocation
+closes sessions, kills guest processes and locks the account; destroying the VM
+removes retained workspaces. Teammates have training administration of shared
+machines, so their workspaces are not a security boundary.
+
+Hosted release acceptance still requires real OIDC/passkeys, twenty simultaneously
+connected desktops across five groups for sixty minutes, application exercises,
+network isolation, reconnect/switch/revocation, cleanup inventory and backup restore.
+A local browser fixture establishes layout and UI flow only. AWS quota approval
+must precede five-team provisioning. Budgets provide alerts, not a spending cap.

@@ -1,0 +1,30 @@
+@import '@fontsource-variable/instrument-sans';
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@plugin 'daisyui' { themes: false; }
+@plugin 'daisyui/theme' {
+ name: 'cdc'; default: true; prefersdark: false; color-scheme: light;
+ --color-base-100: oklch(100% 0 0);
+ --color-base-200: oklch(97% 0.005 295);
+ --color-base-300: oklch(90% 0.01 295);
+ --color-base-content: oklch(25% 0.025 295);
+ --color-primary: oklch(43% 0.16 300);
+ --color-primary-content: oklch(99% 0 0);
+ --color-secondary: oklch(54% 0.08 290);
+ --color-secondary-content: oklch(99% 0 0);
+ --color-accent: oklch(80% 0.10 85);
+ --color-accent-content: oklch(25% 0.025 295);
+ --color-neutral: oklch(25% 0.025 295);
+ --color-neutral-content: oklch(99% 0 0);
+ --color-info: oklch(48% 0.13 250);
+ --color-info-content: oklch(99% 0 0);
+ --color-success: oklch(44% 0.10 155);
+ --color-success-content: oklch(99% 0 0);
+ --color-warning: oklch(82% 0.14 85);
+ --color-warning-content: oklch(25% 0.025 295);
+ --color-error: oklch(48% 0.18 25);
+ --color-error-content: oklch(99% 0 0);
+ --radius-selector: 0.25rem; --radius-field: 0.5rem; --radius-box: 0.75rem;
+ --size-selector: 0.25rem; --size-field: 0.25rem; --border: 1px; --depth: 0; --noise: 0;
+}
+@theme { --font-sans: 'Instrument Sans Variable', system-ui, sans-serif; }

@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 )
 
 func TestAllocationClaimsRemainDistinctAcrossOwners(t *testing.T) {
@@ -51,5 +53,44 @@ func TestRelativeStatePathWithURICharacters(t *testing.T) {
 	var got string
 	if err = s.Get(context.Background(), "test", "one", &got); err != nil || got != "value" {
 		t.Fatalf("%q %v", got, err)
+	}
+}
+
+func TestInstanceLockWaitAndCancellation(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	unlock, err := s.LockKey("instance:a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.LockKeyContext(context.Background(), "instance:b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err = s.LockKeyContext(ctx, "instance:a"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	acquired := make(chan error, 1)
+	go func() {
+		release, err := s.LockKeyContext(context.Background(), "instance:a")
+		if err == nil {
+			release()
+		}
+		acquired <- err
+	}()
+	unlock()
+	select {
+	case err := <-acquired:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("queued access did not resume")
 	}
 }

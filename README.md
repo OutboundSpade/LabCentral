@@ -1,12 +1,73 @@
 # LabCentral v2
 
 Portable virtual labs, built from small YAML files and ordinary Ansible playbooks.
-LabCentral is an embeddable Go library with a thin CLI. AWS EC2 and Proxmox VMs
-are the initial platforms. Images stay native to their platform.
+LabCentral combines an embeddable Go library and CLI with a small hosted service
+for CDC team practice. AWS EC2 and Proxmox VMs are library platforms; the hosted
+service currently targets AWS. Images stay native to their platform.
 
 **Development implementation; not a qualified release.** Local tests do not establish
 live AWS/Proxmox portability or browser usability. The current acceptance gaps are
 listed in [ARCHITECTURE.md](ARCHITECTURE.md#acceptance).
+
+## CDC team labs
+
+The hosted application lets competition members sign in with OIDC provider, choose a
+team, read the Example Branch handover, and open an individual desktop on their
+team's workstation. Files survive disconnects until the administrator's meeting
+deadline destroys the lab. `labcentral-users` admits students; `labcentral-admins` additionally
+admits administrators. Switching teams revokes the old desktop before membership
+changes. Administrators refresh the private template repository, build a pinned
+revision once, then prepare teams from those images.
+
+The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
+`/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
+identity, APIs, jobs and desktop authorization. **Hosted live acceptance is in
+progress; the twenty-user release is not qualified yet.**
+
+Operator setup uses the native CloudFormation templates in `tools/hosted/`.
+`identity.yaml` requires the repository's exact `sub_claim_prefix` from
+`gh api repos/OWNER/REPOSITORY/actions/oidc/customization/sub`; immutable GitHub
+subjects contain IDs as well as names. `infrastructure.yaml` creates the host,
+scoped runtime role, encrypted storage and budget alerts. Keep its output and all
+configuration outside source. The initial administrator provisions this setup;
+normal maintenance uses temporary GitHub OIDC and EC2 role credentials.
+
+A protected service JSON config follows `hosted.Config`: state root, application
+and desktop HTTPS origins, canonical OIDC issuer, client credentials, read-only
+repository deploy key and trusted GitHub host keys, environment file, static web
+root and verified DCV Web SDK root. Register the exact `/auth/callback` URL at the
+IDP. Configure lab management ingress for the control host's public `/32` only.
+When the public IDP hostname challenges machine traffic, set `backchannelOrigin`
+to its trusted HTTPS origin (for CDC, `https://id.example.org`). Issuer and
+audience verification remain enabled against the canonical advertised issuer.
+The server never needs the OIDC provider administrative API key.
+
+```sh
+npm --prefix web ci
+npm --prefix web run check
+npm --prefix web run build
+go run ./tools/webapi                 # regenerate the typed frontend contract
+go test -race ./...
+# Supply verified toolchain paths and an external staging directory:
+tools/hosted/build.sh
+# Test the resulting image, then package it without rebuilding:
+tools/hosted/package.sh
+```
+
+Set repository variables `LABCENTRAL_MAINTENANCE_ROLE`, `LABCENTRAL_REGION`,
+`LABCENTRAL_HOST_ID`, and `LABCENTRAL_ARTIFACT_BUCKET` from installation outputs. The **Hosted maintenance** workflow
+supports status, deploying an uploaded SHA256-identified release, recovery, meeting
+cleanup, and backup. A draft GitHub release can hold `SHA256.tar.gz`; supply its tag
+as `release` to upload and deploy that verified archive without local AWS credentials.
+Cleanup destroys the current meeting's labs. It preserves
+images for reuse; image deletion remains an explicit library/CLI operation.
+
+Nightly backups briefly stop the application and provider, archive state and
+credentials together, then restart the service. This closes desktop transports
+while retaining workspaces. Backups use encrypted private S3 and seven-day
+retention. `tools/hosted/restore.py ARCHIVE SHA256 EMPTY_DIRECTORY` verifies and
+restores an offline copy. Fence the original host before starting a restored
+worker; two hosts must never mutate the same allocation namespace.
 
 ## Install from source
 

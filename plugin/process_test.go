@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/wire"
 	"github.com/OutboundSpade/LabCentral/v2/internal/wireconvert"
@@ -55,5 +56,65 @@ func TestSocketProtocolRejectsWrongVersion(t *testing.T) {
 	}
 	if e == nil {
 		t.Fatal("wrong version accepted")
+	}
+}
+
+type blockedProvider struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p blockedProvider) Execute(ctx context.Context, c lc.Command, _ lc.Observer) (lc.Result, error) {
+	if c.Action == "machine.create" {
+		close(p.started)
+		select {
+		case <-p.release:
+		case <-ctx.Done():
+			return lc.Result{}, ctx.Err()
+		}
+	}
+	return lc.Result{}, nil
+}
+
+type testStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s testStream) Context() context.Context { return s.ctx }
+func (s testStream) Send(r *wire.Reply) error {
+	if r.Error != nil {
+		return fmt.Errorf("provider error: %v", r.Error)
+	}
+	return nil
+}
+func TestAccessProceedsDuringUnrelatedProvisioning(t *testing.T) {
+	p := blockedProvider{make(chan struct{}), make(chan struct{})}
+	server := &Server{Provider: p}
+	env := lc.Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]lc.Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: lc.AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []lc.InstanceType{{Name: "t3.medium", CPU: 2, MemoryMiB: 4096}}}}
+	execute := func(ctx context.Context, action, owner string) error {
+		c := &wire.Command{}
+		if err := wireconvert.Encode(lc.Command{Action: action, Owner: owner, Environment: env}, c); err != nil {
+			return err
+		}
+		return server.Execute(&wire.Request{Version: 2, Command: c}, testStream{ctx: ctx})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- execute(ctx, "machine.create", "new-lab") }()
+	select {
+	case <-p.started:
+	case err := <-done:
+		t.Fatal(err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if err := execute(ctx, "access.open", "running-lab"); err != nil {
+		t.Fatal(err)
+	}
+	close(p.release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

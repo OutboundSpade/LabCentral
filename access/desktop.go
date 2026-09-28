@@ -33,6 +33,7 @@ type Info struct {
 type desktop struct {
 	relay *Relay
 	close func() error
+	info  Info
 }
 type Manager struct {
 	mu       sync.Mutex
@@ -49,6 +50,9 @@ func (m *Manager) Close() {
 	}
 }
 func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) {
+	if c.Prior.Owner != c.Owner || c.Prior.Name != c.Machine.Name {
+		return lc.Result{}, fmt.Errorf("ownership_mismatch: access")
+	}
 	if c.Action == "access.close" {
 		m.mu.Lock()
 		s := m.sessions[c.Operation]
@@ -67,6 +71,12 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 	if c.Action != "access.open" {
 		return lc.Result{}, fmt.Errorf("unsupported access action")
 	}
+	m.mu.Lock()
+	existing := m.sessions[c.Operation]
+	m.mu.Unlock()
+	if existing != nil && existing.info.Expires.After(time.Now()) {
+		return accessResult(c, existing.info), nil
+	}
 	if c.Prior.Owner != c.Owner || c.Prior.Name != c.Machine.Name {
 		return lc.Result{}, fmt.Errorf("ownership_mismatch: access")
 	}
@@ -82,24 +92,38 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 		return lc.Result{}, err
 	}
 	info.ID = c.Operation
-	info.Expires = time.Now().Add(30 * time.Minute)
+	info.Expires = accessExpiry(c)
+	s.info = info
 	m.mu.Lock()
 	m.sessions[c.Operation] = s
 	m.mu.Unlock()
 	go func() {
-		timer := time.NewTimer(30 * time.Minute)
+		timer := time.NewTimer(time.Until(info.Expires))
 		defer timer.Stop()
 		<-timer.C
 		m.mu.Lock()
 		active := m.sessions[c.Operation]
+		if active != s {
+			m.mu.Unlock()
+			return
+		}
 		delete(m.sessions, c.Operation)
 		m.mu.Unlock()
 		if active != nil {
 			_ = active.close()
 		}
 	}()
+	return accessResult(c, info), nil
+}
+func accessResult(c lc.Command, info Info) lc.Result {
 	b, _ := json.Marshal(info)
-	return lc.Result{Resource: lc.Resource{Kind: "access", Name: c.Machine.Name, ID: c.Operation, Owner: c.Owner, Address: info.URL, Complete: true, Data: b}}, nil
+	return lc.Result{Resource: lc.Resource{Kind: "access", Name: c.Machine.Name, ID: c.Operation, Owner: c.Owner, Address: info.URL, Complete: true, Data: b}}
+}
+func accessExpiry(c lc.Command) time.Time {
+	if t, err := time.Parse(time.RFC3339, c.Access.Expires); err == nil {
+		return t
+	}
+	return time.Now().Add(30 * time.Minute)
 }
 func dcvName(c lc.Command) string {
 	h := sha256.Sum256([]byte(c.Operation))
@@ -114,7 +138,8 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	defer sshClient.Close()
 	username := dcvName(c)
 	password := random()
-	script := "sudo useradd --create-home --shell /bin/bash " + username + " && printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd && sudo dcv create-session --type virtual --user " + username + " --owner " + username + " " + username
+	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
+	script := "set -eu; if id " + username + " >/dev/null 2>&1; then test \"$(getent passwd " + username + " | cut -d: -f5)\" = " + marker + "; else sudo useradd --create-home --shell /bin/bash --comment " + marker + " " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd; sudo dcv close-session " + username + " >/dev/null 2>&1 || true; sudo dcv create-session --type virtual --user " + username + " --owner " + username + " " + username
 	if _, e = remote.Run(ctx, sshClient, script); e != nil {
 		return nil, info, fmt.Errorf("DCV session creation failed: %w", e)
 	}
@@ -135,25 +160,23 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	pin := sha256.Sum256(parsed.Raw)
 	target, _ := url.Parse("https://" + net.JoinHostPort(c.Prior.Address, "8443"))
 	proxy, transport := dcvProxy(target, pin)
-	relay, e := NewRelay(context.Background(), proxy)
+	relay, e := NewRelayUntil(context.Background(), proxy, accessExpiry(c))
 	if e != nil {
 		_ = closeDCV(context.Background(), c)
 		return nil, info, e
 	}
-	var once sync.Once
+	var closeMu sync.Mutex
 	closer := func() error {
-		var err error
-		once.Do(func() {
-			_ = relay.Close()
-			transport.CloseIdleConnections()
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			err = closeDCV(ctx, c)
-		})
-		return err
+		closeMu.Lock()
+		defer closeMu.Unlock()
+		_ = relay.Close()
+		transport.CloseIdleConnections()
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		return closeDCV(ctx, c)
 	}
 	info = Info{URL: relay.URL, Username: username, Password: password}
-	return &desktop{relay, closer}, info, nil
+	return &desktop{relay: relay, close: closer}, info, nil
 }
 func dcvProxy(target *url.URL, pin [sha256.Size]byte) (*httputil.ReverseProxy, *http.Transport) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true, VerifyConnection: func(cs tls.ConnectionState) error {
@@ -196,13 +219,18 @@ func closeDCV(ctx context.Context, c lc.Command) error {
 	}
 	defer sshClient.Close()
 	name := dcvName(c)
-	cleanup := "sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
+	remove := "sudo userdel --remove " + name
+	if c.Access.RetainWorkspace {
+		remove = "sudo usermod --lock " + name
+	}
+	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
+	cleanup := "set -eu; if id " + name + " >/dev/null 2>&1; then test \"$(getent passwd " + name + " | cut -d: -f5)\" = " + marker + " || exit 1; fi; sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
 		"if id " + name + " >/dev/null 2>&1; then " +
 		"uid=$(id -u " + name + "); " +
 		"sudo loginctl terminate-user \"$uid\" >/dev/null 2>&1 || true; " +
 		"sudo pkill -KILL -u \"$uid\" >/dev/null 2>&1 || true; " +
 		"n=0; while pgrep -u \"$uid\" >/dev/null; do n=$((n+1)); test \"$n\" -lt 100 || exit 1; sleep 0.1; done; " +
-		"sudo userdel --remove " + name + "; fi"
+		remove + "; fi"
 	if _, e = remote.Run(ctx, sshClient, cleanup); e != nil {
 		return e
 	}
@@ -342,7 +370,7 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 		defer cancel()
 		return closeGuestUser(ctx, cmd)
 	}
-	return &desktop{relay, closer}, info, nil
+	return &desktop{relay: relay, close: closer}, info, nil
 }
 
 func closeGuestUser(ctx context.Context, c lc.Command) error {

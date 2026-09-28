@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/OutboundSpade/LabCentral/v2/internal/privatefile"
@@ -201,8 +202,22 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 	return images, nil
 }
 func (e *Engine) Deploy(ctx context.Context, p Plan) (Instance, error) {
+	return e.DeployWithID(ctx, p, id())
+}
+
+// DeployWithID lets durable callers reserve the instance identity before dispatch.
+// Existing identities require Recover rather than starting a replacement.
+func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (Instance, error) {
 	var inst Instance
+	if !regexp.MustCompile(`^[a-f0-9]{24}$`).MatchString(instanceID) {
+		return inst, problem(Invalid, "instance", "expected a 24-character hexadecimal identity")
+	}
 	err := e.withLock(func() error {
+		if err := e.state.Get(ctx, "instance", instanceID, &inst); err == nil {
+			return problem(RecoveryRequired, "instance", "instance already exists; recover its original operation")
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		if err := verifyPlan(p); err != nil {
 			return err
 		}
@@ -219,7 +234,7 @@ func (e *Engine) Deploy(ctx context.Context, p Plan) (Instance, error) {
 		for _, im := range images {
 			native[im.Name] = im.Resource.ID
 		}
-		inst = Instance{ID: id(), Name: p.Source.Lab.Name, Status: "preparing", Created: time.Now().UTC(), Plan: p}
+		inst = Instance{ID: instanceID, Name: p.Source.Lab.Name, Status: "preparing", Created: time.Now().UTC(), Plan: p}
 		for n := range inst.Plan.Machines {
 			inst.Plan.Machines[n].NativeImage = native[inst.Plan.Machines[n].Spec.Image]
 		}
@@ -402,8 +417,13 @@ func (e *Engine) failed(i Instance, cause error) error {
 	return cause
 }
 func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error) {
+	unlock, err := e.state.LockKey("instance:" + instance)
+	if err != nil {
+		return Instance{}, problem(Busy, "instance", err.Error())
+	}
+	defer unlock()
 	var i Instance
-	err := e.withLock(func() error {
+	err = e.withLock(func() error {
 		var err error
 		i, err = e.Inspect(ctx, instance)
 		if err != nil {
@@ -428,6 +448,11 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 	return i, err
 }
 func (e *Engine) Destroy(ctx context.Context, instance string) error {
+	unlock, err := e.state.LockKey("instance:" + instance)
+	if err != nil {
+		return problem(Busy, "instance", err.Error())
+	}
+	defer unlock()
 	return e.withLock(func() error {
 		i, err := e.Inspect(ctx, instance)
 		if err != nil {

@@ -20,6 +20,7 @@ message Command {
   Resource network = 12 [json_name = "network"];
   int32 vlan = 13 [json_name = "vlan"];
   bool recovery = 14 [json_name = "recovery"];
+  AccessOptions access = 15 [json_name = "access"];
 }
 message Environment {
   int32 version = 1 [json_name = "version"];
@@ -167,6 +168,11 @@ message Resource {
 message NativeResource {
   string kind = 1 [json_name = "kind"];
   string id = 2 [json_name = "id"];
+}
+message AccessOptions {
+  string principal = 1 [json_name = "principal"];
+  string expires = 2 [json_name = "expires"];
+  bool retain_workspace = 3 [json_name = "retainWorkspace"];
 }
 message Result {
   Resource resource = 1 [json_name = "resource"];

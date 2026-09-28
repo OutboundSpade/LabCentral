@@ -31,11 +31,15 @@ type Relay struct {
 }
 
 func NewRelay(ctx context.Context, handler http.Handler) (*Relay, error) {
+	return NewRelayUntil(ctx, handler, time.Now().Add(30*time.Minute))
+}
+
+func NewRelayUntil(ctx context.Context, handler http.Handler, expires time.Time) (*Relay, error) {
 	l, e := net.Listen("tcp4", "127.0.0.1:0")
 	if e != nil {
 		return nil, e
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	ctx, cancel := context.WithDeadline(ctx, expires)
 	r := &Relay{listener: l, host: l.Addr().String(), token: random(), cookie: random(), cancel: cancel, done: make(chan struct{}), connections: map[net.Conn]bool{}}
 	r.URL = "http://" + r.host + "/launch?token=" + r.token
 	r.server = &http.Server{ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10, Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -67,7 +71,7 @@ func NewRelay(ctx context.Context, handler http.Handler) (*Relay, error) {
 				http.Error(w, "launch token expired or consumed", 403)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: "labcentral_access", Value: r.cookie, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 1800})
+			http.SetCookie(w, &http.Cookie{Name: "labcentral_access", Value: r.cookie, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: int(time.Until(expires).Seconds())})
 			http.Redirect(w, req, "/", http.StatusSeeOther)
 			return
 		}

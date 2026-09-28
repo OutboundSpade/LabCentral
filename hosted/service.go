@@ -1,0 +1,271 @@
+package hosted
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	lc "github.com/OutboundSpade/LabCentral/v2"
+	"io"
+	"net/http"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+type Service struct {
+	Config    Config
+	Store     *Store
+	Engine    Engine
+	Identity  Identity
+	env       lc.Environment
+	mu        sync.Mutex // coordinates membership authorization and in-process desktop handles
+	desktops  map[string]*desktopSession
+	tickets   map[string]launchTicket
+	authMu    sync.Mutex
+	userLocks sync.Map
+	jobMu     sync.Mutex
+	jobCancel context.CancelFunc
+	jobKind   string
+}
+
+func New(ctx context.Context, c Config, e Engine) (*Service, error) {
+	for _, raw := range []string{c.Origin, c.DesktopOrigin, c.Issuer} {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
+			return nil, fmt.Errorf("origins and issuer must be absolute HTTPS origins")
+		}
+	}
+	if c.Origin == c.DesktopOrigin {
+		return nil, fmt.Errorf("desktop requires a separate origin")
+	}
+	identity, err := NewOIDC(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	env, err := lc.LoadEnvironment(c.Environment)
+	if err != nil {
+		return nil, err
+	}
+	if env.Platform != "aws" {
+		return nil, fmt.Errorf("hosted deployment currently requires AWS")
+	}
+	st, err := OpenStore(filepath.Join(c.Root, "hosted"))
+	if err != nil {
+		return nil, err
+	}
+	return &Service{Config: c, Store: st, Engine: e, Identity: identity, env: env, desktops: map[string]*desktopSession{}, tickets: map[string]launchTicket{}}, nil
+}
+func (s *Service) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, struct {
+			Status string `json:"status"`
+		}{"ok"})
+	})
+	mux.HandleFunc("GET /auth/login", s.login)
+	mux.HandleFunc("GET /auth/callback", s.callback)
+	mux.HandleFunc("POST /auth/logout", s.authorized(false, s.logout))
+	mux.HandleFunc("GET /api/me", s.authorized(false, s.overview))
+	mux.HandleFunc("POST /api/team", s.authorized(false, s.join))
+	mux.HandleFunc("POST /api/access", s.authorized(false, s.launch))
+	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
+	mux.HandleFunc("GET /api/admin", s.authorized(true, s.admin))
+	mux.HandleFunc("POST /api/admin/meeting", s.authorized(true, s.createMeeting))
+	mux.HandleFunc("POST /api/admin/prepare", s.authorized(true, s.prepareMeeting))
+	mux.HandleFunc("POST /api/admin/end", s.authorized(true, s.endMeeting))
+	mux.HandleFunc("POST /api/admin/extend", s.authorized(true, s.extendMeeting))
+	mux.HandleFunc("POST /api/admin/templates/refresh", s.authorized(true, s.refreshTemplates))
+	mux.HandleFunc("POST /api/admin/templates/build", s.authorized(true, s.buildTemplate))
+	mux.HandleFunc("POST /api/admin/jobs/retry", s.authorized(true, s.retryJob))
+	mux.Handle("/", http.FileServer(http.Dir(s.Config.WebRoot)))
+	origin, _ := url.Parse(s.Config.Origin)
+	desktop, _ := url.Parse(s.Config.DesktopOrigin)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
+		if r.Host == desktop.Host {
+			s.desktopHandler(w, r)
+			return
+		}
+		if r.Host != origin.Host {
+			http.Error(w, "invalid host", 403)
+			return
+		}
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'none'; form-action 'self' "+s.Config.DesktopOrigin)
+		mux.ServeHTTP(w, r)
+	})
+}
+
+type endpoint func(http.ResponseWriter, *http.Request, Session)
+
+func (s *Service) authorized(admin bool, next endpoint) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, err := s.session(r.Context(), r)
+		if err != nil {
+			writeError(w, 401, "Please sign in with your CDC account.")
+			return
+		}
+		if admin && !session.User.Admin {
+			writeError(w, 403, "Administrator access is required.")
+			return
+		}
+		if r.Method != "GET" && (r.Header.Get("Origin") != s.Config.Origin || r.Header.Get("X-CSRF-Token") != session.CSRF) {
+			writeError(w, 403, "Request verification failed. Reload the page and try again.")
+			return
+		}
+		next(w, r, session)
+	}
+}
+func (s *Service) session(ctx context.Context, r *http.Request) (Session, error) {
+	c, e := r.Cookie("__Host-labcentral")
+	if e != nil {
+		return Session{}, e
+	}
+	return s.checkedSession(ctx, digest(c.Value))
+}
+func (s *Service) checkedSession(ctx context.Context, id string) (Session, error) {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+	var v Session
+	if e := s.Store.Get(ctx, "session", id, &v); e != nil {
+		return v, e
+	}
+	if !time.Now().Before(v.Expires) {
+		_ = s.Store.Delete(ctx, "session", id)
+		return v, fmt.Errorf("session expired")
+	}
+	if time.Since(v.Checked) >= 4*time.Minute {
+		u, t, e := s.Identity.Refresh(ctx, v.Token)
+		if e != nil || u.ID != v.User.ID {
+			_ = s.Store.Delete(ctx, "session", id)
+			return v, fmt.Errorf("identity could not be verified")
+		}
+		if e = s.Store.Put(ctx, "user", u.ID, u); e != nil {
+			return v, e
+		}
+		v.User = u
+		v.Token = t
+		v.Checked = time.Now().UTC()
+		if e = s.Store.Put(ctx, "session", id, v); e != nil {
+			return v, e
+		}
+	}
+	return v, nil
+}
+
+type loginAttempt struct {
+	Verifier, Nonce string
+	Expires         time.Time
+}
+
+func (s *Service) login(w http.ResponseWriter, r *http.Request) {
+	s.authMu.Lock()
+	_, err := s.Store.DB.ExecContext(r.Context(), `DELETE FROM objects WHERE kind='login' AND json_extract(body,'$.Expires') < ?`, time.Now().UTC().Format(time.RFC3339Nano))
+	var count int
+	if err == nil {
+		err = s.Store.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM objects WHERE kind='login'`).Scan(&count)
+	}
+	s.authMu.Unlock()
+	if err != nil || count >= 1000 {
+		writeError(w, 503, "Sign-in is busy. Please retry shortly.")
+		return
+	}
+	state := randomID(24)
+	a := loginAttempt{randomID(32), randomID(24), time.Now().Add(5 * time.Minute)}
+	if e := s.Store.Put(r.Context(), "login", digest(state), a); e != nil {
+		writeError(w, 503, "Sign-in is temporarily unavailable.")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral_login", Value: state, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 300})
+	http.Redirect(w, r, s.Identity.LoginURL(state, a.Nonce, a.Verifier), 302)
+}
+func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
+	c, e := r.Cookie("__Host-labcentral_login")
+	state := r.URL.Query().Get("state")
+	if e != nil || state == "" || c.Value != state {
+		writeError(w, 400, "Sign-in expired. Start again.")
+		return
+	}
+	var a loginAttempt
+	s.authMu.Lock()
+	e = s.Store.Get(r.Context(), "login", digest(state), &a)
+	if e == nil {
+		e = s.Store.Delete(r.Context(), "login", digest(state))
+	}
+	s.authMu.Unlock()
+	if e != nil || !a.Expires.After(time.Now()) {
+		writeError(w, 400, "Sign-in expired. Start again.")
+		return
+	}
+	u, t, e := s.Identity.Exchange(r.Context(), r.URL.Query().Get("code"), a.Verifier, a.Nonce)
+	if e != nil {
+		writeError(w, 403, "CDC sign-in could not be completed. Check your competition membership and try again.")
+		return
+	}
+	if e = s.Store.Put(r.Context(), "user", u.ID, u); e != nil {
+		writeError(w, 503, "Could not save your profile.")
+		return
+	}
+	token := randomID(32)
+	v := Session{ID: digest(token), User: u, CSRF: randomID(24), Token: t, Expires: time.Now().Add(8 * time.Hour), Checked: time.Now().UTC()}
+	if e = s.Store.Put(r.Context(), "session", v.ID, v); e != nil {
+		writeError(w, 503, "Could not save sign-in. Please try again.")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral", Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 8 * 3600})
+	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral_login", Path: "/", Secure: true, HttpOnly: true, MaxAge: -1})
+	http.Redirect(w, r, "/teams/", 303)
+}
+func (s *Service) logout(w http.ResponseWriter, r *http.Request, v Session) {
+	_ = s.Store.Delete(r.Context(), "session", v.ID)
+	unlock := s.lockUser(v.User.ID)
+	err := s.revokeUser(r.Context(), v.User.ID)
+	unlock()
+	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral", Path: "/", Secure: true, HttpOnly: true, MaxAge: -1})
+	if err != nil {
+		writeError(w, 503, "Signed out; guest cleanup is pending recovery.")
+		return
+	}
+	writeJSON(w, 200, struct {
+		OK bool `json:"ok"`
+	}{true})
+}
+func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if e := d.Decode(dst); e != nil {
+		writeError(w, 400, "Invalid request.")
+		return false
+	}
+	if e := d.Decode(new(any)); e != io.EOF {
+		writeError(w, 400, "Expected one request document.")
+		return false
+	}
+	return true
+}
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, struct {
+		Error string `json:"error"`
+	}{msg})
+}
+func cleanName(v string) bool {
+	return len(strings.TrimSpace(v)) > 0 && len(v) <= 100 && !strings.ContainsAny(v, "\r\n\x00")
+}
+
+// Different users can launch on unrelated instances concurrently. Membership changes
+// and revocation serialize only with that user's launch; engine locks coordinate VMs.
+func (s *Service) lockUser(id string) func() {
+	value, _ := s.userLocks.LoadOrStore(id, &sync.Mutex{})
+	m := value.(*sync.Mutex)
+	m.Lock()
+	return m.Unlock
+}

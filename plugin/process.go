@@ -169,11 +169,10 @@ type Server struct {
 	wire.UnimplementedPlatformServer
 	Provider lc.Provider
 	mu       sync.Mutex
+	owners   sync.Map
 }
 
 func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wire.Reply]) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if req.Version != 2 || req.Command == nil {
 		return fmt.Errorf("unsupported protocol version")
 	}
@@ -188,6 +187,20 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 		if e := lc.Validate(c.Source); e != nil {
 			return sendError(stream, e)
 		}
+	}
+	// Infrastructure stays single-writer, but access to unrelated running labs
+	// must not wait behind a native image build. Same-owner effects still serialize.
+	if c.Action != "access.open" && c.Action != "access.close" {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
+	value, _ := s.owners.LoadOrStore(c.Owner, make(chan struct{}, 1))
+	lock := value.(chan struct{})
+	select {
+	case lock <- struct{}{}:
+		defer func() { <-lock }()
+	case <-stream.Context().Done():
+		return stream.Context().Err()
 	}
 	var sendErr error
 	result, e := s.Provider.Execute(stream.Context(), c, func(event lc.Event) {
