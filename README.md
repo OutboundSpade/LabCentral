@@ -62,6 +62,14 @@ as `release` to upload and deploy that verified archive without local AWS creden
 Cleanup destroys the current meeting's labs. It preserves
 images for reuse; image deletion remains an explicit library/CLI operation.
 
+For standalone CLI resources, `recover` and `cleanup` also accept a verified
+operator request named `SHA256.request.json` in the selected draft release:
+`{"version":1,"state":"state/engine","kind":"instance","id":"INSTANCE_ID"}`.
+State is relative to `/var/lib/labcentral` and must already exist. Kinds are
+`instance`, `build`, or `image`; cleanup maps to destroy, abandon, or image removal.
+Use the image cache key for build/image IDs. These requests cannot run arbitrary
+commands and use the library's ownership and retained-image checks.
+
 Nightly backups briefly stop the application and provider, archive state and
 credentials together, then restart the service. This closes desktop transports
 while retaining workspaces. Backups use encrypted private S3 and seven-day

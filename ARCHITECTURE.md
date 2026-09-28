@@ -261,6 +261,10 @@ engine instance ID across retries, reconciles incomplete work, and prioritizes
 meeting destruction over ordinary queued work. Ending a meeting interrupts active
 provisioning; failed cleanup remains reported and retryable. Page reads and
 unrelated desktop launches do not share that worker's infrastructure lock.
+Provider journals distinguish explicit AWS authorization rejection from uncertain
+transport outcomes. A rejected create can be retried; a timeout still requires
+discovery. AWS creation permissions cover tagged outputs and separately authorize
+their already-owned parent resources ([EC2 authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html), retrieved 2026-09-28).
 
 Repository import uses a dedicated read-only deploy key and verified GitHub host
 keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates and
