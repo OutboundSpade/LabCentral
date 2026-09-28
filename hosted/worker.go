@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	lc "github.com/OutboundSpade/LabCentral/v2"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -239,56 +241,91 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 	if e != nil {
 		return e
 	}
-	for _, t := range teams {
-		current, e := s.Store.Meeting(ctx)
-		if e != nil {
-			return e
-		}
-		if current == nil || current.Status == "ending" || current.Status == "ended" {
-			return fmt.Errorf("meeting is ending")
-		}
-		inst, inspect := s.Engine.Inspect(ctx, t.InstanceID)
-		if inspect == nil && inst.Status == "ready" {
-			// Retrying a later team must not temporarily revoke a ready team's access.
-			if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ready' WHERE id=?`, t.ID); e != nil {
-				return e
+	// Independent failures do not cancel peers. Only meeting expiry, end or
+	// worker shutdown cancels the shared context. Bound native API concurrency.
+	const parallelTeams = 3
+	failures := make([]error, len(teams))
+	work := make(chan int)
+	var workers sync.WaitGroup
+	for n := 0; n < parallelTeams; n++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range work {
+				if err := s.prepareTeam(ctx, m.ID, teams[index], plan); err != nil {
+					failures[index] = fmt.Errorf("%s: %w", teams[index].Name, err)
+				}
 			}
-			continue
-		}
-		if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='preparing' WHERE id=?`, t.ID); e != nil {
-			return e
-		}
-		if errors.Is(inspect, sql.ErrNoRows) {
-			inst, e = s.Engine.DeployWithID(ctx, plan, t.InstanceID)
-		} else if inspect != nil {
-			e = inspect
-		} else if inst.Status != "ready" {
-			inst, e = s.Engine.Recover(ctx, t.InstanceID)
-		}
-		if e == nil && inst.Status != "ready" {
-			e = fmt.Errorf("team lab recovery returned status %q", inst.Status)
-		}
-		status := "ready"
-		if e != nil {
-			status = "failed"
-		}
-		_, save := s.Store.DB.ExecContext(context.WithoutCancel(ctx), `UPDATE teams SET status=? WHERE id=?`, status, t.ID)
-		if save != nil {
-			return save
-		}
-		if e != nil {
-			return e
-		}
+		}()
 	}
+	for index := range teams {
+		work <- index
+	}
+	close(work)
+	workers.Wait()
+	failure := errors.Join(failures...)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, e := s.Store.Meeting(ctx)
 	if e != nil {
-		return e
+		return errors.Join(failure, e)
 	}
-	if current.Status != "ending" && current.Status != "ended" {
+	if current != nil && current.ID == m.ID && current.Status != "ending" && current.Status != "ended" && current.Expires.After(time.Now()) {
 		current.Status = "ready"
-		return s.Store.Put(ctx, "meeting", "current", current)
+		if failure != nil {
+			current.Status = "failed"
+			states, err := s.Store.Teams(ctx, m.ID)
+			if err != nil {
+				return errors.Join(failure, err)
+			}
+			for _, team := range states {
+				if team.Status == "ready" {
+					current.Status = "partial"
+					break
+				}
+			}
+		}
+		return errors.Join(failure, s.Store.Put(ctx, "meeting", "current", current))
 	}
-	return nil
+	return failure
+}
+
+// Ready teams remain accessible while failed teams reconcile their original IDs.
+func (s *Service) prepareTeam(ctx context.Context, meeting string, t Team, plan lc.Plan) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	current, err := s.Store.Meeting(ctx)
+	if err != nil {
+		return err
+	}
+	if current == nil || current.ID != meeting || current.Status == "ending" || current.Status == "ended" || !current.Expires.After(time.Now()) {
+		return fmt.Errorf("meeting is ending")
+	}
+	inst, inspect := s.Engine.Inspect(ctx, t.InstanceID)
+	if inspect == nil && inst.Status == "ready" {
+		_, err = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ready' WHERE id=?`, t.ID)
+		return err
+	}
+	if _, err = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='preparing' WHERE id=?`, t.ID); err != nil {
+		return err
+	}
+	if errors.Is(inspect, sql.ErrNoRows) {
+		inst, err = s.Engine.DeployWithID(ctx, plan, t.InstanceID)
+	} else if inspect != nil {
+		err = inspect
+	} else {
+		inst, err = s.Engine.Recover(ctx, t.InstanceID)
+	}
+	if err == nil && inst.Status != "ready" {
+		err = fmt.Errorf("team lab recovery returned status %q", inst.Status)
+	}
+	status := "ready"
+	if err != nil {
+		status = "failed"
+	}
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_, save := s.Store.DB.ExecContext(saveCtx, `UPDATE teams SET status=? WHERE id=?`, status, t.ID)
+	return errors.Join(err, save)
 }

@@ -2,10 +2,16 @@ package hosted
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type recoveredEngine struct {
@@ -44,7 +50,7 @@ func TestPrepareRetryNeverWithdrawsReadyTeamAccess(t *testing.T) {
 	if _, err := s.Store.DB.Exec(`UPDATE teams SET status='ready'`); err != nil {
 		t.Fatal(err)
 	}
-	checks := 0
+	var checks atomic.Int32
 	s.Engine = recoveredEngine{inspect: func(ctx context.Context, id string) (lc.Instance, error) {
 		current, err := s.Store.Teams(ctx, "meeting")
 		if err != nil {
@@ -55,14 +61,14 @@ func TestPrepareRetryNeverWithdrawsReadyTeamAccess(t *testing.T) {
 				t.Fatal("ready team made unavailable during retry", team.Name)
 			}
 		}
-		checks++
+		checks.Add(1)
 		return lc.Instance{Status: "ready"}, nil
 	}}
 	if err := s.meetingOperation(ctx, Job{Kind: "prepare", Target: "meeting"}); err != nil {
 		t.Fatal(err)
 	}
-	if checks != len(teams) {
-		t.Fatal("did not reconcile every team", checks)
+	if int(checks.Load()) != len(teams) {
+		t.Fatal("did not reconcile every team", checks.Load())
 	}
 }
 func TestPrepareRejectsRecoveryThatDidNotReachReadiness(t *testing.T) {
@@ -80,5 +86,154 @@ func TestPrepareRejectsRecoveryThatDidNotReachReadiness(t *testing.T) {
 	meeting, _ = s.Store.Meeting(ctx)
 	if meeting.Status == "ready" {
 		t.Fatal("meeting reported ready after failed recovery")
+	}
+}
+
+type concurrentPrepareEngine struct {
+	Engine
+	mu              sync.Mutex
+	instances       map[string]lc.Instance
+	calls           map[string]int
+	started         chan string
+	release         chan struct{}
+	fail            string
+	active, maximum int
+}
+
+func (e *concurrentPrepareEngine) Inspect(_ context.Context, id string) (lc.Instance, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if i, ok := e.instances[id]; ok {
+		return i, nil
+	}
+	return lc.Instance{}, sql.ErrNoRows
+}
+func (e *concurrentPrepareEngine) DeployWithID(ctx context.Context, _ lc.Plan, id string) (lc.Instance, error) {
+	return e.run(ctx, id)
+}
+func (e *concurrentPrepareEngine) Recover(ctx context.Context, id string) (lc.Instance, error) {
+	return e.run(ctx, id)
+}
+func (e *concurrentPrepareEngine) run(ctx context.Context, id string) (lc.Instance, error) {
+	e.mu.Lock()
+	e.calls[id]++
+	e.active++
+	if e.active > e.maximum {
+		e.maximum = e.active
+	}
+	e.mu.Unlock()
+	defer func() { e.mu.Lock(); e.active--; e.mu.Unlock() }()
+	e.started <- id
+	select {
+	case <-e.release:
+	case <-ctx.Done():
+		return lc.Instance{}, ctx.Err()
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	i := lc.Instance{ID: id, Status: "ready"}
+	var err error
+	if id == e.fail {
+		i.Status = "recovery_required"
+		err = fmt.Errorf("lost provider response")
+	}
+	e.instances[id] = i
+	return i, err
+}
+func TestPrepareParallelFailureIsolationAndRetry(t *testing.T) {
+	s, teams := prepareFixture(t)
+	e := &concurrentPrepareEngine{instances: map[string]lc.Instance{}, calls: map[string]int{}, started: make(chan string, 10), release: make(chan struct{}), fail: teams[0].InstanceID}
+	s.Engine = e
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.meetingOperation(ctx, Job{Kind: "prepare", Target: "meeting"}) }()
+	for n := 0; n < 3; n++ {
+		select {
+		case <-e.started:
+		case <-ctx.Done():
+			t.Fatal("teams serialized")
+		}
+	}
+	select {
+	case <-e.started:
+		t.Fatal("concurrency exceeded three")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(e.release)
+	if err := <-done; err == nil || !strings.Contains(err.Error(), teams[0].Name) {
+		t.Fatal("missing team failure", err)
+	}
+	current, err := s.Store.Teams(ctx, "meeting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range current {
+		want := "ready"
+		if team.ID == teams[0].ID {
+			want = "failed"
+		}
+		if team.Status != want {
+			t.Fatal(team)
+		}
+	}
+	meeting, err := s.Store.Meeting(ctx)
+	if err != nil || meeting.Status != "partial" {
+		t.Fatal("missing partial meeting status", meeting, err)
+	}
+	// A student on a successful team can open access despite another failure.
+	if err := s.Store.BeginSwitch(ctx, "student", teams[1].ID, "meeting"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.FinishSwitch(ctx, "student"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.readyTeam(ctx, "student"); err != nil {
+		t.Fatal("ready lab access blocked", err)
+	}
+	// Retry uses the same reserved identity; only the failed lab is recovered.
+	e.fail = ""
+	if err := s.meetingOperation(ctx, Job{Kind: "prepare", Target: "meeting"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range teams {
+		want := 1
+		if team.ID == teams[0].ID {
+			want = 2
+		}
+		if e.calls[team.InstanceID] != want {
+			t.Fatal("recreated ready team or changed retry identity", team)
+		}
+	}
+	if e.maximum != 3 {
+		t.Fatal(e.maximum)
+	}
+}
+func TestPrepareCancellationStopsQueuedTeams(t *testing.T) {
+	s, _ := prepareFixture(t)
+	e := &concurrentPrepareEngine{instances: map[string]lc.Instance{}, calls: map[string]int{}, started: make(chan string, 10), release: make(chan struct{})}
+	s.Engine = e
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.meetingOperation(ctx, Job{Kind: "prepare", Target: "meeting"}) }()
+	for n := 0; n < 3; n++ {
+		select {
+		case <-e.started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("teams serialized")
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("cancellation reported success")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not drain")
+	}
+	if len(e.calls) != 3 {
+		t.Fatal("started queued teams after cancellation", e.calls)
 	}
 }

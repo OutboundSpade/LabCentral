@@ -188,3 +188,55 @@ func TestMachineDeletionConcurrencyAndNetworkFence(t *testing.T) {
 		t.Fatal(seen)
 	}
 }
+
+type concurrentCreateProvider struct {
+	entered chan string
+	release chan struct{}
+}
+
+func (p concurrentCreateProvider) Execute(ctx context.Context, c lc.Command, _ lc.Observer) (lc.Result, error) {
+	p.entered <- c.Owner
+	select {
+	case <-p.release:
+		return lc.Result{}, nil
+	case <-ctx.Done():
+		return lc.Result{}, ctx.Err()
+	}
+}
+func TestIndependentCreatesOverlapWithOwnerFence(t *testing.T) {
+	p := concurrentCreateProvider{make(chan string, 3), make(chan struct{})}
+	server := &Server{Provider: p}
+	env := lc.Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]lc.Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: lc.AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []lc.InstanceType{{Name: "t3.medium", CPU: 2, MemoryMiB: 4096}}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := make(chan error, 3)
+	execute := func(owner, action string) {
+		c := &wire.Command{}
+		if err := wireconvert.Encode(lc.Command{Action: action, Owner: owner, Environment: env}, c); err != nil {
+			done <- err
+			return
+		}
+		done <- server.Execute(&wire.Request{Version: 2, Command: c}, testStream{ctx: ctx})
+	}
+	go execute("one", "network.create")
+	go execute("two", "machine.create")
+	for n := 0; n < 2; n++ {
+		select {
+		case <-p.entered:
+		case <-ctx.Done():
+			t.Fatal("independent creates serialized")
+		}
+	}
+	go execute("one", "network.create")
+	select {
+	case <-p.entered:
+		t.Fatal("same-owner retry crossed fence")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(p.release)
+	for n := 0; n < 3; n++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+}

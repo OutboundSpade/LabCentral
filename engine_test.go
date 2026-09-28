@@ -201,27 +201,50 @@ func TestUnknownCleanupNeverReportsDestroyed(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-func TestConcurrentMutationDoesNotBlockStatusReads(t *testing.T) {
-	ctx := context.Background()
+func TestIndependentDeploymentsOverlapAndSameInstanceIsFenced(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	root := t.TempDir()
 	f := freshFake()
 	f.block = make(chan struct{})
-	f.entered = make(chan struct{}, 1)
+	f.entered = make(chan struct{}, 2)
 	e := openFake(t, root, f)
-	p, _ := PlanLab(testSource(t), testEnvironment(), nil)
-	done := make(chan error, 1)
-	go func() { _, err := e.Deploy(ctx, p); done <- err }()
-	<-f.entered
 	e2 := openFake(t, root, f)
+	p, _ := PlanLab(testSource(t), testEnvironment(), nil)
+	done := make(chan error, 2)
+	ids := []string{id(), id()}
+	for n, engine := range []*Engine{e, e2} {
+		go func() { _, err := engine.DeployWithID(ctx, p, ids[n]); done <- err }()
+	}
+	for n := 0; n < 2; n++ {
+		select {
+		case <-f.entered:
+		case <-ctx.Done():
+			t.Fatal("independent creates serialized")
+		}
+	}
 	if _, err := e2.List(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e2.Deploy(ctx, p); err == nil {
-		t.Fatal("simultaneous writer admitted")
+	short, stop := context.WithTimeout(ctx, 30*time.Millisecond)
+	defer stop()
+	if _, err := e2.DeployWithID(short, p, ids[0]); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("same-instance create not fenced: %v", err)
+	}
+	if err := e2.Destroy(ctx, ids[0]); err == nil {
+		t.Fatal("destroy crossed active deployment")
 	}
 	close(f.block)
-	if err := <-done; err != nil {
-		t.Fatal(err)
+	for n := 0; n < 2; n++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, instance := range ids {
+		i, err := e.Inspect(ctx, instance)
+		if err != nil || i.Status != "ready" {
+			t.Fatal(i, err)
+		}
 	}
 }
 func TestPrivateKeysNeverEnterJournalOrPlan(t *testing.T) {
@@ -461,5 +484,77 @@ func TestSSHOperationCoordinatesWithDestruction(t *testing.T) {
 		return nil
 	}); err == nil {
 		t.Fatal("destroyed instance accepted")
+	}
+}
+
+func TestParallelProxmoxAllocationAndRecovery(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	f := freshFake()
+	f.block = make(chan struct{})
+	f.entered = make(chan struct{}, 2)
+	e := openFake(t, t.TempDir(), f)
+	env := testEnvironment()
+	env.Platform = "proxmox"
+	env.Bases["ubuntu-24.04"] = Base{ID: "2000", Identity: "pinned-config", User: "ubuntu", DiskGiB: 20}
+	env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", Bridge: "vmbr-labs", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20", VerifiedIsolation: true}
+	p, err := PlanLab(testSource(t), env, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{id(), id()}
+	runCtx, stop := context.WithCancel(ctx)
+	done := make(chan error, 2)
+	for _, instance := range ids {
+		go func() { _, err := e.DeployWithID(runCtx, p, instance); done <- err }()
+	}
+	for n := 0; n < 2; n++ {
+		select {
+		case <-f.entered:
+		case <-ctx.Done():
+			t.Fatal("allocation blocked other deployment")
+		}
+	}
+	a, err := e.Inspect(ctx, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.Inspect(ctx, ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.VLAN == b.VLAN || a.Plan.Machines[0].VMID == b.Plan.Machines[0].VMID {
+		t.Fatal("allocation collision", a.VLAN, b.VLAN)
+	}
+	stop()
+	for n := 0; n < 2; n++ {
+		if err := <-done; err == nil {
+			t.Fatal("cancelled create succeeded")
+		}
+	}
+	for _, instance := range ids {
+		go func() { _, err := e.Recover(ctx, instance); done <- err }()
+	}
+	for n := 0; n < 2; n++ {
+		select {
+		case <-f.entered:
+		case <-ctx.Done():
+			t.Fatal("independent recoveries serialized")
+		}
+	}
+	close(f.block)
+	for n := 0; n < 2; n++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for n, old := range []Instance{a, b} {
+		current, err := e.Inspect(ctx, ids[n])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.VLAN != old.VLAN || current.Plan.Machines[0].VMID != old.Plan.Machines[0].VMID || current.Status != "ready" {
+			t.Fatal("recovery replaced allocation", current)
+		}
 	}
 }

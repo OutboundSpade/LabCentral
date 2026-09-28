@@ -59,6 +59,16 @@ func (e *Engine) withLock(fn func() error) error {
 	defer unlock()
 	return fn()
 }
+
+// Allocation, image selection and removal share a short-lived state fence.
+func (e *Engine) withAllocationLock(ctx context.Context, fn func() error) error {
+	unlock, err := e.state.LockKeyContext(ctx, "mutation")
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return fn()
+}
 func id() string {
 	b := make([]byte, 12)
 	if _, e := rand.Read(b); e != nil {
@@ -220,7 +230,12 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 	if !regexp.MustCompile(`^[a-f0-9]{24}$`).MatchString(instanceID) {
 		return inst, problem(Invalid, "instance", "expected a 24-character hexadecimal identity")
 	}
-	err := e.withLock(func() error {
+	unlock, err := e.state.LockKeyContext(ctx, "instance:"+instanceID)
+	if err != nil {
+		return inst, err
+	}
+	defer unlock()
+	err = e.withAllocationLock(ctx, func() error {
 		if err := e.state.Get(ctx, "instance", instanceID, &inst); err == nil {
 			return problem(RecoveryRequired, "instance", "instance already exists; recover its original operation")
 		} else if !errors.Is(err, sql.ErrNoRows) {
@@ -255,8 +270,11 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		if err = e.prepare(ctx, &inst); err != nil {
 			return e.failed(inst, err)
 		}
-		return e.deploy(ctx, &inst)
+		return nil
 	})
+	if err == nil {
+		err = e.deploy(ctx, &inst)
+	}
 	return inst, err
 }
 func (e *Engine) prepare(ctx context.Context, i *Instance) error {
@@ -434,7 +452,7 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 	}
 	defer unlock()
 	var i Instance
-	err = e.withLock(func() error {
+	err = e.withAllocationLock(ctx, func() error {
 		var err error
 		i, err = e.Inspect(ctx, instance)
 		if err != nil {
@@ -454,8 +472,11 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 				return err
 			}
 		}
-		return e.deploy(ctx, &i)
+		return nil
 	})
+	if err == nil && i.Status != "destroyed" {
+		err = e.deploy(ctx, &i)
+	}
 	return i, err
 }
 func (e *Engine) Destroy(ctx context.Context, instance string) error {

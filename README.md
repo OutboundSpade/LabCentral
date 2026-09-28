@@ -26,7 +26,9 @@ the box. After it closes, paste inside the desktop. This fallback transfers text
 admits administrators. Switching teams revokes the old desktop before membership
 changes. Administrators refresh the private template repository, build a pinned
 revision once, then prepare teams from those images. New meetings have five teams
-with up to six members each.
+with up to six members each. Preparation runs up to three teams in parallel; a
+failed team does not prevent others from becoming ready. Retry recovery preserves
+ready labs and reconciles failed teams without replacing their instance identities.
 
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
 `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies

@@ -189,11 +189,11 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 			return sendError(stream, e)
 		}
 	}
-	// Only independent machine deletions share infrastructure execution. Network
-	// deletion, creation and builds remain exclusive. Access retains owner fencing.
+	// Independent lab creates, discovery and image reads may overlap. Builds
+	// and image/network deletion remain exclusive; owner fencing always applies.
 	machineDelete := c.Action == "resource.destroy" && c.Prior.Kind == "machine"
 	if c.Action != "access.open" && c.Action != "access.close" {
-		if machineDelete {
+		if machineDelete || c.Action == "network.create" || c.Action == "machine.create" || c.Action == "discover" || c.Action == "image.read" || c.Action == "check" {
 			s.mu.RLock()
 			defer s.mu.RUnlock()
 		} else {

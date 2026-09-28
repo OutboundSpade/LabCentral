@@ -156,8 +156,10 @@ Source retrieved 2026-09-27:
 
 ## Durability and cleanup
 
-SQLite uses WAL and FULL synchronization. A state-root file lock serializes infrastructure mutations;
-per-instance locks coordinate access and destruction without blocking unrelated
+SQLite uses WAL and FULL synchronization. A state-root file lock serializes image selection, builds, removal and allocation.
+Deployment releases that lock after persisting image references and reservations;
+independent lab provisioning then overlaps. Per-instance locks coordinate deployment,
+recovery, access and destruction without blocking unrelated
 running labs during builds. Status queries remain available. Native create intent is recorded before calls.
 Native idempotency keys are used where supported. Provider journals persist
 subresource intent and results with fsync and atomic rename. An uncertain create
@@ -302,7 +304,14 @@ concurrently across users and cancel unauthorized transports immediately; durabl
 guest cleanup proceeds independently through the worker. API credentials
 used to bootstrap OIDC provider and temporary acceptance users are not runtime inputs.
 
-One durable worker executes provisioning and cleanup. It preserves the reserved
+One durable worker executes provisioning and cleanup. A prepare job runs at most
+three team deployments concurrently. Each team persists its own readiness or failure;
+one failure does not cancel peers. Meetings with both ready and failed teams report
+`partial`; all-team failures report `failed`. Aggregated job errors name the failed teams, and
+retry reconciles their reserved instance IDs while keeping ready teams accessible.
+The provider allows independent creates and discovery concurrently, retaining owner
+fences so retries cannot overlap the same native journal. Cancellation drains all
+active team operations before deadline cleanup proceeds. It preserves the reserved
 engine instance ID across retries, reconciles incomplete work, and prioritizes
 meeting destruction over ordinary queued work. Ending a meeting interrupts active
 provisioning; failed cleanup remains reported and retryable. Ending visits every
