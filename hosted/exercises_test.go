@@ -29,6 +29,9 @@ func exerciseFixture(t *testing.T) (*Service, []Team) {
 	if err := s.Store.Put(context.Background(), "template", "", Template{Name: "branch-services"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.Store.Put(context.Background(), "template-images", "", []string{}); err != nil {
+		t.Fatal(err)
+	}
 	s.exerciseRunner = func(context.Context, Team, ExerciseRun, lc.Source) (string, error) { return "verified", nil }
 	return s, teams
 }
