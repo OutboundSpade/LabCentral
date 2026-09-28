@@ -27,8 +27,12 @@ func testStore(t *testing.T) *Store {
 }
 func setupMeeting(t *testing.T, s *Store) []Team {
 	t.Helper()
+	return setupMeetingCapacity(t, s, 4)
+}
+func setupMeetingCapacity(t *testing.T, s *Store, capacity int) []Team {
+	t.Helper()
 	m := Meeting{ID: "meeting", Name: "Practice", Status: "ready", Expires: time.Now().Add(time.Hour)}
-	if e := s.CreateMeeting(context.Background(), m, 5, 4); e != nil {
+	if e := s.CreateMeeting(context.Background(), m, 5, capacity); e != nil {
 		t.Fatal(e)
 	}
 	teams, e := s.Teams(context.Background(), m.ID)
@@ -39,7 +43,7 @@ func setupMeeting(t *testing.T, s *Store) []Team {
 }
 func TestConcurrentSeatsAndPendingSwitch(t *testing.T) {
 	s := testStore(t)
-	teams := setupMeeting(t, s)
+	teams := setupMeetingCapacity(t, s, 6)
 	ctx := context.Background()
 	var wins atomic.Int32
 	var wg sync.WaitGroup
@@ -53,11 +57,11 @@ func TestConcurrentSeatsAndPendingSwitch(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	if wins.Load() != 4 {
+	if wins.Load() != 6 {
 		t.Fatalf("reserved %d seats", wins.Load())
 	}
 	now, _ := s.Teams(ctx, "meeting")
-	if now[0].Members != 4 {
+	if now[0].Members != 6 {
 		t.Fatalf("pending reservations were not counted: %d", now[0].Members)
 	}
 	if e := s.BeginSwitch(ctx, "new", teams[1].ID, "meeting"); e != nil {
@@ -82,6 +86,56 @@ func TestConcurrentSeatsAndPendingSwitch(t *testing.T) {
 	m, _ = s.Membership(ctx, "new")
 	if m.TeamID != teams[2].ID || m.Switching {
 		t.Fatal("switch not committed")
+	}
+}
+
+func TestMeetingCapacity(t *testing.T) {
+	for _, tc := range []struct {
+		capacity, wantStatus, wantCapacity int
+	}{
+		{0, 201, 6}, {6, 201, 6}, {4, 201, 4}, {7, 400, 0}, {-1, 400, 0},
+	} {
+		t.Run(fmt.Sprint(tc.capacity), func(t *testing.T) {
+			s, session, _ := serviceFor(t)
+			ctx := context.Background()
+			if err := s.Store.Put(ctx, "template", "built", Template{Built: true}); err != nil {
+				t.Fatal(err)
+			}
+			body := fmt.Sprintf(`{"name":"Practice","template":"built","capacity":%d}`, tc.capacity)
+			if w := request(s, "POST", "/api/admin/meeting", body, s.Config.Origin, session.CSRF); w.Code != 403 {
+				t.Fatal("student could create meeting", w.Code)
+			}
+			session.User.Admin = true
+			if err := s.Store.Put(ctx, "session", session.ID, session); err != nil {
+				t.Fatal(err)
+			}
+			if w := request(s, "POST", "/api/admin/meeting", body, s.Config.Origin, "wrong"); w.Code != 403 {
+				t.Fatal("missing CSRF protection", w.Code)
+			}
+			w := request(s, "POST", "/api/admin/meeting", body, s.Config.Origin, session.CSRF)
+			if w.Code != tc.wantStatus {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			meeting, err := s.Store.Meeting(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantStatus != 201 {
+				if meeting != nil {
+					t.Fatal("invalid capacity persisted a meeting")
+				}
+				return
+			}
+			teams, err := s.Store.Teams(ctx, meeting.ID)
+			if err != nil || len(teams) != 5 {
+				t.Fatal(teams, err)
+			}
+			for _, team := range teams {
+				if team.Capacity != tc.wantCapacity {
+					t.Fatal("incorrect persisted capacity", team)
+				}
+			}
+		})
 	}
 }
 

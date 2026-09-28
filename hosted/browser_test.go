@@ -93,3 +93,31 @@ func TestHostedExerciseBrowser(t *testing.T) {
 		t.Log(string(out))
 	}
 }
+
+func TestHostedCapacityBrowser(t *testing.T) {
+	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
+		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
+	}
+	s, session, _ := serviceFor(t)
+	session.User.Admin = true
+	if err := s.Store.Put(context.Background(), "session", session.ID, session); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.Put(context.Background(), "template", "built", Template{ID: "built", Name: "Example Branch", Commit: "abcdef123", Built: true}); err != nil {
+		t.Fatal(err)
+	}
+	s.Config.WebRoot = filepath.Join("..", "web", "build")
+	app := httptest.NewUnstartedServer(nil)
+	defer app.Close()
+	s.Config.Origin = "https://" + app.Listener.Addr().String()
+	app.Config.Handler = s.Handler()
+	app.StartTLS()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "node", "testdata/capacity.mjs", app.URL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("browser: %v\n%s", err, out)
+	} else {
+		t.Log(string(out))
+	}
+}

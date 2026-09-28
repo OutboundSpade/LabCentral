@@ -25,7 +25,8 @@ the box. After it closes, paste inside the desktop. This fallback transfers text
 `labcentral-users` admits students; `labcentral-admins` additionally
 admits administrators. Switching teams revokes the old desktop before membership
 changes. Administrators refresh the private template repository, build a pinned
-revision once, then prepare teams from those images.
+revision once, then prepare teams from those images. New meetings have five teams
+with up to six members each.
 
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
 `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies

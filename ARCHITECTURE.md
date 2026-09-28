@@ -278,7 +278,10 @@ Primary sources, retrieved 2026-09-28:
 
 The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
 memberships, template revisions, jobs and desktop ownership. SQLite transactions
-reserve destination capacity before a team switch. Access is blocked while the
+reserve destination capacity before a team switch. New meetings default to five
+teams with six seats each; the API allows smaller capacities and caps teams at six.
+Live desktop load acceptance remains twenty users (four per team); six simultaneous
+desktops per workstation have not yet been load-qualified. Access is blocked while the
 switch is pending; guest revocation must succeed before committing membership.
 Per-user locks serialize those changes with that user's launch. Provider plugins
 receive explicit principal, expiry and workspace-retention options, never team

@@ -141,10 +141,10 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 		q.TeamCount = 5
 	}
 	if q.Capacity == 0 {
-		q.Capacity = 4
+		q.Capacity = 6
 	}
-	if !cleanName(q.Name) || q.Hours < 1 || q.Hours > 8 || q.TeamCount < 1 || q.TeamCount > 5 || q.Capacity < 1 || q.Capacity > 4 {
-		writeError(w, 400, "Use a name, one to eight hours, up to five teams, and up to four members per team.")
+	if !cleanName(q.Name) || q.Hours < 1 || q.Hours > 8 || q.TeamCount < 1 || q.TeamCount > 5 || q.Capacity < 1 || q.Capacity > 6 {
+		writeError(w, 400, "Use a name, one to eight hours, up to five teams, and up to six members per team.")
 		return
 	}
 	var template Template
