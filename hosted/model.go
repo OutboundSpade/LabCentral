@@ -62,6 +62,19 @@ type Membership struct {
 	Switching   bool   `json:"switching"`
 }
 type Template struct {
+	Operation      *Job       `json:"operation,omitempty"`
+	BuildsPending  int        `json:"buildsPending"`
+	CommitTitle    string     `json:"commitTitle,omitempty"`
+	CommittedAt    *time.Time `json:"committedAt,omitempty"`
+	ImportedAt     *time.Time `json:"importedAt,omitempty"`
+	BuiltAt        *time.Time `json:"builtAt,omitempty"`
+	RemovedAt      *time.Time `json:"removedAt,omitempty"`
+	Removing       bool       `json:"removing"`
+	Latest         bool       `json:"latest"`
+	ImagesReady    int        `json:"imagesReady"`
+	ImagesTotal    int        `json:"imagesTotal"`
+	RemovalBlocked string     `json:"removalBlocked,omitempty"`
+
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`
 	Commit   string    `json:"commit"`
@@ -133,6 +146,12 @@ type Identity interface {
 	Refresh(context.Context, *oauth2.Token) (User, *oauth2.Token, error)
 }
 type Engine interface {
+	Images(context.Context) ([]lc.ImageRecord, error)
+	List(context.Context) ([]lc.Instance, error)
+	RemoveImage(context.Context, string) error
+	Builds(context.Context) ([]lc.Command, error)
+	AbandonBuild(context.Context, string) error
+
 	Build(context.Context, lc.Plan) ([]lc.ImageRecord, error)
 	DeployWithID(context.Context, lc.Plan, string) (lc.Instance, error)
 	Inspect(context.Context, string) (lc.Instance, error)

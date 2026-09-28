@@ -30,6 +30,12 @@ with up to six members each. Preparation runs up to three teams in parallel; a
 failed team does not prevent others from becoming ready. Retry recovery preserves
 ready labs and reconciles failed teams without replacing their instance identities.
 
+**Lab templates** shows revisions newest first, with the latest GitHub revision,
+commit dates and summaries, image counts, and build/cleanup jobs on each revision.
+Build new images there, or remove unused images with confirmation. Removal keeps
+the revision history, protects images referenced by retained labs, and preserves
+images shared by another built revision. Failed cleanup stays retryable.
+
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
 `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
 identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC

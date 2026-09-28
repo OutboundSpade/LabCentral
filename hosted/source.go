@@ -3,13 +3,17 @@ package hosted
 import (
 	"archive/tar"
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 )
 
 func quote(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
@@ -37,6 +41,18 @@ func (s *Service) syncSource(ctx context.Context) error {
 		return e
 	}
 	commit := strings.TrimSpace(string(b))
+	metadata := func(revision string) (time.Time, string, error) {
+		output, err := git("--git-dir="+bare, "show", "--no-patch", "--format=%cI%n%s", revision).Output()
+		if err != nil {
+			return time.Time{}, "", err
+		}
+		return parseCommitMetadata(string(output))
+	}
+	committed, title, e := metadata(commit)
+	if e != nil {
+		return e
+	}
+
 	cmd := git("--git-dir="+bare, "archive", commit, "templates")
 	pipe, e := cmd.StdoutPipe()
 	if e != nil {
@@ -81,16 +97,62 @@ func (s *Service) syncSource(ctx context.Context) error {
 		if e != nil {
 			return fmt.Errorf("template README is required: %w", e)
 		}
-		t := Template{ID: id, Name: src.Lab.Name, Commit: commit, Handover: string(handover)}
-		var old Template
-		if s.Store.Get(ctx, "template", id, &old) == nil {
-			t.Built = old.Built
+		s.mu.Lock()
+		var t Template
+		if err := s.Store.Get(ctx, "template", id, &t); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			s.mu.Unlock()
+			return err
+		}
+		t.ID = id
+		t.Name = src.Lab.Name
+		t.Commit = commit
+		t.Handover = string(handover)
+		t.CommittedAt = &committed
+		t.CommitTitle = title
+		if t.ImportedAt == nil {
+			now := time.Now().UTC()
+			t.ImportedAt = &now
 		}
 		if e = s.Store.Put(ctx, "source", id, src); e != nil {
+			s.mu.Unlock()
 			return e
 		}
-		if e = s.Store.Put(ctx, "template", id, t); e != nil {
+		if e = s.Store.Put(ctx, "template", id, t); e == nil {
+			e = s.Store.Put(ctx, "template-head", t.Name, id)
+		}
+		s.mu.Unlock()
+		if e != nil {
 			return e
+		}
+	}
+	// Backfill dates and subjects for revisions imported before timeline metadata.
+	older, e := s.rawTemplates(ctx)
+	if e != nil {
+		return e
+	}
+	fetched := 0
+	for _, old := range older {
+		if old.CommittedAt != nil || !regexp.MustCompile(`^[a-f0-9]{40}$`).MatchString(old.Commit) || fetched >= 50 {
+			continue
+		}
+		fetched++
+		if _, e = git("--git-dir="+bare, "fetch", "--depth=1", "origin", old.Commit).Output(); e != nil {
+			return fmt.Errorf("read revision metadata: %w", e)
+		}
+		at, subject, err := metadata(old.Commit)
+		if err != nil {
+			return err
+		}
+		s.mu.Lock()
+		err = s.Store.Get(ctx, "template", old.ID, &old)
+		if err == nil {
+			old.CommittedAt = &at
+			old.CommitTitle = subject
+			err = s.Store.Put(ctx, "template", old.ID, old)
+		}
+		s.mu.Unlock()
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -153,4 +215,20 @@ func unpackSource(r io.Reader, root string) error {
 			return fmt.Errorf("source links and special files are not allowed")
 		}
 	}
+}
+
+func parseCommitMetadata(output string) (time.Time, string, error) {
+	lines := strings.SplitN(strings.TrimSpace(output), "\n", 2)
+	if len(lines) != 2 {
+		return time.Time{}, "", fmt.Errorf("invalid commit metadata")
+	}
+	at, err := time.Parse(time.RFC3339, lines[0])
+	if err != nil {
+		return time.Time{}, "", err
+	}
+	title := []rune(strings.TrimSpace(lines[1]))
+	if len(title) > 200 {
+		title = title[:200]
+	}
+	return at, string(title), nil
 }

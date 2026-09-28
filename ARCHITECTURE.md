@@ -352,7 +352,19 @@ execution on the control host is introduced.
 Repository import uses a dedicated read-only deploy key and verified GitHub host
 keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates and
 snapshots source, then builds native images once for reuse. Imports never update
-running labs. Markdown disables raw HTML. The UI is prerendered route HTML with
+running labs. Imports retain commit dates and subjects and record the current GitHub
+head per template; a refresh backfills metadata for older imported revisions.
+The administrator timeline sorts the current head first, then by commit date.
+Each revision shows durable build/removal jobs and counts from the local image
+journal; native image existence is revalidated by the engine before reuse.
+Image operations persist resolved cache keys and an operation identity before
+effects. Removal blocks new meetings on that revision, rejects active or retained
+lab references, retains images shared by another built revision, and separately
+cleans published images and unpublished build attempts through the public library.
+Partial or uncertain cleanup keeps its intent and disables rebuilding until
+reconciled. Superseded jobs cannot remove subsequently rebuilt images. Source
+revisions and snapshots remain available for rebuilding after image removal.
+Markdown disables raw HTML. The UI is prerendered route HTML with
 SSR enabled during generation, no SPA fallback, and full-page navigation. A dark
 neutral theme with purple actions keeps the interface focused on team and lab tasks.
 

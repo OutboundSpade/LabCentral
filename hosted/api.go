@@ -2,7 +2,6 @@ package hosted
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"net/http"
@@ -87,21 +86,6 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 		OK bool `json:"ok"`
 	}{true})
 }
-func (s *Service) templates(ctx context.Context) ([]Template, error) {
-	rows, e := s.Store.List(ctx, "template")
-	if e != nil {
-		return nil, e
-	}
-	out := []Template{}
-	for _, b := range rows {
-		var t Template
-		if e = json.Unmarshal(b, &t); e != nil {
-			return nil, e
-		}
-		out = append(out, t)
-	}
-	return out, nil
-}
 func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	ctx := r.Context()
 	out := AdminView{Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}}
@@ -147,15 +131,15 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 400, "Use a name, one to eight hours, up to five teams, and up to six members per team.")
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var template Template
-	if e := s.Store.Get(r.Context(), "template", q.Template, &template); e != nil || !template.Built {
+	if e := s.Store.Get(r.Context(), "template", q.Template, &template); e != nil || !template.Built || template.Removing {
 		writeError(w, 409, "Build a template revision before creating the meeting.")
 		return
 	}
 	m := Meeting{randomID(12), q.Name, q.Template, "waiting", time.Now().UTC(), time.Now().UTC().Add(time.Duration(q.Hours) * time.Hour)}
-	s.mu.Lock()
 	e := s.Store.CreateMeeting(r.Context(), m, q.TeamCount, q.Capacity)
-	s.mu.Unlock()
 	if e != nil {
 		writeError(w, 409, e.Error())
 		return
@@ -224,21 +208,10 @@ func (s *Service) refreshTemplates(w http.ResponseWriter, r *http.Request, v Ses
 	writeJSON(w, 202, j)
 }
 func (s *Service) buildTemplate(w http.ResponseWriter, r *http.Request, v Session) {
-	var q TargetRequest
-	if !decode(w, r, &q) {
-		return
-	}
-	var t Template
-	if e := s.Store.Get(r.Context(), "template", q.ID, &t); e != nil {
-		writeError(w, 404, "Template revision not found.")
-		return
-	}
-	j, e := s.Store.Enqueue(r.Context(), "build", q.ID)
-	if e != nil {
-		writeError(w, 503, "Could not queue the build.")
-		return
-	}
-	writeJSON(w, 202, j)
+	s.templateOperation(w, r, "build")
+}
+func (s *Service) removeTemplateImages(w http.ResponseWriter, r *http.Request, v Session) {
+	s.templateOperation(w, r, "remove-images")
 }
 func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 	var q TargetRequest
@@ -249,6 +222,20 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 	e := s.Store.DB.QueryRowContext(r.Context(), `SELECT kind,target,status FROM jobs WHERE id=?`, q.ID).Scan(&kind, &target, &status)
 	if e != nil || status != "failed" {
 		writeError(w, 409, "Only a failed job can be retried.")
+		return
+	}
+	if kind == "build" || kind == "remove-images" {
+		var latest string
+		if s.Store.Get(r.Context(), "template-operation", target, &latest) == nil && latest != q.ID {
+			writeError(w, 409, "This operation was superseded. Use the revision's current action.")
+			return
+		}
+		j, err := s.queueTemplateOperation(r.Context(), kind, target)
+		if err != nil {
+			writeError(w, 409, err.Error())
+			return
+		}
+		writeJSON(w, 202, j)
 		return
 	}
 	if kind == "exercise" {

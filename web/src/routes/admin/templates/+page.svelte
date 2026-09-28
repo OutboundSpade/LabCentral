@@ -1,10 +1,73 @@
 <script lang="ts">
- import {onMount} from 'svelte';import {GitBranch,RefreshCw,Hammer,ArrowLeft,BookOpen,Check} from '@lucide/svelte';import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';import {api,session,refresh} from '$lib/api';import type {AdminView,Template} from '$lib/types';let data=$state<AdminView|null>(null);let error=$state('');let busy=$state(false);let selected=$state<Template|null>(null);let confirmation:HTMLDialogElement;
+ import {onMount} from 'svelte';
+ import {GitCommitHorizontal,RefreshCw,Hammer,ArrowLeft,History,Check,Trash2,Clock,LockKeyhole} from '@lucide/svelte';
+ import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';
+ import {api,session,refresh} from '$lib/api';import type {AdminView,Template} from '$lib/types';
+ let data=$state<AdminView|null>(null);let error=$state('');let busy=$state(false);
+ let selected=$state<Template|null>(null);let action=$state<'build'|'remove-images'>('build');let confirmation:HTMLDialogElement;
+ const refreshing=$derived(data?.jobs.some(j=>j.kind==='refresh'&&(j.status==='queued'||j.status==='running'))??false);
+ function date(value:string){return new Date(value).toLocaleString([],{dateStyle:'medium',timeStyle:'short'})}
+ function jobFor(id:string){return data?.templates.find(t=>t.id===id)?.operation??data?.jobs.find(j=>j.target===id&&(j.kind==='build'||j.kind==='remove-images'))}
+ function active(id:string){const j=jobFor(id);return j?.status==='queued'||j?.status==='running'}
  async function load(){try{await refresh();if($session?.user.admin)data=await api<AdminView>('/api/admin')}catch(e){error=(e as Error).message}}
- onMount(()=>{void load();const t=setInterval(load,5000);return()=>clearInterval(t)});
+ onMount(()=>{void load();const timer=setInterval(load,5000);return()=>clearInterval(timer)});
  async function run(path:string,body:unknown={}){busy=true;error='';try{await api(path,body);confirmation?.close();await load()}catch(e){error=(e as Error).message}finally{busy=false}}
+ function confirm(template:Template,operation:'build'|'remove-images'){selected=template;action=operation;error='';confirmation.showModal()}
 </script>
 <svelte:head><title>Lab templates · LabCentral</title></svelte:head>
-<a href="/admin/" class="link mb-7 inline-flex items-center gap-2 text-sm"><ArrowLeft size={16}/>Manage meeting</a><div class="flex flex-wrap items-start justify-between gap-5"><div><h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Lab templates</h1><p class="mt-3 max-w-xl leading-relaxed text-base-content/70">example/lab-templates · pinned GitHub revisions.</p></div>{#if $session?.user.admin}<button disabled={busy} onclick={()=>run('/api/admin/templates/refresh')} class="btn btn-sm btn-primary"><RefreshCw size={16}/>Refresh from GitHub</button>{/if}</div>
-<Guard admin><Notice message={error}/>{#if data}<ul class="mt-10 divide-y divide-base-300 border-y border-base-300">{#each data.templates as template}<li class="flex flex-wrap items-start gap-5 py-7"><BookOpen size={24} class="mt-1"/><div class="min-w-0 flex-1"><h2 class="text-xl font-semibold">{template.name}</h2><p class="mt-3 flex items-center gap-2 text-sm text-base-content/65"><GitBranch size={15}/><code>{template.commit.slice(0,12)}</code></p></div>{#if template.built}<span class="badge badge-sm"><Check size={13}/>Built</span>{:else}<button disabled={busy||data.jobs.some(j=>j.target===template.id&&(j.status==='queued'||j.status==='running'))} class="btn btn-sm" onclick={()=>{selected=template;confirmation.showModal()}}><Hammer size={16}/>Build images</button>{/if}</li>{:else}<li class="py-12"><GitBranch size={28}/><h2 class="mt-5 text-xl font-semibold">Import the first lab</h2><p class="mt-3 max-w-lg leading-relaxed text-base-content/70">Refresh from GitHub to import templates.</p></li>{/each}</ul><p class="mt-6 text-sm text-base-content/70">Follow builds in <a class="link" href="/admin/">meeting operations</a>. Running labs keep their original revision.</p>{/if}</Guard>
-<dialog bind:this={confirmation} class="modal" aria-labelledby="build-title"><div class="modal-box"><h2 id="build-title" class="text-xl font-semibold">Build {selected?.name}?</h2><p class="mt-4 leading-relaxed">This provisions temporary build and validation machines for four reusable images. Builds may take up to two hours; charges apply while those machines run. Existing matching images are reused.</p><Notice message={error}/><div class="modal-action"><form method="dialog"><button class="btn btn-sm">Cancel</button></form><button class="btn btn-sm btn-primary" disabled={busy} onclick={()=>run('/api/admin/templates/build',{id:selected?.id})}>Build images</button></div></div></dialog>
+<a href="/admin/" class="link mb-7 inline-flex items-center gap-2 text-sm"><ArrowLeft size={16}/>Manage meeting</a>
+<div class="flex flex-wrap items-start justify-between gap-5">
+ <div><h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Lab templates</h1><p class="mt-3 text-sm text-base-content/70">Revision history · newest first</p></div>
+ {#if $session?.user.admin}<button class="btn btn-sm" disabled={busy||refreshing} onclick={()=>run('/api/admin/templates/refresh')}>{#if refreshing}<span class="loading loading-spinner loading-xs"></span>{:else}<RefreshCw size={16}/>{/if}{refreshing?'Refreshing…':'Refresh from GitHub'}</button>{/if}
+</div>
+<Guard admin>
+ <Notice message={error}/>
+ {#if data}
+  {#if data.jobs.find(j=>j.kind==='refresh')?.status==='failed'}<Notice message={data.jobs.find(j=>j.kind==='refresh')?.error??'GitHub refresh failed. Please retry.'}/>{/if}
+  <ul class="timeline timeline-vertical timeline-compact timeline-snap-icon mt-10 max-w-4xl" aria-label="Template revision history">
+   {#each data.templates as template,index (template.id)}
+    {@const job=jobFor(template.id)}{@const working=active(template.id)}
+    <li class="min-w-0 grid-cols-[0_auto_minmax(0,1fr)]">
+     {#if index>0}<hr/>{/if}
+     <div class="timeline-middle rounded-full bg-base-100 p-1" class:text-primary={template.latest}><GitCommitHorizontal size={20}/></div>
+     <div class="timeline-end mb-10 w-full min-w-0 pl-3 sm:pl-6">
+      <article aria-label={`${template.name} revision ${template.commit.slice(0,7)}`}>
+       <div class="flex flex-wrap items-center gap-3 text-sm"><span class="font-medium">{template.name}</span>{#if template.latest}<span class="badge badge-sm badge-primary">Latest</span>{/if}{#if data.meeting?.template===template.id&&data.meeting.status!=='ended'}<span class="badge badge-sm"><LockKeyhole size={12}/>In use</span>{/if}</div>
+       <h2 class="mt-3 text-xl font-semibold leading-snug">{template.commitTitle||'Imported revision'}</h2>
+       <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-base-content/65">
+        <a class="link inline-flex items-center gap-1.5" href={`https://github.com/example/lab-templates/commit/${template.commit}`} target="_blank" rel="noreferrer"><GitCommitHorizontal size={15}/><code>{template.commit.slice(0,7)}</code></a>
+        <span class="inline-flex items-center gap-1.5"><Clock size={14}/>{#if template.committedAt}<time datetime={template.committedAt}>{date(template.committedAt)}</time>{:else}Date unavailable — refresh from GitHub{/if}</span>
+       </div>
+       <div class="mt-5 flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
+        {#if working}<span class="loading loading-spinner loading-xs"></span><span>{job?.status==='queued'?'Queued':job?.kind==='build'?'Building images…':'Removing images…'}</span>
+        {:else if job?.status==='failed'}<span class="badge badge-sm badge-error">{job.kind==='build'?'Build failed':'Cleanup failed'}</span>
+        {:else if template.removing}<span class="badge badge-sm">Cleanup pending</span>
+        {:else if template.removedAt}<span class="badge badge-sm">Images removed</span>
+        {:else if template.built}<span class="inline-flex items-center gap-1.5"><Check size={16} class="text-success"/>Ready to use</span>
+        {:else}<span class="badge badge-sm">Not built</span>{/if}
+        {#if !template.removedAt}<span class="text-base-content/65">{template.imagesReady} / {template.imagesTotal} images ready</span>{/if}
+       </div>
+       {#if template.removedAt}<p class="mt-2 text-sm text-base-content/65">Removed {date(template.removedAt)}. Images shared by other revisions are retained.</p>{:else if template.builtAt}<p class="mt-2 text-sm text-base-content/65">Built {date(template.builtAt)}</p>{/if}
+       {#if job?.status==='failed'}<p class="mt-3 break-words text-sm text-error">{job.error}</p>{/if}
+       <div class="mt-5 flex flex-wrap gap-3">
+        {#if !template.built&&!template.removing}<button class="btn btn-sm" class:btn-primary={template.latest} disabled={busy||working} onclick={()=>confirm(template,'build')}><Hammer size={16}/>{job?.kind==='build'&&job.status==='failed'?'Retry build':template.removedAt?'Rebuild images':'Build images'}</button>{/if}
+        {#if template.imagesReady>0||template.buildsPending>0||template.removing||job?.kind==='build'&&job.status==='failed'}<button class="btn btn-sm btn-ghost" disabled={busy||working||!!template.removalBlocked} onclick={()=>confirm(template,'remove-images')}><Trash2 size={16}/>{template.removing?'Retry cleanup':'Remove images'}</button>{/if}
+       </div>
+       {#if template.removalBlocked}<p class="mt-3 flex items-start gap-2 text-sm text-base-content/65"><LockKeyhole size={14} class="mt-0.5 shrink-0"/>{template.removalBlocked}</p>{/if}
+      </article>
+     </div>
+     {#if index<data.templates.length-1}<hr/>{/if}
+    </li>
+   {:else}<li><div class="timeline-middle"><History size={22}/></div><div class="timeline-end py-1 pl-4"><h2 class="text-lg font-semibold">No revisions yet</h2><p class="mt-2 text-sm text-base-content/70">Refresh from GitHub to import your templates.</p></div></li>{/each}
+  </ul>
+ {:else}<p class="mt-10 flex items-center gap-3 text-sm" role="status"><span class="loading loading-spinner loading-sm"></span>Loading revisions…</p>{/if}
+</Guard>
+<dialog bind:this={confirmation} class="modal" aria-labelledby="revision-action-title">
+ <div class="modal-box">
+  <h2 id="revision-action-title" class="text-xl font-semibold">{action==='build'?'Build images?':'Remove images?'}</h2>
+  <p class="mt-3 font-medium">{selected?.name} · <code>{selected?.commit.slice(0,7)}</code></p>
+  <p class="mt-4 leading-relaxed">{action==='build'?`Build ${selected?.imagesTotal??0} reusable images from this revision. Temporary build and validation machines incur charges; matching images are reused.`:'Remove this revision’s unused native images, snapshots and unfinished builds. Shared images are retained. The revision stays in this timeline and can be rebuilt.'}</p>
+  <Notice message={error}/>
+  <div class="modal-action"><form method="dialog"><button class="btn btn-sm">Cancel</button></form><button class="btn btn-sm" class:btn-primary={action==='build'} class:btn-error={action==='remove-images'} disabled={busy} onclick={()=>run('/api/admin/templates/'+action,{id:selected?.id})}>{#if busy}<span class="loading loading-spinner loading-xs"></span>{/if}{action==='build'?'Start build':'Remove unused images'}</button></div>
+ </div>
+</dialog>

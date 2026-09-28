@@ -161,7 +161,10 @@ type testEngine struct {
 	closed     int
 }
 
-func (e *testEngine) CloseAccess(context.Context, string) error { e.closed++; return e.closeError }
+func (e *testEngine) Images(context.Context) ([]lc.ImageRecord, error) { return nil, nil }
+func (e *testEngine) List(context.Context) ([]lc.Instance, error)      { return nil, nil }
+func (e *testEngine) Builds(context.Context) ([]lc.Command, error)     { return nil, nil }
+func (e *testEngine) CloseAccess(context.Context, string) error        { e.closed++; return e.closeError }
 func serviceFor(t *testing.T) (*Service, Session, *testEngine) {
 	st := testStore(t)
 	engine := &testEngine{}

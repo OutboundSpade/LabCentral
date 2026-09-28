@@ -121,3 +121,27 @@ func TestHostedCapacityBrowser(t *testing.T) {
 		t.Log(string(out))
 	}
 }
+
+func TestHostedTemplateTimelineBrowser(t *testing.T) {
+	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
+		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
+	}
+	s, _ := templateFixture(t)
+	s.Config.WebRoot = filepath.Join("..", "web", "build")
+	app := httptest.NewUnstartedServer(nil)
+	defer app.Close()
+	s.Config.Origin = "https://" + app.Listener.Addr().String()
+	app.Config.Handler = s.Handler()
+	app.StartTLS()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	cmd := exec.CommandContext(ctx, "node", "testdata/templates.mjs", app.URL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("browser: %v\n%s", err, out)
+	} else {
+		t.Log(string(out))
+	}
+}

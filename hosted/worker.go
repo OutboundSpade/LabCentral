@@ -154,20 +154,8 @@ func (s *Service) runJob(ctx context.Context, j Job) error {
 		return s.runExercise(ctx, j)
 	case "refresh":
 		return s.syncSource(ctx)
-	case "build":
-		plan, e := s.plan(ctx, j.Target)
-		if e != nil {
-			return e
-		}
-		if _, e = s.Engine.Build(ctx, plan); e != nil {
-			return e
-		}
-		var t Template
-		if e = s.Store.Get(ctx, "template", j.Target, &t); e != nil {
-			return e
-		}
-		t.Built = true
-		return s.Store.Put(ctx, "template", j.Target, t)
+	case "build", "remove-images":
+		return s.runTemplateJob(ctx, j)
 	case "prepare", "end":
 		return s.meetingOperation(ctx, j)
 	default:

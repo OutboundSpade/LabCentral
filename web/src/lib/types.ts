@@ -28,6 +28,18 @@ export interface Membership {
   switching: boolean;
 }
 export interface Template {
+  operation?: Job | null;
+  buildsPending: number;
+  commitTitle?: string;
+  committedAt?: string | null;
+  importedAt?: string | null;
+  builtAt?: string | null;
+  removedAt?: string | null;
+  removing: boolean;
+  latest: boolean;
+  imagesReady: number;
+  imagesTotal: number;
+  removalBlocked?: string;
   id: string;
   name: string;
   commit: string;
