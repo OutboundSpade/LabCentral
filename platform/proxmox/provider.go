@@ -439,6 +439,8 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	return p.find(ctx, c, cmd)
 }
 func (c *Client) GuestExec(ctx context.Context, id int, args []string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
 	var pid struct {
 		PID int `json:"pid"`
 	}

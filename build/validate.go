@@ -53,6 +53,8 @@ type validationRecord struct {
 
 // ValidateNative boots an owned disposable machine from the captured native image.
 func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Command, image lc.Resource) (lc.Resource, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
 	dir := filepath.Join(root, c.Owner, "validation")
 	if e := os.MkdirAll(dir, 0700); e != nil {
 		return image, e

@@ -62,6 +62,8 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 		}
 		return lc.Result{Absent: true}, closeGuestUser(ctx, c)
 	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
 	if c.Action != "access.open" {
 		return lc.Result{}, fmt.Errorf("unsupported access action")
 	}
