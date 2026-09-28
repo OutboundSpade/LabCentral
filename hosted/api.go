@@ -68,13 +68,20 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 		writeError(w, 409, e.Error())
 		return
 	}
-	if e = s.revokeUser(r.Context(), v.User.ID); e != nil {
-		writeError(w, 503, "Your previous desktop is closing. Retry your team change shortly.")
-		return
-	}
-	if e = s.Store.FinishSwitch(r.Context(), v.User.ID); e != nil {
+	membership, e := s.Store.Membership(r.Context(), v.User.ID)
+	if e != nil {
 		writeError(w, 503, "Your team change is pending. Please retry.")
 		return
+	}
+	if membership.Switching {
+		if e = s.revokeUser(r.Context(), v.User.ID); e != nil {
+			writeError(w, 503, "Your previous desktop is closing. Retry your team change shortly.")
+			return
+		}
+		if e = s.Store.FinishSwitch(r.Context(), v.User.ID); e != nil {
+			writeError(w, 503, "Your team change is pending. Please retry.")
+			return
+		}
 	}
 	writeJSON(w, 200, struct {
 		OK bool `json:"ok"`

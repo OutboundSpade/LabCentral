@@ -240,3 +240,21 @@ func TestAdministratorEmptyStateUsesCollections(t *testing.T) {
 		t.Fatal("empty admin response contains null collections", w.Body.String())
 	}
 }
+
+func TestRepeatedJoinPreservesCurrentDesktop(t *testing.T) {
+	s, v, engine := serviceFor(t)
+	teams := setupMeeting(t, s.Store)
+	body := fmt.Sprintf(`{"teamID":%q}`, teams[0].ID)
+	if w := request(s, "POST", "/api/team", body, s.Config.Origin, v.CSRF); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if err := s.Store.Put(context.Background(), "desktop", "access", accessRecord{ID: "access", UserID: v.User.ID, TeamID: teams[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(s, "POST", "/api/team", body, s.Config.Origin, v.CSRF); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if engine.closed != 0 {
+		t.Fatal("replayed join revoked the user's current desktop")
+	}
+}
