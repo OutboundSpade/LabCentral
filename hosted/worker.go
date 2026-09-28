@@ -235,10 +235,17 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 		if current == nil || current.Status == "ending" || current.Status == "ended" {
 			return fmt.Errorf("meeting is ending")
 		}
+		inst, inspect := s.Engine.Inspect(ctx, t.InstanceID)
+		if inspect == nil && inst.Status == "ready" {
+			// Retrying a later team must not temporarily revoke a ready team's access.
+			if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ready' WHERE id=?`, t.ID); e != nil {
+				return e
+			}
+			continue
+		}
 		if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='preparing' WHERE id=?`, t.ID); e != nil {
 			return e
 		}
-		inst, inspect := s.Engine.Inspect(ctx, t.InstanceID)
 		if errors.Is(inspect, sql.ErrNoRows) {
 			inst, e = s.Engine.DeployWithID(ctx, plan, t.InstanceID)
 		} else if inspect != nil {
@@ -246,8 +253,11 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 		} else if inst.Status != "ready" {
 			inst, e = s.Engine.Recover(ctx, t.InstanceID)
 		}
+		if e == nil && inst.Status != "ready" {
+			e = fmt.Errorf("team lab recovery returned status %q", inst.Status)
+		}
 		status := "ready"
-		if e != nil || inst.Status != "ready" {
+		if e != nil {
 			status = "failed"
 		}
 		_, save := s.Store.DB.ExecContext(context.WithoutCancel(ctx), `UPDATE teams SET status=? WHERE id=?`, status, t.ID)

@@ -197,7 +197,7 @@ func (s *Service) extendMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, e := s.Store.Meeting(r.Context())
-	if e != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) || q.Hours < 1 || m.Expires.Add(time.Duration(q.Hours)*time.Hour).After(m.Created.Add(8*time.Hour)) {
+	if e != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) || q.Hours < 1 || q.Hours > 8 || m.Expires.Add(time.Duration(q.Hours)*time.Hour).After(m.Created.Add(8*time.Hour)) {
 		writeError(w, 409, "Only an active meeting can be extended, up to eight hours total.")
 		return
 	}

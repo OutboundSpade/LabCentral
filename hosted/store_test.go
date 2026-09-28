@@ -258,3 +258,25 @@ func TestRepeatedJoinPreservesCurrentDesktop(t *testing.T) {
 		t.Fatal("replayed join revoked the user's current desktop")
 	}
 }
+
+func TestMeetingExtensionRejectsOverflowBeforeArithmetic(t *testing.T) {
+	s, session, _ := serviceFor(t)
+	setupMeeting(t, s.Store)
+	session.User.Admin = true
+	if err := s.Store.Put(context.Background(), "session", session.ID, session); err != nil {
+		t.Fatal(err)
+	}
+	meeting, _ := s.Store.Meeting(context.Background())
+	meeting.Created = time.Now().UTC()
+	if err := s.Store.Put(context.Background(), "meeting", "current", meeting); err != nil {
+		t.Fatal(err)
+	}
+	response := request(s, "POST", "/api/admin/extend", `{"hours":9223372036854775807}`, s.Config.Origin, session.CSRF)
+	if response.Code != 409 {
+		t.Fatal("oversized extension accepted", response.Code)
+	}
+	after, _ := s.Store.Meeting(context.Background())
+	if !after.Expires.Equal(meeting.Expires) {
+		t.Fatal("invalid extension changed deadline")
+	}
+}
