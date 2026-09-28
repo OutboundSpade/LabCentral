@@ -102,6 +102,30 @@ func TestLogoutWaitsForRefreshAndCannotResurrectSession(t *testing.T) {
 	done := make(chan struct{})
 	w := httptest.NewRecorder()
 	go func() { s.logout(w, httptest.NewRequest("POST", "/auth/logout", nil), session); close(done) }()
+	// Do not release the refresh until logout has actually joined its lock.
+	// Otherwise a lucky scheduler could make the unsafe implementation pass.
+	deadline := time.After(time.Second)
+	waiting := false
+	for !waiting {
+		s.authMu.Lock()
+		waiting = s.authLocks[session.ID] != nil && s.authLocks[session.ID].users == 2
+		s.authMu.Unlock()
+		if waiting {
+			break
+		}
+		select {
+		case <-done:
+			close(identity.release)
+			<-refreshed
+			t.Fatal("logout completed while refresh could still restore the session")
+		case <-deadline:
+			close(identity.release)
+			<-refreshed
+			<-done
+			t.Fatal("logout did not reach the session lock")
+		case <-time.After(time.Millisecond):
+		}
+	}
 	close(identity.release)
 	if err := <-refreshed; err != nil {
 		t.Fatal(err)
