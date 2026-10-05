@@ -219,6 +219,7 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 				if err := s.prepareTeam(ctx, m.ID, teams[index], plan); err != nil {
 					failures[index] = fmt.Errorf("%s: %w", teams[index].Name, err)
 				}
+				s.releaseTeamClaim(j.ID, teams[index].ID)
 			}
 		}()
 	}
@@ -265,6 +266,11 @@ func (s *Service) prepareTeam(ctx context.Context, meeting string, t Team, plan 
 	}
 	if current == nil || current.ID != meeting || current.Status == "ending" || current.Status == "ended" || !current.Expires.After(time.Now()) {
 		return fmt.Errorf("meeting is ending")
+	}
+	// Readiness is already durable. Retries own only unfinished teams and must
+	// not inspect, recover or rewrite ready teams while their checks run.
+	if t.Status == "ready" {
+		return nil
 	}
 	inst, inspect := s.Engine.Inspect(ctx, t.InstanceID)
 	if inspect == nil && inst.Status == "ready" {

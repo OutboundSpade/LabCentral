@@ -47,7 +47,7 @@ playbooks under `instructor/`. They are extracted before image builds and are vi
 only to administrators. Notes, break definitions and reset instructions stay with
 the revision. **Service scoreboard** runs the revision's checks once or on a saved
 schedule (one minute to one hour); it shows pass, fail and unavailable results per
-team. Schedules start paused and stop when the meeting ends. See
+team. Ready teams can be checked while other teams are still preparing. Schedules start paused and stop when the meeting ends. See
 [ARCHITECTURE.md](ARCHITECTURE.md#hosted-team-service) for the manifest contract.
 
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and

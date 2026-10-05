@@ -45,7 +45,7 @@ func prepareFixture(t *testing.T) (*Service, []Team) {
 	return s, teams
 }
 func TestPrepareRetryNeverWithdrawsReadyTeamAccess(t *testing.T) {
-	s, teams := prepareFixture(t)
+	s, _ := prepareFixture(t)
 	ctx := context.Background()
 	if _, err := s.Store.DB.Exec(`UPDATE teams SET status='ready'`); err != nil {
 		t.Fatal(err)
@@ -67,8 +67,8 @@ func TestPrepareRetryNeverWithdrawsReadyTeamAccess(t *testing.T) {
 	if err := s.meetingOperation(ctx, Job{Kind: "prepare", Target: "meeting"}); err != nil {
 		t.Fatal(err)
 	}
-	if int(checks.Load()) != len(teams) {
-		t.Fatal("did not reconcile every team", checks.Load())
+	if checks.Load() != 0 {
+		t.Fatal("retry touched an already-ready team", checks.Load())
 	}
 }
 func TestPrepareRejectsRecoveryThatDidNotReachReadiness(t *testing.T) {

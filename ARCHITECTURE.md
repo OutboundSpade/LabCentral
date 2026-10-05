@@ -339,8 +339,12 @@ used to bootstrap OIDC provider and temporary acceptance users are not runtime i
 
 One process holds the durable scheduler fence. Resource claims form execution
 dependencies: template/cache-key claims coordinate builds, removals and preparation;
-meeting claims coordinate preparation, exercises, checks and ending; team claims
-serialize a team's exercises and checks. Unrelated queued work can bypass a blocked
+preparation, exercises and checks share a meeting claim while ending holds it
+exclusively. Preparation claims only unfinished teams and releases each team's
+claim after its native operation and durable readiness checkpoint. Already-ready
+teams are not inspected, recovered or rewritten by preparation retries. Team claims
+serialize provisioning, exercises and checks for the same team; checks on a ready
+team can run while other teams are preparing. Unrelated queued work can bypass a blocked
 job. Up to three ordinary jobs run concurrently; at most two are image-build jobs so
 long builds leave capacity for lab operations. A fourth slot is reserved for
 meeting destruction or authorization cleanup. Queued dependencies, start/finish times,

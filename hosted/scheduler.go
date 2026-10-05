@@ -40,7 +40,16 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 				return []jobClaim{{"meeting:" + j.Target, true}}, nil
 			}
 			template = m.Template
-			claims = append(claims, jobClaim{"meeting:" + j.Target, true})
+			claims = append(claims, jobClaim{"meeting:" + j.Target, false})
+			teams, err := s.Store.Teams(ctx, m.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, team := range teams {
+				if team.Status != "ready" {
+					claims = append(claims, jobClaim{"team:" + team.ID, true})
+				}
+			}
 		}
 		write := j.Kind != "prepare"
 		claims = append(claims, jobClaim{"template:" + template, write})
@@ -68,6 +77,26 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 	}
 	return claims, nil
 }
+
+// A team's native operation and durable readiness finish before its claim is
+// released. Other meeting teams may still be provisioning.
+func (s *Service) releaseTeamClaim(jobID, teamID string) {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	active, ok := s.activeJobs[jobID]
+	if !ok || active.job.Kind != "prepare" {
+		return
+	}
+	claims := active.claims[:0]
+	for _, claim := range active.claims {
+		if claim.key != "team:"+teamID {
+			claims = append(claims, claim)
+		}
+	}
+	active.claims = claims
+	s.activeJobs[jobID] = active
+}
+
 func claimsConflict(a, b []jobClaim) bool {
 	for _, x := range a {
 		for _, y := range b {
