@@ -159,8 +159,8 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 	if q.Capacity == 0 {
 		q.Capacity = 6
 	}
-	if !cleanName(q.Name) || q.Hours < 1 || q.Hours > 8 || q.TeamCount < 1 || q.TeamCount > 5 || q.Capacity < 1 || q.Capacity > 6 {
-		writeError(w, 400, "Use a name, one to eight hours, up to five teams, and up to six members per team.")
+	if !cleanName(q.Name) || q.Hours < 1 || q.Hours > 8 || q.TeamCount < 1 || q.TeamCount > 100 || q.Capacity < 1 || q.Capacity > 100 {
+		writeError(w, 400, "Use a name, one to eight hours, up to 100 teams, and up to 100 students per team.")
 		return
 	}
 	s.mu.Lock()
@@ -170,7 +170,8 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 409, "Build a template revision before creating the meeting.")
 		return
 	}
-	m := Meeting{randomID(12), q.Name, q.Template, "waiting", time.Now().UTC(), time.Now().UTC().Add(time.Duration(q.Hours) * time.Hour)}
+	now := time.Now().UTC()
+	m := Meeting{randomID(12), q.Name, q.Template, "waiting", now, now.Add(time.Duration(q.Hours) * time.Hour)}
 	e := s.Store.CreateMeeting(r.Context(), m, q.TeamCount, q.Capacity)
 	if e != nil {
 		writeError(w, 409, e.Error())
@@ -220,11 +221,21 @@ func (s *Service) extendMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, e := s.Store.Meeting(r.Context())
-	if e != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) || q.Hours < 1 || q.Hours > 8 || m.Expires.Add(time.Duration(q.Hours)*time.Hour).After(m.Created.Add(8*time.Hour)) {
+	if e != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) || q.Hours < 1 || q.Hours > 8 {
 		writeError(w, 409, "Only an active meeting can be extended, up to eight hours total.")
 		return
 	}
-	m.Expires = m.Expires.Add(time.Duration(q.Hours) * time.Hour)
+	expires := m.Expires.Add(time.Duration(q.Hours) * time.Hour)
+	limit := m.Created.Add(8 * time.Hour)
+	if expires.After(limit) {
+		// Earlier creations read the clock twice; preserve their intended whole-hour limit.
+		if expires.Sub(limit) > time.Millisecond {
+			writeError(w, 409, "Only an active meeting can be extended, up to eight hours total.")
+			return
+		}
+		expires = limit
+	}
+	m.Expires = expires
 	if e = s.Store.Put(r.Context(), "meeting", "current", m); e != nil {
 		writeError(w, 503, "Could not save the new deadline.")
 		return

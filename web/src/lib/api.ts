@@ -1,6 +1,18 @@
 import {writable,get} from 'svelte/store';
-import type {Overview} from './types';
+import type {Overview,AdminView} from './types';
 export const session=writable<Overview|null>(null);
+export const adminView=writable<AdminView|null>(null);
+let adminScope='';
+session.subscribe(value=>{const scope=value?.user.admin?`${value.user.id}:${value.csrf}`:'';if(scope!==adminScope){adminScope=scope;adminView.set(null)}});
+let adminPending:{scope:string;promise:Promise<void>}|null=null;
+export async function refreshAdmin(){
+ await refresh();
+ const scope=adminScope;
+ if(!scope)return;
+ if(adminPending?.scope===scope)return adminPending.promise;
+ const promise=(async()=>{try{const data=await api<AdminView>('/api/admin');if(adminScope===scope)adminView.set(data)}catch(e){if(adminScope===scope)adminView.set(null);throw e}finally{if(adminPending?.scope===scope)adminPending=null}})();
+ adminPending={scope,promise};return promise;
+}
 export const loading=writable(true);
 export const loadError=writable('');
 let pending:Promise<void>|null=null;

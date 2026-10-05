@@ -3,14 +3,14 @@
  import {onMount} from 'svelte';
  import {GitCommitHorizontal,RefreshCw,Hammer,ArrowLeft,History,Check,Trash2,Clock,LockKeyhole} from '@lucide/svelte';
  import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';
- import {api,session,refresh} from '$lib/api';import type {AdminView,Template} from '$lib/types';
- let data=$state<AdminView|null>(null);let error=$state('');let busy=$state(false);
+ import {api,session,adminView,refreshAdmin} from '$lib/api';import type {Template} from '$lib/types';
+ let data=$derived($adminView);let error=$state('');let busy=$state(false);
  let selected=$state<Template|null>(null);let action=$state<'build'|'remove-images'>('build');let confirmation:HTMLDialogElement;
  const refreshing=$derived(data?.jobs.some(j=>j.kind==='refresh'&&(j.status==='queued'||j.status==='running'))??false);
  function date(value:string){return new Date(value).toLocaleString([],{dateStyle:'medium',timeStyle:'short'})}
  function jobFor(id:string){return data?.templates.find(t=>t.id===id)?.operation??data?.jobs.find(j=>j.target===id&&(j.kind==='build'||j.kind==='remove-images'))}
  function active(id:string){const j=jobFor(id);return j?.status==='queued'||j?.status==='running'}
- async function load(){try{await refresh();if($session?.user.admin)data=await api<AdminView>('/api/admin')}catch(e){error=(e as Error).message}}
+ async function load(){try{await refreshAdmin()}catch(e){error=(e as Error).message}}
  onMount(()=>{void load();const timer=setInterval(load,2000);return()=>clearInterval(timer)});
  async function run(path:string,body:unknown={}){busy=true;error='';try{await api(path,body);confirmation?.close();await load()}catch(e){error=(e as Error).message}finally{busy=false}}
  function confirm(template:Template,operation:'build'|'remove-images'){selected=template;action=operation;error='';confirmation.showModal()}

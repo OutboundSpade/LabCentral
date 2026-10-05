@@ -301,7 +301,11 @@ Primary sources, retrieved 2026-09-28:
 The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
 memberships, template revisions, jobs and desktop ownership. SQLite transactions
 reserve destination capacity before a team switch. New meetings default to five
-teams with six seats each; the API allows smaller capacities and caps teams at six.
+teams with six seats each and four hours until cleanup. The UI and API allow
+1–100 teams, 1–100 seats per team, and 1–8 hours. Creation uses one timestamp for
+its start and deadline; selected extensions cannot exceed eight hours total.
+Extensions clamp sub-millisecond clock skew from older meeting records to the
+exact limit rather than rejecting a valid whole-hour extension.
 Live desktop load acceptance remains twenty users (four per team); six simultaneous
 desktops per workstation have not yet been load-qualified. Access is blocked while the
 switch is pending; guest revocation must succeed before committing membership.
@@ -427,7 +431,13 @@ Partial or uncertain cleanup keeps its intent and disables rebuilding until
 reconciled. Superseded jobs cannot remove subsequently rebuilt images. Source
 revisions and snapshots remain available for rebuilding after image removal.
 Markdown disables raw HTML. The UI is prerendered route HTML with
-SSR enabled during generation, no SPA fallback, and full-page navigation. A dark
+SSR enabled during generation and no SPA fallback. Internal links use SvelteKit
+client navigation, preserving the layout and authenticated session during route
+changes; server-owned login and logout still use full document navigation. The
+administrative pages share an in-memory view scoped to user and CSRF session,
+cleared on sign-out, identity changes, role loss, or failed administration reads.
+Late responses cannot populate a different session’s view. The root declares the
+dark theme and color scheme before hydration. A dark
 neutral theme with purple actions keeps the interface focused on team and lab tasks.
 
 Desktop launch tickets are one-use and expire after one minute. The separate

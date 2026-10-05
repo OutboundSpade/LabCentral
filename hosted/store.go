@@ -36,7 +36,7 @@ func (s *Store) Meeting(ctx context.Context) (*Meeting, error) {
 	return &m, e
 }
 func (s *Store) Teams(ctx context.Context, meeting string) ([]Team, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT t.id,t.meeting_id,t.name,t.capacity,t.instance_id,t.status,(SELECT COUNT(*) FROM memberships m WHERE m.team_id=t.id OR (m.switching=1 AND m.pending_team=t.id)) FROM teams t WHERE meeting_id=? ORDER BY name`, meeting)
+	rows, e := s.DB.QueryContext(ctx, `SELECT t.id,t.meeting_id,t.name,t.capacity,t.instance_id,t.status,(SELECT COUNT(*) FROM memberships m WHERE m.team_id=t.id OR (m.switching=1 AND m.pending_team=t.id)) FROM teams t WHERE meeting_id=? ORDER BY length(t.name),t.name`, meeting)
 	if e != nil {
 		return nil, e
 	}

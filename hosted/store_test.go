@@ -93,7 +93,7 @@ func TestMeetingCapacity(t *testing.T) {
 	for _, tc := range []struct {
 		capacity, wantStatus, wantCapacity int
 	}{
-		{0, 201, 6}, {6, 201, 6}, {4, 201, 4}, {7, 400, 0}, {-1, 400, 0},
+		{0, 201, 6}, {6, 201, 6}, {4, 201, 4}, {100, 201, 100}, {101, 400, 0}, {-1, 400, 0},
 	} {
 		t.Run(fmt.Sprint(tc.capacity), func(t *testing.T) {
 			s, session, _ := serviceFor(t)
@@ -134,6 +134,120 @@ func TestMeetingCapacity(t *testing.T) {
 				if team.Capacity != tc.wantCapacity {
 					t.Fatal("incorrect persisted capacity", team)
 				}
+			}
+		})
+	}
+}
+
+func TestMeetingSettingsAndExtensionLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name                               string
+		teams, capacity, hours, wantStatus int
+	}{
+		{"small", 2, 3, 2, 201}, {"minimum", 1, 1, 1, 201}, {"expanded", 12, 20, 4, 201}, {"maximum", 100, 100, 8, 201},
+		{"too many teams", 101, 3, 2, 400}, {"negative teams", -1, 3, 2, 400},
+		{"too long", 2, 3, 9, 400}, {"negative duration", 2, 3, -1, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, session, _ := serviceFor(t)
+			ctx := context.Background()
+			if err := s.Store.Put(ctx, "template", "built", Template{Built: true}); err != nil {
+				t.Fatal(err)
+			}
+			body := fmt.Sprintf(`{"name":"Practice","template":"built","teamCount":%d,"capacity":%d,"hours":%d}`, tc.teams, tc.capacity, tc.hours)
+			if w := request(s, "POST", "/api/admin/meeting", body, s.Config.Origin, session.CSRF); w.Code != 403 {
+				t.Fatal("student could create configured meeting", w.Code)
+			}
+			session.User.Admin = true
+			if err := s.Store.Put(ctx, "session", session.ID, session); err != nil {
+				t.Fatal(err)
+			}
+			if w := request(s, "POST", "/api/admin/meeting", body, s.Config.Origin, "wrong"); w.Code != 403 {
+				t.Fatal("configured creation bypassed CSRF", w.Code)
+			}
+			if w := request(s, "POST", "/api/admin/meeting", body, s.Config.Origin, session.CSRF); w.Code != tc.wantStatus {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			meeting, err := s.Store.Meeting(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantStatus != 201 {
+				if meeting != nil {
+					t.Fatal("invalid settings persisted a meeting")
+				}
+				return
+			}
+			teams, err := s.Store.Teams(ctx, meeting.ID)
+			if err != nil || len(teams) != tc.teams {
+				t.Fatal(teams, err)
+			}
+			for i, team := range teams {
+				if team.Name != fmt.Sprintf("Team %d", i+1) {
+					t.Fatal("teams are not in numeric order", team)
+				}
+				if team.Capacity != tc.capacity {
+					t.Fatal("incorrect capacity", team)
+				}
+			}
+			if got := meeting.Expires.Sub(meeting.Created); got != time.Duration(tc.hours)*time.Hour {
+				t.Fatal("deadline is not exact", got)
+			}
+			if tc.hours < 8 {
+				extension := fmt.Sprintf(`{"hours":%d}`, 8-tc.hours)
+				if w := request(s, "POST", "/api/admin/extend", extension, s.Config.Origin, "wrong"); w.Code != 403 {
+					t.Fatal("extension bypassed CSRF", w.Code)
+				}
+				if w := request(s, "POST", "/api/admin/extend", extension, s.Config.Origin, session.CSRF); w.Code != 200 {
+					t.Fatal("exact eight-hour extension rejected", w.Code, w.Body.String())
+				}
+			}
+			if w := request(s, "POST", "/api/admin/extend", `{"hours":1}`, s.Config.Origin, session.CSRF); w.Code != 409 {
+				t.Fatal("extended beyond eight hours", w.Code)
+			}
+			persisted, err := s.Store.Meeting(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if persisted.Expires.Sub(persisted.Created) != 8*time.Hour {
+				t.Fatal("invalid extension changed deadline", persisted)
+			}
+			session.User.Admin = false
+			if err := s.Store.Put(ctx, "session", session.ID, session); err != nil {
+				t.Fatal(err)
+			}
+			if w := request(s, "POST", "/api/admin/extend", `{"hours":1}`, s.Config.Origin, session.CSRF); w.Code != 403 {
+				t.Fatal("student could extend meeting", w.Code)
+			}
+		})
+	}
+}
+
+func TestLegacyMeetingDeadlinePrecision(t *testing.T) {
+	for _, offset := range []time.Duration{time.Microsecond, time.Second} {
+		t.Run(offset.String(), func(t *testing.T) {
+			s, session, _ := serviceFor(t)
+			session.User.Admin = true
+			ctx := context.Background()
+			if err := s.Store.Put(ctx, "session", session.ID, session); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			original := Meeting{ID: "legacy", Status: "waiting", Created: now, Expires: now.Add(4*time.Hour + offset)}
+			if err := s.Store.CreateMeeting(ctx, original, 1, 6); err != nil {
+				t.Fatal(err)
+			}
+			w := request(s, "POST", "/api/admin/extend", `{"hours":4}`, s.Config.Origin, session.CSRF)
+			meeting, err := s.Store.Meeting(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if offset <= time.Millisecond {
+				if w.Code != 200 || !meeting.Expires.Equal(now.Add(8*time.Hour)) {
+					t.Fatal("legacy precision prevented exact extension", w.Code, meeting)
+				}
+			} else if w.Code != 409 || !meeting.Expires.Equal(original.Expires) {
+				t.Fatal("over-limit extension changed deadline", w.Code, meeting)
 			}
 		})
 	}

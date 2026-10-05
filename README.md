@@ -25,8 +25,10 @@ the box. After it closes, paste inside the desktop. This fallback transfers text
 `labcentral-users` admits students; `labcentral-admins` additionally
 admits administrators. Switching teams revokes the old desktop before membership
 changes. Administrators refresh the private template repository, build a pinned
-revision once, then prepare teams from those images. New meetings have five teams
-with up to six members each. Preparation runs up to three teams in parallel; a
+revision once, then prepare teams from those images. Administrators choose
+1–100 teams, 1–100 students per team, and a 1–8 hour meeting duration. Defaults are five teams, six students, and four hours. Time can
+be added later up to eight hours total; ending a meeting requires confirmation.
+Preparation runs up to three teams in parallel; a
 failed team does not prevent others from becoming ready. Retry recovery preserves
 ready labs and reconciles failed teams without replacing their instance identities.
 

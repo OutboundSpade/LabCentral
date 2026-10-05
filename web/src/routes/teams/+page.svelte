@@ -1,6 +1,6 @@
 <script lang="ts">
- import {Users,ArrowRight,Check,LogOut,Clock} from '@lucide/svelte';import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';import {session,api,refresh,date} from '$lib/api';let error=$state('');let pending=$state('');
- async function join(teamID:string){pending=teamID||'leave';error='';try{await api('/api/team',{teamID});await refresh();if(teamID)location.assign('/lab/')}catch(e){error=(e as Error).message;await refresh()}finally{pending=''}}
+ import {goto} from '$app/navigation';import {Users,ArrowRight,Check,LogOut,Clock} from '@lucide/svelte';import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';import {session,api,refresh,date} from '$lib/api';let error=$state('');let pending=$state('');
+ async function join(teamID:string){pending=teamID||'leave';error='';try{await api('/api/team',{teamID});await refresh();if(teamID)await goto('/lab/')}catch(e){error=(e as Error).message;await refresh()}finally{pending=''}}
 </script>
 <svelte:head><title>Choose your team · LabCentral</title></svelte:head>
 <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Choose your team</h1>
