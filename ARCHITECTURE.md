@@ -285,6 +285,19 @@ meeting had ended and remained unchanged. No replacement meeting or break was
 started, as requested; the revised guest break, archive transfer and student recovery
 have not yet been exercised in a native lab. Temporary identities were removed.
 
+The UI refinement was deployed through the restricted GitHub/AWS maintenance
+workflow on 2026-10-05 after one browser-only advisory review by Claude Opus 5.5
+at medium reasoning; Codex implemented the changes. Svelte type/build checks,
+full Go checks/race checks, browser regressions, and the Blueprint source/rendered
+review passed. Local UI fixtures covered twelve role/state/viewport combinations
+and 36 axe WCAG A/AA page checks. Fourteen deployed page checks used real OIDC
+student/admin sessions at desktop and mobile widths, including student API denial
+and contrast checks. A user-created one-team meeting remained intact. The occupied
+single seat was preserved; no fresh native desktop session was opened. Native
+desktop code and toolchain are unchanged and retain their prior live acceptance.
+Temporary review identities were removed and absence confirmed. Detailed evidence
+and the bounded advisory transcript remain outside source.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
