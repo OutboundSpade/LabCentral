@@ -261,57 +261,40 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 	if !decode(w, r, &q) {
 		return
 	}
-	var kind, target, status string
-	e := s.Store.DB.QueryRowContext(r.Context(), `SELECT kind,target,status FROM jobs WHERE id=?`, q.ID).Scan(&kind, &target, &status)
-	if e != nil || status != "failed" {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var job Job
+	e := s.Store.DB.QueryRowContext(r.Context(), `SELECT id,kind,target,status FROM jobs WHERE id=?`, q.ID).Scan(&job.ID, &job.Kind, &job.Target, &job.Status)
+	if e != nil || job.Status != "failed" {
 		writeError(w, 409, "Only a failed job can be retried.")
 		return
 	}
-	if kind == "build" || kind == "remove-images" {
-		var latest string
-		if s.Store.Get(r.Context(), "template-operation", target, &latest) == nil && latest != q.ID {
-			writeError(w, 409, "This operation was superseded. Use the revision's current action.")
-			return
-		}
-		j, err := s.queueTemplateOperation(r.Context(), kind, target)
-		if err != nil {
-			writeError(w, 409, err.Error())
-			return
-		}
-		writeJSON(w, 202, j)
+	blocked, _, e := s.retryDisposition(r.Context(), job)
+	if e != nil {
+		writeError(w, 503, "Could not verify recovery eligibility.")
 		return
 	}
-	if kind == "exercise" {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		var run ExerciseRun
-		var latest string
-		m, err := s.Store.Meeting(r.Context())
-		if err != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) ||
-			s.Store.Get(r.Context(), "exercise", target, &run) != nil || run.MeetingID != m.ID ||
-			s.Store.Get(r.Context(), "exercise-current", run.TeamID, &latest) != nil || latest != run.ID {
-			writeError(w, 409, "This exercise is expired or superseded. Select a current team action.")
+	if blocked != "" {
+		writeError(w, 409, blocked)
+		return
+	}
+	var next Job
+	if job.Kind == "build" || job.Kind == "remove-images" {
+		next, e = s.queueTemplateOperationLocked(r.Context(), job.Kind, job.Target)
+		if e != nil {
+			writeError(w, 409, e.Error())
 			return
 		}
+	} else {
+		next, e = s.Store.Enqueue(r.Context(), job.Kind, job.Target)
 	}
-	if kind == "check" {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		var run CheckRun
-		var latest string
-		m, err := s.checkMeeting(r.Context())
-		if err != nil || s.Store.Get(r.Context(), "check", target, &run) != nil || run.MeetingID != m.ID || s.Store.Get(r.Context(), "check-current", run.TeamID, &latest) != nil || latest != run.ID {
-			writeError(w, 409, "This check is expired or superseded. Run current checks instead.")
-			return
-		}
-	}
-	j, e := s.Store.Enqueue(r.Context(), kind, target)
 	if e != nil {
 		writeError(w, 503, "Could not queue recovery.")
 		return
 	}
-	writeJSON(w, 202, j)
+	writeJSON(w, 202, next)
 }
+
 func (s *Service) plan(ctx context.Context, id string) (lc.Plan, error) {
 	var src lc.Source
 	if e := s.Store.Get(ctx, "source", id, &src); e != nil {

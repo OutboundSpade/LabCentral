@@ -39,8 +39,11 @@ the revision history, protects images referenced by retained labs, and preserves
 images shared by another built revision. Failed cleanup stays retryable.
 
 Independent image builds and old-template deployments can run together. The worker
-waits only for overlapping template, image, meeting or team operations. **Live activity**
+uses resource dependencies and bounded capacity: three bulk operations (at most
+two builds), two checks/exercises, and one reserved cleanup slot. **Live activity**
 shows running/queued work, waiting dependencies, progress counts and active desktops.
+Obsolete failures remain in Recent; Needs attention contains current failures.
+Retry feedback appears beside the activity controls.
 Desktop launches bypass this queue and can run while checks or exercises use
 another machine in the same ready team lab.
 

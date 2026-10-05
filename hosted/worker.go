@@ -33,7 +33,7 @@ func (s *Service) Run(ctx context.Context) error {
 	workers.Go(func() { s.policyLoop(ctx) })
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	done := make(chan error, 4)
+	done := make(chan error, 6)
 	for {
 		if err := s.dispatchJobs(ctx, &workers, done); err != nil {
 			return err

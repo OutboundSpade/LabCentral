@@ -48,6 +48,10 @@ export interface Template {
   built: boolean;
 }
 export interface Job {
+  retryable: boolean;
+  retryBlocked?: string;
+  needsAttention: boolean;
+  targetLabel?: string;
   started?: string | null;
   finished?: string | null;
   waitingOn?: string[];

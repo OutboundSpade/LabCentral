@@ -84,15 +84,19 @@ type Template struct {
 	Source   lc.Source `json:"-"`
 }
 type Job struct {
-	Started   *time.Time `json:"started,omitempty"`
-	Finished  *time.Time `json:"finished,omitempty"`
-	WaitingOn []string   `json:"waitingOn,omitempty"`
-	ID        string     `json:"id"`
-	Kind      string     `json:"kind"`
-	Target    string     `json:"target"`
-	Status    string     `json:"status"`
-	Error     string     `json:"error,omitempty"`
-	Created   time.Time  `json:"created"`
+	Retryable      bool       `json:"retryable"`
+	RetryBlocked   string     `json:"retryBlocked,omitempty"`
+	NeedsAttention bool       `json:"needsAttention"`
+	TargetLabel    string     `json:"targetLabel,omitempty"`
+	Started        *time.Time `json:"started,omitempty"`
+	Finished       *time.Time `json:"finished,omitempty"`
+	WaitingOn      []string   `json:"waitingOn,omitempty"`
+	ID             string     `json:"id"`
+	Kind           string     `json:"kind"`
+	Target         string     `json:"target"`
+	Status         string     `json:"status"`
+	Error          string     `json:"error,omitempty"`
+	Created        time.Time  `json:"created"`
 }
 type Machine struct {
 	Name    string `json:"name"`

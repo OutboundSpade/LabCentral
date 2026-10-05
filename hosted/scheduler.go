@@ -97,6 +97,19 @@ func (s *Service) releaseTeamClaim(jobID, teamID string) {
 	s.activeJobs[jobID] = active
 }
 
+// Separate admission budgets prevent long builds/preparation from consuming
+// every guest-operation slot. Resource dependencies apply across all lanes.
+func jobLane(kind string) string {
+	switch kind {
+	case "end", "access-cleanup":
+		return "cleanup"
+	case "check", "exercise":
+		return "guest"
+	default:
+		return "bulk"
+	}
+}
+
 func claimsConflict(a, b []jobClaim) bool {
 	for _, x := range a {
 		for _, y := range b {
@@ -126,10 +139,13 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 		if s.activeJobs == nil {
 			s.activeJobs = map[string]runningJob{}
 		}
-		ordinary, builds, blocked := 0, 0, false
+		bulk, guest, builds, blocked := 0, 0, 0, false
 		for _, active := range s.activeJobs {
-			if active.job.Kind != "end" && active.job.Kind != "access-cleanup" {
-				ordinary++
+			switch jobLane(active.job.Kind) {
+			case "bulk":
+				bulk++
+			case "guest":
+				guest++
 			}
 			if active.job.Kind == "build" {
 				builds++
@@ -142,8 +158,8 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 				active.cancel()
 			}
 		}
-		priority := j.Kind == "end" || j.Kind == "access-cleanup"
-		if blocked || len(s.activeJobs) >= 4 || (!priority && ordinary >= 3) || (j.Kind == "build" && builds >= 2) {
+		lane := jobLane(j.Kind)
+		if blocked || len(s.activeJobs) >= 6 || (lane == "bulk" && bulk >= 3) || (lane == "guest" && guest >= 2) || (j.Kind == "build" && builds >= 2) {
 			s.jobMu.Unlock()
 			continue
 		}
@@ -208,6 +224,22 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 func (s *Service) jobDetails(ctx context.Context, jobs []Job) error {
 	for n := range jobs {
 		j := &jobs[n]
+		if j.Status == "failed" {
+			var err error
+			j.RetryBlocked, j.NeedsAttention, err = s.retryDisposition(ctx, *j)
+			if err != nil {
+				return err
+			}
+			j.Retryable = j.RetryBlocked == ""
+		}
+		if j.Kind == "check" || j.Kind == "exercise" {
+			var run struct {
+				TeamID string `json:"teamID"`
+			}
+			if s.Store.Get(ctx, j.Kind, j.Target, &run) == nil {
+				_ = s.Store.DB.QueryRowContext(ctx, `SELECT name FROM teams WHERE id=?`, run.TeamID).Scan(&j.TargetLabel)
+			}
+		}
 		var timing jobTiming
 		if err := s.Store.Get(ctx, "job-timing", j.ID, &timing); err == nil {
 			j.Started = &timing.Started

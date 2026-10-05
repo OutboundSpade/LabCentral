@@ -15,6 +15,75 @@ type scheduledEngine struct {
 	release chan struct{}
 }
 
+type guestLaneEngine struct {
+	Engine
+	started chan string
+}
+
+func (e *guestLaneEngine) WithSSHMaterial(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
+	e.started <- instance
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestGuestCapacitySurvivesBulkSaturationAndKeepsCleanupSlot(t *testing.T) {
+	s, teams := checkFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	e := &guestLaneEngine{started: make(chan string, 3)}
+	s.Engine = e
+	// Three unrelated long operations fully occupy the bulk budget.
+	s.activeJobs = map[string]runningJob{}
+	for n, kind := range []string{"build", "build", "prepare"} {
+		id := teams[n].ID
+		s.activeJobs[id] = runningJob{job: Job{Kind: kind}, claims: []jobClaim{{"unrelated:" + id, true}}, cancel: func() {}}
+	}
+	var jobs []Job
+	for _, team := range teams[:3] {
+		j := failedCheck(t, s, team)
+		if _, err := s.Store.DB.Exec(`UPDATE jobs SET status='queued' WHERE id=?`, j.ID); err != nil {
+			t.Fatal(err)
+		}
+		jobs = append(jobs, j)
+	}
+	var workers sync.WaitGroup
+	done := make(chan error, 6)
+	defer func() { cancel(); workers.Wait() }()
+	if err := s.dispatchJobs(ctx, &workers, done); err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 2; n++ {
+		select {
+		case <-e.started:
+		case <-ctx.Done():
+			t.Fatal("bulk work blocked independent guest checks")
+		}
+	}
+	var queued int
+	if err := s.Store.DB.QueryRow(`SELECT COUNT(*) FROM jobs WHERE kind='check' AND status='queued'`).Scan(&queued); err != nil || queued != 1 {
+		t.Fatal("guest limit ignored", queued, err)
+	}
+	cleanup, err := s.Store.Enqueue(ctx, "access-cleanup", "startup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.dispatchJobs(ctx, &workers, done); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err = <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("cleanup slot consumed")
+	}
+	var state string
+	if err = s.Store.DB.QueryRow(`SELECT status FROM jobs WHERE id=?`, cleanup.ID).Scan(&state); err != nil || state != "complete" {
+		t.Fatal(state, err)
+	}
+}
+
 func (e *scheduledEngine) Build(ctx context.Context, p lc.Plan) ([]lc.ImageRecord, error) {
 	e.started <- "build"
 	select {

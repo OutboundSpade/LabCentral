@@ -25,7 +25,7 @@
  <Notice message={error}/>
  {#if data}
   {#if data.jobs.find(j=>j.kind==='refresh')?.status==='failed'}<Notice message={data.jobs.find(j=>j.kind==='refresh')?.error??'GitHub refresh failed. Please retry.'}/>{/if}
-  {#if data.jobs.some(j=>j.status==='failed')}<p class="mt-6 text-sm text-error">Some operations need attention. <a class="link inline-flex min-h-11 items-center" href="#activity-title">View failures in live activity</a>.</p>{/if}
+  {#if data.jobs.some(j=>j.status==='failed'&&j.needsAttention)}<p class="mt-6 text-sm text-error">Some operations need attention. <a class="link inline-flex min-h-11 items-center" href="#activity-title">View failures in live activity</a>.</p>{/if}
   <ul class="timeline timeline-vertical timeline-compact timeline-snap-icon mt-10 max-w-4xl" aria-label="Template revision history">
    {#each data.templates as template,index (template.id)}
     {@const job=jobFor(template.id)}{@const working=active(template.id)}
@@ -64,7 +64,7 @@
     </li>
    {:else}<li><div class="timeline-middle"><History size={22}/></div><div class="timeline-end py-1 pl-4"><h2 class="text-lg font-semibold">No revisions yet</h2><p class="mt-2 text-sm text-base-content/75">Refresh from GitHub to import your templates.</p></div></li>{/each}
   </ul>
-  <Activity {data} onretry={id=>run('/api/admin/jobs/retry',{id})}/>
+  <Activity {data} onchange={refreshAdmin}/>
  {:else}<p class="mt-10 flex items-center gap-3 text-sm" role="status"><span class="loading loading-spinner loading-sm"></span>Loading revisions…</p>{/if}
 </Guard>
 <dialog bind:this={confirmation} class="modal" aria-labelledby="revision-action-title">

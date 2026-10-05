@@ -26,6 +26,6 @@
  <div class="mt-7 max-w-full overflow-x-auto"><table class="table table-sm"><thead><tr><th>Team</th><th>Members</th><th>Lab</th></tr></thead><tbody>{#each data.teams as team}<tr><th><span class="flex items-center gap-2"><Users size={16}/>{team.name}</span></th><td>{team.members} / {team.capacity}</td><td><Status status={team.status}/></td></tr>{/each}</tbody></table></div>{/if}
  <Scoreboard {data} onchange={load}/>
  <Exercises {data} onchange={load}/>
- <Activity {data} onretry={id=>run('/api/admin/jobs/retry',{id})}/>
+ <Activity {data} onchange={refreshAdmin}/>
 {/if}</Guard>
 <dialog bind:this={confirmation} class="modal" aria-labelledby="confirm-title"><div class="modal-box"><h2 id="confirm-title" class="text-xl font-semibold">{action==='end'?'End this meeting?':'Prepare the team labs?'}</h2><p class="mt-4 leading-relaxed">{action==='end'?`This deletes all ${data?.teams.length??0} team labs, including their machines and workspace files. This cannot be undone.`:`This provisions the selected template for ${data?.teams.length??0} teams. Cloud compute, storage, public addresses, and transfer incur charges. Machines and files are deleted at the meeting deadline.`}</p><Notice message={error}/><div class="modal-action"><form method="dialog"><button class="btn btn-sm min-h-11">Cancel</button></form><button class="btn btn-sm min-h-11" class:btn-error={action==='end'} class:btn-primary={action==='prepare'} disabled={busy} onclick={()=>run('/api/admin/'+action)}>{action==='end'?'Delete team labs':'Prepare labs'}</button></div></div></dialog>

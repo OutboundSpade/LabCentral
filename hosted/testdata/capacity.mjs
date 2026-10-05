@@ -52,7 +52,7 @@ try {
  if(output)await page.screenshot({animations:'disabled',path:output+'/meeting-desktop.png',fullPage:true});
  // Internal navigation must preserve this document, authentication and warmed admin content.
  await page.evaluate(()=>{window.__navigationMarker='same-document';window.__workspaceFlash=false;new MutationObserver(()=>{if(document.body.innerText.includes('Loading your workspace')||document.body.innerText.includes('Loading revisions'))window.__workspaceFlash=true}).observe(document.body,{childList:true,subtree:true})});
- await page.getByRole('link',{name:'Templates',exact:true}).click();
+ await page.getByRole('navigation').getByRole('link',{name:'Templates',exact:true}).click();
  await page.getByRole('heading',{name:'Lab templates',exact:true}).waitFor();
  await page.getByText('Ready to use',{exact:true}).waitFor();
  const nav=page.getByRole('navigation',{name:'Main navigation'});

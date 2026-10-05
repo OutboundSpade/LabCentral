@@ -407,11 +407,21 @@ claim after its native operation and durable readiness checkpoint. Already-ready
 teams are not inspected, recovered or rewritten by preparation retries. Team claims
 serialize provisioning, exercises and checks for the same team; checks on a ready
 team can run while other teams are preparing. Unrelated queued work can bypass a blocked
-job. Up to three ordinary jobs run concurrently; at most two are image-build jobs so
-long builds leave capacity for lab operations. A fourth slot is reserved for
-meeting destruction or authorization cleanup. Queued dependencies, start/finish times,
+job. Bulk work (build, preparation, refresh and image removal) has three slots, with
+at most two image-build jobs. Guest work (checks and exercises) has two separate
+slots, so bulk saturation cannot consume its capacity. A sixth slot is reserved
+for meeting destruction or authorization cleanup. Resource claims still apply
+across all lanes; same-team checks and exercises remain exclusive.
+Queued dependencies, start/finish times,
 per-template image counts, team readiness and active desktops are visible in the
-administrator's live activity view, polled every two seconds. The complete active
+administrator's live activity view, polled every two seconds.
+Recovery eligibility is computed from durable meeting, latest-run and job records
+and shared by the admin API and retry endpoint. Ended, expired, superseded or
+recovered guest failures remain in Recent with their original error and reason;
+they no longer count as actionable failures. Unresolved cleanup remains visible.
+Retries show pending, accepted or rejected feedback inside Live activity; selected
+filters use an explicit check mark and selection color separate from error counts.
+The complete active
 queue remains visible even when its jobs predate the bounded recent history.
 A prepare job runs at most
 three team deployments concurrently. Each team persists its own readiness or failure;

@@ -179,3 +179,42 @@ func TestHostedScoreboardBrowser(t *testing.T) {
 		t.Log(string(out))
 	}
 }
+
+func TestHostedActivityRecoveryBrowser(t *testing.T) {
+	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
+		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
+	}
+	s, teams := checkFixture(t)
+	ctx := context.Background()
+	failedCheck(t, s, teams[0])
+	cleanup, err := s.Store.Enqueue(ctx, "access-cleanup", "startup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Store.DB.Exec(`UPDATE jobs SET status='failed',error='Guest cleanup unconfirmed' WHERE id=?`, cleanup.ID); err != nil {
+		t.Fatal(err)
+	}
+	old := failedCheck(t, s, teams[1])
+	var run CheckRun
+	if err := s.Store.Get(ctx, "check", old.Target, &run); err != nil {
+		t.Fatal(err)
+	}
+	run.MeetingID = "ended-meeting"
+	if err := s.Store.Put(ctx, "check", run.ID, run); err != nil {
+		t.Fatal(err)
+	}
+	s.Config.WebRoot = filepath.Join("..", "web", "build")
+	app := httptest.NewUnstartedServer(nil)
+	defer app.Close()
+	s.Config.Origin = "https://" + app.Listener.Addr().String()
+	app.Config.Handler = s.Handler()
+	app.StartTLS()
+	checkCtx, stop := context.WithTimeout(ctx, 60*time.Second)
+	defer stop()
+	cmd := exec.CommandContext(checkCtx, "node", "testdata/activity.mjs", app.URL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("browser: %v\n%s", err, out)
+	} else {
+		t.Log(string(out))
+	}
+}

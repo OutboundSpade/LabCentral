@@ -163,6 +163,11 @@ func (s *Service) templateOperation(w http.ResponseWriter, r *http.Request, kind
 func (s *Service) queueTemplateOperation(ctx context.Context, kind, id string) (Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.queueTemplateOperationLocked(ctx, kind, id)
+}
+
+// Caller holds s.mu so retry validation and reservation cannot be superseded.
+func (s *Service) queueTemplateOperationLocked(ctx context.Context, kind, id string) (Job, error) {
 	var t Template
 	if err := s.Store.Get(ctx, "template", id, &t); err != nil {
 		return Job{}, fmt.Errorf("Template revision not found.")
