@@ -264,6 +264,17 @@ preparation, so a fresh live provisioning overlap was not exercised over the act
 user meeting. Unchanged UI and desktop runtime retain their prior acceptance.
 Temporary acceptance identities were removed.
 
+The machine-level access fix passed full library, hosted and storage race checks
+and was deployed on 2026-10-05. Cross-client regressions verify a workstation
+launch and close during a gated web check, same-machine exclusion, cancelled waits,
+lifecycle exclusion and retained uncertain cleanup. A real OIDC student launched
+a native DCV desktop during the team's FTP guest check; the launch request returned
+in 1.001 seconds while that team's check run remained active. The desktop rendered
+and keyboard/pointer input was sent, and guest Ansible completed confirmed service
+results. The existing meeting and labs were preserved; the temporary desktop was
+closed, its old access denied, its team seat released and both test identities removed.
+UI assets and guest image revisions were unchanged.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
