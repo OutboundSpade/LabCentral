@@ -410,8 +410,8 @@ with its durable job. The worker rechecks the meeting, deadline and latest team
 operation on every replay. Superseded jobs cannot reapply a break after a reset;
 completed jobs do not repeat mutations. A failed team does not prevent other
 selected teams from running. End-of-meeting cleanup cancels exercises and retains
-priority. The library's caller-owned SSH callback holds a machine lock and shared
-instance lifecycle guard, excluding destruction without adding hosted policy.
+priority. The library's caller-owned SSH callback holds the same instance lock
+as destruction and access changes without adding hosted policy to the library.
 
 Fixed guest programs receive pinned template files as data through verified SSH.
 They restore Apache configuration, the homepage and the synthetic support account,
@@ -440,8 +440,7 @@ program effects; this does not make those programs a guest-side security boundar
 
 Each selected team's exercise runs its pinned reset steps before applying its break.
 Fixed guest launchers stage private temporary files and invoke pinned guest-local
-Ansible over verified SSH while holding the machine fence and shared lifecycle
-guard; author code never runs
+Ansible over verified SSH while holding the instance fence; author code never runs
 on the control host. Guest locks and timeouts bound interrupted executions. Template
 authors define the reset scope and implement observational check playbooks. A reset
 is a targeted repair, not a VM restore.
@@ -460,19 +459,6 @@ keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates a
 snapshots source, then builds native images once for reuse. Imports never update
 running labs. Imports retain commit dates and subjects and record the current GitHub
 head per template; a refresh backfills metadata for older imported revisions.
-An administrator may explicitly adopt a built instructor revision through
-`POST /api/admin/meeting/instructor` with a `TargetRequest`. The current meeting
-must be ready and unexpired, and all queued/running meeting work must drain.
-Validated portable source digests and lab names must match exactly; revisions
-changing guest files require a new meeting. The new immutable revision pin and
-actor/time audit commit together. Team identities, native images, membership,
-deadlines and desktop workspaces are preserved. This updates subsequent exercise
-definitions without applying a break or resetting guests.
-The Example Branch FTP break stages an older tar.gz backup in its archive login
-root, then defaces the publication source, cached page and homepage. The archive
-contains four clean baseline files, never infrastructure credentials. It remains
-after reset. Recovery requires restoring the FTP root and publication source as
-well as the homepage/cache; publication refresh cannot repair a defaced source.
 The administrator timeline sorts the current head first, then by commit date.
 Each revision shows durable build/removal jobs and counts from the local image
 journal; native image existence is revalidated by the engine before reuse.

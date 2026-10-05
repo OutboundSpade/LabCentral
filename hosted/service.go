@@ -76,7 +76,6 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
 	mux.HandleFunc("GET /api/admin", s.authorized(true, s.admin))
 	mux.HandleFunc("POST /api/admin/meeting", s.authorized(true, s.createMeeting))
-	mux.HandleFunc("POST /api/admin/meeting/instructor", s.authorized(true, s.updateInstructorRevision))
 	mux.HandleFunc("POST /api/admin/prepare", s.authorized(true, s.prepareMeeting))
 	mux.HandleFunc("POST /api/admin/end", s.authorized(true, s.endMeeting))
 	mux.HandleFunc("POST /api/admin/extend", s.authorized(true, s.extendMeeting))
