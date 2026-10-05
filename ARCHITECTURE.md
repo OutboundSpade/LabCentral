@@ -298,6 +298,22 @@ desktop code and toolchain are unchanged and retain their prior live acceptance.
 Temporary review identities were removed and absence confirmed. Detailed evidence
 and the bounded advisory transcript remain outside source.
 
+The guest-capacity and recovery update was deployed on 2026-10-05 through the
+restricted GitHub/AWS maintenance workflow. One tool-disabled Opus 5.5 review
+provided architecture advice; Codex made all changes. Gated scheduler tests verify
+that bulk saturation permits two independent guest jobs while retaining cleanup
+capacity; this is local scheduling evidence, not a native AWS load test. Durable
+retry, authorization, persistence and race tests passed, including concurrent
+retry deduplication and retention of obsolete failures and unresolved cleanup.
+All hosted browser checks and Svelte type/build checks passed. Desktop/mobile
+inspection, 24 local axe page checks and Blueprint review passed. Fourteen deployed
+page checks used fresh real OIDC student/admin sign-ins, verified historical retry
+eligibility and student API denial, and preserved the current occupied one-team
+meeting. No native build, new lab, break or desktop session was started for this
+release; unchanged native inputs retain prior acceptance. Temporary review
+sessions were logged out and exact owned identities confirmed absent. Detailed
+operator evidence remains outside source.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
