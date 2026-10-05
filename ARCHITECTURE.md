@@ -228,6 +228,18 @@ meeting reads and the OIDC redirect. The deployed archive contains the exact
 verified Linux amd64 binaries and pinned native toolchain with checksums.
 Detailed evidence, installation identifiers and cost records remain outside source.
 
+The scheduler and template-check changes passed one-team hosted AWS acceptance on
+2026-10-05. A retained revision deployed and was destroyed while an unrelated native
+image build continued. The new revision's image validation recovered using its retained
+AMI and a fresh disposable guest after an initially empty DCV status response. Real
+OIDC student access rendered a DCV desktop with keyboard and pointer input; student
+requests to instructor APIs were denied. Guest Ansible detected the stopped web
+service, database-port mismatch, and FTP-root/publication changes; each pinned reset
+restored a 100/100 snapshot. A saved schedule produced a fresh passing check and was
+then paused. The deployed UI was inspected at desktop and mobile widths. Owned test
+labs and temporary OIDC identities were cleaned up; native images remain retained.
+Detailed run evidence remains outside source.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
