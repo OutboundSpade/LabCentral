@@ -240,6 +240,15 @@ then paused. The deployed UI was inspected at desktop and mobile widths. Owned t
 labs and temporary OIDC identities were cleaned up; native images remain retained.
 Detailed run evidence remains outside source.
 
+The meeting-control update passed live UI and real OIDC checks on 2026-10-05.
+Desktop and mobile navigation preserved the document and authenticated layout;
+server-owned sign-in completed a real OIDC exchange, and student requests to
+administrative UI and APIs remained denied. Destructive confirmation cancellation
+preserved the existing meeting, whose teams, capacity, pinned revision and deadline
+survived deployment unchanged. Larger team/seat settings and exact eight-hour
+extensions passed local real-handler persistence and race checks; no new large-class
+native load qualification is claimed. Temporary acceptance identities were removed.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
@@ -306,8 +315,8 @@ teams with six seats each and four hours until cleanup. The UI and API allow
 its start and deadline; selected extensions cannot exceed eight hours total.
 Extensions clamp sub-millisecond clock skew from older meeting records to the
 exact limit rather than rejecting a valid whole-hour extension.
-Live desktop load acceptance remains twenty users (four per team); six simultaneous
-desktops per workstation have not yet been load-qualified. Access is blocked while the
+Live desktop load acceptance remains twenty users (four per team); larger per-team
+desktop counts have not yet been load-qualified. Access is blocked while the
 switch is pending; guest revocation must succeed before committing membership.
 Per-user locks serialize those changes with that user's launch. Provider plugins
 receive explicit principal, expiry and workspace-retention options, never team
