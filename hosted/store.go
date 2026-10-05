@@ -165,7 +165,7 @@ func (t *timeScanner) Scan(v any) error {
 	return e
 }
 func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs ORDER BY created DESC LIMIT 50`)
+	rows, e := s.DB.QueryContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE status IN ('queued','running') OR id IN (SELECT id FROM jobs ORDER BY created DESC LIMIT 50) ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,created DESC`)
 	if e != nil {
 		return nil, e
 	}
@@ -181,14 +181,29 @@ func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
 	return out, rows.Err()
 }
 
-// NextJob reads the complete queue independently of the bounded administrator history.
-func (s *Store) NextJob(ctx context.Context) (*Job, error) {
-	var j Job
-	e := s.DB.QueryRowContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE status='queued' ORDER BY CASE kind WHEN 'end' THEN 0 WHEN 'access-cleanup' THEN 1 ELSE 2 END,created LIMIT 1`).Scan(&j.ID, &j.Kind, &j.Target, &j.Status, &j.Error, newTime(&j.Created))
-	if e == sql.ErrNoRows {
-		return nil, nil
+// QueuedJobs reads the whole queue, so blocked work cannot hide unrelated jobs.
+func (s *Store) QueuedJobs(ctx context.Context) ([]Job, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE status='queued' ORDER BY CASE kind WHEN 'end' THEN 0 WHEN 'access-cleanup' THEN 1 ELSE 2 END,created,id`)
+	if err != nil {
+		return nil, err
 	}
-	return &j, e
+	defer rows.Close()
+	out := []Job{}
+	for rows.Next() {
+		var j Job
+		if err = rows.Scan(&j.ID, &j.Kind, &j.Target, &j.Status, &j.Error, newTime(&j.Created)); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+func (s *Store) NextJob(ctx context.Context) (*Job, error) {
+	jobs, err := s.QueuedJobs(ctx)
+	if err != nil || len(jobs) == 0 {
+		return nil, err
+	}
+	return &jobs[0], nil
 }
 
 func (s *Store) Teammates(ctx context.Context, team string) ([]Teammate, error) {

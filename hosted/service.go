@@ -29,8 +29,7 @@ type Service struct {
 	loginMu        sync.Mutex
 	userLocks      sync.Map
 	jobMu          sync.Mutex
-	jobCancel      context.CancelFunc
-	jobKind        string
+	activeJobs     map[string]runningJob
 	exerciseRunner func(context.Context, Team, ExerciseRun, lc.Source) (string, error)
 }
 
@@ -84,6 +83,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/templates/build", s.authorized(true, s.buildTemplate))
 	mux.HandleFunc("POST /api/admin/templates/remove-images", s.authorized(true, s.removeTemplateImages))
 	mux.HandleFunc("POST /api/admin/jobs/retry", s.authorized(true, s.retryJob))
+	mux.HandleFunc("POST /api/admin/checks/schedule", s.authorized(true, s.setCheckSchedule))
+	mux.HandleFunc("POST /api/admin/checks/run", s.authorized(true, s.startChecks))
 	mux.HandleFunc("POST /api/admin/exercises", s.authorized(true, s.startExercises))
 	mux.Handle("/", http.FileServer(http.Dir(s.Config.WebRoot)))
 	origin, _ := url.Parse(s.Config.Origin)

@@ -62,18 +62,19 @@ type Membership struct {
 	Switching   bool   `json:"switching"`
 }
 type Template struct {
-	Operation      *Job       `json:"operation,omitempty"`
-	BuildsPending  int        `json:"buildsPending"`
-	CommitTitle    string     `json:"commitTitle,omitempty"`
-	CommittedAt    *time.Time `json:"committedAt,omitempty"`
-	ImportedAt     *time.Time `json:"importedAt,omitempty"`
-	BuiltAt        *time.Time `json:"builtAt,omitempty"`
-	RemovedAt      *time.Time `json:"removedAt,omitempty"`
-	Removing       bool       `json:"removing"`
-	Latest         bool       `json:"latest"`
-	ImagesReady    int        `json:"imagesReady"`
-	ImagesTotal    int        `json:"imagesTotal"`
-	RemovalBlocked string     `json:"removalBlocked,omitempty"`
+	Instructor     *InstructorView `json:"instructor,omitempty"`
+	Operation      *Job            `json:"operation,omitempty"`
+	BuildsPending  int             `json:"buildsPending"`
+	CommitTitle    string          `json:"commitTitle,omitempty"`
+	CommittedAt    *time.Time      `json:"committedAt,omitempty"`
+	ImportedAt     *time.Time      `json:"importedAt,omitempty"`
+	BuiltAt        *time.Time      `json:"builtAt,omitempty"`
+	RemovedAt      *time.Time      `json:"removedAt,omitempty"`
+	Removing       bool            `json:"removing"`
+	Latest         bool            `json:"latest"`
+	ImagesReady    int             `json:"imagesReady"`
+	ImagesTotal    int             `json:"imagesTotal"`
+	RemovalBlocked string          `json:"removalBlocked,omitempty"`
 
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`
@@ -83,12 +84,15 @@ type Template struct {
 	Source   lc.Source `json:"-"`
 }
 type Job struct {
-	ID      string    `json:"id"`
-	Kind    string    `json:"kind"`
-	Target  string    `json:"target"`
-	Status  string    `json:"status"`
-	Error   string    `json:"error,omitempty"`
-	Created time.Time `json:"created"`
+	Started   *time.Time `json:"started,omitempty"`
+	Finished  *time.Time `json:"finished,omitempty"`
+	WaitingOn []string   `json:"waitingOn,omitempty"`
+	ID        string     `json:"id"`
+	Kind      string     `json:"kind"`
+	Target    string     `json:"target"`
+	Status    string     `json:"status"`
+	Error     string     `json:"error,omitempty"`
+	Created   time.Time  `json:"created"`
 }
 type Machine struct {
 	Name    string `json:"name"`
@@ -113,12 +117,15 @@ type Overview struct {
 	Lab        LabView    `json:"lab"`
 }
 type AdminView struct {
-	Meeting      *Meeting             `json:"meeting"`
-	Teams        []Team               `json:"teams"`
-	Jobs         []Job                `json:"jobs"`
-	Templates    []Template           `json:"templates"`
-	Exercises    []ExerciseDefinition `json:"exercises"`
-	ExerciseRuns []ExerciseRun        `json:"exerciseRuns"`
+	CheckSchedule  *CheckSchedule       `json:"checkSchedule,omitempty"`
+	CheckRuns      []CheckRun           `json:"checkRuns"`
+	ActiveDesktops int                  `json:"activeDesktops"`
+	Meeting        *Meeting             `json:"meeting"`
+	Teams          []Team               `json:"teams"`
+	Jobs           []Job                `json:"jobs"`
+	Templates      []Template           `json:"templates"`
+	Exercises      []ExerciseDefinition `json:"exercises"`
+	ExerciseRuns   []ExerciseRun        `json:"exerciseRuns"`
 }
 type CreateMeeting struct {
 	Name      string `json:"name"`

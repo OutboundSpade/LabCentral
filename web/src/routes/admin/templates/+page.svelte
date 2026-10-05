@@ -1,4 +1,5 @@
 <script lang="ts">
+ import Activity from '$lib/Activity.svelte';
  import {onMount} from 'svelte';
  import {GitCommitHorizontal,RefreshCw,Hammer,ArrowLeft,History,Check,Trash2,Clock,LockKeyhole} from '@lucide/svelte';
  import Guard from '$lib/Guard.svelte';import Notice from '$lib/Notice.svelte';
@@ -10,7 +11,7 @@
  function jobFor(id:string){return data?.templates.find(t=>t.id===id)?.operation??data?.jobs.find(j=>j.target===id&&(j.kind==='build'||j.kind==='remove-images'))}
  function active(id:string){const j=jobFor(id);return j?.status==='queued'||j?.status==='running'}
  async function load(){try{await refresh();if($session?.user.admin)data=await api<AdminView>('/api/admin')}catch(e){error=(e as Error).message}}
- onMount(()=>{void load();const timer=setInterval(load,5000);return()=>clearInterval(timer)});
+ onMount(()=>{void load();const timer=setInterval(load,2000);return()=>clearInterval(timer)});
  async function run(path:string,body:unknown={}){busy=true;error='';try{await api(path,body);confirmation?.close();await load()}catch(e){error=(e as Error).message}finally{busy=false}}
  function confirm(template:Template,operation:'build'|'remove-images'){selected=template;action=operation;error='';confirmation.showModal()}
 </script>
@@ -24,6 +25,7 @@
  <Notice message={error}/>
  {#if data}
   {#if data.jobs.find(j=>j.kind==='refresh')?.status==='failed'}<Notice message={data.jobs.find(j=>j.kind==='refresh')?.error??'GitHub refresh failed. Please retry.'}/>{/if}
+  <Activity {data} onretry={id=>run('/api/admin/jobs/retry',{id})}/>
   <ul class="timeline timeline-vertical timeline-compact timeline-snap-icon mt-10 max-w-4xl" aria-label="Template revision history">
    {#each data.templates as template,index (template.id)}
     {@const job=jobFor(template.id)}{@const working=active(template.id)}
@@ -47,6 +49,8 @@
         {:else}<span class="badge badge-sm">Not built</span>{/if}
         {#if !template.removedAt}<span class="text-base-content/65">{template.imagesReady} / {template.imagesTotal} images ready</span>{/if}
        </div>
+       {#if job?.waitingOn?.length}<p class="mt-2 text-sm text-base-content/70">Waiting for {job.waitingOn.map(id=>data?.jobs.find(j=>j.id===id)?.kind??'overlapping work').join(', ')} on shared resources.</p>{/if}
+       {#if template.instructor}<details class="collapse collapse-arrow mt-5 border border-base-300 bg-base-200"><summary class="collapse-title flex items-center gap-2 font-medium"><LockKeyhole size={16}/>Instructor only · {template.commit.slice(0,7)}</summary><div class="collapse-content text-sm"><p class="whitespace-pre-line leading-relaxed">{template.instructor.notes}</p><ul class="mt-4 space-y-3">{#each template.instructor.exercises as exercise}<li><p class="font-medium">{exercise.name}</p><p class="mt-1 whitespace-pre-line text-base-content/70">{exercise.walkthrough}</p></li>{/each}</ul><p class="mt-4 text-base-content/70">{template.instructor.checks.length} scheduled service checks available.</p></div></details>{/if}
        {#if template.removedAt}<p class="mt-2 text-sm text-base-content/65">Removed {date(template.removedAt)}. Images shared by other revisions are retained.</p>{:else if template.builtAt}<p class="mt-2 text-sm text-base-content/65">Built {date(template.builtAt)}</p>{/if}
        {#if job?.status==='failed'}<p class="mt-3 break-words text-sm text-error">{job.error}</p>{/if}
        <div class="mt-5 flex flex-wrap gap-3">

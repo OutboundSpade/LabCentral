@@ -88,26 +88,58 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 }
 func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	ctx := r.Context()
-	out := AdminView{Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}}
-	var e error
-	out.Meeting, e = s.Store.Meeting(ctx)
-	if e == nil && out.Meeting != nil {
-		out.Teams, e = s.Store.Teams(ctx, out.Meeting.ID)
+	out := AdminView{Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}, CheckRuns: []CheckRun{}, ExerciseRuns: []ExerciseRun{}, Exercises: []ExerciseDefinition{}}
+	var err error
+	out.Meeting, err = s.Store.Meeting(ctx)
+	if err == nil && out.Meeting != nil {
+		out.Teams, err = s.Store.Teams(ctx, out.Meeting.ID)
 	}
-	if e == nil {
-		out.Jobs, e = s.Store.Jobs(ctx)
+	if err == nil {
+		out.Jobs, err = s.Store.Jobs(ctx)
 	}
-	if e == nil {
-		out.Templates, e = s.templates(ctx)
+	if err == nil {
+		err = s.jobDetails(ctx, out.Jobs)
 	}
-	if e == nil && out.Meeting != nil {
-		var template Template
-		if s.Store.Get(ctx, "template", out.Meeting.Template, &template) == nil && template.Name == "branch-services" {
-			out.Exercises = exerciseDefinitions()
-			out.ExerciseRuns, e = s.exerciseRuns(ctx, out.Teams)
+	if err == nil {
+		out.Templates, err = s.templates(ctx)
+	}
+	if err == nil {
+		for n := range out.Templates {
+			if out.Templates[n].Operation != nil {
+				jobs := []Job{*out.Templates[n].Operation}
+				err = s.jobDetails(ctx, jobs)
+				if err != nil {
+					break
+				}
+				out.Templates[n].Operation = &jobs[0]
+			}
 		}
 	}
-	if e != nil {
+	s.mu.Lock()
+	for _, d := range s.desktops {
+		if d.ctx.Err() == nil {
+			out.ActiveDesktops++
+		}
+	}
+	s.mu.Unlock()
+	if err == nil && out.Meeting != nil {
+		for _, template := range out.Templates {
+			if template.ID != out.Meeting.Template {
+				continue
+			}
+			if template.Instructor != nil {
+				out.Exercises = template.Instructor.Exercises
+			} else if template.Name == "branch-services" {
+				out.Exercises = exerciseDefinitions()
+			}
+			break
+		}
+		out.ExerciseRuns, err = s.exerciseRuns(ctx, out.Teams)
+		if err == nil {
+			out.CheckSchedule, out.CheckRuns, err = s.checkView(ctx, *out.Meeting, out.Teams)
+		}
+	}
+	if err != nil {
 		writeError(w, 503, "Administrator data is unavailable.")
 		return
 	}
@@ -248,6 +280,17 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 			s.Store.Get(r.Context(), "exercise", target, &run) != nil || run.MeetingID != m.ID ||
 			s.Store.Get(r.Context(), "exercise-current", run.TeamID, &latest) != nil || latest != run.ID {
 			writeError(w, 409, "This exercise is expired or superseded. Select a current team action.")
+			return
+		}
+	}
+	if kind == "check" {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var run CheckRun
+		var latest string
+		m, err := s.checkMeeting(r.Context())
+		if err != nil || s.Store.Get(r.Context(), "check", target, &run) != nil || run.MeetingID != m.ID || s.Store.Get(r.Context(), "check-current", run.TeamID, &latest) != nil || latest != run.ID {
+			writeError(w, 409, "This check is expired or superseded. Run current checks instead.")
 			return
 		}
 	}

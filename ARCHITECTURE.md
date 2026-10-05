@@ -156,9 +156,14 @@ Source retrieved 2026-09-27:
 
 ## Durability and cleanup
 
-SQLite uses WAL and FULL synchronization. A state-root file lock serializes image selection, builds, removal and allocation.
-Deployment releases that lock after persisting image references and reservations;
-independent lab provisioning then overlaps. Per-instance locks coordinate deployment,
+SQLite uses WAL and FULL synchronization. Cache-key file locks coordinate image
+build, reuse, abandonment and removal across library clients. Up to three independent
+images build concurrently. Native builds never hold the allocation lock. Deployment
+builds/reuses its images first, then acquires sorted image locks and the short
+allocation fence to persist image references and reservations. Removal uses the same
+image fence before checking retained references. Deployment releases those fences
+before native provisioning; after the network is ready, up to four machines provision
+concurrently. Each successful sibling is persisted, even when another fails. Per-instance locks coordinate deployment,
 recovery, access and destruction without blocking unrelated
 running labs during builds. Status queries remain available. Native create intent is recorded before calls.
 Native idempotency keys are used where supported. Provider journals persist
@@ -304,17 +309,27 @@ concurrently across users and cancel unauthorized transports immediately; durabl
 guest cleanup proceeds independently through the worker. API credentials
 used to bootstrap OIDC provider and temporary acceptance users are not runtime inputs.
 
-One durable worker executes provisioning and cleanup. A prepare job runs at most
+One process holds the durable scheduler fence. Resource claims form execution
+dependencies: template/cache-key claims coordinate builds, removals and preparation;
+meeting claims coordinate preparation, exercises, checks and ending; team claims
+serialize a team's exercises and checks. Unrelated queued work can bypass a blocked
+job. Up to three ordinary jobs run concurrently; at most two are image-build jobs so
+long builds leave capacity for lab operations. A fourth slot is reserved for
+meeting destruction or authorization cleanup. Queued dependencies, start/finish times,
+per-template image counts, team readiness and active desktops are visible in the
+administrator's live activity view, polled every two seconds. The complete active
+queue remains visible even when its jobs predate the bounded recent history.
+A prepare job runs at most
 three team deployments concurrently. Each team persists its own readiness or failure;
 one failure does not cancel peers. Meetings with both ready and failed teams report
 `partial`; all-team failures report `failed`. Aggregated job errors name the failed teams, and
 retry reconciles their reserved instance IDs while keeping ready teams accessible.
 The provider allows independent creates and discovery concurrently, retaining owner
-fences so retries cannot overlap the same native journal. Cancellation drains all
-active team operations before deadline cleanup proceeds. It preserves the reserved
+fences so retries cannot overlap the same native journal. Cancellation drains overlapping
+meeting operations before deadline cleanup proceeds; unrelated image builds continue. It preserves the reserved
 engine instance ID across retries, reconciles incomplete work, and prioritizes
 meeting destruction over ordinary queued work. Ending a meeting interrupts active
-provisioning; failed cleanup remains reported and retryable. Ending visits every
+meeting provisioning, exercises and checks; failed cleanup remains reported and retryable. Ending visits every
 team even if an earlier team fails, retaining only unresolved cleanup for retries. Page reads and
 unrelated desktop launches do not share that worker's infrastructure lock.
 Provider journals distinguish explicit AWS authorization rejection from uncertain
@@ -322,7 +337,7 @@ transport outcomes. A rejected create can be retried; a timeout still requires
 discovery. AWS creation permissions cover tagged outputs and separately authorize
 their already-owned parent resources ([EC2 authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html), retrieved 2026-09-28).
 
-Three fixed Example Branch exercises live in the hosted service: stop Apache,
+Previously imported Example Branch revisions retain three fixed hosted exercises: stop Apache,
 change its listener and virtual host to 8080, and perform a controlled SSH login
 with a synthetic support-account key and harmless homepage/file changes. Exercise
 names, walkthroughs, records and mutation endpoints are administrator-only;
@@ -348,6 +363,35 @@ SSH authentication events; reset preserves historical logs, bank data, published
 documents and desktops. This targeted reset does not promise to repair arbitrary
 package or SSH-daemon damage. No generic remote-command HTTP endpoint or author
 execution on the control host is introduced.
+
+New templates may supply `instructor.yaml` (version 1) and an `instructor/` folder
+in their pinned repository revision. The hosted importer extracts these **before**
+loading portable source. Notes, walkthroughs and guest programs are stored separately;
+they never enter native images, portable build snapshots or student API responses.
+Changing only instructor material can reuse the existing native images. The manifest
+contains notes, exercises (ID, name, description, walkthrough, ordered machine/playbook
+steps), reset steps and checks (ID, name, points, steps). Optional `assets` name pinned
+portable-source files made available under `template/` inside the guest bundle. Strict
+field, duplicate-key, alias, file, size and machine-reference validation precedes
+import. Instructor notes and manifest data are never sent to a guest; only programs
+and selected assets are transferred. Students administer guests and can inspect
+program effects; this does not make those programs a guest-side security boundary.
+
+Each selected team's exercise runs its pinned reset steps before applying its break.
+Fixed guest launchers stage private temporary files and invoke pinned guest-local
+Ansible over verified SSH while holding the instance fence; author code never runs
+on the control host. Guest locks and timeouts bound interrupted executions. Template
+authors define the reset scope and implement observational check playbooks. A reset
+is a targeted repair, not a VM restore.
+
+Administrators can run checks once or persist a 60–3600-second schedule for the current
+meeting. Schedules start paused, stop at meeting end, and resume their next due time
+after restart without replaying missed ticks. Check intents, jobs, per-team current
+results and next due time commit together. Active checks are deduplicated; busy teams
+wait for a later tick. Each team's checks report individual pass/fail/unavailable
+results and weighted points. Guest connectivity or unconfirmed execution is shown as
+unavailable, never a confirmed failed service. Results and schedules are admin-only.
+The scoreboard is a service-health snapshot, not accumulated competition scoring.
 
 Repository import uses a dedicated read-only deploy key and verified GitHub host
 keys. Each import discovers `templates/*/lab.yaml`, pins its commit, validates and

@@ -85,12 +85,21 @@ func (s *Service) syncSource(ctx context.Context) error {
 			continue
 		}
 		path := filepath.Join(root, "templates", entry.Name())
+		instructor, e := extractInstructor(path)
+		if e != nil {
+			return e
+		}
 		src, e := lc.Load(path)
 		if e != nil {
 			return e
 		}
 		if _, e = lc.PlanLab(src, s.env, nil); e != nil {
 			return e
+		}
+		if instructor != nil {
+			if e = instructor.validate(src); e != nil {
+				return e
+			}
 		}
 		id := digest(commit + ":" + entry.Name())[:24]
 		handover, e := os.ReadFile(filepath.Join(path, "README.md"))
@@ -107,6 +116,14 @@ func (s *Service) syncSource(ctx context.Context) error {
 		t.Name = src.Lab.Name
 		t.Commit = commit
 		t.Handover = string(handover)
+		if instructor != nil {
+			view := instructor.view()
+			t.Instructor = &view
+			if e = s.Store.Put(ctx, "template-instructor", id, instructor); e != nil {
+				s.mu.Unlock()
+				return e
+			}
+		}
 		t.CommittedAt = &committed
 		t.CommitTitle = title
 		if t.ImportedAt == nil {

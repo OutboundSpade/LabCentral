@@ -145,3 +145,37 @@ func TestHostedTemplateTimelineBrowser(t *testing.T) {
 		t.Log(string(out))
 	}
 }
+
+func TestHostedScoreboardBrowser(t *testing.T) {
+	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
+		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
+	}
+	s, _ := checkFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	var template Template
+	if err := s.Store.Get(ctx, "template", "", &template); err != nil {
+		t.Fatal(err)
+	}
+	template.Commit = "abcdef123456"
+	template.CommitTitle = "Pinned private training checks"
+	template.Built = true
+	if err := s.Store.Put(ctx, "template", "", template); err != nil {
+		t.Fatal(err)
+	}
+	s.Config.WebRoot = filepath.Join("..", "web", "build")
+	app := httptest.NewUnstartedServer(nil)
+	defer app.Close()
+	s.Config.Origin = "https://" + app.Listener.Addr().String()
+	app.Config.Handler = s.Handler()
+	app.StartTLS()
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	cmd := exec.CommandContext(ctx, "node", "testdata/scoreboard.mjs", app.URL)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("browser: %v\n%s", err, out)
+	} else {
+		t.Log(string(out))
+	}
+}

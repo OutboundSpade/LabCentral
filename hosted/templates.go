@@ -331,5 +331,14 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 		t.Removing = false
 		t.RemovedAt = &now
 	}
-	return s.Store.Put(ctx, "template", t.ID, t)
+	// Refresh can enrich revision metadata while native work runs. Merge only
+	// lifecycle fields into the current record under the shared short fence.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var current Template
+	if err := s.Store.Get(ctx, "template", t.ID, &current); err != nil {
+		return err
+	}
+	current.Built, current.BuiltAt, current.RemovedAt, current.Removing = t.Built, t.BuiltAt, t.RemovedAt, t.Removing
+	return s.Store.Put(ctx, "template", t.ID, current)
 }

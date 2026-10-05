@@ -51,16 +51,8 @@ func (e *Engine) emit(stage, id, msg string) {
 		e.observer(Event{Version: 2, Stage: stage, Resource: id, Message: msg})
 	}
 }
-func (e *Engine) withLock(fn func() error) error {
-	unlock, err := e.state.Lock()
-	if err != nil {
-		return problem(Busy, "state", err.Error())
-	}
-	defer unlock()
-	return fn()
-}
 
-// Allocation, image selection and removal share a short-lived state fence.
+// Allocation and retained image references share a short-lived state fence.
 func (e *Engine) withAllocationLock(ctx context.Context, fn func() error) error {
 	unlock, err := e.state.LockKeyContext(ctx, "mutation")
 	if err != nil {
@@ -119,9 +111,33 @@ func (e *Engine) Images(ctx context.Context) ([]ImageRecord, error) {
 	return out, nil
 }
 func (e *Engine) Build(ctx context.Context, p Plan) ([]ImageRecord, error) {
-	var result []ImageRecord
-	err := e.withLock(func() error { var err error; result, err = e.build(ctx, p); return err })
-	return result, err
+	return e.build(ctx, p)
+}
+
+func (e *Engine) lockImages(ctx context.Context, p Plan) (func(), error) {
+	keys := []string{}
+	for _, im := range p.Images {
+		if im.Playbook != "" {
+			keys = append(keys, im.CacheKey)
+		}
+	}
+	slices.Sort(keys)
+	keys = slices.Compact(keys)
+	var releases []func()
+	release := func() {
+		for n := len(releases) - 1; n >= 0; n-- {
+			releases[n]()
+		}
+	}
+	for _, key := range keys {
+		unlock, err := e.state.LockKeyContext(ctx, "image:"+key)
+		if err != nil {
+			release()
+			return nil, err
+		}
+		releases = append(releases, unlock)
+	}
+	return release, nil
 }
 func verifyPlan(p Plan) error {
 	fresh, err := PlanLab(p.Source, p.Environment, inputMap(p.Inputs))
@@ -147,76 +163,105 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 	if err := e.Check(ctx, p.Environment); err != nil {
 		return nil, err
 	}
-	var images []ImageRecord
-	for _, im := range p.Images {
+	// Images have no dependencies on one another. A cache-key fence preserves
+	// single ownership across processes; native work never holds the allocation fence.
+	results := make([][]ImageRecord, len(p.Images))
+	failures := make([]error, len(p.Images))
+	slots := make(chan struct{}, 3)
+	var workers sync.WaitGroup
+	for n, im := range p.Images {
 		if im.Playbook == "" {
 			continue
 		}
-		var cached ImageRecord
-		err := e.state.Get(ctx, "image", im.CacheKey, &cached)
-		if err == nil {
-			r, er := e.provider.Execute(ctx, Command{Action: "image.read", Owner: cached.Resource.Owner, Environment: p.Environment, Prior: cached.Resource}, e.observer)
-			if er != nil {
-				return nil, er
+		workers.Go(func() {
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				failures[n] = ctx.Err()
+				return
 			}
-			if !r.Absent && r.Resource.Complete {
-				images = append(images, cached)
-				continue
-			}
-			return nil, problem(RecoveryRequired, im.Name, "cached native image is absent or changed; remove its record explicitly")
+			results[n], failures[n] = e.buildImage(ctx, p, im)
+		})
+	}
+	workers.Wait()
+	var images []ImageRecord
+	for _, result := range results {
+		images = append(images, result...)
+	}
+	return images, errors.Join(failures...)
+}
+
+func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]ImageRecord, error) {
+	unlock, err := e.state.LockKeyContext(ctx, "image:"+im.CacheKey)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	var images []ImageRecord
+	var cached ImageRecord
+	err = e.state.Get(ctx, "image", im.CacheKey, &cached)
+	if err == nil {
+		r, er := e.provider.Execute(ctx, Command{Action: "image.read", Owner: cached.Resource.Owner, Environment: p.Environment, Prior: cached.Resource}, e.observer)
+		if er != nil {
+			return nil, er
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
+		if !r.Absent && r.Resource.Complete {
+			return []ImageRecord{cached}, nil
 		}
-		var cmd Command
-		err = e.state.Get(ctx, "build", im.CacheKey, &cmd)
-		if errors.Is(err, sql.ErrNoRows) {
-			owner := "build-" + id()
-			cmd = Command{Action: "image.build", Operation: owner, Owner: owner, Environment: p.Environment, Image: im, Source: p.Source, Inputs: p.Inputs}
-			if err = e.state.Put(ctx, "build", im.CacheKey, cmd); err != nil {
-				return images, err
-			}
-		} else if err != nil {
+		return nil, problem(RecoveryRequired, im.Name, "cached native image is absent or changed; remove its record explicitly")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	var cmd Command
+	err = e.state.Get(ctx, "build", im.CacheKey, &cmd)
+	if errors.Is(err, sql.ErrNoRows) {
+		owner := "build-" + id()
+		cmd = Command{Action: "image.build", Operation: owner, Owner: owner, Environment: p.Environment, Image: im, Source: p.Source, Inputs: p.Inputs}
+		if err = e.state.Put(ctx, "build", im.CacheKey, cmd); err != nil {
 			return images, err
 		}
-		owner := cmd.Owner
-		if p.Environment.Platform == "proxmox" {
-			v, err := e.state.Reserve(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, p.Environment.Proxmox.VMIDStart, p.Environment.Proxmox.VMIDEnd, 2)
-			if err != nil {
-				return images, err
-			}
-			cmd.Machine.VMID = v[0]
-			cmd.ValidationVMID = v[1]
-			vlans, err := e.state.Reserve(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.Bridge, owner, p.Environment.Proxmox.VLANStart, p.Environment.Proxmox.VLANEnd, 1)
-			if err != nil {
-				return images, err
-			}
-			cmd.VLAN = vlans[0]
-			if err = e.state.Put(ctx, "build", im.CacheKey, cmd); err != nil {
-				return images, err
-			}
-		}
-		r, err := e.invoke(ctx, cmd)
+	} else if err != nil {
+		return images, err
+	}
+	owner := cmd.Owner
+	if p.Environment.Platform == "proxmox" {
+		v, err := e.state.Reserve(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, p.Environment.Proxmox.VMIDStart, p.Environment.Proxmox.VMIDEnd, 2)
 		if err != nil {
 			return images, err
 		}
-		if !r.Resource.Complete {
-			return images, problem(RecoveryRequired, im.Name, "build is incomplete")
-		}
-		rec := ImageRecord{ID: owner, Key: im.CacheKey, Name: im.Name, EnvironmentDigest: p.EnvironmentDigest, Resource: r.Resource, Created: time.Now().UTC(), Environment: p.Environment}
-		if err = e.state.Put(ctx, "image", im.CacheKey, rec); err != nil {
+		cmd.Machine.VMID = v[0]
+		cmd.ValidationVMID = v[1]
+		vlans, err := e.state.Reserve(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.Bridge, owner, p.Environment.Proxmox.VLANStart, p.Environment.Proxmox.VLANEnd, 1)
+		if err != nil {
 			return images, err
 		}
-		if p.Environment.Platform == "proxmox" {
-			if err = e.state.ReleaseValue(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, cmd.ValidationVMID); err != nil {
-				return images, err
-			}
-			if err = e.state.ReleaseValue(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.Bridge, owner, cmd.VLAN); err != nil {
-				return images, err
-			}
+		cmd.VLAN = vlans[0]
+		if err = e.state.Put(ctx, "build", im.CacheKey, cmd); err != nil {
+			return images, err
 		}
-		images = append(images, rec)
 	}
+	r, err := e.invoke(ctx, cmd)
+	if err != nil {
+		return images, err
+	}
+	if !r.Resource.Complete {
+		return images, problem(RecoveryRequired, im.Name, "build is incomplete")
+	}
+	rec := ImageRecord{ID: owner, Key: im.CacheKey, Name: im.Name, EnvironmentDigest: p.EnvironmentDigest, Resource: r.Resource, Created: time.Now().UTC(), Environment: p.Environment}
+	if err = e.state.Put(ctx, "image", im.CacheKey, rec); err != nil {
+		return images, err
+	}
+	if p.Environment.Platform == "proxmox" {
+		if err = e.state.ReleaseValue(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, cmd.ValidationVMID); err != nil {
+			return images, err
+		}
+		if err = e.state.ReleaseValue(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.Bridge, owner, cmd.VLAN); err != nil {
+			return images, err
+		}
+	}
+	images = append(images, rec)
 	return images, nil
 }
 func (e *Engine) Deploy(ctx context.Context, p Plan) (Instance, error) {
@@ -235,6 +280,22 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		return inst, err
 	}
 	defer unlock()
+	// The instance fence makes this preflight authoritative. Never create images
+	// for a duplicate identity that must resume its retained original plan.
+	if err := e.state.Get(ctx, "instance", instanceID, &inst); err == nil {
+		return inst, problem(RecoveryRequired, "instance", "instance already exists; recover its original operation")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return inst, err
+	}
+	images, err := e.Build(ctx, p)
+	if err != nil {
+		return inst, err
+	}
+	unpin, err := e.lockImages(ctx, p)
+	if err != nil {
+		return inst, err
+	}
+	defer func() { unpin() }()
 	err = e.withAllocationLock(ctx, func() error {
 		if err := e.state.Get(ctx, "instance", instanceID, &inst); err == nil {
 			return problem(RecoveryRequired, "instance", "instance already exists; recover its original operation")
@@ -244,9 +305,15 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		if err := verifyPlan(p); err != nil {
 			return err
 		}
-		images, err := e.build(ctx, p)
-		if err != nil {
-			return err
+		// Removal may have won the fence after Build returned. Never pin an absent record.
+		for _, im := range images {
+			var current ImageRecord
+			if err := e.state.Get(ctx, "image", im.Key, &current); err != nil {
+				return err
+			}
+			if current.Resource.ID != im.Resource.ID {
+				return problem(RecoveryRequired, im.Key, "image changed before deployment")
+			}
 		}
 		native := map[string]string{}
 		for _, im := range p.Images {
@@ -272,6 +339,8 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		}
 		return nil
 	})
+	unpin()
+	unpin = func() {}
 	if err == nil {
 		err = e.deploy(ctx, &inst)
 	}
@@ -412,15 +481,35 @@ func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 	if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
 		return err
 	}
-	for _, m := range i.Plan.Machines {
-		r, err := e.invoke(ctx, Command{Action: "machine.create", Operation: i.ID + "/machine/" + m.Name, Owner: i.ID, Environment: env, Machine: m, Network: net.Resource, VLAN: i.VLAN})
-		if err != nil {
-			return e.failed(*i, err)
-		}
-		i.Resources = upsert(i.Resources, r.Resource)
-		if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
-			return err
-		}
+	// The network is the only machine dependency. Persist each completed sibling
+	// independently and drain all work before recording a partial failure.
+	var mu sync.Mutex
+	var workers sync.WaitGroup
+	slots := make(chan struct{}, 4)
+	failures := make([]error, len(i.Plan.Machines))
+	for n, m := range i.Plan.Machines {
+		workers.Go(func() {
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				failures[n] = ctx.Err()
+				return
+			}
+			r, err := e.invoke(ctx, Command{Action: "machine.create", Operation: i.ID + "/machine/" + m.Name, Owner: i.ID, Environment: env, Machine: m, Network: net.Resource, VLAN: i.VLAN})
+			if err != nil {
+				failures[n] = fmt.Errorf("%s: %w", m.Name, err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			i.Resources = upsert(i.Resources, r.Resource)
+			failures[n] = e.state.Put(ctx, "instance", i.ID, i)
+		})
+	}
+	workers.Wait()
+	if err := errors.Join(failures...); err != nil {
+		return e.failed(*i, err)
 	}
 	i.Status = "ready"
 	i.Error = ""
@@ -452,6 +541,15 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 	}
 	defer unlock()
 	var i Instance
+	i, err = e.Inspect(ctx, instance)
+	if err != nil {
+		return i, err
+	}
+	if i.Status != "destroyed" && i.Status != "destroying" {
+		if err = e.closeInstanceAccess(ctx, i.ID); err != nil {
+			return i, err
+		}
+	}
 	err = e.withAllocationLock(ctx, func() error {
 		var err error
 		i, err = e.Inspect(ctx, instance)
@@ -461,11 +559,8 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 		if i.Status == "destroyed" {
 			return nil
 		}
-		if err = e.closeInstanceAccess(ctx, i.ID); err != nil {
-			return err
-		}
 		if i.Status == "destroying" {
-			return e.destroy(ctx, &i)
+			return nil
 		}
 		if i.Status != "ready" {
 			if err = e.prepare(ctx, &i); err != nil {
@@ -474,7 +569,9 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 		}
 		return nil
 	})
-	if err == nil && i.Status != "destroyed" {
+	if err == nil && i.Status == "destroying" {
+		err = e.destroy(ctx, &i)
+	} else if err == nil && i.Status != "destroyed" {
 		err = e.deploy(ctx, &i)
 	}
 	return i, err
@@ -485,13 +582,11 @@ func (e *Engine) Destroy(ctx context.Context, instance string) error {
 		return problem(Busy, "instance", err.Error())
 	}
 	defer unlock()
-	return e.withLock(func() error {
-		i, err := e.Inspect(ctx, instance)
-		if err != nil {
-			return err
-		}
-		return e.destroy(ctx, &i)
-	})
+	i, err := e.Inspect(ctx, instance)
+	if err != nil {
+		return err
+	}
+	return e.destroy(ctx, &i)
 }
 func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	if i.Status == "destroyed" {
@@ -601,7 +696,12 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	return e.state.Put(ctx, "instance", i.ID, i)
 }
 func (e *Engine) RemoveImage(ctx context.Context, key string) error {
-	return e.withLock(func() error {
+	unlock, err := e.state.LockKeyContext(ctx, "image:"+key)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return e.withAllocationLock(ctx, func() error {
 		var im ImageRecord
 		if err := e.state.Get(ctx, "image", key, &im); err != nil {
 			return err
@@ -709,7 +809,12 @@ func (e *Engine) RecoverBuild(ctx context.Context, key string) ([]ImageRecord, e
 
 // AbandonBuild explicitly cleans an unpublished attempt before releasing identifiers.
 func (e *Engine) AbandonBuild(ctx context.Context, key string) error {
-	return e.withLock(func() error {
+	unlock, err := e.state.LockKeyContext(ctx, "image:"+key)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return e.withAllocationLock(ctx, func() error {
 		var im ImageRecord
 		if err := e.state.Get(ctx, "image", key, &im); err == nil {
 			return problem(Invalid, key, "published image: use image remove")

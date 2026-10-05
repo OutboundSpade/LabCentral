@@ -45,13 +45,11 @@ func TestMaintenanceReportsWorkOutsideRecentHistory(t *testing.T) {
 	if err := json.Unmarshal(data, &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.ActiveJobs != 1 || len(status.Jobs) != 50 {
+	if status.ActiveJobs != 1 || len(status.Jobs) != 51 {
 		t.Fatal(status)
 	}
-	for _, j := range status.Jobs {
-		if j.ID == old.ID {
-			t.Fatal("fixture did not exclude old work")
-		}
+	if status.Jobs[0].ID != old.ID {
+		t.Fatal("active work hidden by recent history")
 	}
 }
 

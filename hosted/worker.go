@@ -13,77 +13,50 @@ import (
 	"time"
 )
 
-// Run has one infrastructure worker. Authorization/expiry checks run independently.
+// Run fences one scheduler process, then admits jobs whose resource claims do
+// not conflict. End/authorization cleanup has a reserved slot.
 func (s *Service) Run(ctx context.Context) error {
-	unlock, e := s.Store.LockKey("hosted-worker")
-	if e != nil {
-		return e
+	unlock, err := s.Store.LockKey("hosted-worker")
+	if err != nil {
+		return err
 	}
 	defer unlock()
-	if _, e = s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='queued' WHERE status='running'`); e != nil {
-		return e
+	if _, err = s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='queued' WHERE status='running'`); err != nil {
+		return err
 	}
-	// Recovery remains a visible, retryable job if the provider is unavailable.
-	if _, e = s.Store.Enqueue(ctx, "access-cleanup", "startup"); e != nil {
-		return e
+	if _, err = s.Store.Enqueue(ctx, "access-cleanup", "startup"); err != nil {
+		return err
 	}
-	policyCtx, cancel := context.WithCancel(ctx)
-	policyDone := make(chan struct{})
-	go func() { defer close(policyDone); s.policyLoop(policyCtx) }()
-	defer func() { cancel(); <-policyDone }()
+	ctx, cancel := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait() }()
+	workers.Go(func() { s.policyLoop(ctx) })
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	done := make(chan error, 4)
 	for {
+		if err := s.dispatchJobs(ctx, &workers, done); err != nil {
+			return err
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-done:
+			if err != nil {
+				return err
+			}
 		case <-tick.C:
-			chosen, e := s.Store.NextJob(ctx)
-			if e != nil {
-				return e
-			}
-			if chosen == nil {
-				continue
-			}
-			if _, e = s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='running',error='' WHERE id=?`, chosen.ID); e != nil {
-				return e
-			}
-			taskCtx, stop := context.WithTimeout(ctx, 2*time.Hour)
-			s.jobMu.Lock()
-			s.jobCancel, s.jobKind = stop, chosen.Kind
-			s.jobMu.Unlock()
-			e = s.runJob(taskCtx, *chosen)
-			s.jobMu.Lock()
-			s.jobCancel, s.jobKind = nil, ""
-			s.jobMu.Unlock()
-			stop()
-			status, msg := "complete", ""
-			if e != nil {
-				status = "failed"
-				if ctx.Err() != nil {
-					status = "queued"
-				}
-				msg = e.Error()
-			}
-			if len(msg) > 2000 {
-				msg = msg[:2000]
-			}
-			finalCtx, done := context.WithTimeout(context.Background(), 5*time.Second)
-			_, save := s.Store.DB.ExecContext(finalCtx, `UPDATE jobs SET status=?,error=? WHERE id=?`, status, msg, chosen.ID)
-			done()
-			if save != nil {
-				return save
-			}
 		}
 	}
 }
 
-// stopProvisioning lets deadline cleanup preempt a long build or deployment.
 func (s *Service) stopProvisioning() {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
-	if s.jobCancel != nil && s.jobKind != "end" && s.jobKind != "access-cleanup" {
-		s.jobCancel()
+	for _, job := range s.activeJobs {
+		if job.job.Kind == "prepare" || job.job.Kind == "exercise" || job.job.Kind == "check" {
+			job.cancel()
+		}
 	}
 }
 func (s *Service) enforceDeadline(ctx context.Context) {
@@ -103,6 +76,7 @@ func (s *Service) policyLoop(ctx context.Context) {
 	defer tick.Stop()
 	for {
 		s.enforceDeadline(ctx)
+		s.scheduleChecks(ctx)
 		s.revalidateDesktops(ctx)
 		select {
 		case <-ctx.Done():
@@ -150,6 +124,8 @@ func (s *Service) runJob(ctx context.Context, j Job) error {
 	switch j.Kind {
 	case "access-cleanup":
 		return s.recoverAccess(ctx)
+	case "check":
+		return s.runCheck(ctx, j)
 	case "exercise":
 		return s.runExercise(ctx, j)
 	case "refresh":

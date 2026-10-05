@@ -36,6 +36,18 @@ Build new images there, or remove unused images with confirmation. Removal keeps
 the revision history, protects images referenced by retained labs, and preserves
 images shared by another built revision. Failed cleanup stays retryable.
 
+Independent image builds and old-template deployments can run together. The worker
+waits only for overlapping template, image, meeting or team operations. **Live activity**
+shows running/queued work, waiting dependencies, progress counts and active desktops.
+
+Pinned templates can include private `instructor.yaml` metadata and guest Ansible
+playbooks under `instructor/`. They are extracted before image builds and are visible
+only to administrators. Notes, break definitions and reset instructions stay with
+the revision. **Service scoreboard** runs the revision's checks once or on a saved
+schedule (one minute to one hour); it shows pass, fail and unavailable results per
+team. Schedules start paused and stop when the meeting ends. See
+[ARCHITECTURE.md](ARCHITECTURE.md#hosted-team-service) for the manifest contract.
+
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
 `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
 identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC

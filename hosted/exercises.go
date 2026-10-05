@@ -85,7 +85,7 @@ func (s *Service) startExercises(w http.ResponseWriter, r *http.Request, v Sessi
 
 // Selection, per-team exclusion, intent, and job creation commit together.
 func (s *Service) queueExercises(ctx context.Context, req ExerciseRequest, actor string) ([]ExerciseRun, error) {
-	if !validExercise(req.Action) || len(req.TeamIDs) < 1 || len(req.TeamIDs) > 5 {
+	if len(req.TeamIDs) < 1 || len(req.TeamIDs) > 5 {
 		return nil, fmt.Errorf("Choose an exercise and one to five ready teams.")
 	}
 	s.mu.Lock()
@@ -101,7 +101,7 @@ func (s *Service) queueExercises(ctx context.Context, req ExerciseRequest, actor
 	if err = s.Store.Get(ctx, "source", m.Template, &src); err != nil {
 		return nil, fmt.Errorf("The pinned source is unavailable.")
 	}
-	if _, err = exerciseBaseline(src); err != nil {
+	if err = s.validateExercise(ctx, m.Template, req.Action, src); err != nil {
 		return nil, err
 	}
 	teams, err := s.Store.Teams(ctx, m.ID)
@@ -213,7 +213,7 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	if err = s.Store.Get(ctx, "source", m.Template, &src); err != nil {
 		return err
 	}
-	if _, err = exerciseBaseline(src); err != nil {
+	if err = s.validateExercise(ctx, m.Template, run.Action, src); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithDeadline(ctx, m.Expires)
@@ -234,7 +234,27 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	if runner == nil {
 		runner = s.executeExercise
 	}
-	report, err := runner(ctx, team, run, src)
+	var bundle InstructorBundle
+	var report string
+	if lookup := s.Store.Get(ctx, "template-instructor", m.Template, &bundle); lookup == nil {
+		steps := bundle.Reset
+		if run.Action == "check" {
+			return fmt.Errorf("Use the template scoreboard checks for this revision.")
+		}
+		if err = s.runGuestPlaybooks(ctx, team, src, bundle, steps); err == nil && run.Action != "reset" {
+			for _, x := range bundle.Exercises {
+				if x.ID == run.Action {
+					err = s.runGuestPlaybooks(ctx, team, src, bundle, x.Steps)
+					break
+				}
+			}
+		}
+		report = "Template exercise complete; pinned guest playbooks passed."
+	} else if errors.Is(lookup, sql.ErrNoRows) {
+		report, err = runner(ctx, team, run, src)
+	} else {
+		err = lookup
+	}
 	if err != nil {
 		return err
 	}
@@ -242,4 +262,28 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	run.Report = report
 	run.Updated = time.Now().UTC()
 	return s.Store.Put(ctx, "exercise", run.ID, run)
+}
+
+func (s *Service) validateExercise(ctx context.Context, template, action string, src lc.Source) error {
+	var bundle InstructorBundle
+	err := s.Store.Get(ctx, "template-instructor", template, &bundle)
+	if errors.Is(err, sql.ErrNoRows) {
+		if !validExercise(action) {
+			return fmt.Errorf("Choose a supported exercise.")
+		}
+		_, err = exerciseBaseline(src)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if action == "reset" && len(bundle.Reset) > 0 {
+		return nil
+	}
+	for _, x := range bundle.Exercises {
+		if x.ID == action {
+			return nil
+		}
+	}
+	return fmt.Errorf("Choose an exercise from the pinned template.")
 }

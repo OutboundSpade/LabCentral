@@ -44,8 +44,7 @@ func TestOverdueMeetingCancelsProvisioningAndQueuesCleanup(t *testing.T) {
 	_ = s.Store.Put(ctx, "meeting", "current", m)
 	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	s.jobCancel = cancel
-	s.jobKind = "prepare"
+	s.activeJobs = map[string]runningJob{"prepare": {job: Job{Kind: "prepare"}, cancel: cancel}}
 	s.enforceDeadline(ctx)
 	if jobCtx.Err() == nil {
 		t.Fatal("provisioning survived expiry")

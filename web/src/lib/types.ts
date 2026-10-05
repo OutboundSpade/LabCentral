@@ -28,6 +28,7 @@ export interface Membership {
   switching: boolean;
 }
 export interface Template {
+  instructor?: InstructorView | null;
   operation?: Job | null;
   buildsPending: number;
   commitTitle?: string;
@@ -47,6 +48,9 @@ export interface Template {
   built: boolean;
 }
 export interface Job {
+  started?: string | null;
+  finished?: string | null;
+  waitingOn?: string[];
   id: string;
   kind: string;
   target: string;
@@ -77,6 +81,9 @@ export interface Overview {
   lab: LabView;
 }
 export interface AdminView {
+  checkSchedule?: CheckSchedule | null;
+  checkRuns: CheckRun[];
+  activeDesktops: number;
   meeting: Meeting | null;
   teams: Team[];
   jobs: Job[];
@@ -124,4 +131,39 @@ export interface ExerciseRun {
 export interface ExerciseRequest {
   action: string;
   teamIDs: string[];
+}
+export interface InstructorView {
+  notes: string;
+  checks: CheckDefinition[];
+  exercises: ExerciseDefinition[];
+}
+export interface CheckDefinition {
+  id: string;
+  name: string;
+  points: number;
+}
+export interface CheckSchedule {
+  meetingID: string;
+  intervalSeconds: number;
+  next: string;
+}
+export interface CheckScheduleRequest {
+  intervalSeconds: number;
+}
+export interface CheckRun {
+  id: string;
+  meetingID: string;
+  teamID: string;
+  status: string;
+  started: string;
+  updated: string;
+  results: CheckResult[];
+}
+export interface CheckResult {
+  status: string;
+  id: string;
+  name: string;
+  points: number;
+  passed: boolean;
+  report: string;
 }
