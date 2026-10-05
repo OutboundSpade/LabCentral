@@ -249,6 +249,16 @@ survived deployment unchanged. Larger team/seat settings and exact eight-hour
 extensions passed local real-handler persistence and race checks; no new large-class
 native load qualification is claimed. Temporary acceptance identities were removed.
 
+The ready-team scheduling fix passed hosted authorization, persistence and race
+regressions and was deployed on 2026-10-05. Real OIDC administration and five AWS
+teams' guest Ansible checks passed after rollout; the existing meeting's pinned
+revision, deadline, team identities and capacities were preserved. The regression
+verifies checks finish while other teams remain in native preparation, including
+restored claims after reopening storage. All live teams had already finished
+preparation, so a fresh live provisioning overlap was not exercised over the active
+user meeting. Unchanged UI and desktop runtime retain their prior acceptance.
+Temporary acceptance identities were removed.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
