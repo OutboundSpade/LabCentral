@@ -1,6 +1,6 @@
 <script lang="ts">import type {Snippet} from 'svelte';import {LogIn,ShieldCheck} from '@lucide/svelte';import {session,loading,loadError,refresh} from './api';import Notice from './Notice.svelte';let {admin=false,children}:{admin?:boolean,children:Snippet}=$props();</script>
 {#if $loading}<div class="flex min-h-48 items-center gap-3" role="status"><span class="loading loading-spinner loading-sm"></span>Loading your workspace…</div>
-{:else if $loadError}<Notice message={$loadError}/><button class="btn btn-sm" onclick={refresh}>Retry</button>
-{:else if !$session}<section class="max-w-xl py-12"><LogIn size={28} aria-hidden="true"/><h2 class="mt-6 text-2xl font-semibold">Sign in to continue</h2><p class="mt-3 mb-6 text-base-content/75">Use your CDC account to join a team and access your lab.</p><a href="/auth/login" data-sveltekit-reload class="btn btn-sm btn-primary">Continue with CDC ID <LogIn size={16}/></a></section>
+{:else if $loadError}<Notice message={$loadError}/><button class="btn btn-sm min-h-11" onclick={refresh}>Retry</button>
+{:else if !$session}<section class="max-w-xl py-12"><LogIn size={28} aria-hidden="true"/><h2 class="mt-6 text-2xl font-semibold">Sign in to continue</h2><p class="mt-3 mb-6 text-base-content/75">Use your CDC account to join a team and access your lab.</p><a href="/auth/login" data-sveltekit-reload class="btn btn-sm min-h-11 btn-primary">Continue with CDC ID <LogIn size={16}/></a></section>
 {:else if admin&&!$session.user.admin}<section class="py-12"><ShieldCheck size={28}/><h2 class="mt-6 text-2xl font-semibold">For meeting administrators</h2><p class="mt-3">You can access your team's workspace from <a class="link" href="/lab/">Your lab</a>.</p></section>
 {:else}{@render children()}{/if}
