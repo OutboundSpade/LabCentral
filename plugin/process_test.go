@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -234,6 +235,76 @@ func TestIndependentCreatesOverlapWithOwnerFence(t *testing.T) {
 	case <-time.After(30 * time.Millisecond):
 	}
 	close(p.release)
+	for n := 0; n < 3; n++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestBuildDoesNotBlockOtherOwnerAndMachineRetriesStayFenced(t *testing.T) {
+	p := concurrentCreateProvider{make(chan string, 6), make(chan struct{})}
+	server := &Server{Provider: p}
+	env := lc.Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]lc.Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: lc.AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []lc.InstanceType{{Name: "t3.medium", CPU: 2, MemoryMiB: 4096}}}}
+	source, err := lc.Load("../examples/single")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var workers sync.WaitGroup
+	done := make(chan error, 6)
+	execute := func(owner, action, machine string) {
+		workers.Go(func() {
+			cmd := lc.Command{Action: action, Owner: owner, Environment: env, Source: source, Machine: lc.PlannedMachine{Name: machine}}
+			wireCmd := new(wire.Command)
+			if err := wireconvert.Encode(cmd, wireCmd); err != nil {
+				done <- err
+				return
+			}
+			done <- server.Execute(&wire.Request{Version: 2, Command: wireCmd}, testStream{ctx: ctx})
+		})
+	}
+	defer func() { cancel(); workers.Wait() }()
+	execute("build-owner", "image.build", "")
+	select {
+	case <-p.entered:
+	case <-ctx.Done():
+		t.Fatal("build did not enter")
+	}
+	execute("lab-owner", "network.create", "")
+	select {
+	case <-p.entered:
+	case <-ctx.Done():
+		t.Fatal("build blocked unrelated network")
+	}
+	// Release the network, then hold the machines together under a new provider gate.
+	close(p.release)
+	workers.Wait()
+	for n := 0; n < 2; n++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	p = concurrentCreateProvider{make(chan string, 6), make(chan struct{})}
+	server.Provider = p
+	execute("lab-owner", "machine.create", "web")
+	execute("lab-owner", "machine.create", "database")
+	for n := 0; n < 2; n++ {
+		select {
+		case <-p.entered:
+		case <-ctx.Done():
+			t.Fatal("independent machines serialized")
+		}
+	}
+	execute("lab-owner", "discover", "web")
+	select {
+	case <-p.entered:
+		t.Fatal("response-lost same-machine retry crossed fence")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(p.release)
+	workers.Wait()
 	for n := 0; n < 3; n++ {
 		if err := <-done; err != nil {
 			t.Fatal(err)

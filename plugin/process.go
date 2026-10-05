@@ -168,7 +168,6 @@ func (p *Process) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.
 type Server struct {
 	wire.UnimplementedPlatformServer
 	Provider  lc.Provider
-	mu        sync.RWMutex
 	owners    sync.Map
 	resources sync.Map
 }
@@ -189,31 +188,33 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 			return sendError(stream, e)
 		}
 	}
-	// Independent lab creates, discovery and image reads may overlap. Builds
-	// and image/network deletion remain exclusive; owner fencing always applies.
+	// Native journals are owner-scoped. An unrelated build must never block
+	// a retained lab. Within an owner, distinct machines have distinct journals;
+	// networking, images and access retain the exclusive lifecycle fence.
+	machineCreate := c.Action == "machine.create"
 	machineDelete := c.Action == "resource.destroy" && c.Prior.Kind == "machine"
-	if c.Action != "access.open" && c.Action != "access.close" {
-		if machineDelete || c.Action == "network.create" || c.Action == "machine.create" || c.Action == "discover" || c.Action == "image.read" || c.Action == "check" {
-			s.mu.RLock()
-			defer s.mu.RUnlock()
-		} else {
-			s.mu.Lock()
-			defer s.mu.Unlock()
-		}
-	}
+	machineDiscover := c.Action == "discover" && c.Machine.Name != ""
+	independentMachine := machineCreate || machineDelete || machineDiscover
 	value, _ := s.owners.LoadOrStore(c.Owner, &sync.RWMutex{})
 	ownerLock := value.(*sync.RWMutex)
-	if machineDelete {
+	if independentMachine {
 		ownerLock.RLock()
 		defer ownerLock.RUnlock()
 	} else {
 		ownerLock.Lock()
 		defer ownerLock.Unlock()
 	}
-	// Response loss may overlap a retry of the same VM. Only distinct machines
-	// may run together; their provider journals must still have one writer.
-	if machineDelete {
-		value, _ := s.resources.LoadOrStore(c.Owner+"/"+c.Prior.ID, make(chan struct{}, 1))
+	// A response-lost create/discovery and its retry share one machine fence.
+	// Destruction uses the same name fence; un-named resources retain their ID.
+	if independentMachine {
+		machine := c.Machine.Name
+		if machineDelete {
+			machine = c.Prior.Name
+			if machine == "" {
+				machine = c.Prior.ID
+			}
+		}
+		value, _ := s.resources.LoadOrStore(c.Owner+"/machine/"+machine, make(chan struct{}, 1))
 		lock := value.(chan struct{})
 		select {
 		case lock <- struct{}{}:

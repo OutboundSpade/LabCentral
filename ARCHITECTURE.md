@@ -324,8 +324,11 @@ three team deployments concurrently. Each team persists its own readiness or fai
 one failure does not cancel peers. Meetings with both ready and failed teams report
 `partial`; all-team failures report `failed`. Aggregated job errors name the failed teams, and
 retry reconciles their reserved instance IDs while keeping ready teams accessible.
-The provider allows independent creates and discovery concurrently, retaining owner
-fences so retries cannot overlap the same native journal. Cancellation drains overlapping
+The provider permits unrelated image builds, networking and machine operations
+concurrently. Owner fences serialize networking, image and access lifecycle work;
+distinct machines share the owner fence and have their own name fences. Create,
+discovery and response-lost retries for the same machine cannot overlap its journal.
+Networking deletion waits for all machine operations in that owner. Cancellation drains overlapping
 meeting operations before deadline cleanup proceeds; unrelated image builds continue. It preserves the reserved
 engine instance ID across retries, reconciles incomplete work, and prioritizes
 meeting destruction over ordinary queued work. Ending a meeting interrupts active
