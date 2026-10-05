@@ -3,11 +3,14 @@ package build
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -113,5 +116,56 @@ func TestValidationCleanupCheckpoint(t *testing.T) {
 	}
 	if p.calls != before {
 		t.Fatal("completed validation repeated external mutations")
+	}
+}
+
+type validationRetryProvider struct {
+	commands []lc.Command
+}
+
+func (p *validationRetryProvider) Execute(_ context.Context, c lc.Command, _ lc.Observer) (lc.Result, error) {
+	p.commands = append(p.commands, c)
+	return lc.Result{}, errors.New("native response unavailable")
+}
+
+func TestFailedValidationRetryRequiresConfirmedCleanup(t *testing.T) {
+	for _, cleaned := range []bool{false, true} {
+		t.Run(fmt.Sprint(cleaned), func(t *testing.T) {
+			root := t.TempDir()
+			c := lc.Command{Owner: "build-test"}
+			image := lc.Resource{ID: "ami-test"}
+			j := journal.Journal{Root: filepath.Join(root, c.Owner, "validation")}
+			old := validationRecord{ImageID: image.ID, ChecksDone: true, CheckError: "DCV status unavailable", Cleaned: cleaned, Machine: lc.Resource{ID: "old-vm", Kind: "machine"}, Network: lc.Resource{ID: "old-net", Kind: "network"}}
+			if err := j.Save("receipt", old); err != nil {
+				t.Fatal(err)
+			}
+			p := &validationRetryProvider{}
+			if _, err := ValidateNative(context.Background(), root, p, c, image); err == nil {
+				t.Fatal("unknown native outcome accepted")
+			}
+			if len(p.commands) != 1 {
+				t.Fatal(p.commands)
+			}
+			command := p.commands[0]
+			if !cleaned {
+				if command.Action != "resource.destroy" || command.Owner != "build-test-validation" {
+					t.Fatal("new guest provisioned before cleanup confirmation", command)
+				}
+				return
+			}
+			if command.Action != "network.create" || command.Owner != "build-test-validation-1" {
+				t.Fatal("retry reused previous guest identity", command)
+			}
+			var archived, current validationRecord
+			if err := j.Load("receipt-attempt-0", &archived); err != nil || !reflect.DeepEqual(archived, old) {
+				t.Fatal("previous receipt lost", err, archived)
+			}
+			if err := j.Load("receipt", &current); err != nil || current.Attempt != 1 || current.Network.ID != "" || current.Machine.ID != "" || current.ChecksDone {
+				t.Fatal("retry checkpoint not durable", err, current)
+			}
+			if validationMachineKey(current) == validationMachineKey(archived) {
+				t.Fatal("retry would discover previous machine command")
+			}
+		})
 	}
 }

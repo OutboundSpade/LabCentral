@@ -81,8 +81,11 @@ Native tags, descriptions, explicit VMIDs, image names, and keypair identities
 support discovery after interruption. A captured image is unpublished until a
 disposable instance passes SSH/cloud-init readiness and declared desktop service
 checks and cleanup succeeds. AWS desktop validation also creates a virtual session
-and waits for its running X display. Validation checkpoints preserve progress across
-cleanup interruption. Cached artifacts are checked for identity/existence before
+and waits for its running X display. An empty session-status response remains unknown;
+startup polls it for a bounded period without creating another session. Validation
+checkpoints preserve progress across cleanup interruption. Retrying failed validation
+reuses the captured image only after confirmed guest cleanup, archives the prior
+receipt and assigns a fresh validation owner and machine-intent record. Cached artifacts are checked for identity/existence before
 reuse. Mutable package repositories prevent promises of byte-identical rebuilds.
 
 Proxmox clone builds preserve the base root disk. The environment must provide a

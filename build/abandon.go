@@ -21,7 +21,7 @@ func (r *Runner) Abandon(ctx context.Context, c lc.Command, _ lc.Observer) (lc.R
 		return lc.Result{}, err
 	}
 	var attempt lc.Command
-	if err = j.Load("machine-command", &attempt); err == nil && receipt.Machine.ID == "" {
+	if err = j.Load(validationMachineKey(receipt), &attempt); err == nil && receipt.Machine.ID == "" {
 		attempt.Action = "discover"
 		result, err := r.Provider.Execute(ctx, attempt, nil)
 		if err != nil {

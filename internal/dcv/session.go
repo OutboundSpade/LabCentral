@@ -2,6 +2,7 @@
 package dcv
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,9 @@ import (
 )
 
 type Run func(context.Context, string) ([]byte, error)
+
+var errEmptyStatus = errors.New("DCV returned an empty session status; readiness is unconfirmed")
+
 type session struct {
 	ID      string `json:"id"`
 	Status  string `json:"status"`
@@ -21,6 +25,9 @@ func state(ctx context.Context, run Run, id string) (bool, bool, error) {
 	output, err := run(ctx, "sudo dcv list-sessions -j")
 	if err != nil {
 		return false, false, err
+	}
+	if len(bytes.TrimSpace(output)) == 0 {
+		return false, false, errEmptyStatus
 	}
 	var sessions []session
 	if err = json.Unmarshal(output, &sessions); err != nil {
@@ -84,7 +91,7 @@ func waitReady(ctx context.Context, run Run, id string, interval time.Duration) 
 	defer tick.Stop()
 	for {
 		_, ready, err := state(ctx, run, id)
-		if err != nil {
+		if err != nil && !errors.Is(err, errEmptyStatus) {
 			return err
 		}
 		if ready {

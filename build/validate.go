@@ -44,6 +44,7 @@ func key(path string) ([]byte, string, error) {
 }
 
 type validationRecord struct {
+	Attempt    int
 	ImageID    string
 	Network    lc.Resource
 	Machine    lc.Resource
@@ -77,9 +78,20 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		return image, fmt.Errorf("validation image identity changed")
 	}
 	if receipt.ChecksDone {
-		return finishValidation(ctx, p, c, image, j, &receipt)
+		if receipt.CheckError == "" || !receipt.Cleaned {
+			return finishValidation(ctx, p, c, image, j, &receipt)
+		}
+		// A retry reuses the image only after the previous guests are confirmed absent.
+		// Preserve their receipt and give the next disposable guest a fresh identity.
+		if e = j.Save(fmt.Sprintf("receipt-attempt-%d", receipt.Attempt), receipt); e != nil {
+			return image, e
+		}
+		receipt = validationRecord{ImageID: image.ID, Attempt: receipt.Attempt + 1}
+		if e = j.Save("receipt", receipt); e != nil {
+			return image, e
+		}
 	}
-	owner := c.Owner + "-validation"
+	owner := validationOwner(c, receipt)
 	vlan := c.VLAN
 	net, err := p.Execute(ctx, lc.Command{Action: "network.create", Operation: owner + "/network", Owner: owner, Environment: c.Environment, VLAN: vlan}, nil)
 	if err != nil {
@@ -104,7 +116,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 	checkpoint := cmd
 	checkpoint.ClientPrivateKey = nil
 	checkpoint.Machine.HostPrivateKey = ""
-	if e = j.Save("machine-command", checkpoint); e != nil {
+	if e = j.Save(validationMachineKey(receipt), checkpoint); e != nil {
 		return image, e
 	}
 	machine, err := p.Execute(ctx, cmd, nil)
@@ -145,7 +157,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 }
 
 func finishValidation(ctx context.Context, p lc.Provider, c lc.Command, image lc.Resource, j journal.Journal, receipt *validationRecord) (lc.Resource, error) {
-	owner := c.Owner + "-validation"
+	owner := validationOwner(c, *receipt)
 	if !receipt.Cleaned {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
 		defer cancel()
@@ -168,6 +180,21 @@ func finishValidation(ctx context.Context, p lc.Provider, c lc.Command, image lc
 	}
 	image.Complete = true
 	return image, nil
+}
+
+func validationOwner(c lc.Command, receipt validationRecord) string {
+	owner := c.Owner + "-validation"
+	if receipt.Attempt > 0 {
+		owner += fmt.Sprintf("-%d", receipt.Attempt)
+	}
+	return owner
+}
+
+func validationMachineKey(receipt validationRecord) string {
+	if receipt.Attempt > 0 {
+		return fmt.Sprintf("machine-command-attempt-%d", receipt.Attempt)
+	}
+	return "machine-command"
 }
 
 func validationAddress(cidr string) string {

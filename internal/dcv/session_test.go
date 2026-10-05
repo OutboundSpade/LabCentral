@@ -3,6 +3,7 @@ package dcv
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -65,5 +66,35 @@ func TestCancellationDoesNotRestartSession(t *testing.T) {
 	run := func(context.Context, string) ([]byte, error) { creates++; cancel(); return nil, context.Canceled }
 	if err := start(ctx, run, "student", "student", time.Second, time.Millisecond); !errors.Is(err, context.Canceled) || creates != 1 {
 		t.Fatal(err, creates)
+	}
+}
+
+func TestEmptyStartupStatusWaitsWithoutDuplicatingSession(t *testing.T) {
+	for _, eventuallyReady := range []bool{true, false} {
+		t.Run(fmt.Sprint(eventuallyReady), func(t *testing.T) {
+			creates, reads := 0, 0
+			run := func(_ context.Context, stringCommand string) ([]byte, error) {
+				if strings.Contains(stringCommand, "create-session") {
+					creates++
+					return nil, nil
+				}
+				reads++
+				if eventuallyReady && reads > 2 {
+					return []byte(`[{"id":"student","status":"running","x11-display":":1"}]`), nil
+				}
+				return []byte(" \n"), nil
+			}
+			err := start(context.Background(), run, "student", "student", 10*time.Millisecond, time.Millisecond)
+			if creates != 1 || reads < 3 {
+				t.Fatal(creates, reads)
+			}
+			if eventuallyReady && err != nil || !eventuallyReady && !errors.Is(err, errEmptyStatus) {
+				t.Fatal(err)
+			}
+		})
+	}
+	ready, err := Ready(context.Background(), func(context.Context, string) ([]byte, error) { return nil, nil }, "student")
+	if ready || !errors.Is(err, errEmptyStatus) {
+		t.Fatal("empty output was treated as confirmed absence", ready, err)
 	}
 }
