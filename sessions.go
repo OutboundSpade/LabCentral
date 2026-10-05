@@ -28,12 +28,19 @@ type AccessOptions struct {
 	RetainWorkspace bool   `json:"retainWorkspace,omitempty"`
 }
 
-func (e *Engine) withInstanceLock(ctx context.Context, instance string, fn func() error) error {
-	unlock, err := e.state.LockKeyContext(ctx, "instance:"+instance)
+// Machine operations share a lifecycle guard, so another machine can be used
+// concurrently while recovery and destruction still require the whole instance.
+func (e *Engine) withMachineLock(ctx context.Context, instance, machine string, fn func() error) error {
+	unlock, err := e.state.LockKeySharedContext(ctx, "instance:"+instance)
 	if err != nil {
 		return problem(Busy, "instance", err.Error())
 	}
 	defer unlock()
+	release, err := e.state.LockKeyContext(ctx, "machine:"+instance+"\x00"+machine)
+	if err != nil {
+		return problem(Busy, "machine", err.Error())
+	}
+	defer release()
 	return fn()
 }
 
@@ -53,7 +60,7 @@ func (e *Engine) OpenDesktopWithOptions(ctx context.Context, instance, machine s
 			return info, problem(Invalid, "access.expires", "expiry must be within eight hours")
 		}
 	}
-	err := e.withInstanceLock(ctx, instance, func() error {
+	err := e.withMachineLock(ctx, instance, machine, func() error {
 		i, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
 		if err != nil {
 			return err
@@ -92,7 +99,7 @@ func (e *Engine) CloseAccess(ctx context.Context, session string) error {
 		}
 		return err
 	}
-	return e.withInstanceLock(ctx, cmd.Owner, func() error { return e.closeAccess(ctx, session) })
+	return e.withMachineLock(ctx, cmd.Owner, cmd.Machine.Name, func() error { return e.closeAccess(ctx, session) })
 }
 func (e *Engine) closeAccess(ctx context.Context, session string) error {
 	var cmd Command

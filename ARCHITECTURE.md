@@ -166,9 +166,14 @@ builds/reuses its images first, then acquires sorted image locks and the short
 allocation fence to persist image references and reservations. Removal uses the same
 image fence before checking retained references. Deployment releases those fences
 before native provisioning; after the network is ready, up to four machines provision
-concurrently. Each successful sibling is persisted, even when another fails. Per-instance locks coordinate deployment,
-recovery, access and destruction without blocking unrelated
-running labs during builds. Status queries remain available. Native create intent is recorded before calls.
+concurrently. Each successful sibling is persisted, even when another fails.
+Deployment, recovery and destruction require an exclusive instance lifecycle lock.
+Desktop open/close and bounded SSH operations share that lock and take an exclusive
+machine lock, permitting a workstation launch during checks on another machine in
+the same lab. File locks coordinate independent clients/processes; cancelled waits
+release acquired guards, and lifecycle changes cannot overlap active machine work.
+Unrelated running labs remain available during builds. Status queries remain
+available. Native create intent is recorded before calls.
 Native idempotency keys are used where supported. Provider journals persist
 subresource intent and results with fsync and atomic rename. An uncertain create
 is discovered through its exact recorded ownership identity; timeout is never
@@ -471,7 +476,10 @@ policy, which excludes paths and query parameters. Established
 WebSockets are cancelled after revocation. The pinned official DCV Web Client SDK
 uses transient guest credentials without a second sign-in. A student's deterministic
 workspace identity permits reconnects and retains the home directory. Launches
-wait for DCV to report a running X display while holding the per-instance lock.
+wait for DCV to report a running X display while holding the workstation's machine
+lock and a shared instance lifecycle guard. They bypass the hosted job queue;
+server checks on another machine do not delay launch or revocation. Launches and
+checks on the same workstation remain serialized.
 A failed asynchronous launch is retried once only after confirmed session absence;
 unknown outcomes remain errors. Reconnects recheck the native session and replace
 a failed session and relay while preserving the home directory. The browser shows

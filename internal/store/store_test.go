@@ -94,3 +94,54 @@ func TestInstanceLockWaitAndCancellation(t *testing.T) {
 		t.Fatal("queued access did not resume")
 	}
 }
+
+func TestSharedLifecycleGuardAcrossClients(t *testing.T) {
+	root := t.TempDir()
+	first, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	a, err := first.LockKeySharedContext(ctx, "instance:lab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := second.LockKeySharedContext(ctx, "instance:lab")
+	if err != nil {
+		a()
+		t.Fatal("independent clients could not share the guard", err)
+	}
+	if unlock, err := second.LockKey("instance:lab"); err == nil {
+		unlock()
+		t.Error("exclusive mutation overlapped shared guards")
+	}
+	a()
+	if unlock, err := first.LockKey("instance:lab"); err == nil {
+		unlock()
+		t.Error("exclusive mutation ignored remaining shared guard")
+	}
+	b()
+	writer, err := first.LockKey("instance:lab")
+	if err != nil {
+		t.Fatal("shared guards did not release", err)
+	}
+	waitCtx, stop := context.WithTimeout(ctx, 35*time.Millisecond)
+	_, err = second.LockKeySharedContext(waitCtx, "instance:lab")
+	stop()
+	writer()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("shared wait ignored exclusive mutation or cancellation", err)
+	}
+	reader, err := second.LockKeySharedContext(ctx, "instance:lab")
+	if err != nil {
+		t.Fatal("reader could not resume after mutation", err)
+	}
+	reader()
+}

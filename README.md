@@ -41,6 +41,8 @@ images shared by another built revision. Failed cleanup stays retryable.
 Independent image builds and old-template deployments can run together. The worker
 waits only for overlapping template, image, meeting or team operations. **Live activity**
 shows running/queued work, waiting dependencies, progress counts and active desktops.
+Desktop launches bypass this queue and can run while checks or exercises use
+another machine in the same ready team lab.
 
 Pinned templates can include private `instructor.yaml` metadata and guest Ansible
 playbooks under `instructor/`. They are extracted before image builds and are visible

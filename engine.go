@@ -737,22 +737,19 @@ func (e *Engine) RemoveImage(ctx context.Context, key string) error {
 	})
 }
 
-// WithSSHMaterial holds the instance lock for a bounded caller-owned SSH operation,
-// coordinating it with access changes and destruction. Credentials must stay local.
+// WithSSHMaterial holds the machine lock and shared instance lifecycle guard for a
+// bounded caller-owned SSH operation. Credentials must stay local.
 func (e *Engine) WithSSHMaterial(ctx context.Context, instance, machine string, fn func(Instance, PlannedMachine, Resource, []byte) error) error {
-	unlock, err := e.state.LockKeyContext(ctx, "instance:"+instance)
-	if err != nil {
-		return problem(Busy, "instance", err.Error())
-	}
-	defer unlock()
-	i, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
-	if err != nil {
-		return err
-	}
-	if !Contains(m.Spec.Access, "ssh") {
-		return problem(Unsupported, machine, "SSH access is not declared")
-	}
-	return fn(i, m, r, key)
+	return e.withMachineLock(ctx, instance, machine, func() error {
+		i, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
+		if err != nil {
+			return err
+		}
+		if !Contains(m.Spec.Access, "ssh") {
+			return problem(Unsupported, machine, "SSH access is not declared")
+		}
+		return fn(i, m, r, key)
+	})
 }
 
 // SSHMaterial returns credentials only through an explicit access request.
