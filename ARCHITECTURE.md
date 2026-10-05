@@ -275,6 +275,16 @@ results. The existing meeting and labs were preserved; the temporary desktop was
 closed, its old access denied, its team seat released and both test identities removed.
 UI assets and guest image revisions were unchanged.
 
+The FTP defacement revision was imported into the hosted service on 2026-10-05
+and became ready by reusing all four existing native images. The retained archive's
+four data files match the clean pinned sources, and configured importer validation
+passed under the race detector. Real OIDC administration verified the private
+walkthrough and ready revision at desktop and mobile widths; student administrative
+requests were denied and their responses excluded instructor material. The prior
+meeting had ended and remained unchanged. No replacement meeting or break was
+started, as requested; the revised guest break, archive transfer and student recovery
+have not yet been exercised in a native lab. Temporary identities were removed.
+
 The wider portable-library release remains incompletely qualified. Live AWS
 single-server and workstation builds, deployment, verified SSH and browser access
 have passed, including interrupted cleanup recovery. The following still require
@@ -410,8 +420,9 @@ with its durable job. The worker rechecks the meeting, deadline and latest team
 operation on every replay. Superseded jobs cannot reapply a break after a reset;
 completed jobs do not repeat mutations. A failed team does not prevent other
 selected teams from running. End-of-meeting cleanup cancels exercises and retains
-priority. The library's caller-owned SSH callback holds the same instance lock
-as destruction and access changes without adding hosted policy to the library.
+priority. The library's caller-owned SSH callback holds the selected machine fence
+and a shared lifecycle guard; destruction waits for all guests without serializing
+access to unrelated machines. Hosted policy stays outside the library.
 
 Fixed guest programs receive pinned template files as data through verified SSH.
 They restore Apache configuration, the homepage and the synthetic support account,
@@ -429,9 +440,13 @@ New templates may supply `instructor.yaml` (version 1) and an `instructor/` fold
 in their pinned repository revision. The hosted importer extracts these **before**
 loading portable source. Notes, walkthroughs and guest programs are stored separately;
 they never enter native images, portable build snapshots or student API responses.
-Changing only instructor material can reuse the existing native images. The manifest
-contains notes, exercises (ID, name, description, walkthrough, ordered machine/playbook
-steps), reset steps and checks (ID, name, points, steps). Optional `assets` name pinned
+Changing only instructor material can reuse the existing native images. The
+Example Branch FTP exercise leaves an older tar.gz archive in the FTP archive
+login root, with clean FTP configuration, publication source, homepage and cached
+page. It defaces the source and visible website. Restoring only the cache cannot
+repair publishing; reset restores the baseline and preserves the recovery archive.
+The manifest contains notes, exercises (ID, name, description, walkthrough, ordered
+machine/playbook steps), reset steps and checks (ID, name, points, steps). Optional `assets` name pinned
 portable-source files made available under `template/` inside the guest bundle. Strict
 field, duplicate-key, alias, file, size and machine-reference validation precedes
 import. Instructor notes and manifest data are never sent to a guest; only programs
