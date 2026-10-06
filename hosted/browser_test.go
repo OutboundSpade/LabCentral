@@ -4,13 +4,22 @@ import (
 	"context"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type browserLoginIdentity struct {
+	Identity
+	authorizationURL string
+}
+
+func (i browserLoginIdentity) LoginURL(string, string, string) string { return i.authorizationURL }
 
 // Exercises the shipped UI and hosted response headers across distinct origins.
 // It does not substitute for a live DCV connection.
@@ -99,6 +108,18 @@ func TestHostedCapacityBrowser(t *testing.T) {
 		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
 	}
 	s, session, _ := serviceFor(t)
+	var redirected atomic.Bool
+	idp := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/authorize" {
+			http.NotFound(w, r)
+			return
+		}
+		redirected.Store(true)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<title>OIDC redirect fixture</title>"))
+	}))
+	defer idp.Close()
+	s.Identity = browserLoginIdentity{Identity: s.Identity, authorizationURL: idp.URL + "/authorize"}
 	session.User.Admin = true
 	if err := s.Store.Put(context.Background(), "session", session.ID, session); err != nil {
 		t.Fatal(err)
@@ -114,11 +135,14 @@ func TestHostedCapacityBrowser(t *testing.T) {
 	app.StartTLS()
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "node", "testdata/capacity.mjs", app.URL)
+	cmd := exec.CommandContext(ctx, "node", "testdata/capacity.mjs", app.URL, idp.URL)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("browser: %v\n%s", err, out)
 	} else {
 		t.Log(string(out))
+	}
+	if !redirected.Load() {
+		t.Fatal("browser did not follow the server-owned identity redirect")
 	}
 }
 

@@ -85,9 +85,9 @@ try {
  await page.unroute(app+'/api/me');
  await page.route(app+'/api/me',route=>route.fulfill({status:401,contentType:'application/json',body:'{"error":"Signed out"}'}));
  await page.getByRole('link',{name:'Continue with CDC ID',exact:false}).waitFor();
- await page.route('https://id.invalid/**',route=>route.fulfill({status:200,contentType:'text/html',body:'<title>OIDC redirect fixture</title>'}));
- await page.getByRole('link',{name:'Continue with CDC ID',exact:false}).click();
- await page.waitForURL('https://id.invalid/**');
+ const idp=process.argv[3];assert(idp,'Local identity redirect fixture required');
+ await Promise.all([page.waitForURL(idp+'/authorize',{waitUntil:'domcontentloaded'}),page.getByRole('link',{name:'Continue with CDC ID',exact:false}).click()]);
+ assert.equal(await page.title(),'OIDC redirect fixture');
  assert(documents>1);
  console.log('Expanded meeting settings, exact eight-hour extension, numeric team order, destructive confirmation, same-document navigation/history, session expiry with a late response, student privacy, and server-owned login passed at desktop/mobile widths. OIDC provider is a fixture.');
 } finally {await browser.close()}
