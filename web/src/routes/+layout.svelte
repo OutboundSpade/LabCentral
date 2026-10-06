@@ -1,19 +1,172 @@
 <script lang="ts">
- import '../app.css';import {onMount} from 'svelte';import {page} from '$app/state';import {Monitor,Users,SlidersHorizontal,LogOut,ArrowUpRight,GitBranch} from '@lucide/svelte';import {session,loading,refresh,api} from '$lib/api';import Notice from '$lib/Notice.svelte';let {children}=$props();let error=$state('');
- onMount(()=>{void refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t)});
- async function logout(){try{await api('/auth/logout',{});location.assign('/')}catch(e){error=(e as Error).message;await refresh()}}
+  import "../app.css";
+  import { onMount } from "svelte";
+  import { page } from "$app/state";
+  import {
+    Monitor,
+    Users,
+    SlidersHorizontal,
+    LogOut,
+    ArrowUpRight,
+    GitBranch,
+    Activity,
+  } from "@lucide/svelte";
+  import {
+    session,
+    loading,
+    refresh,
+    refreshAdmin,
+    adminView,
+    api,
+  } from "$lib/api";
+  import { get } from "svelte/store";
+  import Notice from "$lib/Notice.svelte";
+  let { children } = $props();
+  let error = $state("");
+  onMount(() => {
+    void refresh();
+    const t = setInterval(refresh, 10000);
+    const updates = setInterval(() => {
+      if (get(session)?.user.admin) void refreshAdmin().catch(() => {});
+    }, 2000);
+    return () => {
+      clearInterval(t);
+      clearInterval(updates);
+    };
+  });
+  async function logout() {
+    try {
+      await api("/auth/logout", {});
+      location.assign("/");
+    } catch (e) {
+      error = (e as Error).message;
+      await refresh();
+    }
+  }
+  const destinations = $derived([
+    { href: "/teams/", label: "Teams", name: "Teams", icon: Users },
+    { href: "/lab/", label: "Your lab", name: "Your lab", icon: Monitor },
+    ...($session?.user.admin
+      ? [
+          {
+            href: "/admin/",
+            label: "Manage meeting",
+            name: "Manage meeting",
+            icon: SlidersHorizontal,
+          },
+          {
+            href: "/admin/templates/",
+            label: "Templates",
+            name: "Templates",
+            icon: GitBranch,
+          },
+        ]
+      : []),
+  ]);
+  function active(href: string) {
+    return href === "/admin/templates/"
+      ? page.url.pathname.startsWith(href)
+      : page.url.pathname === href;
+  }
+  const running = $derived(
+    $adminView?.jobs.filter((j) => j.status === "running").length ?? 0,
+  );
+  const failures = $derived(
+    $adminView?.jobs.filter((j) => j.status === "failed" && j.needsAttention)
+      .length ?? 0,
+  );
 </script>
-<svelte:head><title>LabCentral</title><link rel="icon" type="image/svg+xml" href="/brand.svg"/><meta name="description" content="Your team, your workspace, and today's CDC competition lab."/></svelte:head>
-<a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-10 focus:bg-base-100 focus:p-4">Skip to content</a>
+
+<svelte:head
+  ><title>LabCentral</title><link
+    rel="icon"
+    type="image/svg+xml"
+    href="/brand.svg?v=corner-cell"
+  /><meta
+    name="description"
+    content="Your team, your workspace, and today's CDC competition lab."
+  /></svelte:head
+>
+<a
+  href="#main"
+  class="sr-only focus:not-sr-only focus:absolute focus:z-10 focus:bg-base-100 focus:p-4"
+  >Skip to content</a
+>
 <div class="min-h-screen bg-base-100 text-base-content">
- <header class="border-b border-base-300"><div class="mx-auto max-w-6xl px-5 sm:px-8"><div class="navbar min-h-20 flex-wrap gap-3 px-0">
-  <a href="/" aria-label="LabCentral home" class="mr-auto flex items-center gap-3 text-xl font-medium tracking-tight"><img src="/brand.svg" width="32" height="32" class="object-contain" alt=""/> <span>Lab<span class="font-bold">Central</span></span></a>
-  {#if $session}<span class="hidden max-w-44 truncate text-sm text-base-content/75 sm:inline">{$session.user.name}</span><button onclick={logout} class="btn btn-sm min-h-11 btn-ghost min-w-11" aria-label="Sign out" title="Sign out"><LogOut size={17}/></button>{:else if !$loading}<a class="btn btn-sm min-h-11 btn-ghost" href="https://auth.example.org">CDC ID <ArrowUpRight size={16}/></a>{/if}
- </div>
- {#if $session}<nav aria-label="Main navigation" class="grid grid-cols-2 gap-1 pb-3 sm:flex sm:flex-wrap">
-  <a href="/teams/" aria-current={page.url.pathname==='/teams/'?'page':undefined} class="btn btn-sm min-h-11 btn-ghost" class:bg-base-200={page.url.pathname==='/teams/'}><Users size={16}/>Teams</a>
-  <a href="/lab/" aria-current={page.url.pathname==='/lab/'?'page':undefined} class="btn btn-sm min-h-11 btn-ghost" class:bg-base-200={page.url.pathname==='/lab/'}><Monitor size={16}/>Your lab</a>
-  {#if $session.user.admin}<a href="/admin/" aria-current={page.url.pathname==='/admin/'?'page':undefined} class="btn btn-sm min-h-11 btn-ghost" class:bg-base-200={page.url.pathname==='/admin/'}><SlidersHorizontal size={16}/>Manage meeting</a><a href="/admin/templates/" aria-current={page.url.pathname.startsWith('/admin/templates/')?'page':undefined} class="btn btn-sm min-h-11 btn-ghost" class:bg-base-200={page.url.pathname.startsWith('/admin/templates/')}><GitBranch size={16}/>Templates</a>{/if}
- </nav>{/if}</div></header>
- <main id="main" class="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14"><Notice message={error}/>{@render children()}</main>
+  <header class="border-b border-base-content/10 bg-base-200/40">
+    <div
+      class="navbar mx-auto min-h-14 max-w-7xl gap-2 px-4 sm:px-6 lg:gap-4 lg:px-8"
+    >
+      <a
+        href="/"
+        aria-label="LabCentral home"
+        class="flex shrink-0 items-center gap-2.5 text-base font-semibold tracking-tight"
+        ><img
+          src="/brand.svg?v=corner-cell"
+          width="26"
+          height="26"
+          alt=""
+          class="object-contain"
+        /><span>LabCentral</span></a
+      >
+      {#if $session}
+        <nav
+          aria-label="Main navigation"
+          class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-base-content/10 bg-base-200 pb-[env(safe-area-inset-bottom)] lg:static lg:mr-auto lg:justify-start lg:gap-1 lg:border-0 lg:bg-transparent lg:pb-0"
+        >
+          {#each destinations as destination}
+            <a
+              href={destination.href}
+              aria-label={destination.name}
+              aria-current={active(destination.href) ? "page" : undefined}
+              title={destination.href === "/lab/" && !$session.membership.teamID
+                ? "Join a team to access your lab"
+                : undefined}
+              class={[
+                "flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 border-t-2 px-3 text-xs hover:text-base-content lg:min-h-14 lg:flex-none lg:flex-row lg:gap-2 lg:border-t-0 lg:border-b-2 lg:text-sm",
+                active(destination.href)
+                  ? "border-primary text-primary"
+                  : "border-transparent text-base-content/75",
+              ]}
+              ><destination.icon size={17} /><span
+                class="max-w-20 text-center lg:max-w-none lg:whitespace-nowrap"
+                >{destination.label}</span
+              ></a
+            >
+          {/each}
+        </nav>
+        {#if $session.user.admin}<a
+            href="/admin/#activity-title"
+            class="btn btn-sm btn-ghost ml-auto min-h-11 gap-1.5 px-2 text-xs lg:ml-0"
+            aria-label={`Live activity: ${running} running, ${failures} needing attention`}
+            ><Activity size={16} /><span class="xl:hidden">Activity</span><span
+              class="hidden xl:inline"
+              >{running} running · {failures} failed</span
+            >{#if failures}<span
+                class="badge badge-sm badge-soft badge-error xl:hidden"
+                >{failures}</span
+              >{/if}</a
+          >{/if}
+        <span
+          class="ml-auto hidden max-w-32 truncate text-xs text-base-content/75 2xl:inline lg:ml-0"
+          >{$session.user.name}</span
+        ><button
+          onclick={logout}
+          class="btn btn-sm btn-ghost ml-auto min-h-11 min-w-11 lg:ml-0"
+          aria-label="Sign out"
+          title="Sign out"><LogOut size={17} /></button
+        >
+      {:else if !$loading}<a
+          class="btn btn-sm min-h-11 btn-ghost ml-auto"
+          href="/auth/login"
+          data-sveltekit-reload>Sign in <ArrowUpRight size={16} /></a
+        >{/if}
+    </div>
+  </header>
+  <main
+    id="main"
+    class="mx-auto max-w-7xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:py-8"
+  >
+    <Notice message={error} dismissible />{@render children()}
+  </main>
 </div>

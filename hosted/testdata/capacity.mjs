@@ -21,14 +21,14 @@ try {
  await page.getByLabel('Number of teams').fill('12');
  await page.getByLabel('Students per team').fill('20');
  await page.getByLabel('Duration (hours)').fill('2');
- await page.getByText('240 student places.',{exact:false}).waitFor();
+ await page.getByText('240 desktop places',{exact:false}).waitFor();
  const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;
  if(output){fs.mkdirSync(output,{recursive:true});await page.screenshot({animations:'disabled',path:output+'/capacity-desktop.png',fullPage:true})}
  await page.setViewportSize({width:390,height:844});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  if(output)await page.screenshot({animations:'disabled',path:output+'/capacity-mobile.png',fullPage:true});
  await page.getByRole('button',{name:'Create meeting',exact:true}).click();
- await page.getByRole('button',{name:'Prepare labs',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Prepare labs now',exact:true}).waitFor();
  assert.equal(await page.getByRole('cell',{name:'0 / 20',exact:true}).count(),12);
  let data=await page.evaluate(async()=>await(await fetch('/api/admin')).json());
  assert.equal(data.teams.length,12);
@@ -41,7 +41,7 @@ try {
  data=await page.evaluate(async()=>await(await fetch('/api/admin')).json());
  assert.equal(Date.parse(data.meeting.expires)-Date.parse(data.meeting.created),8*3600000);
  const end=page.getByRole('button',{name:'End meeting',exact:true});
- assert((await end.getAttribute('class')).includes('btn-error'));
+ assert((await end.getAttribute('class')).includes('text-error'));
  assert.equal(await end.locator('input[type="checkbox"]').count(),0);
  if(output)await page.screenshot({animations:'disabled',path:output+'/meeting-mobile.png',fullPage:true});
  await end.click();await page.getByRole('dialog').waitFor();

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -49,7 +51,36 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 			}
 		}
 	}
+	if out.Lab.Team != nil && out.Meeting != nil && !out.Membership.Switching && out.Meeting.Status != "ending" && out.Meeting.Status != "ended" && out.Meeting.Expires.After(time.Now()) {
+		s.mu.Lock()
+		for _, d := range s.desktops {
+			if desktopAvailable(d, time.Now()) && d.record.UserID == v.User.ID && d.record.SessionID == v.ID && d.record.TeamID == out.Lab.Team.ID && d.record.InstanceID == out.Lab.Team.InstanceID {
+				out.Lab.DesktopActive = true
+				break
+			}
+		}
+		s.mu.Unlock()
+	}
 	writeJSON(w, 200, out)
+}
+
+// Report an available authenticated relay, not a browser connection or fresh guest probe.
+func desktopAvailable(d *desktopSession, now time.Time) bool {
+	return d.ctx.Err() == nil && d.record.Expires.After(now) && d.info.Expires.After(now)
+}
+
+var repositoryPath = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+func repositoryURL(repository string) string {
+	const prefix = "git@github.com:"
+	if !strings.HasPrefix(repository, prefix) {
+		return ""
+	}
+	path := strings.TrimSuffix(strings.TrimPrefix(repository, prefix), ".git")
+	if !repositoryPath.MatchString(path) {
+		return ""
+	}
+	return "https://github.com/" + path
 }
 func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 	var req JoinTeam
@@ -88,11 +119,14 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 }
 func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	ctx := r.Context()
-	out := AdminView{Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}, CheckRuns: []CheckRun{}, ExerciseRuns: []ExerciseRun{}, Exercises: []ExerciseDefinition{}}
+	out := AdminView{RepositoryURL: repositoryURL(s.Config.Repository), TeamDesktops: []TeamDesktopCount{}, Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}, CheckRuns: []CheckRun{}, ExerciseRuns: []ExerciseRun{}, Exercises: []ExerciseDefinition{}}
 	var err error
 	out.Meeting, err = s.Store.Meeting(ctx)
 	if err == nil && out.Meeting != nil {
 		out.Teams, err = s.Store.Teams(ctx, out.Meeting.ID)
+		if err == nil {
+			out.JoinedStudents, err = s.Store.JoinedStudents(ctx, out.Meeting.ID)
+		}
 	}
 	if err == nil {
 		out.Jobs, err = s.Store.Jobs(ctx)
@@ -116,12 +150,18 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 		}
 	}
 	s.mu.Lock()
+	counts := map[string]int{}
+	now := time.Now()
 	for _, d := range s.desktops {
-		if d.ctx.Err() == nil {
+		if desktopAvailable(d, now) {
 			out.ActiveDesktops++
+			counts[d.record.TeamID]++
 		}
 	}
 	s.mu.Unlock()
+	for _, team := range out.Teams {
+		out.TeamDesktops = append(out.TeamDesktops, TeamDesktopCount{TeamID: team.ID, Count: counts[team.ID]})
+	}
 	if err == nil && out.Meeting != nil {
 		for _, template := range out.Templates {
 			if template.ID != out.Meeting.Template {

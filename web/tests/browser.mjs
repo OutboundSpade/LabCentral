@@ -32,6 +32,6 @@ try{
    if(route==='lab/'){assert.equal(await page.locator('article script').count(),0);await page.getByRole('button',{name:'Open desktop'}).waitFor();const next=page.waitForEvent('popup');await page.getByRole('button',{name:'Open desktop'}).click();const desktop=await next;await desktop.getByRole('heading',{name:'Desktop launch accepted'}).waitFor();assert.equal(await desktop.evaluate(()=>window.opener),null);await desktop.close()}
    if(route==='admin/'){await page.getByRole('button',{name:'End meeting',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'})}
   }
-  await page.goto('http://127.0.0.1:5173/teams/');await page.getByRole('button',{name:'Switch team'}).first().click();await page.waitForURL('**/lab/');assert(switched);assert.equal(currentTeam,'t2');assert.deepEqual(errors,[]);await context.close();console.log('PASS routes, responsive layout, full team, safe handover, confirmation, team switch:',width);
+  await page.goto('http://127.0.0.1:5173/teams/');await page.getByRole('button',{name:'Switch team'}).first().click();await page.getByRole('dialog').getByRole('button',{name:'Switch to Team 2',exact:true}).click();await page.waitForURL('**/lab/');assert(switched);assert.equal(currentTeam,'t2');assert.deepEqual(errors,[]);await context.close();console.log('PASS routes, responsive layout, full team, safe handover, confirmation, team switch:',width);
  }
 }finally{await browser.close()}

@@ -378,18 +378,38 @@ Primary sources, retrieved 2026-09-28:
 [SvelteKit static generation](https://svelte.dev/docs/kit/adapter-static).
 
 
-The static UI keeps the existing dark-purple daisyUI theme and Instrument Sans.
-A local SVG hub mark identifies LabCentral in the header and favicon; Lucide remains
-the action/icon system. Administrators have a direct Templates navigation item.
-The desktop panel precedes the handover on narrow screens, while the handover stays
-on the left on desktop. Shared status badges pair plain labels and icons with service
-state colors. Activity filters expose failure counts without opening a menu, and failed
-operations link to recovery controls. Cached images are distinguished from confirmed
-built revisions. Schedule controls name starting, updating and pausing explicitly;
-exercise selection explains unavailable teams. Primary controls have larger touch
-targets and muted text uses a more readable foreground. These are presentation changes;
-HTTP authorization, meeting policy, queue claims and native desktop behavior remain
-unchanged.
+The static UI keeps SvelteKit, the dark-purple daisyUI theme, Instrument Sans and
+Lucide icons. A local SVG L-shaped corner surrounding a central square identifies
+LabCentral in the header and favicon. A compact desktop navigation bar becomes
+role-appropriate bottom navigation on phones. The desktop panel precedes the
+handover on narrow screens, while the handover stays on the left on desktop.
+Administrator meeting tools use keyboard-accessible Teams, Exercises and Scoreboard
+tabs, selected by the URL fragment; panels remain mounted to retain pending state
+and exercise selections. Live activity sits alongside those tools on desktop and
+below them on phones. Status labels pair readable text with small icons and service
+state colors. Activity filters expose failure counts and mark the selected filter
+explicitly; failed operations retain recovery feedback and blocking reasons.
+Template history initially shows recent, pinned and working revisions, with older
+revisions available on demand. Cached images remain distinct from confirmed builds.
+Schedule controls name starting, updating and pausing explicitly; exercise selection
+explains unavailable teams. Primary controls have larger touch targets, flat sections
+reduce visual noise, and purple identifies selection and principal actions. Shared deadline displays
+count down using the browser clock and warn at fifteen
+minutes that workspace files will be deleted. Signed-in home navigation redirects
+to the lab or team list. Team changes require a named confirmation and recheck the
+current membership before submitting. Desktop readiness transitions update the
+page title and an accessible status region; the launch label stays fixed. Desktop
+help describes idle reconnects and browser clipboard behavior. Instructor meeting
+summaries use stat tiles; joined students count committed memberships once,
+independently of pending seat reservations. Failed-team rows show preparation errors
+and recovery.
+The scoreboard is a horizontally scrollable teams-by-checks table with a pinned
+header; its schedule selector initializes from saved data without overwriting an
+unsaved choice during polling. Exercise selection precedes team selection and a
+sticky action bar; confirmation counts teams and offers a collapsible list.
+Template commit links use a sanitized administrator-only repository URL supplied
+by the API. HTTP authorization, meeting policy, queue claims and native desktop
+behavior remain unchanged.
 
 The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
 memberships, template revisions, jobs and desktop ownership. SQLite transactions
@@ -550,10 +570,28 @@ SvelteKit route announcer is visually hidden by external CSS, preserving its
 screen-reader announcements when the strict CSP blocks inline styles in Firefox.
 Document titles remain descriptive without appearing beneath the page content.
 The administrative pages share an in-memory view scoped to user and CSRF session,
-cleared on sign-out, identity changes, role loss, or failed administration reads.
-Late responses cannot populate a different session’s view. The root declares the
+cleared on sign-out, identity changes, role loss, or unauthorized administration
+reads (401/403). Transient transport/server failures retain the last successful view;
+two consecutive failures display a separate polling warning, and activity identifies
+stale data by its successful-update timestamp. Action failures remain distinct.
+One layout-owned two-second poll supplies both administrator pages and the header
+activity link; concurrent refreshes share an in-flight request. Recent operations
+initially show twelve entries with an explicit count and expansion control; active
+operations are never truncated. Late responses cannot populate a different session’s
+view. The root declares the
 dark theme and color scheme before hydration. A dark
 neutral theme with purple actions keeps the interface focused on team and lab tasks.
+
+The student overview includes only the current user's desktop availability for the
+same application session, team and instance. Availability means an uncancelled,
+unexpired authenticated in-memory relay with an unexpired durable access record;
+it does not assert a connected browser or perform a fresh guest probe. Retained
+cleanup intents without a relay are inactive and are never deleted by a view read.
+The administrator view reports aggregate and per-team relay counts without native
+credentials, connection URLs or user identities. Desktop guidance enables disconnect
+only for the user's available session. The repository link accepts the configured
+GitHub SSH repository path and emits a canonical HTTPS link; unsupported or
+credential-bearing values yield no link.
 
 Desktop launch tickets are one-use and expire after one minute. The separate
 origin exchanges them for host-only cookies bound to the application session,

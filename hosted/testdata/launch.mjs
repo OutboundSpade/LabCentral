@@ -34,7 +34,7 @@ try {
  assert(await tab.evaluate(()=>window.fixtureClipboardCopy));
  // Use the browser's native clipboard: copy in a separate local text field,
  // then paste with real keyboard events, without clipboard permissions or mocks.
- const source=await context.newPage();await source.goto(app+'/');await source.evaluate(()=>{const field=document.createElement('textarea');field.id='clipboard-source';document.body.appendChild(field)});
+ const source=await context.newPage();await source.goto(app+'/lab/');await source.evaluate(()=>{const field=document.createElement('textarea');field.id='clipboard-source';document.body.appendChild(field)});
  await source.locator('#clipboard-source').fill('Firefox paste — first line\nsecond line');await source.locator('#clipboard-source').selectText();await source.keyboard.press('Control+c');
  await tab.bringToFront();await tab.getByRole('button',{name:'Paste to desktop',exact:true}).click();await tab.getByRole('textbox',{name:'Paste text here with Ctrl+V or ⌘V.'}).waitFor();
  await tab.keyboard.press('Control+v');await tab.waitForFunction(()=>window.fixturePastedText==='Firefox paste — first line\nsecond line');
