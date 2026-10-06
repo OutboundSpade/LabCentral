@@ -28,3 +28,17 @@
  --size-selector: 0.25rem; --size-field: 0.25rem; --border: 1px; --depth: 0; --noise: 0;
 }
 @theme { --font-sans: 'Instrument Sans Variable', system-ui, sans-serif; }
+
+/* SvelteKit's inline announcer style is blocked by our CSP in Firefox.
+   Keep navigation announcements available to screen readers via external CSS. */
+#svelte-announcer {
+ position: absolute;
+ left: 0;
+ top: 0;
+ clip: rect(0, 0, 0, 0);
+ clip-path: inset(50%);
+ overflow: hidden;
+ white-space: nowrap;
+ width: 1px;
+ height: 1px;
+}

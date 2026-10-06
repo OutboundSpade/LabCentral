@@ -214,6 +214,12 @@ schema rejection, ownership, response loss, interrupted cleanup, allocation
 collisions, concurrent access, plugin transport, role policy and relay authentication.
 Real pinned Packer configuration validation is available as an opt-in test.
 
+CI verifies pull requests and `main` pushes, ignores Markdown-only changes, and
+cancels superseded verification runs. Browser installation and integration checks
+run only on an explicit workflow dispatch with the `browsers` input enabled.
+Maintenance remains manual and never cancels an in-progress installation operation.
+Local UI changes retain desktop/mobile browser inspection requirements.
+
 **The hosted AWS milestone passed live acceptance on 2026-09-28.** Twenty real
 OIDC identities used independent DCV desktops across five four-machine Example
 Bank labs for 3,602 continuous seconds with keyboard and pointer input. All twenty
@@ -539,8 +545,11 @@ revisions and snapshots remain available for rebuilding after image removal.
 Markdown disables raw HTML. The UI is prerendered route HTML with
 SSR enabled during generation and no SPA fallback. Internal links use SvelteKit
 client navigation, preserving the layout and authenticated session during route
-changes; server-owned login and logout still use full document navigation. The
-administrative pages share an in-memory view scoped to user and CSRF session,
+changes; server-owned login and logout still use full document navigation.
+SvelteKit route announcer is visually hidden by external CSS, preserving its
+screen-reader announcements when the strict CSP blocks inline styles in Firefox.
+Document titles remain descriptive without appearing beneath the page content.
+The administrative pages share an in-memory view scoped to user and CSRF session,
 cleared on sign-out, identity changes, role loss, or failed administration reads.
 Late responses cannot populate a different session’s view. The root declares the
 dark theme and color scheme before hydration. A dark

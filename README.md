@@ -413,3 +413,9 @@ LABCENTRAL_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 The browser check uses Playwright 1.58.2 with its installed Chromium, or an explicit
 `LABCENTRAL_CHROMIUM` executable. It tests the bundled client against a test VNC
 server; it does not substitute for live Proxmox/DCV acceptance.
+
+CI runs core checks for pull requests and pushes to `main`, skips Markdown-only
+changes, and cancels superseded checks. Browser integration checks are optional:
+run the **v2** workflow manually with **browsers** enabled. Local UI reviews still
+check desktop/mobile rendering; set `LABCENTRAL_FIREFOX` to an installed Playwright
+Firefox executable to run `web/tests/browser.mjs` against Firefox as well.

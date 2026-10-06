@@ -1,8 +1,8 @@
-const {chromium} = await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE || 'playwright');
+const {chromium,firefox} = await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE || 'playwright');
 import fs from 'node:fs';import assert from 'node:assert/strict';
 const evidence=process.env.LABCENTRAL_BROWSER_EVIDENCE;
 if(!evidence)throw new Error('Set LABCENTRAL_BROWSER_EVIDENCE outside source');fs.mkdirSync(evidence,{recursive:true});
-const browser=await chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox'],ignoreDefaultArgs:['--disable-popup-blocking']});
+const browser=await (process.env.LABCENTRAL_FIREFOX?firefox.launch({headless:true,executablePath:process.env.LABCENTRAL_FIREFOX}):chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox'],ignoreDefaultArgs:['--disable-popup-blocking']}));
 try{
  for(const width of [1365,390]){
   const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -23,7 +23,9 @@ try{
   });
   await page.goto('http://127.0.0.1:5173/');await page.getByRole('heading',{name:'Your lab awaits.'}).waitFor();await page.screenshot({path:`${evidence}/home-${width}.png`,fullPage:true});authenticated=true;
   for(const [route,heading] of [['teams/','Choose your team'],['lab/','Your lab'],['admin/','Manage meeting'],['admin/templates/','Lab templates']]){
-   await page.goto('http://127.0.0.1:5173/'+route);await page.getByRole('heading',{name:heading,exact:true}).waitFor();await page.getByRole('button',{name:route==='teams/'?'Team full':route==='lab/'?'Open desktop':route==='admin/'?'End meeting':'Refresh from GitHub',exact:true}).waitFor();
+   if(route==='teams/')await page.goto('http://127.0.0.1:5173/'+route);
+   else {await page.getByRole('navigation').getByRole('link',{name:route==='lab/'?'Your lab':route==='admin/'?'Manage meeting':'Templates',exact:true}).click();await page.waitForURL('**/'+route);await page.waitForFunction(()=>document.querySelector('#svelte-announcer')?.textContent===document.title);assert(await page.locator('#svelte-announcer').evaluate(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return e.getAttribute('aria-live')==='assertive'&&s.position==='absolute'&&s.clipPath==='inset(50%)'&&r.width<=1&&r.height<=1}),'navigation title is visually exposed on '+route)}
+   await page.getByRole('heading',{name:heading,exact:true}).waitFor();await page.getByRole('button',{name:route==='teams/'?'Team full':route==='lab/'?'Open desktop':route==='admin/'?'End meeting':'Refresh from GitHub',exact:true}).waitFor();
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow on '+route);
    await page.screenshot({path:`${evidence}/${route.replaceAll('/','-')}${width}.png`,fullPage:true});
    if(route==='teams/'){await page.getByRole('button',{name:'Team full'}).waitFor();assert(await page.getByRole('button',{name:'Team full'}).isDisabled())}
