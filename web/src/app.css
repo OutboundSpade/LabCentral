@@ -1,44 +1,57 @@
-@import '@fontsource-variable/instrument-sans';
-@import 'tailwindcss';
+@import "@fontsource-variable/instrument-sans";
+@import "tailwindcss";
 @plugin '@tailwindcss/typography';
-@plugin 'daisyui' { themes: false; }
-@plugin 'daisyui/theme' {
- name: 'cdc'; default: true; prefersdark: false; color-scheme: dark;
- --color-base-100: oklch(18% 0.010 285);
- --color-base-200: oklch(22% 0.012 285);
- --color-base-300: oklch(30% 0.014 285);
- --color-base-content: oklch(94% 0.006 285);
- --color-primary: oklch(76% 0.13 300);
- --color-primary-content: oklch(20% 0.04 300);
- --color-secondary: oklch(76% 0.05 290);
- --color-secondary-content: oklch(20% 0.025 295);
- --color-accent: oklch(80% 0.10 85);
- --color-accent-content: oklch(20% 0.025 295);
- --color-neutral: oklch(27% 0.02 285);
- --color-neutral-content: oklch(94% 0.006 285);
- --color-info: oklch(76% 0.12 250);
- --color-info-content: oklch(20% 0.03 250);
- --color-success: oklch(76% 0.12 155);
- --color-success-content: oklch(20% 0.03 155);
- --color-warning: oklch(82% 0.14 85);
- --color-warning-content: oklch(20% 0.025 295);
- --color-error: oklch(76% 0.14 25);
- --color-error-content: oklch(20% 0.03 25);
- --radius-selector: 0.25rem; --radius-field: 0.375rem; --radius-box: 0.5rem;
- --size-selector: 0.25rem; --size-field: 0.25rem; --border: 1px; --depth: 0; --noise: 0;
+@plugin 'daisyui' {
+  themes: false;
 }
-@theme { --font-sans: 'Instrument Sans Variable', system-ui, sans-serif; }
+@plugin 'daisyui/theme' {
+  name: "cdc";
+  default: true;
+  prefersdark: false;
+  color-scheme: dark;
+  --color-base-100: oklch(18% 0.01 285);
+  --color-base-200: oklch(22% 0.012 285);
+  --color-base-300: oklch(30% 0.014 285);
+  --color-base-content: oklch(94% 0.006 285);
+  --color-primary: oklch(76% 0.13 300);
+  --color-primary-content: oklch(20% 0.04 300);
+  --color-secondary: oklch(76% 0.05 290);
+  --color-secondary-content: oklch(20% 0.025 295);
+  --color-accent: oklch(80% 0.1 85);
+  --color-accent-content: oklch(20% 0.025 295);
+  --color-neutral: oklch(27% 0.02 285);
+  --color-neutral-content: oklch(94% 0.006 285);
+  --color-info: oklch(76% 0.12 250);
+  --color-info-content: oklch(20% 0.03 250);
+  --color-success: oklch(76% 0.12 155);
+  --color-success-content: oklch(20% 0.03 155);
+  --color-warning: oklch(82% 0.14 85);
+  --color-warning-content: oklch(20% 0.025 295);
+  --color-error: oklch(76% 0.14 25);
+  --color-error-content: oklch(20% 0.03 25);
+  --radius-selector: 0.25rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+@theme {
+  --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
+}
 
 /* SvelteKit's inline announcer style is blocked by our CSP in Firefox.
    Keep navigation announcements available to screen readers via external CSS. */
 #svelte-announcer {
- position: absolute;
- left: 0;
- top: 0;
- clip: rect(0, 0, 0, 0);
- clip-path: inset(50%);
- overflow: hidden;
- white-space: nowrap;
- width: 1px;
- height: 1px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+  width: 1px;
+  height: 1px;
 }
