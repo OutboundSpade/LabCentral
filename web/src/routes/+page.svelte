@@ -1,6 +1,18 @@
 <script lang="ts">
   import { ArrowRight, LogIn } from "@lucide/svelte";
   import { session } from "$lib/api";
+  import { goto } from "$app/navigation";
+  import { onMount } from "svelte";
+  let mounted = $state(false);
+  onMount(() => {
+    mounted = true;
+  });
+  $effect(() => {
+    if (mounted && $session)
+      void goto($session.membership.teamID ? "/lab/" : "/teams/", {
+        replaceState: true,
+      });
+  });
 </script>
 
 <svelte:head><title>LabCentral</title></svelte:head>

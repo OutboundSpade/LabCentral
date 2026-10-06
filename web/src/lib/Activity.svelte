@@ -8,7 +8,9 @@
     TriangleAlert,
   } from "@lucide/svelte";
   import type { AdminView, Job } from "$lib/types";
-  import { api, date } from "$lib/api";
+  import { api, adminUpdated, adminPollError } from "$lib/api";
+  import { now, relative, duration } from "$lib/time";
+  import { jobName } from "$lib/job";
   import Status from "./Status.svelte";
   let { data, onchange }: { data: AdminView; onchange: () => Promise<void> } =
     $props();
@@ -49,18 +51,21 @@
   const failed = $derived(
     data.jobs.filter((j) => j.status === "failed" && j.needsAttention),
   );
+  let recentLimit = $state(12);
+  const matching = $derived(
+    data.jobs.filter(
+      (j) =>
+        (j.kind !== "access-cleanup" || j.status === "failed") &&
+        (filter === "all" ||
+          (filter === "failed" && j.status === "failed" && j.needsAttention) ||
+          (filter === "active" && ["queued", "running"].includes(j.status))),
+    ),
+  );
   const visible = $derived(
-    data.jobs
-      .filter(
-        (j) =>
-          (j.kind !== "access-cleanup" || j.status === "failed") &&
-          (filter === "all" ||
-            (filter === "failed" &&
-              j.status === "failed" &&
-              j.needsAttention) ||
-            (filter === "active" && ["queued", "running"].includes(j.status))),
-      )
-      .slice(0, 12),
+    filter === "all" ? matching.slice(0, recentLimit) : matching,
+  );
+  const stale = $derived(
+    !!$adminPollError || (!!$adminUpdated && $now - $adminUpdated > 10000),
   );
   function target(job: Job) {
     if (job.targetLabel) return job.targetLabel;
@@ -85,7 +90,7 @@
       ?.map((id) => {
         const dependency = data.jobs.find((j) => j.id === id);
         return dependency
-          ? `${dependency.kind} · ${target(dependency)}`
+          ? `${jobName(dependency.kind)} · ${target(dependency)}`
           : "overlapping resource operation";
       })
       .join(", ");
@@ -111,7 +116,14 @@
         ><Monitor size={13} />{data.activeDesktops ?? 0} active desktops</span
       >
     </p>
-    <p class="mt-1 text-xs text-base-content/75">Updates every 2 seconds</p>
+    <p class="mt-1 text-xs text-base-content/75">
+      {$adminUpdated
+        ? `Updated ${relative(new Date($adminUpdated).toISOString(), $now)}`
+        : "Waiting for a successful update"}
+    </p>
+    {#if stale}<p class="mt-2 text-sm text-warning" role="status">
+        Activity may be stale. Waiting for a successful update.
+      </p>{/if}
   </div>
   <fieldset class="flex flex-wrap gap-1 rounded-field bg-base-200 p-1">
     <legend class="sr-only">Activity filter</legend>
@@ -177,15 +189,11 @@
   >
     {#each visible as job (job.id)}<li class="py-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="text-sm font-medium capitalize"
-            >{job.kind === "check"
-              ? "Service checks"
-              : job.kind === "access-cleanup"
-                ? "Desktop cleanup"
-                : job.kind}</span
-          ><Status status={job.status} />
+          <span class="text-sm font-medium">{jobName(job.kind)}</span><Status
+            status={job.status}
+          />
         </div>
-        <p class="mt-1 break-words text-sm text-base-content/75">
+        <p class="mt-1 break-words text-sm">
           {target(job)}
         </p>
         {#if job.kind === "build"}{@const template = data.templates.find(
@@ -202,12 +210,15 @@
           </p>{/if}
         <p class="mt-1 text-xs text-base-content/75">
           {job.started
-            ? `Started ${date(job.started)}`
-            : `Queued ${date(job.created)}`}
+            ? `Started ${relative(job.started, $now)}`
+            : `Queued ${relative(job.created, $now)}`}
+          {#if job.started}
+            · {duration(
+              Date.parse(job.finished || new Date($now).toISOString()) -
+                Date.parse(job.started),
+            )}{job.status === "running" ? " running" : " duration"}{/if}
         </p>
-        {#if job.status === "queued"}<p
-            class="mt-2 break-words text-xs text-base-content/75"
-          >
+        {#if job.status === "queued"}<p class="mt-2 break-words text-sm">
             {waiting(job)
               ? `Waiting for ${waiting(job)}`
               : "Waiting for an available worker"}
@@ -231,9 +242,7 @@
                 aria-hidden="true"
               ></span>Queuing recovery…{:else}<RotateCw size={14} />Retry
               recovery{/if}</button
-          >{:else if job.retryBlocked}<p
-            class="mt-2 text-xs leading-relaxed text-base-content/75"
-          >
+          >{:else if job.retryBlocked}<p class="mt-2 text-sm leading-relaxed">
             {job.retryBlocked}
           </p>{/if}
       </li>{:else}<li class="py-5 text-sm text-base-content/75">
@@ -244,4 +253,16 @@
             : "No operations yet."}
       </li>{/each}
   </ul>
+  {#if filter === "all" && matching.length}<div
+      class="mt-3 flex flex-wrap items-center gap-2"
+    >
+      <p class="text-xs text-base-content/75">
+        Showing {visible.length} of {matching.length} recent operations in retained
+        history.
+      </p>
+      {#if visible.length < matching.length}<button
+          class="btn btn-sm btn-ghost min-h-11"
+          onclick={() => (recentLimit += 12)}>Show more</button
+        >{/if}
+    </div>{/if}
 </section>

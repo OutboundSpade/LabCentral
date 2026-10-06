@@ -107,10 +107,11 @@ type Teammate struct {
 	Name string `json:"name"`
 }
 type LabView struct {
-	Teammates []Teammate `json:"teammates"`
-	Team      *Team      `json:"team"`
-	Machines  []Machine  `json:"machines"`
-	Handover  string     `json:"handover"`
+	DesktopActive bool       `json:"desktopActive"`
+	Teammates     []Teammate `json:"teammates"`
+	Team          *Team      `json:"team"`
+	Machines      []Machine  `json:"machines"`
+	Handover      string     `json:"handover"`
 }
 type Overview struct {
 	User       User       `json:"user"`
@@ -121,6 +122,8 @@ type Overview struct {
 	Lab        LabView    `json:"lab"`
 }
 type AdminView struct {
+	RepositoryURL  string               `json:"repositoryURL"`
+	TeamDesktops   []TeamDesktopCount   `json:"teamDesktops"`
 	CheckSchedule  *CheckSchedule       `json:"checkSchedule,omitempty"`
 	CheckRuns      []CheckRun           `json:"checkRuns"`
 	ActiveDesktops int                  `json:"activeDesktops"`
@@ -130,6 +133,10 @@ type AdminView struct {
 	Templates      []Template           `json:"templates"`
 	Exercises      []ExerciseDefinition `json:"exercises"`
 	ExerciseRuns   []ExerciseRun        `json:"exerciseRuns"`
+}
+type TeamDesktopCount struct {
+	TeamID string `json:"teamID"`
+	Count  int    `json:"count"`
 }
 type CreateMeeting struct {
 	Name      string `json:"name"`

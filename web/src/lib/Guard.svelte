@@ -11,7 +11,7 @@
     <span class="loading loading-spinner loading-sm"></span>Loading your
     workspace…
   </div>
-{:else if $loadError}<Notice message={$loadError} /><button
+{:else if $loadError && !$session}<Notice message={$loadError} /><button
     class="btn btn-sm min-h-11"
     onclick={refresh}>Retry</button
   >

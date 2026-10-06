@@ -1,6 +1,10 @@
 <script lang="ts">
   import { Check, Clock, TriangleAlert, CircleMinus } from "@lucide/svelte";
-  let { status, label }: { status: string; label?: string } = $props();
+  let {
+    status,
+    label,
+    soft = false,
+  }: { status: string; label?: string; soft?: boolean } = $props();
   const good = $derived(["ready", "passed"].includes(status));
   const bad = $derived(["failed", "unavailable"].includes(status));
   const working = $derived(
@@ -11,6 +15,7 @@
   const caution = $derived(["partial", "queued", "pending"].includes(status));
   const names: Record<string, string> = {
     ready: "Ready",
+    waiting: "Not prepared",
     passed: "Pass",
     failed: "Failed",
     unavailable: "Unavailable",
@@ -30,7 +35,13 @@
 </script>
 
 <span
-  class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs"
+  class={[
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs",
+    soft ? "badge badge-soft badge-sm h-auto min-h-6 py-1" : "",
+  ]}
+  class:badge-success={soft && good}
+  class:badge-warning={soft && caution}
+  class:badge-error={soft && bad}
   class:text-error={bad}
 >
   {#if good}<Check

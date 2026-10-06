@@ -13,8 +13,11 @@
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
+  import Status from "$lib/Status.svelte";
+  import PollStatus from "$lib/PollStatus.svelte";
+  import { jobName } from "$lib/job";
   import Notice from "$lib/Notice.svelte";
-  import { api, session, adminView, refreshAdmin } from "$lib/api";
+  import { api, session, adminView, refreshAdmin, date } from "$lib/api";
   import type { Template } from "$lib/types";
   let data = $derived($adminView);
   let error = $state("");
@@ -29,12 +32,6 @@
         (j.status === "queued" || j.status === "running"),
     ) ?? false,
   );
-  function date(value: string) {
-    return new Date(value).toLocaleString([], {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  }
   function jobFor(id: string) {
     return (
       data?.templates.find((t) => t.id === id)?.operation ??
@@ -49,16 +46,10 @@
     return j?.status === "queued" || j?.status === "running";
   }
   async function load() {
-    try {
-      await refreshAdmin();
-    } catch (e) {
-      error = (e as Error).message;
-    }
+    await refreshAdmin().catch(() => {});
   }
   onMount(() => {
     void load();
-    const timer = setInterval(load, 2000);
-    return () => clearInterval(timer);
   });
   async function run(path: string, body: unknown = {}) {
     busy = true;
@@ -109,7 +100,7 @@
     >{/if}
 </PageHeader>
 <Guard admin
-  ><Notice message={error} />
+  ><Notice message={error} dismissible /><PollStatus />
   {#if data}
     {#if data.jobs.find((j) => j.kind === "refresh")?.status === "failed"}<Notice
         message={data.jobs.find((j) => j.kind === "refresh")?.error ??
@@ -145,19 +136,22 @@
                 <div
                   class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/75"
                 >
-                  <a
-                    class="link link-hover inline-flex items-center gap-1.5"
-                    href={`https://github.com/example/lab-templates/commit/${template.commit}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    ><GitCommitHorizontal size={14} /><code
-                      >{template.commit.slice(0, 7)}</code
-                    ></a
-                  >
+                  {#if data.repositoryURL}<a
+                      class="link link-hover inline-flex items-center gap-1.5"
+                      href={`${data.repositoryURL}/commit/${template.commit}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      ><GitCommitHorizontal size={14} /><code
+                        >{template.commit.slice(0, 7)}</code
+                      ></a
+                    >{:else}<code>{template.commit.slice(0, 7)}</code>{/if}
                   <span class="inline-flex items-center gap-1.5"
                     ><Clock size={13} />{#if template.committedAt}<time
                         datetime={template.committedAt}
-                        >{date(template.committedAt)}</time
+                        >{date(template.committedAt, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}</time
                       >{:else}Date unavailable — refresh from GitHub{/if}</span
                   >
                 </div>
@@ -165,42 +159,51 @@
                   class="mt-3 flex flex-wrap items-center gap-3 text-xs"
                   aria-live="polite"
                 >
-                  {#if working}<span class="loading loading-spinner loading-xs"
-                    ></span><span
-                      >{job?.status === "queued"
+                  <Status
+                    status={working
+                      ? (job?.status ?? "queued")
+                      : job?.status === "failed"
+                        ? "failed"
+                        : template.removing
+                          ? "queued"
+                          : template.removedAt
+                            ? "ended"
+                            : template.built
+                              ? "ready"
+                              : "pending"}
+                    label={working
+                      ? job?.status === "queued"
                         ? "Queued"
                         : job?.kind === "build"
-                          ? "Building images…"
-                          : "Removing images…"}</span
-                    >
-                  {:else if job?.status === "failed"}<span class="text-error"
-                      >{job.kind === "build"
-                        ? "Build failed"
-                        : "Cleanup failed"}</span
-                    >
-                  {:else if template.removing}<span>Cleanup pending</span>
-                  {:else if template.removedAt}<span>Images removed</span>
-                  {:else if template.built}<span
-                      class="inline-flex items-center gap-1.5"
-                      ><Check size={13} class="text-success" />Ready to use</span
-                    >
-                  {:else}<span class="text-base-content/75">Not built</span
-                    >{/if}
+                          ? "Building images"
+                          : "Removing images"
+                      : job?.status === "failed"
+                        ? job.kind === "build"
+                          ? "Build failed"
+                          : "Cleanup failed"
+                        : template.removing
+                          ? "Cleanup pending"
+                          : template.removedAt
+                            ? "Images removed"
+                            : template.built
+                              ? "Ready to use"
+                              : "Not built"}
+                  />
                   {#if !template.removedAt}<span
                       class="tabular-nums text-base-content/75"
                       >{#if !template.built && template.imagesReady === template.imagesTotal && template.imagesTotal > 0}Images
-                        cached · build confirmation required{:else}{template.imagesReady}
+                        ready — confirm build to use{:else}{template.imagesReady}
                         / {template.imagesTotal} images ready{/if}</span
                     >{/if}
                 </div>
                 {#if job?.waitingOn?.length}<p
-                    class="mt-2 text-xs leading-relaxed text-base-content/75"
+                    class="mt-2 text-sm leading-relaxed"
                   >
                     Waiting for {job.waitingOn
-                      .map(
-                        (id) =>
-                          data?.jobs.find((j) => j.id === id)?.kind ??
-                          "overlapping work",
+                      .map((id) =>
+                        jobName(
+                          data?.jobs.find((j) => j.id === id)?.kind ?? "",
+                        ),
                       )
                       .join(", ")} on shared resources.
                   </p>{/if}
@@ -272,7 +275,7 @@
                     >{/if}
                 </div>
                 {#if template.removalBlocked}<p
-                    class="mt-2 flex items-start gap-2 text-xs leading-relaxed text-base-content/75"
+                    class="mt-2 flex items-start gap-2 text-sm leading-relaxed"
                   >
                     <LockKeyhole
                       size={13}

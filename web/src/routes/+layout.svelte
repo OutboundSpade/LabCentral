@@ -9,15 +9,30 @@
     LogOut,
     ArrowUpRight,
     GitBranch,
+    Activity,
   } from "@lucide/svelte";
-  import { session, loading, refresh, api } from "$lib/api";
+  import {
+    session,
+    loading,
+    refresh,
+    refreshAdmin,
+    adminView,
+    api,
+  } from "$lib/api";
+  import { get } from "svelte/store";
   import Notice from "$lib/Notice.svelte";
   let { children } = $props();
   let error = $state("");
   onMount(() => {
     void refresh();
     const t = setInterval(refresh, 10000);
-    return () => clearInterval(t);
+    const updates = setInterval(() => {
+      if (get(session)?.user.admin) void refreshAdmin().catch(() => {});
+    }, 2000);
+    return () => {
+      clearInterval(t);
+      clearInterval(updates);
+    };
   });
   async function logout() {
     try {
@@ -35,7 +50,7 @@
       ? [
           {
             href: "/admin/",
-            label: "Meeting",
+            label: "Manage meeting",
             name: "Manage meeting",
             icon: SlidersHorizontal,
           },
@@ -53,6 +68,13 @@
       ? page.url.pathname.startsWith(href)
       : page.url.pathname === href;
   }
+  const running = $derived(
+    $adminView?.jobs.filter((j) => j.status === "running").length ?? 0,
+  );
+  const failures = $derived(
+    $adminView?.jobs.filter((j) => j.status === "failed" && j.needsAttention)
+      .length ?? 0,
+  );
 </script>
 
 <svelte:head
@@ -72,7 +94,9 @@
 >
 <div class="min-h-screen bg-base-100 text-base-content">
   <header class="border-b border-base-content/10 bg-base-200/40">
-    <div class="navbar mx-auto min-h-14 max-w-7xl gap-6 px-4 sm:px-6 lg:px-8">
+    <div
+      class="navbar mx-auto min-h-14 max-w-7xl gap-2 px-4 sm:px-6 lg:gap-4 lg:px-8"
+    >
       <a
         href="/"
         aria-label="LabCentral home"
@@ -88,34 +112,54 @@
       {#if $session}
         <nav
           aria-label="Main navigation"
-          class="fixed inset-x-0 bottom-0 z-10 flex justify-around border-t border-base-content/10 bg-base-200 pb-[env(safe-area-inset-bottom)] lg:static lg:mr-auto lg:justify-start lg:gap-1 lg:border-0 lg:bg-transparent lg:pb-0"
+          class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-base-content/10 bg-base-200 pb-[env(safe-area-inset-bottom)] lg:static lg:mr-auto lg:justify-start lg:gap-1 lg:border-0 lg:bg-transparent lg:pb-0"
         >
           {#each destinations as destination}
             <a
               href={destination.href}
               aria-label={destination.name}
               aria-current={active(destination.href) ? "page" : undefined}
+              title={destination.href === "/lab/" && !$session.membership.teamID
+                ? "Join a team to access your lab"
+                : undefined}
               class={[
-                "flex min-h-16 min-w-16 flex-col items-center justify-center gap-1 border-t-2 px-3 text-xs hover:text-base-content lg:min-h-14 lg:flex-row lg:gap-2 lg:border-t-0 lg:border-b-2 lg:text-sm",
+                "flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 border-t-2 px-3 text-xs hover:text-base-content lg:min-h-14 lg:flex-none lg:flex-row lg:gap-2 lg:border-t-0 lg:border-b-2 lg:text-sm",
                 active(destination.href)
                   ? "border-primary text-primary"
                   : "border-transparent text-base-content/75",
-              ]}><destination.icon size={17} />{destination.label}</a
+              ]}
+              ><destination.icon size={17} /><span
+                class="max-w-20 text-center lg:max-w-none lg:whitespace-nowrap"
+                >{destination.label}</span
+              ></a
             >
           {/each}
         </nav>
+        {#if $session.user.admin}<a
+            href="/admin/#activity-title"
+            class="btn btn-sm btn-ghost ml-auto min-h-11 gap-1.5 px-2 text-xs lg:ml-0"
+            aria-label={`Live activity: ${running} running, ${failures} needing attention`}
+            ><Activity size={16} /><span class="xl:hidden">Activity</span><span
+              class="hidden xl:inline"
+              >{running} running · {failures} failed</span
+            >{#if failures}<span
+                class="badge badge-sm badge-soft badge-error xl:hidden"
+                >{failures}</span
+              >{/if}</a
+          >{/if}
         <span
-          class="ml-auto hidden max-w-44 truncate text-xs text-base-content/75 sm:inline lg:ml-0"
+          class="ml-auto hidden max-w-32 truncate text-xs text-base-content/75 2xl:inline lg:ml-0"
           >{$session.user.name}</span
         ><button
           onclick={logout}
-          class="btn btn-sm btn-ghost ml-auto min-h-11 min-w-11 sm:ml-0"
+          class="btn btn-sm btn-ghost ml-auto min-h-11 min-w-11 lg:ml-0"
           aria-label="Sign out"
           title="Sign out"><LogOut size={17} /></button
         >
       {:else if !$loading}<a
           class="btn btn-sm min-h-11 btn-ghost ml-auto"
-          href="https://auth.example.org">CDC ID <ArrowUpRight size={16} /></a
+          href="/auth/login"
+          data-sveltekit-reload>Sign in <ArrowUpRight size={16} /></a
         >{/if}
     </div>
   </header>
@@ -123,6 +167,6 @@
     id="main"
     class="mx-auto max-w-7xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:py-8"
   >
-    <Notice message={error} />{@render children()}
+    <Notice message={error} dismissible />{@render children()}
   </main>
 </div>

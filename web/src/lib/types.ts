@@ -71,6 +71,7 @@ export interface Teammate {
   name: string;
 }
 export interface LabView {
+  desktopActive: boolean;
   teammates: Teammate[];
   team: Team | null;
   machines: Machine[];
@@ -85,6 +86,8 @@ export interface Overview {
   lab: LabView;
 }
 export interface AdminView {
+  repositoryURL: string;
+  teamDesktops: TeamDesktopCount[];
   checkSchedule?: CheckSchedule | null;
   checkRuns: CheckRun[];
   activeDesktops: number;
@@ -94,6 +97,10 @@ export interface AdminView {
   templates: Template[];
   exercises: ExerciseDefinition[];
   exerciseRuns: ExerciseRun[];
+}
+export interface TeamDesktopCount {
+  teamID: string;
+  count: number;
 }
 export interface CreateMeeting {
   name: string;

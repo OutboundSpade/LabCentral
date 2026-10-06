@@ -93,13 +93,44 @@
         onclick={() => (selected = available.map((t) => t.id))}
         ><Users size={16} />Select ready teams</button
       >
+      <button
+        class="btn btn-sm min-h-11 btn-ghost"
+        disabled={busy || !selected.length}
+        onclick={() => (selected = [])}>Clear selection</button
+      >
     </div>
-    <p class="mt-2 text-xs leading-relaxed text-base-content/75">
+    <p class="mt-2 text-sm leading-relaxed">
       {custom
         ? "Each break runs the pinned template reset first. See instructor notes for the reset scope."
         : "Each break resets the web server first. Bank data and desktop files stay."}
     </p>
-    <Notice message={error} />
+    <Notice message={error} dismissible />
+    <div class="mt-4">
+      <div class="w-full sm:w-72">
+        <label class="label mb-2" for="exercise-scenario">Exercise</label
+        ><select
+          class="select select-sm min-h-11 w-full"
+          id="exercise-scenario"
+          bind:value={scenario}
+          ><option value="" disabled>Choose an exercise</option
+          >{#each data.exercises as d}<option value={d.id}>{d.name}</option
+            >{/each}</select
+        >
+      </div>
+    </div>
+    {#if definition}<details
+        class="collapse collapse-arrow mt-4 border border-base-content/10"
+      >
+        <summary class="collapse-title text-sm font-medium"
+          >Instructor walkthrough</summary
+        >
+        <div class="collapse-content text-sm">
+          <p>{definition.description}</p>
+          <p class="mt-3 whitespace-pre-line leading-relaxed">
+            {definition.walkthrough}
+          </p>
+        </div>
+      </details>{/if}
     <fieldset class="mt-4">
       <legend class="text-sm font-medium">Teams</legend>
       <div class="mt-2 divide-y divide-base-content/10">
@@ -112,6 +143,7 @@
                   class="checkbox checkbox-sm"
                   type="checkbox"
                   value={team.id}
+                  aria-label={team.name}
                   bind:group={selected}
                   disabled={busy || !available.some((t) => t.id === team.id)}
                 /><span class="text-sm font-medium">{team.name}</span></label
@@ -130,7 +162,7 @@
                       : "Check recovery")} · {date(record.started)}
                 </p>
                 <p
-                  class="mt-1 break-words text-base-content/75"
+                  class="mt-1 break-words text-sm"
                   class:text-error={record.status === "failed"}
                 >
                   {record.report || "In progress"}
@@ -143,7 +175,7 @@
                   >{/if}
               </div>{/if}
             {#if !available.some((t) => t.id === team.id)}<p
-                class="mb-3 ml-7 text-xs text-base-content/75"
+                class="mb-3 ml-7 text-sm"
               >
                 {team.status !== "ready"
                   ? "Lab is " +
@@ -154,55 +186,36 @@
           </div>{/each}
       </div>
     </fieldset>
-    <div
-      class="mt-4 flex flex-wrap items-end gap-2 border-t border-base-content/10 pt-4"
-    >
-      <div class="w-full sm:w-72">
-        <label class="label mb-2" for="exercise-scenario">Exercise</label
-        ><select
-          class="select select-sm min-h-11 w-full"
-          id="exercise-scenario"
-          bind:value={scenario}
-          ><option value="" disabled>Choose an exercise</option
-          >{#each data.exercises as d}<option value={d.id}>{d.name}</option
-            >{/each}</select
-        >
-      </div>
-      <button
-        class="btn btn-sm min-h-11 btn-primary"
-        disabled={busy || !scenario || !chosen.length}
-        onclick={() => confirm(scenario)}><Play size={16} />Run exercise</button
-      ><button
-        class="btn btn-sm min-h-11"
-        disabled={busy || !chosen.length}
-        onclick={() => confirm("reset")}
-        ><RotateCcw size={16} />{custom
-          ? "Reset exercise baseline"
-          : "Reset web server"}</button
-      >{#if !custom}<button
-          class="btn btn-sm min-h-11 btn-ghost"
-          disabled={busy || !chosen.length}
-          onclick={() => run("check")}><Check size={16} />Check recovery</button
-        >{/if}
-    </div>
-    <p class="mt-3 text-sm text-base-content/75">
+    <p class="mt-4 text-sm">
       {chosen.length
         ? `${chosen.length} ${chosen.length === 1 ? "team" : "teams"} selected. ${scenario ? "Ready to run the selected exercise." : "Choose an exercise to run a break, or reset the selected teams."}`
         : "Select ready teams, then choose an exercise."}
     </p>
-    {#if definition}<details
-        class="collapse collapse-arrow mt-4 border border-base-content/10"
-      >
-        <summary class="collapse-title text-sm font-medium"
-          >Instructor walkthrough</summary
-        >
-        <div class="collapse-content text-sm">
-          <p>{definition.description}</p>
-          <p class="mt-3 whitespace-pre-line leading-relaxed">
-            {definition.walkthrough}
-          </p>
-        </div>
-      </details>{/if}
+    <div
+      class="sticky bottom-24 z-10 mt-4 border-t border-base-content/10 bg-base-100 py-4 lg:bottom-4"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          class="btn btn-sm min-h-11 btn-primary"
+          disabled={busy || !scenario || !chosen.length}
+          onclick={() => confirm(scenario)}
+          ><Play size={16} />Run on {chosen.length}
+          {chosen.length === 1 ? "team" : "teams"}</button
+        ><button
+          class="btn btn-sm min-h-11"
+          disabled={busy || !chosen.length}
+          onclick={() => confirm("reset")}
+          ><RotateCcw size={16} />{custom
+            ? "Reset exercise baseline"
+            : "Reset web server"}</button
+        >{#if !custom}<button
+            class="btn btn-sm min-h-11 btn-ghost"
+            disabled={busy || !chosen.length}
+            onclick={() => run("check")}
+            ><Check size={16} />Check recovery</button
+          >{/if}
+      </div>
+    </div>
   </section>
 {/if}
 <dialog
@@ -216,7 +229,24 @@
         ? "Reset the exercise baseline?"
         : "Run this exercise?"}
     </h2>
-    <p class="mt-4">{chosen.map((t) => t.name).join(", ")}</p>
+    <p class="mt-4 font-medium">
+      {chosen.length}
+      {chosen.length === 1 ? "team" : "teams"} selected
+    </p>
+    <details class="collapse collapse-arrow mt-3 border border-base-content/10">
+      <summary class="collapse-title text-sm">Selected teams</summary>
+      <div class="collapse-content">
+        <!-- Keyboard scrolling for large team selections. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <ul
+          class="max-h-48 overflow-y-auto text-sm"
+          tabindex="0"
+          aria-label="Selected teams"
+        >
+          {#each chosen as team}<li class="py-1">{team.name}</li>{/each}
+        </ul>
+      </div>
+    </details>
     <p class="mt-3 text-sm leading-relaxed">
       {#if custom}This runs the pinned template reset for the selected teams.
         Review its scope in the instructor notes. {action === "reset"

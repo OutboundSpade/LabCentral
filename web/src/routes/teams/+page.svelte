@@ -5,7 +5,8 @@
   import PageHeader from "$lib/PageHeader.svelte";
   import Notice from "$lib/Notice.svelte";
   import Status from "$lib/Status.svelte";
-  import { session, loadError, api, refresh, date } from "$lib/api";
+  import Deadline from "$lib/Deadline.svelte";
+  import { session, loadError, api, refresh } from "$lib/api";
   let error = $state("");
   let pending = $state("");
   let checked = $state("");
@@ -23,12 +24,57 @@
       second: "2-digit",
     });
   }
+  let confirmation: HTMLDialogElement;
+  let change = $state<{
+    teamID: string;
+    name: string;
+    oldID: string;
+    oldName: string;
+  } | null>(null);
+  function choose(teamID: string) {
+    const current = $session?.teams.find(
+      (t) => t.id === $session?.membership.teamID,
+    );
+    if (!current) {
+      void join(teamID);
+      return;
+    }
+    error = "";
+    change = {
+      teamID,
+      name: $session?.teams.find((t) => t.id === teamID)?.name ?? "no team",
+      oldID: current.id,
+      oldName: current.name,
+    };
+    confirmation.showModal();
+  }
+  async function confirmChange() {
+    if (!change || pending) return;
+    pending = "confirm";
+    try {
+      await refresh();
+      if ($loadError) {
+        error =
+          "Unable to verify your current team. Retry when the connection is restored.";
+        return;
+      }
+      if ($session?.membership.teamID !== change.oldID) {
+        error =
+          "Your team changed while this dialog was open. Cancel and review the team list again.";
+        return;
+      }
+      await join(change.teamID);
+    } finally {
+      pending = "";
+    }
+  }
   async function join(teamID: string) {
     pending = teamID || "leave";
     error = "";
     try {
       await api("/api/team", { teamID });
       await refresh();
+      confirmation?.close();
       if (teamID) await goto("/lab/");
     } catch (e) {
       error = (e as Error).message;
@@ -42,23 +88,16 @@
 <svelte:head><title>Choose your team · LabCentral</title></svelte:head>
 <div class="max-w-3xl">
   <PageHeader title="Choose your team" />
-  <Guard
-    >{#if $session?.meeting && $session.meeting.status !== "ended" && $session.meeting.status !== "ending"}
-      <div
-        class="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm"
-      >
-        <h2 class="font-medium">{$session.meeting.name}</h2>
-        <span class="flex items-center gap-2 text-xs text-base-content/75"
-          ><Clock size={14} />Ends at {date($session.meeting.expires)}</span
-        >
-      </div>
-      {#if $session.membership.teamID}<p
-          class="mb-5 text-sm leading-relaxed text-base-content/75"
-        >
+  <Guard>
+    {#if $session?.meeting && !["ended", "ending"].includes($session.meeting.status)}
+      <h2 class="mb-3 text-sm font-medium">{$session.meeting.name}</h2>
+      <Deadline expires={$session.meeting.expires} />
+      {#if $session.membership.teamID}<p class="mt-4 text-sm leading-relaxed">
           Switching closes your desktop. Files stay with the previous team until
           the meeting ends.
         </p>{/if}
-      <Notice message={error} />{#if $session.membership.switching}<div
+      <Notice message={error} dismissible />
+      {#if $session.membership.switching}<div
           class="alert my-4 text-sm"
           role="status"
         >
@@ -66,7 +105,7 @@
           desktop is closing. Retry the same team to finish your change.
         </div>{/if}
       <ul
-        class="divide-y divide-base-content/10 border-y border-base-content/10"
+        class="mt-5 divide-y divide-base-content/10 border-y border-base-content/10"
       >
         {#each $session.teams as team}<li
             class="flex flex-wrap items-center gap-3 py-4"
@@ -90,16 +129,18 @@
               </p>
             </div>
             <div class="mr-3 flex flex-wrap items-center gap-3">
-              <Status
-                status={team.status}
-              />{#if team.id === $session.membership.teamID && !$session.membership.switching}<a
+              {#if $session.user.admin || team.id === $session.membership.teamID}<Status
+                  status={team.status}
+                />{/if}
+              {#if team.id === $session.membership.teamID && !$session.membership.switching}<a
                   href="/lab/"
                   class="btn btn-sm min-h-11 btn-primary"
                   >Your lab<ArrowRight size={15} /></a
-                >{:else}<button
+                >
+              {:else}<button
                   class="btn btn-sm min-h-11"
                   disabled={!!pending || team.members >= team.capacity}
-                  onclick={() => join(team.id)}
+                  onclick={() => choose(team.id)}
                   >{#if pending === team.id}<span
                       class="loading loading-spinner loading-xs"
                     ></span>{/if}{team.members >= team.capacity
@@ -115,17 +156,27 @@
           <button
             class="btn btn-sm min-h-11 btn-ghost"
             disabled={!!pending}
-            onclick={() => join("")}><LogOut size={15} />Leave team</button
+            onclick={() => choose("")}><LogOut size={15} />Leave team</button
           >
         </div>{/if}
     {:else}
       <section class="border-t border-base-content/10 py-8">
         <Users size={24} aria-hidden="true" />
-        <h2 class="mt-4 text-lg font-semibold">No meeting is open yet</h2>
-        <p class="mt-2 text-sm text-base-content/75">
-          Teams appear when a meeting opens.
+        <h2 class="mt-4 text-lg font-semibold">
+          {$session?.meeting?.status === "ending"
+            ? "This meeting is ending"
+            : $session?.meeting?.status === "ended"
+              ? "This meeting has ended"
+              : "No meeting is open yet"}
+        </h2>
+        <p class="mt-2 text-sm">
+          {$session?.meeting?.status === "ending"
+            ? "Lab cleanup is in progress. Teams are no longer available."
+            : $session?.meeting?.status === "ended"
+              ? "Lab access has ended. Join the next meeting for a fresh workspace."
+              : "Teams appear when a meeting opens."}
         </p>
-        <Notice message={error} /><button
+        <Notice message={error} dismissible /><button
           class="btn btn-sm min-h-11 mt-5"
           onclick={checkAgain}>Check again</button
         >{#if checked}<p
@@ -135,6 +186,47 @@
             Checked at {checked}
           </p>{/if}
       </section>
-    {/if}</Guard
-  >
+    {/if}
+  </Guard>
 </div>
+<dialog
+  bind:this={confirmation}
+  class="modal"
+  aria-labelledby="team-change-title"
+  oncancel={(e) => {
+    if (pending) e.preventDefault();
+  }}
+>
+  <div class="modal-box">
+    <h2 id="team-change-title" class="text-lg font-semibold">
+      {change?.teamID
+        ? `Switch to ${change.name}?`
+        : `Leave ${change?.oldName ?? "your team"}?`}
+    </h2>
+    <p class="mt-3 text-sm">
+      From <strong>{change?.oldName}</strong> to
+      <strong>{change?.name}</strong>.
+    </p>
+    <p class="mt-3 text-sm leading-relaxed">
+      This closes your desktop. Files stay with {change?.oldName} until the meeting
+      ends.{change?.teamID
+        ? " Your workspace on the new team will be separate."
+        : " Join a team again to access a desktop."}
+    </p>
+    <Notice message={error} />
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn btn-sm min-h-11" disabled={!!pending}>Cancel</button>
+      </form>
+      <button
+        class="btn btn-sm min-h-11 btn-primary"
+        disabled={!!pending}
+        onclick={confirmChange}
+        >{#if pending}<span class="loading loading-spinner loading-xs"
+          ></span>{/if}{change?.teamID
+          ? `Switch to ${change.name}`
+          : `Leave ${change?.oldName ?? "team"}`}</button
+      >
+    </div>
+  </div>
+</dialog>

@@ -3,6 +3,9 @@
   import Scoreboard from "$lib/Scoreboard.svelte";
   import Exercises from "$lib/Exercises.svelte";
   import Status from "$lib/Status.svelte";
+  import Deadline from "$lib/Deadline.svelte";
+  import PollStatus from "$lib/PollStatus.svelte";
+  import type { Meeting } from "$lib/types";
   import { onMount } from "svelte";
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
@@ -30,6 +33,52 @@
   let teamCount = $state(5);
   let capacity = $state(6);
   let extension = $state(1);
+  let success = $state("");
+  let createdID = $state("");
+  const builtRevisions = $derived(
+    (data?.templates.filter((t) => t.built) ?? []).toSorted(
+      (a, b) =>
+        Date.parse(b.committedAt ?? b.importedAt ?? "") -
+        Date.parse(a.committedAt ?? a.importedAt ?? ""),
+    ),
+  );
+  $effect(() => {
+    if (!template && builtRevisions.length) template = builtRevisions[0].id;
+  });
+  const joined = $derived(
+    data?.teams.reduce((sum, t) => sum + t.members, 0) ?? 0,
+  );
+  const seats = $derived(
+    data?.teams.reduce((sum, t) => sum + t.capacity, 0) ?? 0,
+  );
+  const running = $derived(
+    data?.jobs.filter((j) => j.status === "running").length ?? 0,
+  );
+  const queued = $derived(
+    data?.jobs.filter((j) => j.status === "queued").length ?? 0,
+  );
+  const failures = $derived(
+    data?.jobs.filter((j) => j.status === "failed" && j.needsAttention)
+      .length ?? 0,
+  );
+  const prepareFailure = $derived(
+    data?.jobs.find(
+      (j) =>
+        j.kind === "prepare" &&
+        j.target === data.meeting?.id &&
+        j.status === "failed",
+    ),
+  );
+  function failureFor(name: string) {
+    const lines = prepareFailure?.error?.split("\n") ?? [];
+    return (
+      lines
+        .find((line) => line.startsWith(name + ": "))
+        ?.slice(name.length + 2) ??
+      prepareFailure?.error ??
+      "Preparation failed. See live activity for recovery details."
+    );
+  }
   const readyCount = $derived(
     data?.teams.filter((t) => t.status === "ready").length ?? 0,
   );
@@ -61,24 +110,26 @@
   let confirmation: HTMLDialogElement;
   let action = $state("");
   async function load() {
-    try {
-      await refreshAdmin();
-      if (!template)
-        template = $adminView?.templates.find((t) => t.built)?.id ?? "";
-    } catch (e) {
-      error = (e as Error).message;
-    }
+    await refreshAdmin().catch(() => {});
   }
   onMount(() => {
     void load();
-    const t = setInterval(load, 2000);
-    return () => clearInterval(t);
   });
   async function run(path: string, body: unknown = {}) {
     busy = true;
     error = "";
+    success = "";
     try {
-      await api(path, body);
+      const result = await api<Meeting>(path, body);
+      if (path === "/api/admin/extend")
+        success = `Extended to ${date(result.expires)}.`;
+      if (path === "/api/admin/meeting") {
+        createdID = result.id;
+        success =
+          "Meeting created. Prepare labs now to make the teams available.";
+      }
+      if (path === "/api/admin/jobs/retry")
+        success = "Preparation recovery queued. Ready team labs are preserved.";
       confirmation?.close();
       await load();
     } catch (e) {
@@ -134,7 +185,9 @@
 <svelte:head><title>Manage meeting · LabCentral</title></svelte:head>
 <PageHeader title="Manage meeting" />
 <Guard admin
-  ><Notice message={error} />{#if data}
+  ><Notice message={error} dismissible /><PollStatus />
+  {#if success}<p class="mb-4 text-sm" role="status">{success}</p>{/if}
+  {#if data}
     {#if !data.meeting || data.meeting.status === "ended"}
       <div
         class="grid items-start gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]"
@@ -171,8 +224,13 @@
                 bind:value={template}
                 required
                 ><option value="" disabled>Choose a built revision</option
-                >{#each data.templates.filter((t) => t.built) as t}<option
-                    value={t.id}>{t.name} · {t.commit.slice(0, 7)}</option
+                >{#each builtRevisions as t}<option value={t.id}
+                    >{t.name} · {t.commitTitle || "Imported revision"} · {t.commit.slice(
+                      0,
+                      7,
+                    )} · {t.committedAt
+                      ? date(t.committedAt, { dateStyle: "medium" })
+                      : "Date unavailable"}</option
                   >{/each}</select
               >
               <div class="mt-3 grid gap-4 sm:grid-cols-3">
@@ -190,12 +248,7 @@
                     required
                     aria-describedby="team-count-help"
                   />
-                  <p
-                    id="team-count-help"
-                    class="mt-2 text-xs text-base-content/75"
-                  >
-                    1–100 teams
-                  </p>
+                  <p id="team-count-help" class="mt-2 text-sm">1–100 teams</p>
                 </div>
                 <div>
                   <label class="label mb-2" for="capacity"
@@ -211,12 +264,7 @@
                     required
                     aria-describedby="capacity-help"
                   />
-                  <p
-                    id="capacity-help"
-                    class="mt-2 text-xs text-base-content/75"
-                  >
-                    1–100 students
-                  </p>
+                  <p id="capacity-help" class="mt-2 text-sm">1–100 students</p>
                 </div>
                 <div>
                   <label class="label mb-2" for="duration"
@@ -232,17 +280,17 @@
                     required
                     aria-describedby="duration-help"
                   />
-                  <p
-                    id="duration-help"
-                    class="mt-2 text-xs text-base-content/75"
-                  >
-                    1–8 hours
-                  </p>
+                  <p id="duration-help" class="mt-2 text-sm">1–8 hours</p>
                 </div>
               </div>
-              <p class="mt-3 text-sm leading-relaxed text-base-content/75">
-                {(teamCount || 0) * (capacity || 0)} student places. Machines and
-                files are deleted automatically when the meeting ends.
+              <p class="mt-3 text-sm font-medium">
+                {(teamCount || 0) * (capacity || 0)} desktop places · {teamCount ||
+                  0} team {teamCount === 1 ? "lab" : "labs"} · {hours || 0}
+                {hours === 1 ? "hour" : "hours"}
+              </p>
+              <p class="text-sm leading-relaxed">
+                Machines and files are deleted automatically when the meeting
+                ends. Cloud compute and storage incur charges.
               </p>
               <button
                 disabled={busy || !template}
@@ -304,7 +352,10 @@
                 class="btn btn-sm min-h-11 btn-primary lg:min-h-8"
                 disabled={busy || readyCount === data.teams.length || preparing}
                 onclick={() => confirm("prepare")}
-                ><Play size={15} />Prepare labs</button
+                ><Play size={15} />{createdID === data.meeting.id &&
+                data.meeting.status === "waiting"
+                  ? "Prepare labs now"
+                  : "Prepare labs"}</button
               >
               <button
                 type="button"
@@ -316,37 +367,65 @@
             {/if}
           </div>
         </div>
+        <div class="mt-4">
+          {#if data.meeting.status === "ending"}<p class="text-sm text-warning">
+              Cleanup is in progress. Team machines and workspace files are
+              being removed.
+            </p>{:else}<Deadline
+              expires={data.meeting.expires}
+              label="Cleanup at"
+            />{/if}
+        </div>
         <div
-          class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs tabular-nums text-base-content/75"
+          class="stats mt-4 grid w-full grid-flow-row grid-cols-2 overflow-visible rounded-field border border-base-content/10 bg-base-200/40 sm:grid-cols-4"
+          aria-label="Meeting overview"
         >
-          <span class="inline-flex items-center gap-1.5"
-            ><Clock size={14} />Cleanup at {date(data.meeting.expires)}</span
-          ><span class="inline-flex items-center gap-1.5"
-            ><Users size={14} />{readyCount} / {data.teams.length} labs ready · {data.teams.reduce(
-              (total, team) => total + team.capacity,
-              0,
-            )} student places</span
-          ><span class="inline-flex items-center gap-1.5"
-            ><Monitor size={14} />{data.activeDesktops ?? 0} active desktops</span
-          ><a
-            class="link link-hover inline-flex min-h-8 items-center gap-1.5"
-            href="#activity-title"
-            ><ActivityIcon size={14} />{data.jobs.filter(
-              (j) => j.status === "running",
-            ).length} running · {data.jobs.filter((j) => j.status === "queued")
-              .length} queued</a
-          >
+          <div class="stat min-w-0 px-3 py-3">
+            <div class="stat-title text-xs text-base-content/75">
+              Labs ready
+            </div>
+            <div class="stat-value text-xl tabular-nums">
+              {readyCount} / {data.teams.length}
+            </div>
+          </div>
+          <div class="stat min-w-0 px-3 py-3">
+            <div class="stat-title text-xs text-base-content/75">
+              Students joined
+            </div>
+            <div class="stat-value text-xl tabular-nums">
+              {joined} / {seats}
+            </div>
+            <div class="stat-desc whitespace-normal text-xs">Seats filled</div>
+          </div>
+          <div class="stat min-w-0 px-3 py-3">
+            <div class="stat-title text-xs text-base-content/75">
+              Active desktops
+            </div>
+            <div class="stat-value text-xl tabular-nums">
+              {data.activeDesktops ?? 0}
+            </div>
+          </div>
+          <div class="stat min-w-0 px-3 py-3">
+            <div class="stat-title text-xs text-base-content/75">
+              Operations
+            </div>
+            <a
+              class="stat-value link link-hover text-xl tabular-nums"
+              href="#activity-title">{running} running</a
+            >
+            <div class="stat-desc whitespace-normal text-xs">
+              {queued} queued · {failures} failed needing attention
+            </div>
+          </div>
         </div>
         {#if failedCount}<p class="mt-3 text-sm text-error">
             {failedCount}
             {failedCount === 1 ? "lab needs" : "labs need"} attention.
             <a class="link" href="#activity-title">View activity</a>
           </p>{/if}
-        {#if readyCount === data.teams.length}<p
-            class="mt-2 text-xs text-base-content/75"
-          >
+        {#if readyCount === data.teams.length}<p class="mt-2 text-sm">
             All team labs are prepared.
-          </p>{:else if preparing}<p class="mt-2 text-xs text-base-content/75">
+          </p>{:else if preparing}<p class="mt-2 text-sm">
             Preparation is running. Ready teams can use their labs.
           </p>{/if}
       </section>
@@ -379,23 +458,61 @@
             aria-labelledby="meeting-tab-teams"
             hidden={visiblePanel !== "teams"}
           >
-            <div class="max-w-full overflow-x-auto">
+            <!-- Keyboard scrolling keeps all team columns accessible on phones. -->
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <div
+              class="max-w-full overflow-x-auto"
+              tabindex="0"
+              role="region"
+              aria-label="Team labs table"
+            >
               <table class="table table-sm">
-                <thead><tr><th>Team</th><th>Members</th><th>Lab</th></tr></thead
-                ><tbody
-                  >{#each data.teams as team}<tr class="border-base-content/10"
-                      ><th class="font-medium"
+                <caption class="sr-only"
+                  >Team lab readiness and desktop sessions</caption
+                ><thead
+                  ><tr
+                    ><th scope="col">Team</th><th scope="col">Members</th><th
+                      scope="col">Desktops</th
+                    ><th scope="col">Lab</th></tr
+                  ></thead
+                ><tbody>
+                  {#each data.teams as team}<tr class="border-base-content/10"
+                      ><th scope="row" class="whitespace-nowrap font-medium"
                         ><span class="flex items-center gap-2"
                           ><Users
                             size={15}
                             class="text-base-content/75"
                           />{team.name}</span
                         ></th
-                      ><td class="tabular-nums text-base-content/75"
+                      ><td class="whitespace-nowrap tabular-nums"
                         >{team.members} / {team.capacity}</td
-                      ><td><Status status={team.status} /></td></tr
-                    >{/each}</tbody
-                >
+                      ><td class="tabular-nums"
+                        >{data.teamDesktops?.find((d) => d.teamID === team.id)
+                          ?.count ?? 0}</td
+                      ><td
+                        ><Status
+                          status={team.status}
+                          soft
+                        />{#if team.status === "failed"}<p
+                            class="mt-2 min-w-48 whitespace-pre-line text-sm text-error"
+                          >
+                            {failureFor(team.name)}
+                          </p>
+                          {#if prepareFailure?.retryable}<button
+                              class="btn btn-sm min-h-11 mt-2"
+                              disabled={busy || preparing}
+                              onclick={() =>
+                                run("/api/admin/jobs/retry", {
+                                  id: prepareFailure?.id,
+                                })}>Retry failed labs</button
+                            >{:else if prepareFailure?.retryBlocked}<p
+                              class="mt-2 text-sm"
+                            >
+                              {prepareFailure.retryBlocked}
+                            </p>{/if}{/if}</td
+                      ></tr
+                    >{/each}
+                </tbody>
               </table>
             </div>
           </div>
@@ -444,7 +561,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11">Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11"
@@ -452,7 +569,10 @@
         class:btn-primary={action === "prepare"}
         disabled={busy}
         onclick={() => run("/api/admin/" + action)}
-        >{action === "end" ? "Delete team labs" : "Prepare labs"}</button
+        >{#if busy}<span class="loading loading-spinner loading-xs"
+          ></span>{/if}{action === "end"
+          ? "Delete team labs"
+          : "Prepare labs"}</button
       >
     </div>
   </div>

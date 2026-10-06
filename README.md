@@ -22,6 +22,13 @@ to paste. Terminals use Ctrl+Shift+V. The **Copy from desktop**
 button synchronizes its clipboard to your browser; allow clipboard permission when prompted.
 In Firefox or Safari, first choose **Paste to desktop** and paste your text into
 the box. After it closes, paste inside the desktop. This fallback transfers text only.
+The lab and team pages show time remaining; at fifteen minutes they warn that
+workspace files will be deleted. Desktop help appears beside **Open desktop**.
+Signed-in home navigation goes directly to your lab or team selection. Switching
+or leaving a team requires a confirmation naming the affected teams. **Disconnect
+desktop** is enabled only when your current login has an available desktop session;
+it does not indicate whether the desktop browser tab is still connected.
+
 `labcentral-users` admits students; `labcentral-admins` additionally
 admits administrators. Switching teams revokes the old desktop before membership
 changes. Administrators refresh the private template repository, build a pinned
@@ -43,7 +50,11 @@ uses resource dependencies and bounded capacity: three bulk operations (at most
 two builds), two checks/exercises, and one reserved cleanup slot. **Live activity**
 shows running/queued work, waiting dependencies, progress counts and active desktops.
 Obsolete failures remain in Recent; Needs attention contains current failures.
-Retry feedback appears beside the activity controls.
+Retry feedback appears beside the activity controls. Activity shows readable operation
+names, elapsed durations and time since its last successful update. Recent history
+starts at twelve entries with **Show more**; active operations are all shown. A
+transient polling error preserves the last view; consecutive failures show a
+separate stale-data warning. Sign-out and authorization loss clear private views.
 Desktop launches bypass this queue and can run while checks or exercises use
 another machine in the same ready team lab.
 
@@ -52,7 +63,10 @@ playbooks under `instructor/`. They are extracted before image builds and are vi
 only to administrators. Notes, break definitions and reset instructions stay with
 the revision. **Service scoreboard** runs the revision's checks once or on a saved
 schedule (one minute to one hour); it shows pass, fail and unavailable results per
-team. Ready teams can be checked while other teams are still preparing. Schedules start paused and stop when the meeting ends. See
+team. The scoreboard uses a scrollable teams-by-checks table, with totals and last-run
+times. Its selector reflects the saved schedule and offers one, two, five, ten,
+fifteen, thirty and sixty minutes. Ready teams can be checked while other teams
+are still preparing. Schedules start paused and stop when the meeting ends. See
 [ARCHITECTURE.md](ARCHITECTURE.md#hosted-team-service) for the manifest contract.
 
 The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
@@ -60,6 +74,13 @@ The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
 identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC
 sign-in, retained workspaces, team switching, revocation, network isolation,
 Example Branch exercises, cleanup and backup restoration.
+
+**Manage meeting** summarizes labs ready, students joined, active desktop sessions
+and operation counts. Failed teams show the preparation error and available retry.
+New meetings default to the newest built revision and offer **Prepare labs now**;
+time extensions confirm the new deadline. Exercise controls put the scenario and
+walkthrough before team selection, with a sticky action bar and a counted team-list
+confirmation.
 
 Administrators can select ready teams under **Manage meeting → Exercises** to
 stop Apache, move it to port 8080, or simulate an SSH intrusion. Every break first
