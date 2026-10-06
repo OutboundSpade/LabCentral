@@ -22,7 +22,7 @@ export async function refreshAdmin() {
   const scope = adminScope;
   if (!scope) return;
   if (adminPending?.scope === scope) return adminPending.promise;
-  const promise = (async () => {
+  const promise = Promise.resolve().then(async () => {
     try {
       if (get(loadError)) throw new Error(get(loadError));
       const data = await api<AdminView>("/api/admin");
@@ -47,7 +47,7 @@ export async function refreshAdmin() {
     } finally {
       if (adminPending?.scope === scope) adminPending = null;
     }
-  })();
+  });
   adminPending = { scope, promise };
   return promise;
 }

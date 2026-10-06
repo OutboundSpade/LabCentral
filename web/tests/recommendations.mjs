@@ -27,10 +27,12 @@ try {
     page.on("pageerror", (e) => errors.push(e.message));
     const start = Date.now();
     await page.clock.install({ time: start });
+    await page.clock.pauseAt(start + 1000);
     let admin = true,
       teamID = "t1",
       active = false,
       pollFailure = false,
+      meFailure = false,
       adminReads = 0,
       changes = 0;
     const teams = Array.from({ length: 100 }, (_, i) => ({
@@ -141,7 +143,13 @@ try {
     });
     await context.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === "/api/me") return route.fulfill({ json: overview() });
+      if (path === "/api/me")
+        return meFailure
+          ? route.fulfill({
+              status: 503,
+              json: { error: "Session transport unavailable" },
+            })
+          : route.fulfill({ json: overview() });
       if (path === "/api/admin") {
         adminReads++;
         return pollFailure
@@ -296,6 +304,27 @@ try {
     await page
       .getByText("Live updates are unavailable.", { exact: false })
       .waitFor({ state: "hidden" });
+    // A failing session read must not leave an already rejected refresh cached forever.
+    meFailure = true;
+    for (let failure = 0; failure < 2; failure++) {
+      const response = page.waitForResponse(
+        (r) => r.url().endsWith("/api/me") && r.status() === 503,
+      );
+      await page.clock.runFor(2000);
+      await (await response).finished();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    await page
+      .getByText("Live updates are unavailable.", { exact: false })
+      .waitFor();
+    meFailure = false;
+    await page
+      .getByRole("button", { name: "Retry update", exact: true })
+      .click();
+    await page
+      .getByText("Live updates are unavailable.", { exact: false })
+      .waitFor({ state: "hidden" });
+    assert.equal(await table.getByRole("row").count(), 101);
     await page.getByRole("tab", { name: "Exercises", exact: true }).click();
     await page.getByLabel("Exercise", { exact: true }).selectOption("ftp");
     await page.getByText("Instructor walkthrough", { exact: true }).click();
