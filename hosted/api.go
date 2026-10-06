@@ -124,6 +124,9 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	out.Meeting, err = s.Store.Meeting(ctx)
 	if err == nil && out.Meeting != nil {
 		out.Teams, err = s.Store.Teams(ctx, out.Meeting.ID)
+		if err == nil {
+			out.JoinedStudents, err = s.Store.JoinedStudents(ctx, out.Meeting.ID)
+		}
 	}
 	if err == nil {
 		out.Jobs, err = s.Store.Jobs(ctx)

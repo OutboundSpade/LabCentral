@@ -108,6 +108,8 @@ try {
       })),
     );
     const data = {
+      // One student reserves two team seats during a pending switch.
+      joinedStudents: 199,
       meeting,
       teams,
       templates: [template],
@@ -225,6 +227,7 @@ try {
       });
     await page.goto(app + "/admin/#scoreboard");
     await page.getByRole("heading", { name: "Service scoreboard" }).waitFor();
+    await page.getByText("199 / 600", {exact:true}).waitFor();
     assert.equal(await page.getByLabel("Schedule interval").inputValue(), "60");
     await page.getByText("Every 1 minute · next", { exact: false }).waitFor();
     const table = page.getByRole("region", { name: "Service checks table" });

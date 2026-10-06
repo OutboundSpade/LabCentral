@@ -86,6 +86,7 @@ export interface Overview {
   lab: LabView;
 }
 export interface AdminView {
+  joinedStudents: number;
   repositoryURL: string;
   teamDesktops: TeamDesktopCount[];
   checkSchedule?: CheckSchedule | null;

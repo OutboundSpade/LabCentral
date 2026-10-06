@@ -76,7 +76,9 @@ sign-in, retained workspaces, team switching, revocation, network isolation,
 Example Branch exercises, cleanup and backup restoration.
 
 **Manage meeting** summarizes labs ready, students joined, active desktop sessions
-and operation counts. Failed teams show the preparation error and available retry.
+and operation counts. Joined students count committed memberships once; team seat
+counts also include pending reservations. Failed teams show the preparation
+error and available retry.
 New meetings default to the newest built revision and offer **Prepare labs now**;
 time extensions confirm the new deadline. Exercise controls put the scenario and
 walkthrough before team selection, with a sticky action bar and a counted team-list

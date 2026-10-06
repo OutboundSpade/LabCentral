@@ -45,9 +45,7 @@
   $effect(() => {
     if (!template && builtRevisions.length) template = builtRevisions[0].id;
   });
-  const joined = $derived(
-    data?.teams.reduce((sum, t) => sum + t.members, 0) ?? 0,
-  );
+  const joined = $derived(data?.joinedStudents ?? 0);
   const seats = $derived(
     data?.teams.reduce((sum, t) => sum + t.capacity, 0) ?? 0,
   );

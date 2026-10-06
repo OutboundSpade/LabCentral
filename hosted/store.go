@@ -51,6 +51,13 @@ func (s *Store) Teams(ctx context.Context, meeting string) ([]Team, error) {
 	}
 	return out, rows.Err()
 }
+
+// JoinedStudents counts committed membership, independently of reserved switch seats.
+func (s *Store) JoinedStudents(ctx context.Context, meeting string) (int, error) {
+	var count int
+	err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM memberships m JOIN teams t ON t.id=m.team_id WHERE t.meeting_id=?`, meeting).Scan(&count)
+	return count, err
+}
 func (s *Store) Membership(ctx context.Context, user string) (Membership, error) {
 	m := Membership{UserID: user}
 	e := s.DB.QueryRowContext(ctx, `SELECT team_id,pending_team,switching FROM memberships WHERE user_id=?`, user).Scan(&m.TeamID, &m.PendingTeam, &m.Switching)

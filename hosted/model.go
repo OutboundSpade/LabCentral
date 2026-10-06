@@ -122,6 +122,7 @@ type Overview struct {
 	Lab        LabView    `json:"lab"`
 }
 type AdminView struct {
+	JoinedStudents int                  `json:"joinedStudents"`
 	RepositoryURL  string               `json:"repositoryURL"`
 	TeamDesktops   []TeamDesktopCount   `json:"teamDesktops"`
 	CheckSchedule  *CheckSchedule       `json:"checkSchedule,omitempty"`

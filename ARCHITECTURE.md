@@ -400,7 +400,9 @@ to the lab or team list. Team changes require a named confirmation and recheck t
 current membership before submitting. Desktop readiness transitions update the
 page title and an accessible status region; the launch label stays fixed. Desktop
 help describes idle reconnects and browser clipboard behavior. Instructor meeting
-summaries use stat tiles, and failed-team rows show preparation errors and recovery.
+summaries use stat tiles; joined students count committed memberships once,
+independently of pending seat reservations. Failed-team rows show preparation errors
+and recovery.
 The scoreboard is a horizontally scrollable teams-by-checks table with a pinned
 header; its schedule selector initializes from saved data without overwriting an
 unsaved choice during polling. Exercise selection precedes team selection and a

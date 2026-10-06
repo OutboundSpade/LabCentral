@@ -54,7 +54,7 @@ func TestOverviewDesktopAvailabilityIsScoped(t *testing.T) {
 			if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil || out.Lab.DesktopActive != test.active {
 				t.Fatalf("scoped availability: %d %s", w.Code, w.Body.String())
 			}
-			if strings.Contains(w.Body.String(), "relay-secret-sentinel") || strings.Contains(w.Body.String(), "relay-token-sentinel") || strings.Contains(w.Body.String(), "repositoryURL") || strings.Contains(w.Body.String(), "teamDesktops") {
+			if strings.Contains(w.Body.String(), "relay-secret-sentinel") || strings.Contains(w.Body.String(), "relay-token-sentinel") || strings.Contains(w.Body.String(), "joinedStudents") || strings.Contains(w.Body.String(), "repositoryURL") || strings.Contains(w.Body.String(), "teamDesktops") {
 				t.Fatal("private data entered student view")
 			}
 		})
@@ -147,4 +147,67 @@ func TestRepositoryLinkOmitsUnsafeConfiguration(t *testing.T) {
 			t.Fatalf("unsafe repository link for %q", value)
 		}
 	}
+}
+
+func TestJoinedStudentsDoesNotDoubleCountPendingReservations(t *testing.T) {
+	s, v, _ := serviceFor(t)
+	ctx := context.Background()
+	teams := setupMeeting(t, s.Store)
+	if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[0].ID, "meeting"); err != nil {
+		t.Fatal(err)
+	}
+	count, err := s.Store.JoinedStudents(ctx, "meeting")
+	if err != nil || count != 0 {
+		t.Fatal("uncommitted first join counted", count, err)
+	}
+	if err := s.Store.FinishSwitch(ctx, v.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[1].ID, "meeting"); err != nil {
+		t.Fatal(err)
+	}
+	// The switch intent is durable while both teams reserve capacity.
+	all, err := s.Store.Teams(ctx, "meeting")
+	if err != nil || all[0].Members != 1 || all[1].Members != 1 {
+		t.Fatal("switch reservations missing", all, err)
+	}
+	count, err = s.Store.JoinedStudents(ctx, "meeting")
+	if err != nil || count != 1 {
+		t.Fatal("pending switch double counted", count, err)
+	}
+	if count, err := s.Store.JoinedStudents(ctx, "another-meeting"); err != nil || count != 0 {
+		t.Fatal("foreign meeting counted", count, err)
+	}
+	if w := request(s, "GET", "/api/admin", "", "", ""); w.Code != 403 {
+		t.Fatal("student read private counts")
+	}
+	v.User.Admin = true
+	if err := s.Store.Put(ctx, "session", v.ID, v); err != nil {
+		t.Fatal(err)
+	}
+	w := request(s, "GET", "/api/admin", "", "", "")
+	var out AdminView
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &out) != nil || out.JoinedStudents != 1 {
+		t.Fatal("wrong admin headcount", w.Code, w.Body.String())
+	}
+	// Concurrent committed switches keep one student rather than two reserved seats.
+	var changes sync.WaitGroup
+	changes.Go(func() {
+		for i := range 40 {
+			if err := s.Store.FinishSwitch(ctx, v.User.ID); err != nil {
+				t.Error(err)
+				return
+			}
+			if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[i%2].ID, "meeting"); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	})
+	for range 40 {
+		if count, err := s.Store.JoinedStudents(ctx, "meeting"); err != nil || count != 1 {
+			t.Error("concurrent switch miscounted", count, err)
+		}
+	}
+	changes.Wait()
 }
