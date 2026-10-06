@@ -41,7 +41,7 @@ try {
  data=await page.evaluate(async()=>await(await fetch('/api/admin')).json());
  assert.equal(Date.parse(data.meeting.expires)-Date.parse(data.meeting.created),8*3600000);
  const end=page.getByRole('button',{name:'End meeting',exact:true});
- assert((await end.getAttribute('class')).includes('btn-error'));
+ assert((await end.getAttribute('class')).includes('text-error'));
  assert.equal(await end.locator('input[type="checkbox"]').count(),0);
  if(output)await page.screenshot({animations:'disabled',path:output+'/meeting-mobile.png',fullPage:true});
  await end.click();await page.getByRole('dialog').waitFor();

@@ -378,18 +378,24 @@ Primary sources, retrieved 2026-09-28:
 [SvelteKit static generation](https://svelte.dev/docs/kit/adapter-static).
 
 
-The static UI keeps the existing dark-purple daisyUI theme and Instrument Sans.
-A local SVG hub mark identifies LabCentral in the header and favicon; Lucide remains
-the action/icon system. Administrators have a direct Templates navigation item.
-The desktop panel precedes the handover on narrow screens, while the handover stays
-on the left on desktop. Shared status badges pair plain labels and icons with service
-state colors. Activity filters expose failure counts without opening a menu, and failed
-operations link to recovery controls. Cached images are distinguished from confirmed
-built revisions. Schedule controls name starting, updating and pausing explicitly;
-exercise selection explains unavailable teams. Primary controls have larger touch
-targets and muted text uses a more readable foreground. These are presentation changes;
-HTTP authorization, meeting policy, queue claims and native desktop behavior remain
-unchanged.
+The static UI keeps SvelteKit, the dark-purple daisyUI theme, Instrument Sans and
+Lucide icons. A local SVG L-shaped corner surrounding a central square identifies
+LabCentral in the header and favicon. A compact desktop navigation bar becomes
+role-appropriate bottom navigation on phones. The desktop panel precedes the
+handover on narrow screens, while the handover stays on the left on desktop.
+Administrator meeting tools use keyboard-accessible Teams, Exercises and Scoreboard
+tabs, selected by the URL fragment; panels remain mounted to retain pending state
+and exercise selections. Live activity sits alongside those tools on desktop and
+below them on phones. Status labels pair readable text with small icons and service
+state colors. Activity filters expose failure counts and mark the selected filter
+explicitly; failed operations retain recovery feedback and blocking reasons.
+Template history initially shows recent, pinned and working revisions, with older
+revisions available on demand. Cached images remain distinct from confirmed builds.
+Schedule controls name starting, updating and pausing explicitly; exercise selection
+explains unavailable teams. Primary controls have larger touch targets, flat sections
+reduce visual noise, and purple identifies selection and principal actions. These
+are presentation changes; HTTP authorization, meeting policy, queue claims and
+native desktop behavior remain unchanged.
 
 The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
 memberships, template revisions, jobs and desktop ownership. SQLite transactions
