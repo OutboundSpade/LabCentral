@@ -7,14 +7,14 @@ try{
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(app+'/admin/');const activity=page.locator('section').filter({has:page.getByRole('heading',{name:'Live activity',exact:true})});
  const active=activity.getByRole('button',{name:'Active (0)',exact:true}),attention=activity.getByRole('button',{name:/^Needs attention/}),recent=activity.getByRole('button',{name:'Recent',exact:true});
- await active.waitFor();assert.equal(await active.getAttribute('aria-pressed'),'true');assert((await active.getAttribute('class')).includes('btn-primary'));assert(!(await attention.getAttribute('class')).includes('btn-primary'));assert(!(await attention.getAttribute('class')).includes('btn-error'));
+ await active.waitFor();assert.equal(await active.getAttribute('aria-pressed'),'true');assert.equal(await attention.getAttribute('aria-pressed'),'false');
  await recent.click();await activity.getByText('This meeting ended or expired. Run checks or exercises in the current meeting.',{exact:true}).waitFor();assert.equal(await activity.getByRole('button',{name:'Retry recovery',exact:true}).count(),2);
  const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;
  for(const width of [1365,390]){
   await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(output){fs.mkdirSync(output,{recursive:true});await activity.screenshot({path:output+`/activity-recent-${width}.png`})}
  }
- await attention.click();await activity.getByText('Desktop cleanup',{exact:true}).waitFor();const current=activity.locator('li').filter({has:page.getByText('Team 1',{exact:true})});assert.equal(await attention.getAttribute('aria-pressed'),'true');assert((await attention.getAttribute('class')).includes('btn-primary'));assert.equal(await activity.getByText('Team 2',{exact:true}).count(),0);
+ await attention.click();await activity.getByText('Desktop cleanup',{exact:true}).waitFor();const current=activity.locator('li').filter({has:page.getByText('Team 1',{exact:true})});assert.equal(await attention.getAttribute('aria-pressed'),'true');assert.equal(await active.getAttribute('aria-pressed'),'false');assert.equal(await activity.getByText('Team 2',{exact:true}).count(),0);
  // A race can invalidate a previously offered retry. Rejection stays beside
  // the controls and preserves the action, rather than disappearing above scroll.
  await context.route('**/api/admin/jobs/retry',async route=>{await new Promise(r=>setTimeout(r,250));await route.fulfill({status:409,json:{error:'This check was superseded while you were viewing it.'}})});

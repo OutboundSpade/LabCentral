@@ -379,15 +379,25 @@ Primary sources, retrieved 2026-09-28:
 
 
 The static UI keeps SvelteKit, the dark-purple daisyUI theme, Instrument Sans and
-Lucide icons. Its new local SVG mark joins a checkpoint rail to a workspace;
-flat ruled lab rows, quiet surfaces and restrained purple selection connect the
-catalog and guided player. A compact desktop navigation bar becomes
-role-appropriate bottom navigation on phones. Administration has a secondary
-Meeting, Published labs and Templates navigation. The desktop panel precedes the
-handover on narrow screens, while the handover stays on the left on desktop.
+Lucide icons. Its local SVG mark is a central node inside a lab frame. The layout
+favours a few quiet panels over ruled sections, short labels over explanatory
+copy, and purple only for selection and principal actions. A sticky top bar has
+three destinations: Practice (catalog, templates and player), Meeting (team choice
+or the team lab, with a dot while a meeting is open) and Admin. On phones it
+becomes role-appropriate bottom navigation; the header carries no backdrop filter,
+so the fixed phone navigation stays anchored to the viewport. Administration has a
+secondary Meeting, Published labs and Templates switcher. The header shows
+administrative activity only while operations run or need attention.
+Practice defaults to published labs as cards with progress; template browsing is
+a secondary view. The guided player has a stage rail beside the stage and a single
+workspace strip; local download and CLI commands open in a dialog. The publishing
+editor stays hidden until an administrator starts a new lab, edits one as new or
+arrives from a template revision. The team lab page titles the team, and its desktop
+panel precedes the handover on narrow screens while the handover stays on the left
+on desktop.
 Phone navigation reserves bottom and lateral safe areas; primary touch controls
-remain at least 44 pixels high, and administration uses shorter labels below
-640 pixels. Browser focus scrolling clears the mobile navigation and sticky
+remain at least 44 pixels high. Browser focus scrolling clears the mobile
+navigation and sticky
 exercise action bar. On short laptop screens the pinned activity feed has its own
 keyboard-accessible scroll area. The desktop lesson panel is 320 pixels wide
 from 1024 pixels and 352 pixels from 1280 pixels, with matching page padding to
@@ -410,7 +420,8 @@ lab catalog. Team changes require a named confirmation and recheck the
 current membership before submitting. Desktop readiness transitions update the
 page title and an accessible status region; the launch label stays fixed. Desktop
 help describes idle reconnects and browser clipboard behavior. Instructor meeting
-summaries use stat tiles; joined students count committed memberships once,
+summaries use one compact stat panel (time left, labs ready, students joined and
+active desktops); joined students count committed memberships once,
 independently of pending seat reservations. Failed-team rows show preparation errors
 and recovery.
 The scoreboard is a horizontally scrollable teams-by-checks table with a pinned

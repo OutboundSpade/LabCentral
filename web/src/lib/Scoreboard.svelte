@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ListChecks, Play, Clock, LockKeyhole } from "@lucide/svelte";
+  import { Play, Clock, LockKeyhole } from "@lucide/svelte";
   import { api, date } from "$lib/api";
   import Notice from "$lib/Notice.svelte";
   import Status from "./Status.svelte";
@@ -64,11 +64,11 @@
       <div>
         <h2
           id="scoreboard-title"
-          class="flex items-center gap-2 text-base font-semibold"
+          class="text-sm font-semibold"
         >
-          <ListChecks size={17} />Service scoreboard
+          Service scoreboard
         </h2>
-        <p class="mt-2 flex items-center gap-2 text-xs text-base-content/75">
+        <p class="mt-2 flex items-center gap-2 text-xs text-base-content/60">
           <LockKeyhole size={14} />Instructor only · checks from revision {template?.commit.slice(
             0,
             7,
@@ -186,7 +186,7 @@
               <td class="whitespace-nowrap tabular-nums"
                 >{record?.results?.length ? points : "—"} / {total}</td
               >
-              <td class="whitespace-nowrap text-xs text-base-content/75"
+              <td class="whitespace-nowrap text-xs text-base-content/60"
                 >{#if record}<time datetime={record.updated}
                     >{date(record.updated)}</time
                   ><span class="mt-1 block">{record.status}</span>{:else}Not

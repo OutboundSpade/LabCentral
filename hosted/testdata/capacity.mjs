@@ -56,12 +56,12 @@ try {
  await page.getByRole('heading',{name:'Lab templates',exact:true}).waitFor();
  await page.getByText('Ready to use',{exact:true}).waitFor();
  const nav=page.getByRole('navigation',{name:'Main navigation'});
- for(const [label,url,heading] of [['Admin','/admin/','Manage meeting'],['Teams','/teams/','Choose your team'],['Your lab','/lab/','Your lab'],['Admin','/admin/','Manage meeting']]){
+ for(const [label,url,heading] of [['Admin','/admin/','Example Branch practice'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Practice labs'],['Admin','/admin/','Example Branch practice']]){
   await nav.getByRole('link',{name:label,exact:true}).click();await page.waitForURL(app+url);
   await page.getByRole('heading',{name:heading,exact:true}).first().waitFor();
   assert.equal(await page.evaluate(()=>window.__navigationMarker),'same-document');
  }
- await page.goBack();await page.waitForURL(app+'/lab/');
+ await page.goBack();await page.waitForURL(app+'/labs/');
  await page.goForward();await page.waitForURL(app+'/admin/');
  await end.waitFor();
  assert.equal(documents,1,'internal links reloaded the document');

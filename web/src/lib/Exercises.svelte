@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Play, RotateCcw, Check, Shield, Users, LockKeyhole, BookOpen } from "@lucide/svelte";
+  import { Play, RotateCcw, Check, Users, LockKeyhole, BookOpen } from "@lucide/svelte";
   import { api, date } from "$lib/api";
   import { render, prose } from "$lib/markdown";
   import Notice from "$lib/Notice.svelte";
@@ -105,9 +105,9 @@
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h2
         id="exercises-title"
-        class="flex items-center gap-2 text-base font-semibold"
+        class="text-sm font-semibold"
       >
-        <Shield size={17} />Exercises
+        Exercises
       </h2>
       {#if data.exercises?.length}<div class="flex flex-wrap items-center gap-2">
         <button
@@ -123,11 +123,7 @@
         >
       </div>{/if}
     </div>
-    {#if data.exercises?.length}<p class="mt-2 text-sm leading-relaxed">
-      {custom
-        ? "Each break runs the pinned template reset first. See instructor notes for the reset scope."
-        : "Each break resets the web server first. Bank data and desktop files stay."}
-    </p>{/if}
+
     <Notice message={error} dismissible />
     {#if stages.length}
       <div class="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(12rem,17rem)_minmax(0,1fr)]">
@@ -136,18 +132,18 @@
           <select id="meeting-stage" class="select select-sm min-h-11 w-full" value={stage?.id} disabled={busy} onchange={(e) => chooseStage(e.currentTarget.value)}>
             {#each stages as s, i (s.id)}<option value={s.id}>{i + 1}. {s.title}</option>{/each}
           </select>
-          <p class="mt-2 text-xs leading-relaxed text-base-content/75">Choose stages in any order. Selecting one does not change a team's lab.</p>
+          
           <a class="link mt-3 inline-flex items-center gap-2 text-xs" href={`/labs/?template=${encodeURIComponent(template?.id ?? "")}`}><BookOpen size={14} />Student preview</a>
         </div>
         {#if stage}<article class="min-w-0 border-t border-base-content/10 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6" aria-label="Meeting stage guidance">
           <h3 class="text-lg font-semibold">{stage.title}</h3>
           <div class={[prose, "mt-3 break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"]}>{@html render(stage.instructions)}</div>
           {#if stage.prompt}<p class="mt-3 text-sm leading-relaxed">{stage.prompt}</p>{/if}
-          {#key stage.id}{#if stage.solution || stage.answer}<details class="collapse collapse-arrow mt-4 border border-base-content/10">
+          {#key stage.id}{#if stage.solution || stage.answer}<details class="collapse collapse-arrow panel mt-4">
             <summary class="collapse-title flex items-center gap-2 text-sm font-medium"><LockKeyhole size={14} />Instructor solution</summary>
             <div class="collapse-content">{#if stage.solution}<div class={prose}>{@html render(stage.solution)}</div>{/if}{#if stage.answer}<p class="mt-3 text-sm">Accepted answer: <code>{stage.answer}</code></p>{/if}</div>
           </details>{/if}{/key}
-          <p class="mt-3 text-xs text-base-content/75">{stage.exerciseID ? `Break: ${data.exercises.find(d => d.id === stage.exerciseID)?.name ?? stage.exerciseID}. Apply it separately to selected teams.` : `This stage has no break to apply.${template?.instructor?.checks.length ? " Service checks remain available." : ""}${data.exercises?.length ? " You can reset the exercise baseline separately." : ""}`}</p>
+          <p class="mt-3 text-xs text-base-content/60">{stage.exerciseID ? `Break: ${data.exercises.find(d => d.id === stage.exerciseID)?.name ?? stage.exerciseID}. Apply it separately to selected teams.` : `This stage has no break to apply.${template?.instructor?.checks.length ? " Service checks remain available." : ""}${data.exercises?.length ? " You can reset the exercise baseline separately." : ""}`}</p>
         </article>{/if}
       </div>
     {:else}
@@ -158,18 +154,18 @@
         </select>
       </div>
     {/if}
-    {#if otherBreaks.length}<details class="collapse collapse-arrow mt-4 border border-base-content/10">
+    {#if otherBreaks.length}<details class="collapse collapse-arrow panel mt-4">
       <summary class="collapse-title text-sm font-medium">Other template breaks · {otherBreaks.length}</summary>
       <div class="collapse-content">
         <label class="label mb-2 text-sm" for="other-template-break">Other template break</label>
         <select id="other-template-break" class="select select-sm min-h-11 w-full" disabled={busy} value={otherBreaks.some(d => d.id === scenario) ? scenario : ""} onchange={(e) => scenario = e.currentTarget.value}>
           <option value="" disabled>Choose another break</option>{#each otherBreaks as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
         </select>
-        <p class="mt-2 text-xs leading-relaxed text-base-content/75">These pinned breaks are independent of the authored stages. Selecting a stage again restores its linked break.</p>
+        <p class="mt-2 text-xs leading-relaxed text-base-content/60">These pinned breaks are independent of the authored stages. Selecting a stage again restores its linked break.</p>
       </div>
     </details>{/if}
     {#if definition}<details
-        class="collapse collapse-arrow mt-4 border border-base-content/10"
+        class="collapse collapse-arrow panel mt-4"
       >
         <summary class="collapse-title text-sm font-medium"
           >Instructor walkthrough</summary
@@ -261,7 +257,7 @@
             ? "Reset exercise baseline"
             : "Reset web server"}</button
         >{/if}{#if custom && template?.instructor?.checks.length}<button
-          class="btn btn-sm min-h-11" disabled={busy || !data.teams.some(t => t.status === "ready")} onclick={checkServices}
+          class="btn btn-sm min-h-11" title="Runs all pinned checks on every ready team" disabled={busy || !data.teams.some(t => t.status === "ready")} onclick={checkServices}
           ><Check size={16} />Check services</button
         >{/if}{#if !custom}<button
             class="btn btn-sm min-h-11 btn-ghost"
@@ -271,7 +267,7 @@
           >{/if}
       </div>
     </div>
-    {#if custom && template?.instructor?.checks.length}<p class="mt-1 text-xs text-base-content/75">Check services runs all pinned checks on every ready team. {data.exercises?.length ? "The team selection applies to breaks and reset." : ""}</p>{/if}
+
   </section>
 {/if}
 <dialog
@@ -289,7 +285,7 @@
       {chosen.length}
       {chosen.length === 1 ? "team" : "teams"} selected
     </p>
-    <details class="collapse collapse-arrow mt-3 border border-base-content/10">
+    <details class="collapse collapse-arrow panel mt-3">
       <summary class="collapse-title text-sm">Selected teams</summary>
       <div class="collapse-content">
         <!-- Keyboard scrolling for large team selections. -->

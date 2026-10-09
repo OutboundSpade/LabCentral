@@ -8,14 +8,11 @@
     BookOpen,
     Check,
     CircleCheck,
-    Clock,
-    Cloud,
     Copy,
     Download,
     ExternalLink,
     Hourglass,
     Laptop,
-    Lock,
     Play,
     Send,
     ShieldCheck,
@@ -37,7 +34,6 @@
     sessionScope,
     learnPath,
     endpoint,
-    modeLabel,
     kindLabel,
     liveRun,
     transitional,
@@ -69,7 +65,6 @@
   let solutionBusy = $state(false);
   let solutionSeq = 0;
   let selected = $state<number | null>(null);
-  let workspace = $state<"cloud" | "local" | "">("");
   let copied = $state("");
   let startDialog: HTMLDialogElement;
   let stopDialog: HTMLDialogElement;
@@ -120,7 +115,6 @@
       answer = "";
       solution = ""; solutionError = ""; solutionSeq++; solutionBusy = false;
       selected = null;
-      workspace = "";
       seenCompleted = -1;
       lastCheck = "";
       if (s && lab) void load();
@@ -177,9 +171,7 @@
   const waitingRelease = $derived(
     !!view && !finished && completed >= released,
   );
-  const mode = $derived(
-    workspace || (ownRun || view?.cloudReady ? "cloud" : "local"),
-  );
+  let localDialog: HTMLDialogElement;
   const instructions = $derived(
     step && stepReleased ? render(step.instructions) : "",
   );
@@ -362,20 +354,20 @@
     !view
       ? ""
       : !view.cloudReady
-        ? "This revision has no built desktop image for cloud workspaces. Use the local download, or ask an instructor to build the template."
+        ? "Cloud workspaces aren't available for this lab yet. You can run it locally."
         : otherRun
-          ? "Your cloud workspace for another lab is still active. Stop it before starting one here."
+          ? "Another lab's cloud workspace is still running."
           : view.quota.remainingSeconds < 60
-            ? `Less than a minute of weekly cloud time is left. It resets ${date(view.quota.resetsAt, { weekday: "short", hour: "numeric", minute: "2-digit" })}.`
+            ? `Out of cloud time until ${date(view.quota.resetsAt, { weekday: "short", hour: "numeric", minute: "2-digit" })}.`
             : "",
   );
   const verifyBlocked = $derived(
     checkPending
       ? "A workspace check is already running."
       : !ownRun
-        ? "Automatic verification runs in your hosted cloud workspace. Start one to verify this stage; local runs cannot be verified here."
+        ? "Start a cloud workspace to verify this stage."
         : ownRun.status !== "ready"
-          ? "Wait until your cloud workspace is ready."
+          ? "Available when your cloud workspace is ready."
           : "",
   );
 </script>
@@ -388,54 +380,130 @@
   {#if !mounted}<p class="sr-only" role="status">Loading lab…</p>
   {:else if !id}<EmptyState icon={BookOpen} title="Choose a lab">
       Open a published lab from the catalog to see its stages and workspace.
-      {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/?view=practice"
+      {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
           >Browse labs<ArrowRight size={15} /></a
         >{/snippet}
     </EmptyState>
   {:else if missing}<EmptyState icon={BookOpen} title="This lab is unavailable">
       It may have been unpublished. Your saved progress is kept; any active
       cloud workspace can still be stopped from the lab catalog.
-      {#snippet actions()}<a class="btn btn-sm min-h-11" href="/labs/?view=practice"
+      {#snippet actions()}<a class="btn btn-sm min-h-11" href="/labs/"
           ><ArrowLeft size={15} />Back to labs</a
         >{/snippet}
     </EmptyState>
   {:else if view}
-    <nav aria-label="Breadcrumb" class="breadcrumbs mb-1 py-0 text-sm">
-      <ul>
-        <li><a class="min-h-11" href="/labs/?view=practice">Labs</a></li>
-        <li>
-          <span class="max-w-64 truncate sm:max-w-xl" title={view.lab.title}
-            >{view.lab.title}</span
+    <a class="btn btn-sm btn-ghost min-h-11 mb-3 -ml-3 text-base-content/70" href="/labs/"
+      ><ArrowLeft size={15} />Practice labs</a
+    >
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold tracking-tight">{view.lab.title}</h1>
+        {#if view.lab.description}<p
+            class="mt-1.5 max-w-[60ch] text-sm text-base-content/70"
           >
-        </li>
-      </ul>
-    </nav>
-    <div class="mb-6 border-b border-base-content/10 pb-5">
-      <h1 class="text-2xl font-semibold tracking-tight">{view.lab.title}</h1>
-      {#if view.lab.description}<p
-          class="mt-1.5 max-w-[68ch] text-sm leading-relaxed text-base-content/75"
-        >
-          {view.lab.description}
-        </p>{/if}
-      <div
-        class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-base-content/75"
-      >
-        <span class="badge badge-ghost badge-sm">{modeLabel(view.lab.mode)}</span>
-        <span class="inline-flex items-center gap-1.5"
-          ><Clock size={13} aria-hidden="true" />About {view.lab.estimatedMinutes}
-          min</span
-        >
-        <span class="tabular-nums" role="status"
-          >{completed} of {steps.length} stages complete</span
-        >
+            {view.lab.description}
+          </p>{/if}
+      </div>
+      <div class="flex w-full items-center gap-3 sm:w-56">
         <progress
-          class="progress h-1 w-28"
+          class="progress progress-primary h-1.5 flex-1"
           value={completed}
           max={steps.length || 1}
           aria-label="Stages complete"
         ></progress>
+        <span class="text-xs tabular-nums text-base-content/70" role="status"
+          >{completed} of {steps.length} stages complete</span
+        >
       </div>
     </div>
+    <section
+      aria-labelledby="workspace-title"
+      class="panel mb-8 flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3"
+    >
+      <h2 id="workspace-title" class="sr-only">Workspace</h2>
+      {#if ownRun}
+        <div class="min-w-0 flex-1 basis-64 text-sm">
+          <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span class="font-medium">Cloud workspace</span>
+            <span aria-live="polite"
+              ><Status status={ownRun.status} label={runLabel(ownRun.status)} /></span
+            >
+          </p>
+          {#if ownRun.status === "queued" || ownRun.status === "preparing"}
+            <p class="mt-0.5 text-base-content/70">
+              Your machines are being prepared. Keep reading while you wait.
+            </p>
+          {:else if ownRun.status === "ready"}
+            <div class="mt-1">
+              <Deadline
+                expires={ownRun.expires}
+                warning="Workspace files are deleted when this cloud run ends. Copy anything you need now."
+                due="This cloud run has reached its limit. Cleanup is due."
+              />
+            </div>
+          {:else if ownRun.status === "failed"}
+            <p class="mt-0.5 break-words text-error">
+              {ownRun.error || "The workspace could not be prepared."} Stop it, then
+              start again.
+            </p>
+          {:else if ownRun.status === "ending"}
+            <p class="mt-0.5 text-base-content/70">
+              Cleaning up. Quota stops once removal is confirmed.
+            </p>
+          {/if}
+        </div>
+        <div class="flex flex-wrap gap-2">
+          {#if ownRun.status === "ready"}<button
+              type="button"
+              class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
+              disabled={!!busy}
+              aria-busy={busy === "access"}
+              title="Opens in a new tab with these instructions beside the desktop"
+              onclick={openDesktop}
+              >{#if busy === "access"}<span
+                  class="loading loading-spinner loading-xs"
+                ></span>{:else}<ExternalLink size={15} />{/if}Open desktop</button
+            >{/if}
+          {#if ownRun.status !== "ending"}<button
+              type="button"
+              class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+              disabled={!!busy}
+              onclick={() => {
+                error = "";
+                stopDialog.showModal();
+              }}><Square size={14} />Stop workspace</button
+            >{/if}
+        </div>
+      {:else}
+        <div class="min-w-0 flex-1 basis-64 text-sm">
+          <p class="font-medium">Workspace</p>
+          <p class="mt-0.5 text-base-content/70" id="start-blocked">
+            {#if startBlocked}{startBlocked}
+              {#if otherRun}<a class="link" href={learnPath(otherRun.labID)}>Go to that lab</a>{/if}
+            {:else}Start a private cloud copy of this lab's machines.{/if}
+          </p>
+        </div>
+        <div class="w-40 shrink-0"><Quota quota={view.quota} /></div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
+            disabled={!!busy || !!startBlocked}
+            aria-describedby="start-blocked"
+            onclick={() => {
+              error = "";
+              startDialog.showModal();
+            }}><Play size={15} />Start cloud workspace</button
+          >
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+            onclick={() => localDialog.showModal()}
+            ><Laptop size={15} />Run locally</button
+          >
+        </div>
+      {/if}
+    </section>
     <Notice message={error} dismissible />
     {#if failure}<p class="mb-4 text-sm text-warning" role="status">
         Live progress updates are unavailable ({failure}). Showing your last
@@ -444,13 +512,8 @@
     {#if !steps.length}
       <p class="text-sm">This lab has no stages yet.</p>
     {:else}
-      <div
-        class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] xl:grid-cols-[13.5rem_minmax(0,1fr)_20rem] xl:gap-10"
-      >
-        <nav aria-label="Lab stages" class="hidden xl:sticky xl:top-6 xl:block">
-          <p class="mb-3 text-xs font-medium tracking-wide text-base-content/75 uppercase">
-            Stages
-          </p>
+      <div class="grid items-start gap-8 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-12">
+        <nav aria-label="Lab stages" class="hidden lg:sticky lg:top-20 lg:block">
           <StageRail
             {steps}
             {completed}
@@ -460,9 +523,7 @@
           />
         </nav>
         <section class="min-w-0" aria-labelledby="stage-title">
-          <details
-            class="collapse collapse-arrow mb-5 border border-base-content/10 xl:hidden"
-          >
+          <details class="collapse collapse-arrow panel mb-6 lg:hidden">
             <summary class="collapse-title min-h-11 text-sm font-medium"
               >Stages · {completed} of {steps.length} complete</summary
             >
@@ -479,47 +540,27 @@
             </div>
           </details>
           {#if finished}<div
-              class="alert alert-soft alert-success mb-5 text-sm"
+              class="alert alert-soft alert-success mb-6 text-sm"
               role="status"
             >
               <CircleCheck size={18} aria-hidden="true" /><span
-                >Lab complete. All {steps.length} stages are done; you can review
-                any stage.</span
+                >Lab complete. All {steps.length} stages are done.</span
               >
             </div>{/if}
-          {#if feedback}<p
-              class={[
-                "mb-5 flex items-start gap-2 text-sm",
-                feedback.ok ? "text-success" : "text-error",
-              ]}
-              role={feedback.ok ? "status" : "alert"}
-            >
-              {#if feedback.ok}<Check
-                  size={16}
-                  class="mt-0.5 shrink-0"
-                  aria-hidden="true"
-                />{:else}<TriangleAlert
-                  size={16}
-                  class="mt-0.5 shrink-0"
-                  aria-hidden="true"
-                />{/if}{feedback.message}
-            </p>{/if}
           {#if step}
-            <p class="text-xs font-medium tracking-wide text-base-content/75 uppercase">
-              Stage {shown + 1} of {steps.length} · {kindLabel(step.kind)}
+            <p class="eyebrow">
+              Stage {shown + 1} of {steps.length}
             </p>
-            <h2 id="stage-title" class="mt-1.5 text-xl font-semibold tracking-tight">
+            <h2 id="stage-title" class="mt-1 text-xl font-semibold tracking-tight">
               {stepReleased ? step.title : `Stage ${shown + 1}`}
             </h2>
             {#if !stepReleased}
-              <div class="mt-5 flex items-start gap-3 border-l-2 border-primary/50 py-1 pl-4 text-sm">
-                <Hourglass size={17} class="mt-0.5 shrink-0" aria-hidden="true" />
+              <div class="panel mt-5 flex items-start gap-3 p-4 text-sm">
+                <Hourglass size={17} class="mt-0.5 shrink-0 text-base-content/70" aria-hidden="true" />
                 <div>
                   <p class="font-medium">Waiting for your instructor</p>
-                  <p class="mt-1 leading-relaxed text-base-content/75">
-                    Your instructor releases instructor-led stages in order.
-                    This page checks for a release automatically; your progress
-                    is saved.
+                  <p class="mt-1 text-base-content/70">
+                    This stage opens automatically when it's released.
                   </p>
                 </div>
               </div>
@@ -530,23 +571,38 @@
               <section
                 aria-label="Stage task"
                 class={[
-                  "mt-8 border-l-2 py-1 pl-4",
-                  isCurrent ? "border-primary/60" : "border-base-content/15",
+                  "panel mt-8 p-5",
+                  isCurrent ? "border-primary/40" : "",
                 ]}
               >
+                {#if feedback}<p
+                    class={[
+                      "mb-4 flex items-start gap-2 text-sm",
+                      feedback.ok ? "text-success" : "text-error",
+                    ]}
+                    role={feedback.ok ? "status" : "alert"}
+                  >
+                    {#if feedback.ok}<Check
+                        size={16}
+                        class="mt-0.5 shrink-0"
+                        aria-hidden="true"
+                      />{:else}<TriangleAlert
+                        size={16}
+                        class="mt-0.5 shrink-0"
+                        aria-hidden="true"
+                      />{/if}{feedback.message}
+                  </p>{/if}
                 {#if shown < completed}
-                  <p class="flex items-center gap-2 text-sm">
-                    <Check size={15} aria-hidden="true" />Stage complete.
+                  <p class="flex items-center gap-2 text-sm text-base-content/80">
+                    <CircleCheck size={16} class="text-success" aria-hidden="true" />Stage complete
                   </p>
                 {:else if !isCurrent}
-                  <p class="text-sm leading-relaxed">
-                    Complete stage {completed + 1} first. You can read ahead; this
-                    stage's {kindLabel(step.kind).toLowerCase()} unlocks when you
-                    reach it.
+                  <p class="text-sm text-base-content/80">
+                    Finish stage {completed + 1} to unlock this one.
                   </p>
                   <button
                     type="button"
-                    class="btn btn-sm btn-ghost min-h-11 mt-2"
+                    class="btn btn-sm btn-ghost min-h-11 mt-2 -ml-3"
                     onclick={() => choose(completed)}
                     ><ArrowLeft size={15} />Go to stage {completed + 1}</button
                   >
@@ -554,13 +610,11 @@
                   <form onsubmit={submitAnswer}>
                     {#if step.prompt}<p
                         id="answer-prompt"
-                        class="mb-3 text-sm leading-relaxed whitespace-pre-line"
+                        class="mb-3 text-sm font-medium leading-relaxed whitespace-pre-line"
                       >
                         {step.prompt}
                       </p>{/if}
-                    <label class="label mb-1.5 text-sm" for="stage-answer"
-                      >Your answer</label
-                    >
+                    <label class="sr-only" for="stage-answer">Your answer</label>
                     <div class="flex flex-wrap gap-2">
                       <input
                         id="stage-answer"
@@ -568,6 +622,7 @@
                         bind:value={answer}
                         maxlength="1000"
                         autocomplete="off"
+                        placeholder="Your answer"
                         required
                         aria-describedby={step.prompt ? "answer-prompt" : undefined}
                       />
@@ -579,32 +634,29 @@
                           ></span>{:else}<Send size={15} />{/if}Check answer</button
                       >
                     </div>
-                    <p class="mt-2 text-xs text-base-content/75">
-                      A correct answer completes this stage and saves your
-                      progress.
-                    </p>
                   </form>
                 {:else if step.kind === "action"}
                   {#if step.prompt}<p
-                      class="mb-3 text-sm leading-relaxed whitespace-pre-line"
+                      class="mb-4 text-sm font-medium leading-relaxed whitespace-pre-line"
                     >
                       {step.prompt}
                     </p>{/if}
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-primary min-h-11"
-                    disabled={!!busy || !!verifyBlocked}
-                    aria-describedby="verify-help"
-                    onclick={verify}
-                    >{#if busy === "check" || checkPending}<span
-                        class="loading loading-spinner loading-xs"
-                      ></span>{:else}<ShieldCheck size={15} />{/if}Verify in
-                    workspace</button
-                  >
-                  <p id="verify-help" class="mt-2 text-xs leading-relaxed text-base-content/75">
-                    {verifyBlocked ||
-                      "Your cloud workspace is checked automatically about every 20 seconds while this stage is current; this runs a check now. A passing check completes the stage."}
-                  </p>
+                  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-primary min-h-11"
+                      disabled={!!busy || !!verifyBlocked}
+                      aria-describedby="verify-help"
+                      onclick={verify}
+                      >{#if busy === "check" || checkPending}<span
+                          class="loading loading-spinner loading-xs"
+                        ></span>{:else}<ShieldCheck size={15} />{/if}Verify in
+                      workspace</button
+                    >
+                    <p id="verify-help" class="text-xs text-base-content/70">
+                      {verifyBlocked || "Also checked automatically while this stage is open."}
+                    </p>
+                  </div>
                   {#if check}<div class="mt-4 text-sm" role="status">
                       {#if check.status === "queued" || check.status === "running"}
                         <p class="flex items-center gap-2">
@@ -614,13 +666,10 @@
                             : "Checking your workspace…"}
                         </p>
                       {:else if check.status === "failed"}
-                        <p class="font-medium text-error">
-                          The check did not pass yet.
-                        </p>
+                        <p class="font-medium text-error">Not passing yet.</p>
                       {:else if check.status === "unavailable"}
                         <p class="font-medium text-warning">
-                          The check could not run. This is not a failed result;
-                          try again when your workspace is reachable.
+                          The check couldn't reach your workspace. Try again shortly.
                         </p>
                       {:else if check.status === "passed"}
                         <p class="font-medium">Check passed.</p>
@@ -630,8 +679,8 @@
                         >
                           {check.report}
                         </p>{/if}
-                      <p class="mt-1 text-xs text-base-content/75">
-                        Updated {date(check.updated)}
+                      <p class="mt-1 text-xs text-base-content/60">
+                        {date(check.updated)}
                       </p>
                     </div>{/if}
                 {:else}
@@ -643,13 +692,9 @@
                     >
                       {step.prompt}
                     </p>{/if}
-                  <p class="mt-2 text-sm leading-relaxed text-base-content/75">
-                    Your instructor has opened this checkpoint. Complete it when
-                    you have finished this part with your group.
-                  </p>
                   <button
                     type="button"
-                    class="btn btn-sm btn-primary min-h-11 mt-3"
+                    class="btn btn-sm btn-primary min-h-11 mt-4"
                     disabled={!!busy}
                     onclick={verify}
                     >{#if busy === "check"}<span
@@ -659,16 +704,15 @@
                 {/if}
               </section>
               {#if step.hasSolution && shown <= completed}
-                <section class="mt-6 border-t border-base-content/10 pt-4" aria-label="Stage solution">
-                  <p class="text-xs leading-relaxed text-base-content/75">The author has included a solution for this stage. Viewing it does not complete the stage.</p>
-                  {#if solution}<div class={[prose, "mt-4"]}>{@html render(solution)}</div><button class="btn btn-sm btn-ghost min-h-11 mt-2" onclick={() => solution = ""}>Hide solution</button>
-                  {:else}<button type="button" class="btn btn-sm btn-ghost min-h-11 mt-2" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
+                <section class="mt-4" aria-label="Stage solution">
+                  {#if solution}<div class={[prose, "panel p-5"]}>{@html render(solution)}</div><button class="btn btn-sm btn-ghost min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
+                  {:else}<button type="button" class="btn btn-sm btn-ghost min-h-11 -ml-3 text-base-content/70" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
                   {#if solutionError}<p class="mt-2 text-sm text-error" role="alert">{solutionError}</p>{/if}
                 </section>
               {/if}
             {/if}
             <div
-              class="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-base-content/10 pt-4"
+              class="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-base-content/8 pt-4"
             >
               <button
                 type="button"
@@ -687,179 +731,6 @@
             </div>
           {/if}
         </section>
-        <aside
-          class="min-w-0 lg:sticky lg:top-6 lg:border-l lg:border-base-content/10 lg:pl-6"
-          aria-labelledby="workspace-title"
-        >
-          <h2 id="workspace-title" class="text-base font-semibold">Workspace</h2>
-          <div role="tablist" aria-label="Where to run this lab" class="tabs tabs-box tabs-sm mt-3">
-            <button
-              type="button"
-              role="tab"
-              class={["tab min-h-11 flex-1 gap-1.5 lg:min-h-9", mode === "cloud" ? "tab-active" : ""]}
-              aria-selected={mode === "cloud"}
-              aria-controls="workspace-cloud"
-              id="workspace-tab-cloud"
-              onclick={() => (workspace = "cloud")}
-              ><Cloud size={14} aria-hidden="true" />Cloud</button
-            >
-            <button
-              type="button"
-              role="tab"
-              class={["tab min-h-11 flex-1 gap-1.5 lg:min-h-9", mode === "local" ? "tab-active" : ""]}
-              aria-selected={mode === "local"}
-              aria-controls="workspace-local"
-              id="workspace-tab-local"
-              onclick={() => (workspace = "local")}
-              ><Laptop size={14} aria-hidden="true" />Local</button
-            >
-          </div>
-          <div
-            id="workspace-cloud"
-            role="tabpanel"
-            aria-labelledby="workspace-tab-cloud"
-            hidden={mode !== "cloud"}
-            class="mt-5 space-y-5"
-          >
-            <Quota quota={view.quota} />
-            <div class="border-t border-base-content/10 pt-5">
-              {#if ownRun}
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <p class="text-sm font-medium">Your cloud workspace</p>
-                  <span aria-live="polite"
-                    ><Status status={ownRun.status} label={runLabel(ownRun.status)} /></span
-                  >
-                </div>
-                {#if ownRun.status === "queued" || ownRun.status === "preparing"}
-                  <p class="mt-2 text-sm leading-relaxed text-base-content/75">
-                    Your machines are being prepared. This can take several
-                    minutes; you can keep reading the instructions.
-                  </p>
-                {:else if ownRun.status === "ready"}
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-primary min-h-11 mt-3 w-full"
-                    disabled={!!busy}
-                    aria-busy={busy === "access"}
-                    aria-describedby="desktop-help"
-                    onclick={openDesktop}
-                    >{#if busy === "access"}<span
-                        class="loading loading-spinner loading-xs"
-                      ></span>{:else}<ExternalLink size={15} />{/if}Open desktop</button
-                  >
-                  <p id="desktop-help" class="mt-2 text-xs leading-relaxed text-base-content/75">
-                    Opens in a new tab with these instructions beside the
-                    desktop, where you can answer and check stages too.
-                    Reopening resumes the same workspace.
-                  </p>
-                  <div class="mt-3">
-                    <Deadline
-                      expires={ownRun.expires}
-                      label="Ends at"
-                      warning="Workspace files are deleted when this cloud run ends. Copy anything you need now."
-                      due="This cloud run has reached its limit. Cleanup is due."
-                    />
-                  </div>
-                {:else if ownRun.status === "failed"}
-                  <p class="mt-2 break-words text-sm text-error">
-                    {ownRun.error || "The workspace could not be prepared."}
-                  </p>
-                  <p class="mt-1 text-xs text-base-content/75">
-                    Stop it to release its resources, then start again.
-                  </p>
-                {:else if ownRun.status === "ending"}
-                  <p class="mt-2 text-sm leading-relaxed text-base-content/75">
-                    Cleaning up. Files are deleted and quota stops counting once
-                    the provider confirms removal.
-                  </p>
-                {/if}
-                {#if ownRun.status !== "ending"}<button
-                    type="button"
-                    class="btn btn-sm btn-ghost min-h-11 mt-3 w-full"
-                    disabled={!!busy}
-                    onclick={() => {
-                      error = "";
-                      stopDialog.showModal();
-                    }}><Square size={14} />Stop workspace</button
-                  >{/if}
-              {:else}
-                <p class="text-sm font-medium">Personal cloud desktop</p>
-                <p class="mt-1 text-sm leading-relaxed text-base-content/75">
-                  A private copy of this lab's machines, independent of any
-                  team meeting. Nothing starts until you choose to.
-                </p>
-                <button
-                  type="button"
-                  class="btn btn-sm btn-primary min-h-11 mt-3 w-full"
-                  disabled={!!busy || !!startBlocked}
-                  aria-describedby={startBlocked ? "start-blocked" : undefined}
-                  onclick={() => {
-                    error = "";
-                    startDialog.showModal();
-                  }}><Play size={15} />Start cloud workspace</button
-                >
-                {#if startBlocked}<p
-                    id="start-blocked"
-                    class="mt-2 text-xs leading-relaxed text-base-content/75"
-                  >
-                    {startBlocked}
-                    {#if otherRun}<a class="link" href={learnPath(otherRun.labID)}
-                        >Go to that lab</a
-                      >{/if}
-                  </p>{/if}
-              {/if}
-            </div>
-          </div>
-          <div
-            id="workspace-local"
-            role="tabpanel"
-            aria-labelledby="workspace-tab-local"
-            hidden={mode !== "local"}
-            class="mt-5 space-y-4 text-sm"
-          >
-            <p class="leading-relaxed">
-              Download the pinned portable source with these instructions
-              (<code>LAB-INSTRUCTIONS.md</code>). It runs through the standalone
-              LabCentral CLI on your own configured AWS or Proxmox environment,
-              not a laptop hypervisor. Cloud time does not apply, and you own
-              cleanup.
-            </p>
-            {#if view.localAvailable}<a
-                class="btn btn-sm min-h-11 w-full"
-                href={endpoint(view.lab.id, "download")}
-                download
-                ><Download size={15} />Download lab (.tar.gz)</a
-              >{:else}<p class="text-base-content/75">
-                The portable download is unavailable for this lab right now.
-              </p>{/if}
-            <div>
-              <div class="mb-1.5 flex items-center justify-between gap-2">
-                <p class="font-medium">Run it with the CLI</p>
-                <button
-                  type="button"
-                  class="btn btn-xs btn-ghost min-h-9"
-                  onclick={copyCommands}><Copy size={13} />Copy</button
-                >
-              </div>
-              <!-- Keyboard scrolling keeps long commands readable on phones. -->
-              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-              <pre
-                class="max-w-full overflow-x-auto rounded-field border border-base-content/10 bg-base-200 p-3 text-xs leading-relaxed"
-                tabindex="0"
-                aria-label="CLI commands"><code>{commands}</code></pre>
-              {#if copied}<p class="mt-1.5 text-xs" role="status">{copied}</p>{/if}
-              <p class="mt-2 text-xs leading-relaxed text-base-content/75">
-                Use your own environment file path. <code>labcentral inspect
-                INSTANCE_ID</code> lists machine names for access.
-              </p>
-            </div>
-            <p class="flex items-start gap-2 border-t border-base-content/10 pt-4 text-xs leading-relaxed text-base-content/75">
-              <Lock size={13} class="mt-0.5 shrink-0" aria-hidden="true" />Answer
-              stages still save progress here. Workspace checks need a hosted
-              cloud workspace, so local runs cannot be verified automatically.
-            </p>
-          </div>
-        </aside>
       </div>
     {/if}
   {:else if failure}
@@ -881,12 +752,10 @@
     </h2>
     {#if view}
       <p class="mt-3 font-medium">{view.lab.title}</p>
-      <p class="mt-3 text-sm leading-relaxed">
-        This allocates personal cloud machines for you. Time counts against
-        your weekly allowance ({hours(view.quota.remainingSeconds)} left) from
-        allocation until cleanup is confirmed. The run ends when your
-        allowance runs out or the UTC week ends, whichever comes first, and its
-        files are then deleted.
+      <p class="mt-3 text-sm leading-relaxed text-base-content/80">
+        Uses your weekly cloud time ({hours(view.quota.remainingSeconds)} left)
+        until you stop it. It ends automatically when your time runs out or the
+        week resets, and its files are deleted.
       </p>
     {/if}
     <Notice message={error} />
@@ -909,10 +778,8 @@
     <h2 id="stop-title" class="text-lg font-semibold">
       Stop your cloud workspace?
     </h2>
-    <p class="mt-3 text-sm leading-relaxed">
-      This removes the workspace machines. Files in the workspace are deleted
-      once the provider confirms cleanup, and quota stops counting then. Your
-      stage progress is kept.
+    <p class="mt-3 text-sm leading-relaxed text-base-content/80">
+      Workspace files are deleted. Your stage progress is kept.
     </p>
     <Notice message={error} />
     <div class="modal-action">
@@ -928,4 +795,43 @@
       >
     </div>
   </div>
+</dialog>
+<dialog bind:this={localDialog} class="modal" aria-labelledby="local-title">
+  <div class="modal-box max-w-xl">
+    <h2 id="local-title" class="text-lg font-semibold">Run locally</h2>
+    <p class="mt-2 text-sm leading-relaxed text-base-content/80">
+      Download the lab and run it with the LabCentral CLI on your own AWS or
+      Proxmox environment. Answers still save here; workspace checks need the
+      cloud workspace.
+    </p>
+    {#if view?.localAvailable}<a
+        class="btn btn-sm btn-primary min-h-11 mt-4"
+        href={endpoint(view.lab.id, "download")}
+        download
+        ><Download size={15} />Download lab (.tar.gz)</a
+      >{:else}<p class="mt-4 text-sm text-base-content/70">
+        The download is unavailable for this lab right now.
+      </p>{/if}
+    <div class="mt-5">
+      <div class="mb-1.5 flex items-center justify-between gap-2">
+        <p class="text-sm font-medium">Commands</p>
+        <button
+          type="button"
+          class="btn btn-xs btn-ghost min-h-9"
+          onclick={copyCommands}><Copy size={13} />Copy</button
+        >
+      </div>
+      <!-- Keyboard scrolling keeps long commands readable on phones. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <pre
+        class="max-w-full overflow-x-auto rounded-field border border-base-content/10 bg-base-200 p-3 text-xs leading-relaxed"
+        tabindex="0"
+        aria-label="CLI commands"><code>{commands}</code></pre>
+      {#if copied}<p class="mt-1.5 text-xs" role="status">{copied}</p>{/if}
+    </div>
+    <div class="modal-action">
+      <form method="dialog"><button class="btn btn-sm min-h-11">Close</button></form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>Close</button></form>
 </dialog>

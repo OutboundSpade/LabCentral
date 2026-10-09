@@ -21,10 +21,10 @@ try{
    if(path==='/api/team'){currentTeam=JSON.parse(req.postData()).teamID;switched=true}
    await route.fulfill({json:{ok:true}});
   });
-  await page.goto('http://127.0.0.1:5173/');await page.getByRole('heading',{name:'Practice labs that stay open after the meeting.'}).waitFor();await page.screenshot({path:`${evidence}/home-${width}.png`,fullPage:true});authenticated=true;
-  for(const [route,heading] of [['teams/','Choose your team'],['lab/','Your lab'],['admin/','Manage meeting'],['admin/templates/','Lab templates']]){
+  await page.goto('http://127.0.0.1:5173/');await page.getByRole('heading',{name:'Hands-on labs for CDC practice.'}).waitFor();await page.screenshot({path:`${evidence}/home-${width}.png`,fullPage:true});authenticated=true;
+  for(const [route,heading] of [['teams/','Choose your team'],['lab/','Team 1'],['admin/','Example Branch practice'],['admin/templates/','Lab templates']]){
    if(route==='teams/')await page.goto('http://127.0.0.1:5173/'+route);
-   else {await page.getByRole('navigation',{name:route==='admin/templates/'?'Administration':'Main navigation'}).getByRole('link',{name:route==='lab/'?'Your lab':route==='admin/'?'Admin':'Templates',exact:true}).click();await page.waitForURL('**/'+route);await page.waitForFunction(()=>document.querySelector('#svelte-announcer')?.textContent===document.title);assert(await page.locator('#svelte-announcer').evaluate(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return e.getAttribute('aria-live')==='assertive'&&s.position==='absolute'&&s.clipPath==='inset(50%)'&&r.width<=1&&r.height<=1}),'navigation title is visually exposed on '+route)}
+   else {await page.getByRole('navigation',{name:route==='admin/templates/'?'Administration':'Main navigation'}).getByRole('link',{name:route==='lab/'?'Meeting':route==='admin/'?'Admin':'Templates',exact:true}).click();await page.waitForURL('**/'+route);await page.waitForFunction(()=>document.querySelector('#svelte-announcer')?.textContent===document.title);assert(await page.locator('#svelte-announcer').evaluate(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return e.getAttribute('aria-live')==='assertive'&&s.position==='absolute'&&s.clipPath==='inset(50%)'&&r.width<=1&&r.height<=1}),'navigation title is visually exposed on '+route)}
    await page.getByRole('heading',{name:heading,exact:true}).waitFor();await page.getByRole('button',{name:route==='teams/'?'Team full':route==='lab/'?'Open desktop':route==='admin/'?'End meeting':'Refresh from GitHub',exact:true}).waitFor();
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow on '+route);
    await page.screenshot({path:`${evidence}/${route.replaceAll('/','-')}${width}.png`,fullPage:true});

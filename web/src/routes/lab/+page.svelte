@@ -1,11 +1,9 @@
 <script lang="ts">
   import {
-    Monitor,
     Server,
     Clock,
     ExternalLink,
     Users,
-    BookOpen,
     Unplug,
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
@@ -70,17 +68,11 @@
   }
 </script>
 
-<svelte:head
-  ><title>{readyNotice ? "Lab ready" : "Your lab"} · LabCentral</title
-  ></svelte:head
->
-<PageHeader
-  title="Your lab"
-  description="Your team's meeting desktop and handover. Meeting labs are removed when the meeting ends."
-/>
+<svelte:head><title>{readyNotice ? "Lab ready" : "Your lab"} · LabCentral</title></svelte:head>
 <Guard
   ><Notice message={error} dismissible />
   {#if $session?.meeting?.status === "ended" || $session?.meeting?.status === "ending"}
+    <h1 class="sr-only">Your lab</h1>
     <EmptyState
       icon={Clock}
       title={$session.meeting.status === "ending"
@@ -88,17 +80,17 @@
         : "This meeting has ended"}
     >
       {$session.meeting.status === "ending"
-        ? "The team's machines and workspaces are being removed."
-        : "The team's lab access has ended. Workspace files are no longer available."}
-      Join the next meeting for a fresh lab, or keep practicing from Labs.
+        ? "Team machines and workspaces are being removed."
+        : "Workspace files are no longer available."}
       {#snippet actions()}<a href="/labs/" class="btn btn-sm min-h-11 btn-primary"
           >Practice labs</a
-        ><a href="/teams/" class="btn btn-sm min-h-11">Back to teams</a
+        ><a href="/teams/" class="btn btn-sm btn-ghost min-h-11">Back to teams</a
         >{/snippet}
     </EmptyState>
   {:else if !$session?.lab.team}
+    <h1 class="sr-only">Your lab</h1>
     <EmptyState icon={Users} title="Choose a team">
-      Join a team to access its meeting lab.
+      Join a team to get your meeting desktop.
       {#snippet actions()}<a href="/teams/" class="btn btn-sm min-h-11 btn-primary"
           >Choose a team</a
         ><a href="/labs/" class="btn btn-sm min-h-11 btn-ghost"
@@ -106,36 +98,27 @@
         >{/snippet}
     </EmptyState>
   {:else}
-    <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <aside
-        class="min-w-0 lg:order-2 lg:border-l lg:border-base-content/10 lg:pl-6"
+    <PageHeader title={$session.lab.team.name}>
+      {#snippet eyebrow()}{$session?.meeting?.name ?? "Your lab"}{/snippet}
+      <a href="/teams/" class="btn btn-sm btn-ghost min-h-11 lg:min-h-8 text-base-content/70"
+        >Change team</a
       >
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-base font-semibold">{$session.lab.team.name}</h2>
-          <a
-            href="/teams/"
-            class="link link-hover inline-flex min-h-11 items-center text-sm"
-            >Change team</a
-          >
-        </div>
-        {#if $session.meeting}<Deadline
-            expires={$session.meeting.expires}
-          />{/if}
-        <section
-          class="mt-5 border-y border-base-content/10 py-5"
-          aria-label="Your desktop"
-        >
-          <div class="mb-3 flex items-center justify-between gap-3">
-            <h3 class="flex items-center gap-2 text-sm font-medium">
-              <Monitor size={17} />Your desktop
-            </h3>
+    </PageHeader>
+    <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-12">
+      <aside class="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
+        <section class="panel p-5" aria-labelledby="desktop-title">
+          <div class="flex items-center justify-between gap-3">
+            <h2 id="desktop-title" class="text-sm font-medium">Your desktop</h2>
             <span aria-live="polite" aria-atomic="true"
               ><Status status={$session.lab.team.status} /></span
             >
           </div>
+          {#if $session.meeting}<div class="mt-2"><Deadline
+              expires={$session.meeting.expires}
+            /></div>{/if}
           <button
             class={[
-              "btn btn-sm min-h-11 btn-primary w-full",
+              "btn btn-primary mt-4 min-h-11 w-full",
               readyNotice
                 ? "ring-2 ring-primary ring-offset-2 ring-offset-base-100"
                 : "",
@@ -147,88 +130,63 @@
             >{#if busy}<span class="loading loading-spinner loading-xs"
               ></span>{:else}<ExternalLink size={15} />{/if}Open desktop</button
           >
-          <p id="desktop-help" class="mt-3 text-sm leading-relaxed">
+          <p id="desktop-help" class="mt-2.5 text-xs leading-relaxed text-base-content/70">
             {busy
               ? "Starting your desktop…"
               : $session.lab.team.status === "failed"
-                ? "Your lab needs administrator attention before the desktop can open. Your team membership is saved."
+                ? "Your lab needs administrator attention. Your team membership is saved."
                 : $session.lab.team.status !== "ready"
-                  ? "Your lab is being prepared. The desktop will be available when it is ready."
+                  ? "Your lab is being prepared."
                   : readyNotice
-                    ? "Your lab is ready. You can open your desktop now."
-                    : "Opens in a new tab. Reopening resumes your workspace."}
+                    ? "Your lab is ready."
+                    : "Opens in a new tab and resumes where you left off."}
           </p>
-          <p class="mt-3 text-sm" role="status">
-            {$session.lab.desktopActive
-              ? "Desktop session open."
-              : "No desktop session open."}
-          </p>
-          <details
-            class="collapse collapse-arrow mt-4 border border-base-content/10"
-          >
-            <summary class="collapse-title text-sm font-medium"
+          <div class="mt-4 flex items-center justify-between gap-2 border-t border-base-content/8 pt-3">
+            <p class="flex items-center gap-2 text-xs whitespace-nowrap text-base-content/70" role="status">
+              <span
+                class={["size-1.5 rounded-full", $session.lab.desktopActive ? "bg-success" : "bg-base-content/30"]}
+                aria-hidden="true"
+              ></span>{$session.lab.desktopActive
+                ? "Session open"
+                : "Not connected"}
+            </p>
+            <button
+              class="btn btn-xs btn-ghost min-h-9 text-base-content/70"
+              disabled={busy || !$session.lab.desktopActive}
+              title="Closes your session. Files remain until the meeting ends."
+              onclick={close}><Unplug size={13} />Disconnect desktop</button
+            >
+          </div>
+          <details class="mt-3 text-sm">
+            <summary class="cursor-pointer text-xs text-base-content/70 hover:text-base-content"
               >Using your desktop</summary
             >
-            <div class="collapse-content text-sm">
-              <ul class="space-y-3 leading-relaxed">
-                <li>
-                  After 60 minutes without input, DCV disconnects. Reopen the
-                  desktop to resume your workspace.
-                </li>
-                <li>
-                  Click inside the desktop, then paste with Ctrl+V (⌘V on
-                  macOS). Terminals use Ctrl+Shift+V.
-                </li>
-                <li>
-                  <strong>Copy from desktop</strong> needs browser clipboard permission.
-                </li>
-                <li>
-                  In Firefox or Safari, use <strong>Paste to desktop</strong> for
-                  text, then paste inside the desktop.
-                </li>
-              </ul>
-            </div>
+            <ul class="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
+              <li>After 60 idle minutes the desktop disconnects; reopen it to resume.</li>
+              <li>Paste inside the desktop with Ctrl+V (⌘V); terminals use Ctrl+Shift+V.</li>
+              <li><strong>Copy from desktop</strong> needs clipboard permission.</li>
+              <li>In Firefox or Safari, use <strong>Paste to desktop</strong> for text.</li>
+            </ul>
           </details>
-          <div class="mt-4 border-t border-base-content/10 pt-3">
-            <button
-              class="btn btn-sm min-h-11 btn-ghost w-full"
-              disabled={busy || !$session.lab.desktopActive}
-              onclick={close}><Unplug size={15} />Disconnect desktop</button
-            >
-            <p class="mt-1 text-xs text-base-content/75">
-              Disconnect closes your session. Files remain until the meeting
-              ends.
-            </p>
-          </div>
         </section>
-        <h3 class="mt-5 text-sm font-medium">Your team's machines</h3>
-        <ul class="mt-2 divide-y divide-base-content/10">
-          {#each $session.lab.machines as machine}<li
-              class="flex items-center gap-3 py-2.5"
-            >
-              <Server
-                size={15}
-                class="text-base-content/75"
-                aria-hidden="true"
-              /><span class="flex-1 text-sm">{machine.name}</span><Status
-                status={machine.status}
-              />
-            </li>{:else}<li class="py-3 text-sm">Preparing machines.</li>{/each}
-        </ul>
-        <h3 class="mt-5 text-sm font-medium">Your teammates</h3>
-        <ul class="mt-2 space-y-1 text-sm">
-          {#each $session.lab.teammates ?? [] as member}<li>
-              {member.name}
-            </li>{:else}<li>Your team roster will appear here.</li>{/each}
-        </ul>
+        <section class="panel p-5" aria-labelledby="team-title">
+          <h2 id="team-title" class="eyebrow">Machines</h2>
+          <ul class="mt-2 space-y-1.5">
+            {#each $session.lab.machines as machine}<li
+                class="flex items-center gap-2.5 text-sm"
+              >
+                <Server size={14} class="text-base-content/50" aria-hidden="true" /><span
+                  class="flex-1 truncate">{machine.name}</span
+                ><Status status={machine.status} />
+              </li>{:else}<li class="text-sm text-base-content/70">Preparing machines…</li>{/each}
+          </ul>
+          <h2 class="eyebrow mt-5">Teammates</h2>
+          <p class="mt-2 text-sm leading-relaxed">
+            {($session.lab.teammates ?? []).map((m) => m.name).join(", ") || "No one else yet."}
+          </p>
+        </section>
       </aside>
-      <section class="min-w-0 lg:order-1">
-        <div
-          class="mb-5 flex items-center gap-2 border-b border-base-content/10 pb-4"
-        >
-          <BookOpen size={17} class="text-base-content/75" />
-          <h2 class="text-base font-semibold">Student handover</h2>
-        </div>
+      <section class="min-w-0 lg:order-1" aria-label="Handover">
         <article class={prose}>
           {@html handover}
         </article>

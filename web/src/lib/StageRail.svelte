@@ -56,7 +56,7 @@
       <button
         type="button"
         class={[
-          "mb-1 block min-h-11 w-full rounded-field px-2.5 py-2 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary",
+          "mb-1 flex min-h-11 w-full items-center rounded-field px-2.5 py-2 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary",
           selected === index ? "bg-base-200" : "",
         ]}
         aria-current={s === "current" ? "step" : undefined}
@@ -66,17 +66,15 @@
       >
         <span
           class={[
-            "block text-sm leading-snug",
-            s === "current" ? "font-medium" : "",
+            "block text-sm leading-snug text-base-content/80",
+            s === "current" || selected === index ? "font-medium text-base-content" : "",
             s === "waiting" ? "text-base-content/60" : "",
           ]}
           ><span class="sr-only">Stage {index + 1}: </span>{s === "waiting"
             ? `Stage ${index + 1}`
             : step.title}</span
         >
-        <span class="mt-0.5 block text-xs text-base-content/70"
-          >{kindLabel(step.kind)} · {labels[s]}</span
-        >
+        <span class="sr-only">({kindLabel(step.kind)}, {labels[s]})</span>
       </button>
     </li>
   {/each}

@@ -1,41 +1,24 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { SlidersHorizontal, BookOpen, GitBranch } from "@lucide/svelte";
-  // Phones show the short label so all three sections fit without scrolling.
   const sections = [
-    {
-      href: "/admin/",
-      label: "Manage meeting",
-      short: "Meeting",
-      icon: SlidersHorizontal,
-    },
-    {
-      href: "/admin/labs/",
-      label: "Lab publishing",
-      short: "Publishing",
-      icon: BookOpen,
-    },
-    {
-      href: "/admin/templates/",
-      label: "Templates",
-      short: "Templates",
-      icon: GitBranch,
-    },
+    { href: "/admin/", label: "Meeting" },
+    { href: "/admin/labs/", label: "Published labs" },
+    { href: "/admin/templates/", label: "Templates" },
   ];
 </script>
 
-<nav aria-label="Administration" class="mb-5 overflow-x-auto lg:mb-6">
-  <div class="tabs tabs-border flex-nowrap">
+<nav aria-label="Administration" class="mb-8 overflow-x-auto">
+  <div class="inline-flex gap-1 rounded-field bg-base-200 p-1">
     {#each sections as section}<a
         href={section.href}
         class={[
-          "tab min-h-11 flex-nowrap gap-1.5 whitespace-nowrap text-sm max-sm:[--tab-p:0.5rem] sm:gap-2",
-          page.url.pathname === section.href ? "tab-active text-primary" : "",
+          "flex min-h-11 items-center rounded-[calc(var(--radius-field)-2px)] px-3.5 text-sm whitespace-nowrap focus-visible:outline-2 focus-visible:outline-primary lg:min-h-8",
+          page.url.pathname === section.href
+            ? "bg-base-300 font-medium text-base-content"
+            : "text-base-content/70 hover:text-base-content",
         ]}
         aria-current={page.url.pathname === section.href ? "page" : undefined}
-        ><section.icon size={15} aria-hidden="true" /><span class="sm:hidden"
-          >{section.short}</span
-        ><span class="hidden sm:inline">{section.label}</span></a
+        >{section.label}</a
       >{/each}
   </div>
 </nav>

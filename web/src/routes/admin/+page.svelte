@@ -11,17 +11,7 @@
   import { goto } from "$app/navigation";
   import PageHeader from "$lib/PageHeader.svelte";
   import AdminNav from "$lib/AdminNav.svelte";
-  import {
-    Clock,
-    Play,
-    Plus,
-    Trash2,
-    Users,
-    Monitor,
-    Activity as ActivityIcon,
-    Shield,
-    ListChecks,
-  } from "@lucide/svelte";
+  import { Play, Plus, Trash2 } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import Notice from "$lib/Notice.svelte";
   import { api, adminView, refreshAdmin, date, session } from "$lib/api";
@@ -177,13 +167,9 @@
   );
   const hasExercises = $derived(!!(data?.exercises?.length || data?.templates.find(t => t.id === data.meeting?.template)?.instructor?.stages?.length));
   const tabs = $derived([
-    { id: "teams", label: "Teams", icon: Users },
-    ...(hasExercises
-      ? [{ id: "exercises", label: "Exercises", icon: Shield }]
-      : []),
-    ...(hasChecks
-      ? [{ id: "scoreboard", label: "Scoreboard", icon: ListChecks }]
-      : []),
+    { id: "teams", label: "Teams" },
+    ...(hasExercises ? [{ id: "exercises", label: "Exercises" }] : []),
+    ...(hasChecks ? [{ id: "scoreboard", label: "Scoreboard" }] : []),
   ]);
   const visiblePanel = $derived(
     tabs.some((t) => t.id === panel) ? panel : "teams",
@@ -209,18 +195,18 @@
 
 <svelte:head><title>Manage meeting · LabCentral</title></svelte:head>
 {#if $session?.user.admin}<AdminNav />{/if}
-<PageHeader title="Manage meeting" />
 <Guard admin
   ><Notice message={error} dismissible /><PollStatus />
-  {#if success}<p class="mb-4 text-sm" role="status">{success}</p>{/if}
+  {#if success}<p class="mb-4 text-sm text-success" role="status">{success}</p>{/if}
   {#if data}
     {#if !data.meeting || data.meeting.status === "ended"}
+      <PageHeader title="New meeting" />
       <div
-        class="grid items-start gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]"
+        class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
       >
         <section class="min-w-0">
           <form
-            class="max-w-xl"
+            class="panel max-w-xl p-6"
             onsubmit={(e) => {
               e.preventDefault();
               if (!selectedRevision) {
@@ -236,10 +222,9 @@
               });
             }}
           >
-            <fieldset class="fieldset gap-2 text-sm" disabled={busy}>
-              <legend class="fieldset-legend text-base">Create a meeting</legend
-              >
-              <label class="label" for="meeting-name">Meeting name</label><input
+            <fieldset class="fieldset gap-1.5 p-0 text-sm" disabled={busy}>
+              <legend class="sr-only">Create a meeting</legend>
+              <label class="label" for="meeting-name">Name</label><input
                 class="input input-sm min-h-11 w-full"
                 id="meeting-name"
                 bind:value={name}
@@ -259,15 +244,16 @@
                     >{t.name} · {t.commitTitle || "Imported revision"} · {t.commit.slice(
                       0,
                       7,
-                    )} · {t.committedAt
-                      ? date(t.committedAt, { dateStyle: "medium" })
-                      : "Date unavailable"}</option
+                    )}</option
                   >{/each}</select
               >
-              {#if revisionNotice}<p id="revision-notice" class="mt-2 text-sm leading-relaxed text-warning" role="status">{revisionNotice} <a class="link" href="/admin/templates/">Template administration</a></p>{/if}
+              {#if revisionNotice}<p id="revision-notice" class="mt-1 text-sm leading-relaxed text-warning" role="status">{revisionNotice} <a class="link" href="/admin/templates/">Templates</a></p>{/if}
+              {#if !builtRevisions.length}<p class="mt-1 text-sm text-base-content/70">
+                  No built revisions yet. <a class="link" href="/admin/templates/">Build a template</a> first.
+                </p>{/if}
               <div class="mt-3 grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label class="label mb-2" for="team-count"
+                  <label class="label mb-1.5" for="team-count"
                     >Number of teams</label
                   ><input
                     id="team-count"
@@ -278,12 +264,11 @@
                     step="1"
                     bind:value={teamCount}
                     required
-                    aria-describedby="team-count-help"
+                    title="1–100 teams"
                   />
-                  <p id="team-count-help" class="mt-2 text-sm">1–100 teams</p>
                 </div>
                 <div>
-                  <label class="label mb-2" for="capacity"
+                  <label class="label mb-1.5" for="capacity"
                     >Students per team</label
                   ><input
                     id="capacity"
@@ -294,12 +279,11 @@
                     step="1"
                     bind:value={capacity}
                     required
-                    aria-describedby="capacity-help"
+                    title="1–100 students"
                   />
-                  <p id="capacity-help" class="mt-2 text-sm">1–100 students</p>
                 </div>
                 <div>
-                  <label class="label mb-2" for="duration"
+                  <label class="label mb-1.5" for="duration"
                     >Duration (hours)</label
                   ><input
                     id="duration"
@@ -310,165 +294,124 @@
                     step="1"
                     bind:value={hours}
                     required
-                    aria-describedby="duration-help"
+                    title="1–8 hours"
                   />
-                  <p id="duration-help" class="mt-2 text-sm">1–8 hours</p>
                 </div>
               </div>
-              <p class="mt-3 text-sm font-medium">
-                {(teamCount || 0) * (capacity || 0)} desktop places · {teamCount ||
-                  0} team {teamCount === 1 ? "lab" : "labs"} · {hours || 0}
-                {hours === 1 ? "hour" : "hours"}
-              </p>
-              <p class="text-sm leading-relaxed">
-                Machines and files are deleted automatically when the meeting
-                ends. Cloud compute and storage incur charges.
-              </p>
-              <button
-                disabled={busy || !selectedRevision}
-                class="btn btn-sm min-h-11 btn-primary mt-3 w-fit"
-                >{#if busy}<span class="loading loading-spinner loading-xs"
-                  ></span>{:else}<Plus size={16} />{/if}Create meeting</button
-              >
+              <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-base-content/8 pt-5">
+                <button
+                  disabled={busy || !selectedRevision}
+                  class="btn btn-sm min-h-11 btn-primary"
+                  >{#if busy}<span class="loading loading-spinner loading-xs"
+                    ></span>{:else}<Plus size={16} />{/if}Create meeting</button
+                >
+                <p class="text-xs text-base-content/60">
+                  {(teamCount || 0) * (capacity || 0)} desktop places · deleted after {hours || 0}
+                  {hours === 1 ? "hour" : "hours"}
+                </p>
+              </div>
             </fieldset>
           </form>
-          {#if !builtRevisions.length}<p class="mt-4 text-sm">
-              First, <a class="link" href="/admin/templates/"
-                >build a template</a
-              >.
-            </p>{/if}
         </section>
-        <aside class="min-w-0 lg:border-l lg:border-base-content/10 lg:pl-6">
+        <aside class="min-w-0">
           <Activity {data} onchange={refreshAdmin} />
         </aside>
       </div>
     {:else}
-      <section
-        class="mb-6 border-b border-base-content/10 pb-5"
-        aria-label="Current meeting"
-      >
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-3">
-              <h2 class="text-xl font-semibold tracking-tight">
-                {data.meeting.name}
-              </h2>
-              <Status status={data.meeting.status} />
-            </div>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            {#if data.meeting.status !== "ending"}
-              {#if remainingHours > 0}<div class="flex items-center gap-2">
-                  <label class="sr-only" for="extension">Extend by</label
-                  ><select
-                    id="extension"
-                    class="select select-sm min-h-11 w-28 lg:min-h-8"
-                    bind:value={extension}
-                    disabled={busy}
-                    >{#each Array.from({ length: remainingHours }, (_, i) => i + 1) as amount}<option
-                        value={amount}
-                        >{amount} {amount === 1 ? "hour" : "hours"}</option
-                      >{/each}</select
-                  ><button
-                    type="button"
-                    class="btn btn-sm min-h-11 lg:min-h-8"
-                    disabled={busy}
-                    onclick={() =>
-                      run("/api/admin/extend", { hours: extension })}
-                    ><Plus size={15} />Add time</button
-                  >
-                </div>{:else}<span class="text-xs text-base-content/75"
-                  >Eight-hour limit reached</span
-                >{/if}
-              <button
-                class="btn btn-sm min-h-11 btn-primary lg:min-h-8"
-                disabled={busy || readyCount === data.teams.length || preparing}
-                onclick={() => confirm("prepare")}
-                ><Play size={15} />{createdID === data.meeting.id &&
-                data.meeting.status === "waiting"
-                  ? "Prepare labs now"
-                  : "Prepare labs"}</button
-              >
-              <button
-                type="button"
-                class="btn btn-sm min-h-11 btn-ghost text-error lg:min-h-8"
+      <PageHeader title={data.meeting.name}>
+        {#snippet eyebrow()}<span class="inline-flex items-center gap-2"
+            >Meeting <Status status={data?.meeting?.status ?? ""} /></span
+          >{/snippet}
+        {#if data.meeting.status !== "ending"}
+          {#if remainingHours > 0}<div class="join">
+              <label class="sr-only" for="extension">Extend by</label
+              ><select
+                id="extension"
+                class="select select-sm join-item min-h-11 w-24 lg:min-h-8"
+                bind:value={extension}
                 disabled={busy}
-                onclick={() => confirm("end")}
-                ><Trash2 size={15} />End meeting</button
+                >{#each Array.from({ length: remainingHours }, (_, i) => i + 1) as amount}<option
+                    value={amount}
+                    >{amount} {amount === 1 ? "hour" : "hours"}</option
+                  >{/each}</select
+              ><button
+                type="button"
+                class="btn btn-sm join-item min-h-11 lg:min-h-8"
+                disabled={busy}
+                onclick={() => run("/api/admin/extend", { hours: extension })}
+                ><Plus size={15} />Add time</button
               >
-            {/if}
+            </div>{:else}<span class="text-xs text-base-content/60"
+              >Eight-hour limit reached</span
+            >{/if}
+          {#if readyCount !== data.teams.length}<button
+              class="btn btn-sm min-h-11 btn-primary lg:min-h-8"
+              disabled={busy || preparing}
+              onclick={() => confirm("prepare")}
+              ><Play size={15} />{createdID === data.meeting.id &&
+              data.meeting.status === "waiting"
+                ? "Prepare labs now"
+                : "Prepare labs"}</button
+            >{/if}
+          <button
+            type="button"
+            class="btn btn-sm min-h-11 btn-ghost text-error lg:min-h-8"
+            disabled={busy}
+            onclick={() => confirm("end")}
+            ><Trash2 size={15} />End meeting</button
+          >
+        {/if}
+      </PageHeader>
+      <section
+        class="panel mb-8 grid grid-cols-2 divide-base-content/8 sm:grid-cols-4 sm:divide-x"
+        aria-label="Meeting overview"
+      >
+        <div class="px-5 py-4">
+          <p class="eyebrow">Time left</p>
+          <div class="mt-1">
+            {#if data.meeting.status === "ending"}<p class="text-sm text-warning">
+                Cleaning up…
+              </p>{:else}<Deadline
+                expires={data.meeting.expires}
+                label="Cleanup"
+                compact
+              />{/if}
           </div>
         </div>
-        <div class="mt-4">
-          {#if data.meeting.status === "ending"}<p class="text-sm text-warning">
-              Cleanup is in progress. Team machines and workspace files are
-              being removed.
-            </p>{:else}<Deadline
-              expires={data.meeting.expires}
-              label="Cleanup at"
-            />{/if}
+        <div class="px-5 py-4">
+          <p class="eyebrow">Labs ready</p>
+          <p class="mt-1 text-lg font-semibold tabular-nums">
+            {readyCount} / {data.teams.length}
+          </p>
         </div>
-        <div
-          class="stats mt-4 grid w-full grid-flow-row grid-cols-2 overflow-visible rounded-field border border-base-content/10 bg-base-200/40 sm:grid-cols-4"
-          aria-label="Meeting overview"
-        >
-          <div class="stat min-w-0 px-3 py-3">
-            <div class="stat-title text-xs text-base-content/75">
-              Labs ready
-            </div>
-            <div class="stat-value text-xl tabular-nums">
-              {readyCount} / {data.teams.length}
-            </div>
-          </div>
-          <div class="stat min-w-0 px-3 py-3">
-            <div class="stat-title text-xs text-base-content/75">
-              Students joined
-            </div>
-            <div class="stat-value text-xl tabular-nums">
-              {joined} / {seats}
-            </div>
-            <div class="stat-desc whitespace-normal text-xs">Seats filled</div>
-          </div>
-          <div class="stat min-w-0 px-3 py-3">
-            <div class="stat-title text-xs text-base-content/75">
-              Active desktops
-            </div>
-            <div class="stat-value text-xl tabular-nums">
-              {data.activeDesktops ?? 0}
-            </div>
-          </div>
-          <div class="stat min-w-0 px-3 py-3">
-            <div class="stat-title text-xs text-base-content/75">
-              Operations
-            </div>
-            <a
-              class="stat-value link link-hover text-xl tabular-nums"
-              href="#activity-title">{running} running</a
-            >
-            <div class="stat-desc whitespace-normal text-xs">
-              {queued} queued · {failures} failed needing attention
-            </div>
-          </div>
+        <div class="px-5 py-4">
+          <p class="eyebrow">Students joined</p>
+          <p class="mt-1 text-lg font-semibold tabular-nums">
+            {joined} / {seats}
+          </p>
         </div>
-        {#if failedCount}<p class="mt-3 text-sm text-error">
-            {failedCount}
-            {failedCount === 1 ? "lab needs" : "labs need"} attention.
-            <a class="link" href="#activity-title">View activity</a>
-          </p>{/if}
-        {#if readyCount === data.teams.length}<p class="mt-2 text-sm">
-            All team labs are prepared.
-          </p>{:else if preparing}<p class="mt-2 text-sm">
-            Preparation is running. Ready teams can use their labs.
-          </p>{/if}
+        <div class="px-5 py-4">
+          <p class="eyebrow">Active desktops</p>
+          <p class="mt-1 text-lg font-semibold tabular-nums">
+            {data.activeDesktops ?? 0}
+          </p>
+        </div>
       </section>
+      {#if failedCount}<p class="-mt-4 mb-6 text-sm text-error">
+          {failedCount}
+          {failedCount === 1 ? "lab needs" : "labs need"} attention.
+          <a class="link" href="#activity-title">View activity</a>
+        </p>{:else if preparing}<p class="-mt-4 mb-6 text-sm text-base-content/70">
+          Preparing labs. Ready teams can already use theirs.
+        </p>{/if}
       <div
-        class="grid items-start gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]"
+        class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
       >
         <section class="min-w-0">
-          <div
+          {#if tabs.length === 1}<h2 class="mb-4 text-sm font-semibold">Teams</h2>{:else}<div
             role="tablist"
             aria-label="Meeting tools"
-            class="tabs tabs-border mb-5"
+            class="mb-5 flex gap-5 border-b border-base-content/8"
           >
             {#each tabs as tab}<button
                 type="button"
@@ -477,17 +420,20 @@
                 aria-controls={"meeting-panel-" + tab.id}
                 aria-selected={visiblePanel === tab.id}
                 tabindex={visiblePanel === tab.id ? 0 : -1}
-                class="tab min-h-11 gap-2 text-sm"
-                class:tab-active={visiblePanel === tab.id}
-                class:text-primary={visiblePanel === tab.id}
+                class={[
+                  "-mb-px min-h-11 border-b-2 text-sm focus-visible:outline-2 focus-visible:outline-primary",
+                  visiblePanel === tab.id
+                    ? "border-primary font-medium"
+                    : "border-transparent text-base-content/70 hover:text-base-content",
+                ]}
                 onclick={() => choosePanel(tab.id)}
-                onkeydown={tabKey}><tab.icon size={15} />{tab.label}</button
+                onkeydown={tabKey}>{tab.label}</button
               >{/each}
-          </div>
+          </div>{/if}
           <div
-            role="tabpanel"
+            role={tabs.length > 1 ? "tabpanel" : undefined}
             id="meeting-panel-teams"
-            aria-labelledby="meeting-tab-teams"
+            aria-labelledby={tabs.length > 1 ? "meeting-tab-teams" : undefined}
             hidden={visiblePanel !== "teams"}
           >
             <!-- Keyboard scrolling keeps all team columns accessible on phones. -->
@@ -502,20 +448,15 @@
                 <caption class="sr-only"
                   >Team lab readiness and desktop sessions</caption
                 ><thead
-                  ><tr
+                  ><tr class="border-base-content/8 text-base-content/60"
                     ><th scope="col">Team</th><th scope="col">Members</th><th
                       scope="col">Desktops</th
                     ><th scope="col">Lab</th></tr
                   ></thead
                 ><tbody>
-                  {#each data.teams as team}<tr class="border-base-content/10"
+                  {#each data.teams as team}<tr class="border-base-content/8"
                       ><th scope="row" class="whitespace-nowrap font-medium"
-                        ><span class="flex items-center gap-2"
-                          ><Users
-                            size={15}
-                            class="text-base-content/75"
-                          />{team.name}</span
-                        ></th
+                        >{team.name}</th
                       ><td class="whitespace-nowrap tabular-nums"
                         >{team.members} / {team.capacity}</td
                       ><td class="tabular-nums"
@@ -524,7 +465,6 @@
                       ><td
                         ><Status
                           status={team.status}
-                          soft
                         />{#if team.status === "failed"}<p
                             class="mt-2 min-w-48 whitespace-pre-line text-sm text-error"
                           >
@@ -568,7 +508,7 @@
         <!-- On short laptop screens the pinned activity feed scrolls on its own. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <aside
-          class="min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:border-l lg:border-base-content/10 lg:pr-1 lg:pl-6"
+          class="min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
           aria-labelledby="activity-title"
           tabindex="0"
         >
@@ -577,7 +517,7 @@
       </div>
     {/if}
   {:else}<p
-      class="flex items-center gap-2 text-sm text-base-content/75"
+      class="flex items-center gap-2 text-sm text-base-content/70"
       role="status"
     >
       <span class="loading loading-spinner loading-sm"></span>Loading meeting…
@@ -591,8 +531,8 @@
     <p class="mt-3 font-medium">{data?.meeting?.name}</p>
     <p class="mt-3 text-sm leading-relaxed">
       {action === "end"
-        ? `This deletes all ${data?.teams.length ?? 0} team labs, including their machines and workspace files. This cannot be undone.`
-        : `This provisions the selected template for ${data?.teams.length ?? 0} teams. Cloud compute, storage, public addresses, and transfer incur charges. Machines and files are deleted at the meeting deadline.`}
+        ? `Deletes all ${data?.teams.length ?? 0} team labs, including machines and workspace files. This cannot be undone.`
+        : `Provisions ${data?.teams.length ?? 0} team labs. Cloud resources incur charges until the meeting ends.`}
     </p>
     <Notice message={error} />
     <div class="modal-action">

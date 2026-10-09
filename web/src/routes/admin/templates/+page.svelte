@@ -87,10 +87,7 @@
 
 <svelte:head><title>Lab templates · LabCentral</title></svelte:head>
 {#if $session?.user.admin}<AdminNav />{/if}
-<PageHeader
-  title="Lab templates"
-  description="Revisions stay pinned. Existing labs keep their current revision."
->
+<PageHeader title="Lab templates">
   {#if $session?.user.admin}<button
       class="btn btn-sm min-h-11 lg:min-h-8"
       disabled={busy || refreshing}
@@ -109,26 +106,26 @@
           "GitHub refresh failed. Please retry."}
       />{/if}
     <div
-      class="grid items-start gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]"
+      class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
     >
       <section class="min-w-0">
         <ul
-          class="divide-y divide-base-content/10 border-y border-base-content/10"
+          class="panel divide-y divide-base-content/8"
           aria-label="Template revision history"
         >
           {#each data.templates as template, index (template.id)}
             {@const job = jobFor(template.id)}{@const working = active(
               template.id,
             )}
-            <li class="py-5" hidden={!history && !featured(template, index)}>
+            <li class="px-5 py-5" hidden={!history && !featured(template, index)}>
               <article
                 aria-label={`${template.name} revision ${template.commit.slice(0, 7)}`}
               >
                 <div class="mb-2 flex flex-wrap items-center gap-3 text-xs">
                   <span class="font-medium">{template.name}</span
-                  >{#if template.latest}<span class="text-primary">Latest</span
+                  >{#if template.latest}<span class="badge badge-sm badge-soft badge-primary">Latest</span
                     >{/if}{#if data.meeting?.template === template.id && data.meeting.status !== "ended"}<span
-                      class="inline-flex items-center gap-1 text-base-content/75"
+                      class="inline-flex items-center gap-1 text-base-content/60"
                       ><LockKeyhole size={12} />In use</span
                     >{/if}
                 </div>
@@ -136,7 +133,7 @@
                   {template.commitTitle || "Imported revision"}
                 </h2>
                 <div
-                  class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/75"
+                  class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/60"
                 >
                   {#if data.repositoryURL}<a
                       class="link link-hover inline-flex items-center gap-1.5"
@@ -192,7 +189,7 @@
                               : "Not built"}
                   />
                   {#if !template.removedAt}<span
-                      class="tabular-nums text-base-content/75"
+                      class="tabular-nums text-base-content/60"
                       >{#if !template.built && template.imagesReady === template.imagesTotal && template.imagesTotal > 0}Images
                         ready — confirm build to use{:else}{template.imagesReady}
                         / {template.imagesTotal} images ready{/if}</span
@@ -210,7 +207,7 @@
                       .join(", ")} on shared resources.
                   </p>{/if}
                 {#if template.instructor}<details
-                    class="collapse collapse-arrow mt-4 border border-base-content/10"
+                    class="collapse collapse-arrow panel mt-4"
                   >
                     <summary
                       class="collapse-title flex items-center gap-2 text-sm font-medium"
@@ -227,25 +224,25 @@
                         {#each template.instructor.exercises as exercise}<li>
                             <p class="font-medium">{exercise.name}</p>
                             <p
-                              class="mt-1 whitespace-pre-line text-base-content/75"
+                              class="mt-1 whitespace-pre-line text-base-content/60"
                             >
                               {exercise.walkthrough}
                             </p>
                           </li>{/each}
                       </ul>
-                      <p class="mt-4 text-xs text-base-content/75">
+                      <p class="mt-4 text-xs text-base-content/60">
                         {template.instructor.checks.length} scheduled service checks
                         available.
                       </p>
                     </div>
                   </details>{/if}
                 {#if template.removedAt}<p
-                    class="mt-2 text-xs text-base-content/75"
+                    class="mt-2 text-xs text-base-content/60"
                   >
                     Removed {date(template.removedAt)}. Images shared by other
                     revisions are retained.
                   </p>{:else if template.builtAt}<p
-                    class="mt-2 text-xs text-base-content/75"
+                    class="mt-2 text-xs text-base-content/60"
                   >
                     Built {date(template.builtAt)}
                   </p>{/if}
@@ -255,7 +252,7 @@
                     {job.error}
                   </p>{/if}
                 <div class="mt-3 flex flex-wrap gap-2">
-                  <a class="btn btn-sm min-h-11 btn-ghost lg:min-h-8" href={`/labs/?template=${encodeURIComponent(template.id)}`}>Explore template</a>
+                  <a class="btn btn-sm min-h-11 btn-ghost lg:min-h-8" href={`/labs/?template=${encodeURIComponent(template.id)}`}>Preview</a>
                   {#if !template.built && !template.removing}<button
                       class="btn btn-sm min-h-11 lg:min-h-8"
                       class:btn-primary={template.latest}
@@ -287,10 +284,10 @@
                   </p>{/if}
               </article>
             </li>
-          {:else}<li class="py-8">
-              <History size={22} />
+          {:else}<li class="px-5 py-10 text-center">
+              <History size={22} class="mx-auto text-base-content/60" />
               <h2 class="mt-3 text-base font-semibold">No revisions yet</h2>
-              <p class="mt-2 text-sm text-base-content/75">
+              <p class="mt-2 text-sm text-base-content/60">
                 Refresh from GitHub to import your templates.
               </p>
             </li>{/each}
@@ -308,7 +305,7 @@
       <!-- On short laptop screens the pinned activity feed scrolls on its own. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <aside
-        class="min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:border-l lg:border-base-content/10 lg:pr-1 lg:pl-6"
+        class="min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
         aria-labelledby="activity-title"
         tabindex="0"
       >
@@ -316,7 +313,7 @@
       </aside>
     </div>
   {:else}<p
-      class="flex items-center gap-2 text-sm text-base-content/75"
+      class="flex items-center gap-2 text-sm text-base-content/60"
       role="status"
     >
       <span class="loading loading-spinner loading-sm"></span>Loading revisions…
@@ -336,8 +333,8 @@
     </p>
     <p class="mt-3 text-sm leading-relaxed">
       {action === "build"
-        ? `Build ${selected?.imagesTotal ?? 0} reusable images from this revision. Temporary build and validation machines incur charges; matching images are reused.`
-        : "Remove this revision’s unused native images, snapshots and unfinished builds. Shared images are retained. The revision stays in this history and can be rebuilt."}
+        ? `Builds ${selected?.imagesTotal ?? 0} images from this revision. Temporary build machines incur charges; matching images are reused.`
+        : "Removes this revision’s unused images and unfinished builds. Shared images are kept, and the revision can be rebuilt."}
     </p>
     <Notice message={error} />
     <div class="modal-action">

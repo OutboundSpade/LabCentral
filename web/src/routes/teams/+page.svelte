@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { Users, ArrowRight, Check, LogOut, RotateCw } from "@lucide/svelte";
+  import { Users, ArrowRight, LogOut, RotateCw } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
@@ -87,19 +87,13 @@
 </script>
 
 <svelte:head><title>Choose your team · LabCentral</title></svelte:head>
-<div class="max-w-3xl">
-  <PageHeader
-    title="Choose your team"
-    description="Teams share one meeting lab. Each member gets a separate desktop workspace."
-  />
+<div class="mx-auto max-w-2xl">
   <Guard>
     {#if $session?.meeting && !["ended", "ending"].includes($session.meeting.status)}
-      <h2 class="mb-3 text-sm font-medium">{$session.meeting.name}</h2>
-      <Deadline expires={$session.meeting.expires} />
-      {#if $session.membership.teamID}<p class="mt-4 text-sm leading-relaxed">
-          Switching closes your desktop. Files stay with the previous team until
-          the meeting ends.
-        </p>{/if}
+      <PageHeader title="Choose your team">
+        {#snippet eyebrow()}{$session?.meeting?.name}{/snippet}
+      </PageHeader>
+      <div class="-mt-5 mb-6"><Deadline expires={$session.meeting.expires} /></div>
       <Notice message={error} dismissible />
       {#if $session.membership.switching}<div
           class="alert my-4 text-sm"
@@ -108,84 +102,69 @@
           <span class="loading loading-spinner loading-sm"></span>Your previous
           desktop is closing. Retry the same team to finish your change.
         </div>{/if}
-      <ul
-        class="mt-5 divide-y divide-base-content/10 border-y border-base-content/10"
-      >
-        {#each $session.teams as team}<li
-            class="flex flex-wrap items-center gap-3 py-4"
-            class:bg-base-200={$session.membership.teamID === team.id}
-          >
-            <Users
-              size={17}
-              class="ml-3 shrink-0 text-base-content/75"
-              aria-hidden="true"
-            />
+      <ul class="panel divide-y divide-base-content/8">
+        {#each $session.teams as team}
+          {@const mine = team.id === $session.membership.teamID}
+          {@const full = team.members >= team.capacity}
+          <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5">
             <div class="min-w-28 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-sm font-medium">{team.name}</h3>
-                {#if team.id === $session.membership.teamID}<span
-                    class="inline-flex items-center gap-1 text-xs text-primary"
-                    ><Check size={12} />Your team</span
-                  >{/if}
-              </div>
-              <p class="mt-1 text-xs tabular-nums text-base-content/75">
-                {team.members} of {team.capacity} seats filled
+              <h2 class="flex items-center gap-2 text-sm font-medium">
+                {team.name}
+                {#if mine}<span class="badge badge-sm badge-soft badge-primary">Your team</span>{/if}
+              </h2>
+              <p class="mt-0.5 text-xs tabular-nums text-base-content/60">
+                {team.members} of {team.capacity} seats{#if $session.user.admin || mine}{" · "}<Status status={team.status} />{/if}
               </p>
             </div>
-            <div class="mr-3 flex flex-wrap items-center gap-3">
-              {#if $session.user.admin || team.id === $session.membership.teamID}<Status
-                  status={team.status}
-                />{/if}
-              {#if team.id === $session.membership.teamID && !$session.membership.switching}<a
-                  href="/lab/"
-                  class="btn btn-sm min-h-11 btn-primary"
-                  >Your lab<ArrowRight size={15} /></a
-                >
-              {:else}<button
-                  class="btn btn-sm min-h-11"
-                  disabled={!!pending || team.members >= team.capacity}
-                  onclick={() => choose(team.id)}
-                  >{#if pending === team.id}<span
-                      class="loading loading-spinner loading-xs"
-                    ></span>{/if}{team.members >= team.capacity
-                    ? "Team full"
-                    : $session.membership.teamID
-                      ? "Switch team"
-                      : "Join team"}<ArrowRight size={15} /></button
-                >{/if}
-            </div>
+            {#if mine && !$session.membership.switching}<a
+                href="/lab/"
+                class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
+                >Your lab<ArrowRight size={15} /></a
+              >
+            {:else}<button
+                class="btn btn-sm min-h-11 lg:min-h-8"
+                disabled={!!pending || full}
+                onclick={() => choose(team.id)}
+                >{#if pending === team.id}<span
+                    class="loading loading-spinner loading-xs"
+                  ></span>{/if}{full
+                  ? "Team full"
+                  : $session.membership.teamID
+                    ? "Switch team"
+                    : "Join team"}</button
+              >{/if}
           </li>{/each}
       </ul>
-      {#if $session.membership.teamID}<div class="mt-4 flex justify-end">
+      {#if $session.membership.teamID}<div class="mt-3 flex justify-end">
           <button
-            class="btn btn-sm min-h-11 btn-ghost"
+            class="btn btn-sm min-h-11 btn-ghost text-base-content/70"
             disabled={!!pending}
             onclick={() => choose("")}><LogOut size={15} />Leave team</button
           >
         </div>{/if}
     {:else}
+      <h1 class="sr-only">Meeting</h1>
       <EmptyState
         icon={Users}
         title={$session?.meeting?.status === "ending"
           ? "This meeting is ending"
           : $session?.meeting?.status === "ended"
             ? "This meeting has ended"
-            : "No meeting is open yet"}
+            : "No meeting right now"}
       >
         {$session?.meeting?.status === "ending"
-          ? "Lab cleanup is in progress. Teams are no longer available."
+          ? "Team labs are being removed."
           : $session?.meeting?.status === "ended"
-            ? "Lab access has ended. Join the next meeting for a fresh workspace."
-            : "Teams appear when a meeting opens."}
-        Practice labs stay available in the meantime.
+            ? "Join the next meeting for a fresh workspace."
+            : "Teams appear here when a meeting starts."}
         <Notice message={error} dismissible />
-        {#snippet actions()}<button
-            class="btn btn-sm min-h-11"
-            onclick={checkAgain}><RotateCw size={15} />Check again</button
-          ><a class="btn btn-sm btn-ghost min-h-11" href="/labs/"
+        {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
             >Practice labs<ArrowRight size={15} /></a
+          ><button
+            class="btn btn-sm btn-ghost min-h-11"
+            onclick={checkAgain}><RotateCw size={15} />Check again</button
           >{#if checked}<p
-              class="basis-full text-xs text-base-content/75"
+              class="basis-full text-xs text-base-content/60"
               role="status"
             >
               Checked at {checked}
@@ -208,15 +187,10 @@
         ? `Switch to ${change.name}?`
         : `Leave ${change?.oldName ?? "your team"}?`}
     </h2>
-    <p class="mt-3 text-sm">
-      From <strong>{change?.oldName}</strong> to
-      <strong>{change?.name}</strong>.
-    </p>
-    <p class="mt-3 text-sm leading-relaxed">
-      This closes your desktop. Files stay with {change?.oldName} until the meeting
-      ends.{change?.teamID
-        ? " Your workspace on the new team will be separate."
-        : " Join a team again to access a desktop."}
+    <p class="mt-3 text-sm leading-relaxed text-base-content/80">
+      {#if change?.teamID}From <strong>{change?.oldName}</strong> to
+        <strong>{change?.name}</strong>.{/if}
+      Your desktop closes. Files stay with {change?.oldName} until the meeting ends.
     </p>
     <Notice message={error} />
     <div class="modal-action">

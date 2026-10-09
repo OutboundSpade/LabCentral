@@ -59,7 +59,7 @@
     released: number;
   } | null>(null);
   let dialog: HTMLDialogElement;
-  let titleInput: HTMLInputElement;
+  let titleInput = $state<HTMLInputElement>();
 
   function nextID(steps: LearningStepInput[]) {
     let n = 1;
@@ -90,6 +90,8 @@
   }
   let draft = $state<PublishLearningRequest>(blank());
   let attempted = $state(false);
+  // The editor stays out of the way until an administrator starts a lab.
+  let editing = $state(false);
 
   async function load() {
     const s = scope;
@@ -121,6 +123,8 @@
       success = "";
       draft = blank();
       attempted = false;
+      // Links from a template revision open the editor for that revision.
+      editing = browser && page.url.searchParams.has("template");
       if (s) void load();
     });
   });
@@ -209,6 +213,15 @@
     const [step] = steps.splice(index, 1);
     steps.splice(index + by, 0, step);
   }
+  async function startNew() {
+    draft = blank();
+    attempted = false;
+    success = "";
+    editing = true;
+    await tick();
+    titleInput?.scrollIntoView({ block: "center" });
+    titleInput?.focus();
+  }
   async function editAsNew(publication: LearningPublication) {
     draft = {
       template: publication.template,
@@ -221,6 +234,7 @@
     };
     attempted = false;
     success = "";
+    editing = true;
     await tick();
     titleInput?.scrollIntoView({ block: "center" });
     titleInput?.focus();
@@ -250,9 +264,10 @@
         request,
       );
       if (s !== scope) return;
-      success = `Published “${result.title}”. Students can open it from Labs.`;
+      success = `Published “${result.title}”. Students can open it from Practice.`;
       draft = blank();
       attempted = false;
+      editing = false;
     } catch (e) {
       if (s === scope) error = (e as Error).message;
     } finally {
@@ -307,72 +322,53 @@
   );
 </script>
 
-<svelte:head><title>Lab publishing · LabCentral</title></svelte:head>
+<svelte:head><title>Published labs · LabCentral</title></svelte:head>
 <Guard admin>
   <AdminNav />
-  <PageHeader
-    title="Lab publishing"
-    description="Publish guided labs from pinned template revisions. Publications cannot be edited; publish a new version instead."
-  />
+  <PageHeader title="Published labs">
+    {#if admin}<p class="text-xs text-base-content/60">
+        {hours(admin.quotaMinutes * 60)} cloud time per student each week
+      </p>{/if}
+    {#if !editing}<button
+        type="button"
+        class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
+        onclick={startNew}><Plus size={15} />New lab</button
+      >{/if}
+  </PageHeader>
   <Notice message={error} dismissible /><PollStatus />
-  {#if success}<p class="mb-4 text-sm" role="status">{success}</p>{/if}
+  {#if success}<p class="mb-4 text-sm text-success" role="status">{success}</p>{/if}
   {#if admin}
-    <p class="mb-4 text-sm text-base-content/75">
-      Each student has {hours(admin.quotaMinutes * 60)} of cloud workspace time per
-      UTC week. Local downloads do not use it.
-    </p>
     <section aria-labelledby="publications-title">
-      <h2 id="publications-title" class="text-base font-semibold">Publications</h2>
-      <ul
-        class="mt-3 divide-y divide-base-content/10 border-y border-base-content/10"
-      >
+      <h2 id="publications-title" class="sr-only">Publications</h2>
+      <ul class="panel divide-y divide-base-content/8">
         {#each ordered as publication (publication.id)}
           {@const total = publication.steps.length}
-          <li class="grid gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto]">
+          <li class="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
             <div class="min-w-0">
-              <div
-                class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-base-content/75"
-              >
-                <span class="badge badge-ghost badge-sm"
-                  >{publication.published ? "Published" : "Unpublished"}</span
-                >
-                <span>{modeLabel(publication.mode)}</span>
-                <span>About {publication.estimatedMinutes} min</span>
-                <span>{total} {total === 1 ? "stage" : "stages"}</span>
-                <span
-                  >{templateLabel(publication.template)} · {date(
-                    publication.publishedAt,
-                    { dateStyle: "medium", timeStyle: "short" },
-                  )}</span
-                >
-              </div>
-              <h3 class="mt-2 text-base font-semibold">{publication.title}</h3>
-              {#if publication.description}<p
-                  class="mt-1 line-clamp-2 max-w-[68ch] text-sm text-base-content/75"
-                >
-                  {publication.description}
-                </p>{/if}
+              <h3 class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                {publication.title}
+                {#if !publication.published}<span class="badge badge-sm badge-ghost">Unpublished</span>{/if}
+                {#if publication.mode === "instructor"}<span class="badge badge-sm badge-ghost">Instructor-led</span>{/if}
+              </h3>
+              <p class="mt-1 text-xs text-base-content/60">
+                {total} {total === 1 ? "stage" : "stages"} · {publication.estimatedMinutes} min ·
+                {templateLabel(publication.template)} · {date(publication.publishedAt, { dateStyle: "medium" })}
+              </p>
               {#if publication.mode === "instructor"}
-                <div class="mt-3 max-w-md">
-                  <p class="text-sm tabular-nums">
+                <div class="mt-3 max-w-sm">
+                  <p class="text-xs tabular-nums text-base-content/70">
                     Released {publication.releasedSteps} of {total} stages
                   </p>
                   <progress
-                    class="progress mt-1.5 h-1 w-full"
+                    class="progress progress-primary mt-1.5 h-1 w-full"
                     value={publication.releasedSteps}
                     max={total || 1}
                     aria-label={`${publication.title} stages released`}
                   ></progress>
-                  {#if publication.releasedSteps < total}
-                    <p class="mt-1.5 text-xs text-base-content/75">
-                      Next: {publication.steps[publication.releasedSteps].title}
-                      · {kindLabel(publication.steps[publication.releasedSteps].kind)}
-                    </p>
-                  {/if}
                 </div>
               {/if}
             </div>
-            <div class="flex flex-wrap items-start gap-2 md:justify-end">
+            <div class="flex flex-wrap items-center gap-1 md:justify-end">
               {#if publication.published && publication.mode === "instructor" && publication.releasedSteps < total}<button
                   type="button"
                   class="btn btn-sm min-h-11 lg:min-h-8"
@@ -389,7 +385,7 @@
               {#if publication.published}<a
                   class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
                   href={learnPath(publication.id)}
-                  ><Eye size={14} />View as student</a
+                  title="View as student"><Eye size={14} />View</a
                 >{/if}
               <button
                 type="button"
@@ -408,12 +404,9 @@
             </div>
           </li>
         {:else}
-          <li class="py-8">
-            <BookOpen size={22} class="text-base-content/75" aria-hidden="true" />
+          <li class="px-5 py-10 text-center">
+            <BookOpen size={22} class="mx-auto text-base-content/60" aria-hidden="true" />
             <p class="mt-3 font-semibold">No labs published yet</p>
-            <p class="mt-1 text-sm text-base-content/75">
-              Use the editor below to publish the first lab.
-            </p>
           </li>
         {/each}
       </ul>
@@ -424,17 +417,18 @@
       ><RotateCw size={15} />Retry</button
     >
   {:else}
-    <p class="flex items-center gap-2 text-sm text-base-content/75" role="status">
+    <p class="flex items-center gap-2 text-sm text-base-content/70" role="status">
       <span class="loading loading-spinner loading-sm"></span>Loading
       publications…
     </p>
   {/if}
 
-  <form class="mt-12 max-w-3xl" onsubmit={publish} novalidate>
-    <h2 class="text-base font-semibold" id="editor-title">Publish a lab</h2>
-    <p class="mt-1 text-sm text-base-content/75">
-      Choose authored stages from a pinned template revision. Students complete
-      published practice in order; meeting exercises remain freely selectable.
+  {#if editing}
+  <form class="panel mt-8 max-w-3xl p-6" onsubmit={publish} novalidate>
+    <h2 class="text-base font-semibold" id="editor-title">New lab</h2>
+    <p class="mt-1 text-sm text-base-content/70">
+      Pick stages from a pinned template revision. Publications can't be
+      edited later; publish a new version instead.
     </p>
     <fieldset class="fieldset mt-4 gap-2 text-sm" disabled={busy}>
       <legend class="sr-only">Lab details</legend>
@@ -448,7 +442,7 @@
         >{#each templates as t (t.id)}<option value={t.id}>{optionLabel(t)}</option
           >{/each}</select
       >
-      <p id="publish-template-help" class="text-xs text-base-content/75">
+      <p id="publish-template-help" class="text-xs text-base-content/60">
         {#if !templates.length}No revisions are imported yet. Refresh them in <a
             class="link"
             href="/admin/templates/">Templates</a
@@ -475,7 +469,7 @@
         bind:value={draft.description}
       ></textarea>
       <div class="mt-3 grid gap-4 sm:grid-cols-2">
-        <div><p class="label mb-2">Pacing</p><p class="flex min-h-11 items-center text-sm">Self-paced practice</p><p class="mt-1 text-xs text-base-content/75">All stages open on publish. Meeting stages are selected in Manage meeting.</p></div>
+        <div><p class="label mb-2">Pacing</p><p class="flex min-h-11 items-center text-sm">Self-paced</p></div>
         <div>
           <label class="label mb-2" for="publish-minutes">Estimated minutes</label>
           <input
@@ -494,24 +488,24 @@
     {#if ownedStages}
       <fieldset class="mt-8" disabled={busy}>
         <legend class="text-sm font-semibold">Template stages</legend>
-        <p class="mt-2 text-xs leading-relaxed text-base-content/75">Selected stages keep their authored instructions, completion checks and solutions. Publishing snapshots revision {template?.commit.slice(0, 7)}.</p>
+        <p class="mt-2 text-xs leading-relaxed text-base-content/60">Selected stages keep their authored instructions, completion checks and solutions. Publishing snapshots revision {template?.commit.slice(0, 7)}.</p>
         <ul class="mt-3 divide-y divide-base-content/10 border-y border-base-content/10">
           {#each authored as stage (stage.id)}
             {@const available = stage.kind !== "instructor" && !stage.exerciseID}
             <li class="py-4">
-              <label class="flex min-h-11 items-start gap-3"><input class="checkbox checkbox-sm mt-1 shrink-0" type="checkbox" value={stage.id} bind:group={draft.stageIDs} disabled={!available} /><span class="min-w-0"><span class="block text-sm font-medium">{stage.title}</span><span class="mt-1 block text-xs text-base-content/75">{kindLabel(stage.kind)}{!available ? " · Meeting only" : " · Personal practice"}</span></span></label>
-              {#if !available}<p class="ml-8 text-xs leading-relaxed text-base-content/75">{stage.exerciseID ? "This stage needs an instructor-applied break during a meeting; personal practice cannot apply it yet." : "Instructor checkpoints are available during meetings."}</p>{/if}
-              <details class="collapse collapse-arrow mt-2 border border-base-content/10"><summary class="collapse-title text-sm">Review authored stage</summary><div class="collapse-content"><div class={prose}>{@html render(stage.instructions)}</div>{#if stage.prompt}<p class="mt-3 text-sm">{stage.prompt}</p>{/if}{#if stage.solution}<p class="mt-4 text-xs font-medium">Instructor solution</p><div class={[prose, "mt-2"]}>{@html render(stage.solution)}</div>{/if}</div></details>
+              <label class="flex min-h-11 items-start gap-3"><input class="checkbox checkbox-sm mt-1 shrink-0" type="checkbox" value={stage.id} bind:group={draft.stageIDs} disabled={!available} /><span class="min-w-0"><span class="block text-sm font-medium">{stage.title}</span><span class="mt-1 block text-xs text-base-content/60">{kindLabel(stage.kind)}{!available ? " · Meeting only" : " · Personal practice"}</span></span></label>
+              {#if !available}<p class="ml-8 text-xs leading-relaxed text-base-content/60">{stage.exerciseID ? "This stage needs an instructor-applied break during a meeting; personal practice cannot apply it yet." : "Instructor checkpoints are available during meetings."}</p>{/if}
+              <details class="collapse collapse-arrow panel mt-2"><summary class="collapse-title text-sm">Review authored stage</summary><div class="collapse-content"><div class={prose}>{@html render(stage.instructions)}</div>{#if stage.prompt}<p class="mt-3 text-sm">{stage.prompt}</p>{/if}{#if stage.solution}<p class="mt-4 text-xs font-medium">Instructor solution</p><div class={[prose, "mt-2"]}>{@html render(stage.solution)}</div>{/if}</div></details>
             </li>
           {/each}
         </ul>
-        <p class="mt-3 text-xs tabular-nums text-base-content/75">{draft.stageIDs?.length ?? 0} of {eligible.length} practice stages selected · template order is preserved</p>
+        <p class="mt-3 text-xs tabular-nums text-base-content/60">{draft.stageIDs?.length ?? 0} of {eligible.length} practice stages selected · template order is preserved</p>
       </fieldset>
     {:else}
-      <div class="mt-8 border-t border-base-content/10 pt-5"><h3 class="text-sm font-semibold">Legacy manual lesson</h3><p class="mt-2 text-xs leading-relaxed text-base-content/75">This revision has no template-owned stages. Write an independent lesson below, or import a revision with authored stages.</p></div>
+      <div class="mt-8 border-t border-base-content/10 pt-5"><h3 class="text-sm font-semibold">Legacy manual lesson</h3><p class="mt-2 text-xs leading-relaxed text-base-content/60">This revision has no template-owned stages. Write an independent lesson below, or import a revision with authored stages.</p></div>
     <div class="mt-8 flex flex-wrap items-baseline justify-between gap-2">
       <h3 class="text-sm font-semibold">Stages</h3>
-      <p class="text-xs tabular-nums text-base-content/75">
+      <p class="text-xs tabular-nums text-base-content/60">
         {draft.steps.length} of {maxSteps}
       </p>
     </div>
@@ -523,7 +517,7 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="font-medium">
                 Stage {index + 1}
-                <span class="ml-2 text-xs font-normal text-base-content/75"
+                <span class="ml-2 text-xs font-normal text-base-content/60"
                   >ID <code>{step.id}</code></span
                 >
               </p>
@@ -596,7 +590,7 @@
               bind:value={step.instructions}
               aria-describedby={`${step.id}-instructions-help`}
             ></textarea>
-            <p id={`${step.id}-instructions-help`} class="text-xs text-base-content/75">
+            <p id={`${step.id}-instructions-help`} class="text-xs text-base-content/60">
               Markdown. Raw HTML is not rendered.
             </p>
             <label class="label mt-2" for={`${step.id}-prompt`}
@@ -631,7 +625,7 @@
                 autocomplete="off"
                 aria-describedby={`${step.id}-answer-help`}
               />
-              <p id={`${step.id}-answer-help`} class="text-xs text-base-content/75">
+              <p id={`${step.id}-answer-help`} class="text-xs text-base-content/60">
                 Compared exactly after trimming surrounding spaces. Never sent
                 to students.
               </p>
@@ -649,12 +643,12 @@
                     >{c.name} · {c.points} points</option
                   >{/each}</select
               >
-              <p class="text-xs text-base-content/75">
+              <p class="text-xs text-base-content/60">
                 Runs the revision's instructor check in the student's cloud
                 workspace.
               </p>
             {:else}
-              <p class="mt-2 text-xs text-base-content/75">
+              <p class="mt-2 text-xs text-base-content/60">
                 Students complete this checkpoint after you release it.
               </p>
             {/if}
@@ -694,13 +688,12 @@
         onclick={() => {
           draft = blank();
           attempted = false;
-        }}>Clear editor</button
+          editing = false;
+        }}>Cancel</button
       >
-      <p class="text-xs text-base-content/75">
-        Publishing pins this revision and makes the lab visible in Labs.
-      </p>
     </div>
   </form>
+  {/if}
 </Guard>
 <dialog bind:this={dialog} class="modal" aria-labelledby="publish-confirm-title">
   <div class="modal-box">

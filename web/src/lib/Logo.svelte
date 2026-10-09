@@ -1,5 +1,5 @@
 <script lang="ts">
-  // A stage rail with its current checkpoint joined to an open workspace.
+  // A central node held inside a lab frame.
   let { size = 28 }: { size?: number } = $props();
 </script>
 
@@ -13,13 +13,13 @@
   <rect width="32" height="32" rx="8" class="fill-primary" />
   <g
     fill="none"
-    stroke-width="2.5"
+    stroke-width="2.6"
     stroke-linecap="round"
     stroke-linejoin="round"
     class="stroke-primary-content"
   >
-    <path d="M10 7.5v17M10 16h5" />
-    <rect x="15" y="10.5" width="9.5" height="11" rx="2" />
+    <path d="M12 8.5H8.5v15H12" />
+    <path d="M20 8.5h3.5v15H20" />
   </g>
-  <circle cx="10" cy="16" r="3.25" class="fill-primary-content" />
+  <circle cx="16" cy="16" r="3.4" class="fill-primary-content" />
 </svg>

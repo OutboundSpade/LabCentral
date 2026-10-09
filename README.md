@@ -24,7 +24,9 @@ In Firefox or Safari, first choose **Paste to desktop** and paste your text into
 the box. After it closes, paste inside the desktop. This fallback transfers text only.
 The lab and team pages show time remaining; at fifteen minutes they warn that
 workspace files will be deleted. Desktop help appears beside **Open desktop**.
-Signed-in home navigation goes directly to your lab or team selection. Switching
+Navigation has three destinations: **Practice**, **Meeting** (team choice and your
+team's lab) and, for administrators, **Admin**. Signed-in home navigation goes
+directly to your lab or team selection during a meeting. Switching
 or leaving a team requires a confirmation naming the affected teams. **Disconnect
 desktop** is enabled only when your current login has an available desktop session;
 it does not indicate whether the desktop browser tab is still connected.
@@ -75,8 +77,9 @@ identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC
 sign-in, retained workspaces, team switching, revocation, network isolation,
 Example Branch exercises, cleanup and backup restoration.
 
-**Manage meeting** summarizes labs ready, students joined, active desktop sessions
-and operation counts. Joined students count committed memberships once; team seat
+**Admin → Meeting** summarizes time left, labs ready, students joined and active
+desktop sessions; the header shows running or failed operations only when there
+are any. Joined students count committed memberships once; team seat
 counts also include pending reservations. Failed teams show the preparation
 error and available retry.
 New meetings default to the newest built revision and offer **Prepare labs now**;
@@ -84,7 +87,7 @@ time extensions confirm the new deadline. Exercise controls put the scenario and
 walkthrough before team selection, with a sticky action bar and a counted team-list
 confirmation.
 
-Administrators can select ready teams under **Manage meeting → Exercises** to
+Administrators can select ready teams under **Admin → Meeting → Exercises** to
 apply the meeting revision's breaks. The current Example Branch template stops
 Apache, moves the database listener, or disrupts FTP publishing and defaces the
 homepage and branch-hours document. Every break first restores and verifies the
@@ -98,7 +101,8 @@ meeting revisions retain their original exercise definitions.
 
 ## Explore templates and publish practice
 
-**Labs** has a card-based template browser and a separate practice catalog. Explore
+**Practice** opens the published lab catalog; its **Templates** view is a
+card-based template browser. Explore
 a pinned revision to read its handover, inspect its machines and preview its
 stages. Search helps find templates; revision selection keeps exploration
 attached to the exact source. Browsing does not provision resources. Image status
@@ -111,7 +115,7 @@ The template owns this material once, alongside its existing reset and check
 definitions. Accepted answers, guest programs and private references stay out of
 ordinary student responses and downloads.
 
-In **Manage meeting → Exercises**, instructors can choose any template stage,
+In **Admin → Meeting → Exercises**, instructors can choose any template stage,
 read its instructions and solution, and apply its linked break to selected ready
 teams. Other template breaks remain available separately. Selecting a stage does
 not mutate the guests. Breaks, resets and meeting
@@ -124,7 +128,7 @@ the ledger dependency, banking page, FTP login root, publishing timer and publis
 branch hours. Three additional recovery stages link the stopped-web, database-port
 and FTP-defacement breaks. Each stage includes a private reference solution.
 
-Under **Admin → Published labs**, select a pinned revision and its reusable
+Under **Admin → Published labs**, choose **New lab**, then a pinned revision and its reusable
 practice stages. Publishing snapshots those definitions, including private
 answers and solutions; later template imports cannot change an existing lesson.
 Personal practice follows the selected stages in template order. Break-dependent
@@ -135,7 +139,8 @@ controls. Saved progress is preserved. Where an author supplies a solution,
 students can explicitly choose **View solution** for a current or completed
 released stage. Viewing it does not complete that stage.
 
-The practice catalog lists published lessons and each student's cloud allowance.
+The practice catalog lists published lessons, progress and each student's
+remaining cloud time.
 Personal cloud labs default to **three hours per student per UTC week**, resetting
 on Monday. Operators can set `weeklyCloudMinutes` in the protected hosted config.
 Time counts from allocation reservation through confirmed cleanup, including
@@ -144,8 +149,9 @@ desktop. Only one personal cloud run can be active per student. It ends when its
 reserved time expires; stopping deletes its workspace after cleanup confirmation.
 Meeting cleanup and team membership are independent of these personal allocations.
 
-The guided player shows the stage rail, instructions, answer/check controls and
-workspace options. Active cloud action stages are checked periodically and advance
+The guided player shows the stage rail, instructions and answer/check controls,
+with one workspace strip for starting, opening or stopping the cloud workspace;
+**Run locally** opens the download and CLI commands. Active cloud action stages are checked periodically and advance
 only after a confirmed pass. Previously published instructor-paced lessons still
 require their instructor's release before completing later stages.
 The cloud desktop can read and submit the current lesson on its own authenticated

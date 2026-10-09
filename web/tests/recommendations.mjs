@@ -199,7 +199,7 @@ try {
     teams[0].status = "ready";
     active = true;
     await page.clock.runFor(10000);
-    await page.getByText("Desktop session open.", { exact: true }).waitFor();
+    await page.getByText("Session open", { exact: true }).waitFor();
     assert.equal(await page.title(), "Lab ready · LabCentral");
     assert(
       (
@@ -211,10 +211,10 @@ try {
     await page
       .getByRole("button", { name: "Disconnect desktop", exact: true })
       .click();
-    await page.getByText("No desktop session open.", { exact: true }).waitFor();
+    await page.getByText("Not connected", { exact: true }).waitFor();
     await page.getByText("Using your desktop", { exact: true }).click();
     await page
-      .getByText("After 60 minutes without input, DCV disconnects.", {
+      .getByText("After 60 idle minutes the desktop disconnects", {
         exact: false,
       })
       .waitFor();

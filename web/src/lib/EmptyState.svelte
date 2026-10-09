@@ -13,13 +13,16 @@
   } = $props();
 </script>
 
-<section class="max-w-lg border-t border-base-content/10 py-8">
-  <span class="text-base-content/75"><Icon size={22} /></span>
+<section class="panel mx-auto max-w-md px-6 py-10 text-center">
+  <span
+    class="mx-auto grid size-11 place-items-center rounded-full bg-base-300 text-base-content/70"
+    ><Icon size={20} /></span
+  >
   <h2 class="mt-4 text-lg font-semibold">{title}</h2>
-  {#if children}<div class="mt-2 text-sm leading-relaxed">
+  {#if children}<div class="mt-2 text-sm leading-relaxed text-base-content/70">
       {@render children()}
     </div>{/if}
-  {#if actions}<div class="mt-5 flex flex-wrap items-center gap-2">
+  {#if actions}<div class="mt-6 flex flex-wrap items-center justify-center gap-2">
       {@render actions()}
     </div>{/if}
 </section>

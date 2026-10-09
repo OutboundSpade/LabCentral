@@ -51,9 +51,9 @@ try {
       if(path==="/api/admin/exercises" || path==="/api/admin/checks/run") return route.fulfill({json:{ok:true}});
       throw new Error(`Unexpected fixture request ${req.method()} ${path}`);
     });
-    await page.goto(app+"/labs/");
+    await page.goto(app+"/labs/?view=templates");
     await page.getByRole("link",{name:"Explore branch-services revision 1234567"}).waitFor();
-    assert.equal(await page.getByText("Explore template",{exact:true}).count(),2,"one card per template, not per revision");
+    assert.equal(await page.getByText("Explore",{exact:true}).count(),2,"one card per template, not per revision");
     assert(await fits(page),"catalog width");
     if(evidence)await page.screenshot({path:`${evidence}/templates-${width}.png`,fullPage:true});
     await page.getByLabel("Search templates").fill("bank");
@@ -67,7 +67,7 @@ try {
     assert.equal(await page.locator("article script").count(),0,"raw HTML disabled");
     await page.getByRole("link",{name:"Branch discovery"}).waitFor();
     await page.getByLabel("Revision",{exact:true}).selectOption("older");
-    await page.getByText("abc123456789",{exact:true}).waitFor({state:"attached"});
+    await page.waitForFunction(()=>document.getElementById("template-revision")?.value==="older");
     await page.getByText("No practice lab is published from this revision yet.",{exact:false}).waitFor();
     assert.equal(await page.getByRole("link",{name:"Branch discovery"}).count(),0,"practice matching uses exact revision ID");
     await page.goBack();
@@ -104,7 +104,10 @@ try {
     await page.getByRole("button",{name:"Previous stage",exact:true}).click();
     let releaseIdentitySolution; heldSolution=new Promise(r=>releaseIdentitySolution=r);
     await page.getByRole("button",{name:"View solution"}).click();
+    // Release only after the identity change has been read, so the check is not a timing race.
+    const identityRead=page.waitForResponse(r=>r.url().endsWith("/api/me"));
     user="other"; await page.clock.runFor(10500);
+    await (await identityRead).finished(); await page.clock.runFor(100);
     releaseIdentitySolution(); await page.clock.runFor(500);
     assert.equal(await page.getByText("The branch has",{exact:false}).count(),0,"late solution cannot populate another identity");
     user="student"; admin=true;

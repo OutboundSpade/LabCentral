@@ -3,14 +3,21 @@
   let {
     title,
     description,
+    eyebrow,
     children,
-  }: { title: string; description?: string; children?: Snippet } = $props();
+  }: {
+    title: string;
+    description?: string;
+    eyebrow?: Snippet;
+    children?: Snippet;
+  } = $props();
 </script>
 
-<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+<div class="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
   <div class="min-w-0">
-    <h1 class="text-xl font-semibold tracking-tight">{title}</h1>
-    {#if description}<p class="mt-1 max-w-[72ch] text-sm leading-relaxed text-base-content/75">
+    {#if eyebrow}<div class="eyebrow mb-1.5">{@render eyebrow()}</div>{/if}
+    <h1 class="text-2xl font-semibold tracking-tight">{title}</h1>
+    {#if description}<p class="mt-1.5 max-w-[60ch] text-sm text-base-content/70">
         {description}
       </p>{/if}
   </div>

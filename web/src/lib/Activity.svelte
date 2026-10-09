@@ -1,12 +1,5 @@
 <script lang="ts">
-  import {
-    Activity,
-    Check,
-    Clock,
-    Monitor,
-    RotateCw,
-    TriangleAlert,
-  } from "@lucide/svelte";
+  import { RotateCw } from "@lucide/svelte";
   import type { AdminView, Job } from "$lib/types";
   import { api, adminUpdated, adminPollError } from "$lib/api";
   import { now, relative, duration } from "$lib/time";
@@ -97,87 +90,39 @@
   }
 </script>
 
-<section class="scroll-mt-6" aria-labelledby="activity-title">
-  <div class="mb-4">
-    <h2
-      id="activity-title"
-      class="flex items-center gap-2 text-base font-semibold"
-    >
-      <Activity size={17} />Live activity
-    </h2>
-    <p
-      class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-base-content/75"
-    >
-      <span
-        >{active.filter((j) => j.status === "running").length} running · {active.filter(
-          (j) => j.status === "queued",
-        ).length} queued</span
-      ><span class="inline-flex items-center gap-1.5"
-        ><Monitor size={13} />{data.activeDesktops ?? 0} active desktops</span
-      >
-    </p>
-    <p class="mt-1 text-xs text-base-content/75">
+<section class="scroll-mt-24" aria-labelledby="activity-title">
+  <div class="mb-3 flex items-baseline justify-between gap-3">
+    <h2 id="activity-title" class="text-sm font-semibold">Live activity</h2>
+    <p class="text-xs text-base-content/60">
       {$adminUpdated
         ? `Updated ${relative(new Date($adminUpdated).toISOString(), $now)}`
-        : "Waiting for a successful update"}
+        : "Waiting for an update"}
     </p>
-    {#if stale}<p class="mt-2 text-sm text-warning" role="status">
-        Activity may be stale. Waiting for a successful update.
-      </p>{/if}
   </div>
-  <fieldset class="flex flex-wrap gap-1 rounded-field bg-base-200 p-1">
+  {#if stale}<p class="mb-3 text-sm text-warning" role="status">
+      Activity may be stale. Waiting for a successful update.
+    </p>{/if}
+  <fieldset class="flex gap-1 rounded-field bg-base-200 p-1">
     <legend class="sr-only">Activity filter</legend>
-    <button
-      class="btn btn-sm min-h-11 flex-1 gap-1 px-2 text-xs lg:min-h-8"
-      class:btn-primary={filter === "active"}
-      class:btn-ghost={filter !== "active"}
-      aria-pressed={filter === "active"}
-      onclick={() => (filter = "active")}
-      >{#if filter === "active"}<Check
-          size={13}
-          aria-hidden="true"
-        />{/if}Active ({active.length})</button
-    >
-    <button
-      class="btn btn-sm min-h-11 flex-1 gap-1 px-2 text-xs lg:min-h-8"
-      class:btn-primary={filter === "failed"}
-      class:btn-ghost={filter !== "failed"}
-      aria-pressed={filter === "failed"}
-      onclick={() => (filter = "failed")}
-      >{#if filter === "failed"}<Check size={13} aria-hidden="true" />{/if}<span
-        class="whitespace-nowrap">Needs attention</span
-      >
-      <span
-        class="rounded-selector px-1 tabular-nums"
-        class:bg-error={failed.length > 0}
-        class:text-error-content={failed.length > 0}>({failed.length})</span
-      ></button
-    >
-    <button
-      class="btn btn-sm min-h-11 gap-1 px-2 text-xs lg:min-h-8"
-      class:btn-primary={filter === "all"}
-      class:btn-ghost={filter !== "all"}
-      aria-pressed={filter === "all"}
-      onclick={() => (filter = "all")}
-      >{#if filter === "all"}<Check
-          size={13}
-          aria-hidden="true"
-        />{/if}Recent</button
-    >
+    {#each [["active", "Active", active.length], ["failed", "Needs attention", failed.length], ["all", "Recent", -1]] as [value, label, count]}<button
+        class={[
+          "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--radius-field)-2px)] px-2 text-xs whitespace-nowrap lg:min-h-8",
+          filter === value
+            ? "bg-base-300 font-medium text-base-content"
+            : "text-base-content/70 hover:text-base-content",
+        ]}
+        aria-pressed={filter === value}
+        onclick={() => (filter = value as string)}
+        >{label}{#if (count as number) >= 0}{" "}<span
+            class={[
+              "rounded-selector px-1 tabular-nums",
+              value === "failed" && (count as number) > 0
+                ? "bg-error text-error-content"
+                : "",
+            ]}>({count})</span
+          >{/if}</button
+      >{/each}
   </fieldset>
-  {#if failed.length && filter !== "failed"}<div
-      class="mt-3 flex flex-wrap items-center gap-2 text-sm"
-    >
-      <TriangleAlert size={15} class="text-error" aria-hidden="true" />
-      <p class="flex-1">
-        {failed.length}
-        {failed.length === 1 ? "operation needs" : "operations need"} attention.
-      </p>
-      <button
-        class="btn btn-sm min-h-11 btn-ghost text-xs lg:min-h-8"
-        onclick={() => (filter = "failed")}>View failures</button
-      >
-    </div>{/if}
   {#if feedback}<p
       class="mt-3 break-words text-sm"
       class:text-error={feedback.error}
@@ -185,31 +130,29 @@
     >
       {feedback.message}
     </p>{/if}
-  <ul
-    class="mt-3 divide-y divide-base-content/10 border-t border-base-content/10"
-  >
+  <ul class="mt-2 divide-y divide-base-content/8">
     {#each visible as job (job.id)}<li class="py-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="text-sm font-medium">{jobName(job.kind)}</span><Status
             status={job.status}
           />
         </div>
-        <p class="mt-1 break-words text-sm">
+        <p class="mt-0.5 break-words text-sm text-base-content/70">
           {target(job)}
         </p>
         {#if job.kind === "build"}{@const template = data.templates.find(
             (t) => t.id === job.target,
           )}{#if template}<p
-              class="mt-1 text-xs tabular-nums text-base-content/75"
+              class="mt-1 text-xs tabular-nums text-base-content/60"
             >
               {template.imagesReady} / {template.imagesTotal} images ready
             </p>{/if}{:else if job.kind === "prepare" && job.target === data.meeting?.id}<p
-            class="mt-1 text-xs tabular-nums text-base-content/75"
+            class="mt-1 text-xs tabular-nums text-base-content/60"
           >
             {data.teams.filter((t) => t.status === "ready").length} / {data
               .teams.length} team labs ready
           </p>{/if}
-        <p class="mt-1 text-xs text-base-content/75">
+        <p class="mt-1 text-xs text-base-content/60">
           {job.started
             ? `Started ${relative(job.started, $now)}`
             : `Queued ${relative(job.created, $now)}`}
@@ -227,7 +170,7 @@
         {#if job.error}<p
             class={[
               "mt-2 break-words text-sm",
-              job.needsAttention ? "text-error" : "text-base-content/75",
+              job.needsAttention ? "text-error" : "text-base-content/60",
             ]}
           >
             {job.error === "context canceled"
@@ -246,20 +189,19 @@
           >{:else if job.retryBlocked}<p class="mt-2 text-sm leading-relaxed">
             {job.retryBlocked}
           </p>{/if}
-      </li>{:else}<li class="py-5 text-sm text-base-content/75">
+      </li>{:else}<li class="py-6 text-center text-sm text-base-content/60">
         {filter === "active"
-          ? "No operations running or queued."
+          ? "Nothing running."
           : filter === "failed"
-            ? "No failed operations."
+            ? "No failures."
             : "No operations yet."}
       </li>{/each}
   </ul>
   {#if filter === "all" && matching.length}<div
       class="mt-3 flex flex-wrap items-center gap-2"
     >
-      <p class="text-xs text-base-content/75">
-        Showing {visible.length} of {matching.length} recent operations in retained
-        history.
+      <p class="text-xs text-base-content/60">
+        Showing {visible.length} of {matching.length}
       </p>
       {#if visible.length < matching.length}<button
           class="btn btn-sm btn-ghost min-h-11"

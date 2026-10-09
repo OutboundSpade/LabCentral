@@ -338,19 +338,15 @@ try {
     // Catalog: signed-in home without a live meeting.
     await page.goto(app + "/");
     await page.waitForURL(app + "/labs/");
-    await page.getByRole("navigation", {name:"Lab catalog views"}).getByRole("link", {name:"Practice labs",exact:true}).click();
-    await page.waitForURL(app + "/labs/?view=practice");
     await page.getByRole("heading", { name: "Practice labs", exact: true }).waitFor();
     await page.getByText("2 h 30 m", { exact: true }).waitFor();
-    await page.getByRole("link", { name: "Resume lab", exact: true }).waitFor();
+    await page.getByRole("link", { name: "Continue Network mapping", exact: true }).waitFor();
+    await page.getByText("Instructor-led", { exact: true }).waitFor();
     await page.getByLabel("Search labs").fill("network");
     await page.getByText("1 of 2 labs shown", { exact: true }).waitFor();
     await page.getByLabel("Search labs").fill("no such lab");
-    await page.getByRole("button", { name: "Clear filters" }).click();
-    await page.getByText("2 published labs", { exact: true }).waitFor();
-    await page.getByRole("radio", { name: "Instructor-led" }).check();
-    await page.getByText("1 of 2 labs shown", { exact: true }).waitFor();
-    await page.getByRole("radio", { name: "All" }).check();
+    await page.getByRole("button", { name: "Clear search" }).click();
+    await page.getByRole("link", { name: "Open Web recovery", exact: true }).waitFor();
     assert(await fits(page), "catalog overflow");
     if (evidence)
       await page.screenshot({ path: `${evidence}/labs-${width}.png`, fullPage: true });
@@ -395,12 +391,13 @@ try {
     assert(await verify.isDisabled(), "verification enabled without a cloud run");
 
     // Local download is a cookie-authenticated link, not a fetch.
-    await page.getByRole("tab", { name: "Local" }).click();
+    await page.getByRole("button", { name: "Run locally" }).click();
     assert.equal(
-      await page.getByRole("link", { name: "Download lab (.tar.gz)" }).getAttribute("href"),
+      await page.getByRole("dialog").getByRole("link", { name: "Download lab (.tar.gz)" }).getAttribute("href"),
       "/api/learning/web/download",
     );
-    await page.getByRole("tab", { name: "Cloud" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
 
     // Paid resources start only after an explicit confirmation.
     await page.getByRole("button", { name: "Start cloud workspace" }).click();
@@ -473,8 +470,9 @@ try {
     });
     admin = true;
     await page.goto(app + "/admin/labs/");
-    await page.getByRole("heading", { name: "Lab publishing", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Published labs", exact: true }).waitFor();
     await page.getByRole("navigation", { name: "Administration" }).waitFor();
+    await page.getByRole("button", { name: "New lab" }).click();
     await page.getByLabel("Title", { exact: true }).fill("Log review");
     await page.getByLabel("Stage title").fill("Read the log");
     await page.getByLabel("Instructions").fill("Open `/var/log/auth.log`.");
@@ -517,7 +515,7 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
     console.log(
-      `PASS learning (local mocks): catalog filters, answers, confirmed cloud start/stop, desktop ticket, verified action, instructor release, session isolation, publishing (${width})`,
+      `PASS learning (local mocks): catalog search, answers, confirmed cloud start/stop, desktop ticket, verified action, instructor release, session isolation, publishing (${width})`,
     );
   }
 } finally {
