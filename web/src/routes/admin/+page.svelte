@@ -10,6 +10,7 @@
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import PageHeader from "$lib/PageHeader.svelte";
+  import AdminNav from "$lib/AdminNav.svelte";
   import {
     Clock,
     Play,
@@ -23,7 +24,7 @@
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import Notice from "$lib/Notice.svelte";
-  import { api, adminView, refreshAdmin, date } from "$lib/api";
+  import { api, adminView, refreshAdmin, date, session } from "$lib/api";
   let data = $derived($adminView);
   let error = $state("");
   let busy = $state(false);
@@ -35,15 +36,40 @@
   let extension = $state(1);
   let success = $state("");
   let createdID = $state("");
+  let selectionRequest = $state<string | null>(null);
+  let lostRevision = $state(false);
+  const requestedRevision = $derived(page.url.searchParams.get("template") ?? "");
   const builtRevisions = $derived(
-    (data?.templates.filter((t) => t.built) ?? []).toSorted(
+    (data?.templates.filter((t) => t.built && !t.removing) ?? []).toSorted(
       (a, b) =>
         Date.parse(b.committedAt ?? b.importedAt ?? "") -
         Date.parse(a.committedAt ?? a.importedAt ?? ""),
     ),
   );
+  const selectedRevision = $derived(builtRevisions.find((t) => t.id === template));
+  const revisionNotice = $derived(
+    !selectedRevision && data
+      ? lostRevision
+        ? "The selected revision is no longer available for a meeting. Explicitly choose an available built revision."
+        : requestedRevision
+          ? data.templates.some((t) => t.id === requestedRevision && !t.built && !t.removing)
+            ? "The requested revision needs its images built before a meeting can use it. Build this revision in template administration, or explicitly choose another built revision."
+            : "The requested revision is unavailable for a meeting. It may have been removed or be awaiting removal. Explicitly choose an available built revision."
+          : ""
+      : "",
+  );
   $effect(() => {
-    if (!template && builtRevisions.length) template = builtRevisions[0].id;
+    if (!data) return;
+    if (selectionRequest !== requestedRevision) {
+      selectionRequest = requestedRevision;
+      lostRevision = false;
+      template = requestedRevision
+        ? builtRevisions.find((t) => t.id === requestedRevision)?.id ?? ""
+        : builtRevisions[0]?.id ?? "";
+    } else if (template && !selectedRevision) {
+      template = "";
+      lostRevision = true;
+    }
   });
   const joined = $derived(data?.joinedStudents ?? 0);
   const seats = $derived(
@@ -149,9 +175,10 @@
     !!data?.templates.find((t) => t.id === data.meeting?.template)?.instructor
       ?.checks.length,
   );
+  const hasExercises = $derived(!!(data?.exercises?.length || data?.templates.find(t => t.id === data.meeting?.template)?.instructor?.stages?.length));
   const tabs = $derived([
     { id: "teams", label: "Teams", icon: Users },
-    ...(data?.exercises?.length
+    ...(hasExercises
       ? [{ id: "exercises", label: "Exercises", icon: Shield }]
       : []),
     ...(hasChecks
@@ -181,6 +208,7 @@
 </script>
 
 <svelte:head><title>Manage meeting · LabCentral</title></svelte:head>
+{#if $session?.user.admin}<AdminNav />{/if}
 <PageHeader title="Manage meeting" />
 <Guard admin
   ><Notice message={error} dismissible /><PollStatus />
@@ -195,6 +223,10 @@
             class="max-w-xl"
             onsubmit={(e) => {
               e.preventDefault();
+              if (!selectedRevision) {
+                error = "Choose an available built template revision.";
+                return;
+              }
               void run("/api/admin/meeting", {
                 name,
                 template,
@@ -221,6 +253,7 @@
                 class="select select-sm min-h-11 w-full"
                 bind:value={template}
                 required
+                aria-describedby={revisionNotice ? "revision-notice" : undefined}
                 ><option value="" disabled>Choose a built revision</option
                 >{#each builtRevisions as t}<option value={t.id}
                     >{t.name} · {t.commitTitle || "Imported revision"} · {t.commit.slice(
@@ -231,6 +264,7 @@
                       : "Date unavailable"}</option
                   >{/each}</select
               >
+              {#if revisionNotice}<p id="revision-notice" class="mt-2 text-sm leading-relaxed text-warning" role="status">{revisionNotice} <a class="link" href="/admin/templates/">Template administration</a></p>{/if}
               <div class="mt-3 grid gap-4 sm:grid-cols-3">
                 <div>
                   <label class="label mb-2" for="team-count"
@@ -291,14 +325,14 @@
                 ends. Cloud compute and storage incur charges.
               </p>
               <button
-                disabled={busy || !template}
+                disabled={busy || !selectedRevision}
                 class="btn btn-sm min-h-11 btn-primary mt-3 w-fit"
                 >{#if busy}<span class="loading loading-spinner loading-xs"
                   ></span>{:else}<Plus size={16} />{/if}Create meeting</button
               >
             </fieldset>
           </form>
-          {#if !data.templates.some((t) => t.built)}<p class="mt-4 text-sm">
+          {#if !builtRevisions.length}<p class="mt-4 text-sm">
               First, <a class="link" href="/admin/templates/"
                 >build a template</a
               >.
@@ -514,7 +548,7 @@
               </table>
             </div>
           </div>
-          {#if data.exercises?.length}<div
+          {#if hasExercises}<div
               role="tabpanel"
               id="meeting-panel-exercises"
               aria-labelledby="meeting-tab-exercises"
@@ -531,8 +565,12 @@
               <Scoreboard {data} onchange={load} />
             </div>{/if}
         </section>
+        <!-- On short laptop screens the pinned activity feed scrolls on its own. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <aside
-          class="min-w-0 lg:sticky lg:top-6 lg:border-l lg:border-base-content/10 lg:pl-6"
+          class="min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:border-l lg:border-base-content/10 lg:pr-1 lg:pl-6"
+          aria-labelledby="activity-title"
+          tabindex="0"
         >
           <Activity {data} onchange={refreshAdmin} />
         </aside>

@@ -337,7 +337,7 @@ standalone cross-platform release.
 ## Proposals after the foundation
 
 Registries, additional hosted platforms, Windows, routed/multiple NIC topologies,
-classroom governance beyond meeting/team membership, and EC2 Image Builder are deferred. They should use the public library without putting product policy
+classroom governance beyond published stages and meeting/team membership, and EC2 Image Builder are deferred. They should use the public library without putting product policy
 into portable lab declarations. These are proposals, not implemented contracts.
 
 ## Hosted team service
@@ -379,10 +379,19 @@ Primary sources, retrieved 2026-09-28:
 
 
 The static UI keeps SvelteKit, the dark-purple daisyUI theme, Instrument Sans and
-Lucide icons. A local SVG L-shaped corner surrounding a central square identifies
-LabCentral in the header and favicon. A compact desktop navigation bar becomes
-role-appropriate bottom navigation on phones. The desktop panel precedes the
+Lucide icons. Its new local SVG mark joins a checkpoint rail to a workspace;
+flat ruled lab rows, quiet surfaces and restrained purple selection connect the
+catalog and guided player. A compact desktop navigation bar becomes
+role-appropriate bottom navigation on phones. Administration has a secondary
+Meeting, Published labs and Templates navigation. The desktop panel precedes the
 handover on narrow screens, while the handover stays on the left on desktop.
+Phone navigation reserves bottom and lateral safe areas; primary touch controls
+remain at least 44 pixels high, and administration uses shorter labels below
+640 pixels. Browser focus scrolling clears the mobile navigation and sticky
+exercise action bar. On short laptop screens the pinned activity feed has its own
+keyboard-accessible scroll area. The desktop lesson panel is 320 pixels wide
+from 1024 pixels and 352 pixels from 1280 pixels, with matching page padding to
+retain room for the remote workspace.
 Administrator meeting tools use keyboard-accessible Teams, Exercises and Scoreboard
 tabs, selected by the URL fragment; panels remain mounted to retain pending state
 and exercise selections. Live activity sits alongside those tools on desktop and
@@ -396,7 +405,8 @@ explains unavailable teams. Primary controls have larger touch targets, flat sec
 reduce visual noise, and purple identifies selection and principal actions. Shared deadline displays
 count down using the browser clock and warn at fifteen
 minutes that workspace files will be deleted. Signed-in home navigation redirects
-to the lab or team list. Team changes require a named confirmation and recheck the
+to the lab or team list during an open meeting, and otherwise to the published
+lab catalog. Team changes require a named confirmation and recheck the
 current membership before submitting. Desktop readiness transitions update the
 page title and an accessible status region; the launch label stays fixed. Desktop
 help describes idle reconnects and browser clipboard behavior. Instructor meeting
@@ -409,7 +419,169 @@ unsaved choice during polling. Exercise selection precedes team selection and a
 sticky action bar; confirmation counts teams and offers a collapsible list.
 Template commit links use a sanitized administrator-only repository URL supplied
 by the API. HTTP authorization, meeting policy, queue claims and native desktop
-behavior remain unchanged.
+behavior remain unchanged for team meetings.
+
+### Published practice labs
+
+The hosted learning layer adds `/labs/`, `/learn/?id=PUBLICATION_ID` and
+`/admin/labs/` to the existing static routes. `/labs/` separates template browsing
+from published practice, with revision detail links at `/labs/?template=TEMPLATE_ID`.
+Authenticated `GET /api/templates` and `GET /api/templates/{id}` return explicit
+public projections: revision metadata, description, student handover, declared
+machine sizes/access, safe stage instructions and IDs eligible for baseline
+practice. They never serialize the private `Template` or `InstructorBundle`.
+The saved `imagesBuilt` flag is informational; reads do not inspect providers,
+and cloud admission still validates readiness. Browsing never provisions guests.
+
+Administrators publish immutable lesson definitions against an imported template
+revision, independently of the current meeting. Version 2 instructor manifests
+own reusable stages. A publication request can supply `stageIDs`; the server
+resolves their instructions, answers, checks and solutions from the pinned bundle
+and snapshots the chosen definitions. A request cannot combine stage IDs with
+manual definitions. Template-stage publications are self-paced and exclude
+instructor checkpoints and stages with `exerciseID`, because personal allocations
+currently start from baseline images without applying a break. The UI selects
+stages in template order; the API preserves the validated supplied order.
+Legacy manually authored definitions and instructor-paced publications remain
+readable and retain their behavior; no stored progress or revision is rewritten.
+
+A publication has a title, description, estimated duration,
+self-paced or instructor pacing, and 1–20 ordered stages. Each stage uses a
+server-matched answer, a check from that pinned revision's private instructor
+bundle, or an instructor checkpoint. Validation and source planning precede
+publication; arbitrary browser-supplied commands and playbooks are unsupported.
+Answer matching trims surrounding whitespace and otherwise preserves case.
+Accepted answers, check references and solution text stay in administrator records
+and views; ordinary student DTOs contain instructions, prompts, completion rules,
+an optional solution-availability flag and their own progress. An authenticated,
+CSRF-checked `POST /api/learning/{id}/solution` deliberately reveals an author's
+solution from that publication snapshot only for the student's current or
+completed released stage. It does not change progress or run checks. Unknown,
+future, unreleased, solution-less and unpublished stages are denied. The player
+renders solution Markdown with raw HTML disabled and discards revealed text on
+stage, publication or identity changes. Downloads and desktop lesson reads do
+not contain solution text. Correct answers, check results and progression are persisted. User
+locks prevent answer replay from advancing twice, and check completion commits
+its result and progression in one transaction. Instructor publications initially
+release one stage; release is monotonic and completion cannot bypass an unreleased
+stage. New content requires a new publication instead of changing existing progress.
+Student instructions and the stage outline remain visible; release gates completion.
+Unpublishing hides lessons and denies new starts/downloads without removing the
+history or preventing cleanup of an existing allocation.
+
+Authenticated downloads contain only the retained portable source and a separate
+student instruction document. Instructor files, accepted answers, provider
+configuration and credentials are excluded. Local operation means the existing
+CLI with a student-owned configured AWS or Proxmox environment; no laptop
+hypervisor, Docker or QEMU adapter is implemented. Cloud action verification is
+not claimed for local runs. Students can submit answers through the hosted UI
+while following the downloaded lesson; local infrastructure cleanup is the
+operator's responsibility.
+
+Personal cloud practice is independent of team membership and meeting cleanup.
+The pinned revision must have built images and a desktop-enabled `workstation`.
+One active personal allocation is allowed per student across all publications.
+A SQLite transaction records quota reservation, a fresh exact library instance
+identity and a `practice-prepare` job before native mutation. Preparation validates
+and reuses that identity on recovery, without treating a lost response as a
+failed create. Native preparation inherits the saved allocation deadline;
+interruption at expiry persists cleanup for that same identity even if policy
+revalidation is busy. `practice-end` retains cleanup intent through uncertainty and
+uses the reserved cleanup lane. Pending allocations protect shared image cache
+keys before a native instance exists. Scheduler claims serialize preparation,
+guest verification and destruction for a given allocation while preserving
+independent meeting work. Meeting destruction skips personal desktop records.
+
+`hosted.Config.weeklyCloudMinutes` defaults to 180 per student, with UTC Monday
+resets. Usage is allocation wall time from reservation through confirmed native
+destruction, including provisioning, failures and pending cleanup. Each week's
+usage includes only its overlap with those intervals, rounded up to the next
+second. Admission reserves at most the remaining quota and ends at the next UTC
+week boundary; a reset cannot admit a second run while old cleanup is uncertain.
+An ending allocation immediately loses desktop authorization. Deadline intent
+is persisted and retried after worker restart; the host must run to perform
+cleanup, so an offline control host can leave resources and charges active.
+Stopping destroys cloud workspace files; progress survives separately.
+
+Quota reads use a covering `(user_id,ended,created)` index and separate searches
+for pending cleanup and recent ended intervals. A conservative two-date lookback
+retains fractional UTC-week boundaries and supported timestamp offsets; exact
+overlap and rounding remain in Go. Template catalog reads join pinned metadata
+without copying or base64-decoding source/program files. Public fields still pass
+through explicit DTO projections. Practice catalogs decode publication summaries
+and batch only the authenticated user's progress keys, at most 128 per query.
+No identity, progress or native readiness is cached across requests.
+
+The subsequent backend review passed authorization/persistence/failure regressions
+and race checks. Local fixtures measured quota reads with 10,000 expired personal
+allocations at 10.2–10.6 ms before and 27.8–28.3 µs after; sixteen large template
+revisions reduced allocations from about 31 MB to 105 KB per catalog request.
+Learning catalog reads batch progress instead of querying once per publication.
+Three blocked personal preparations run concurrently while student reads/answers
+remain responsive, and the fourth waits for the existing bulk budget. These
+changes are not part of the preceding deployed release's live qualification.
+Unpaginated catalogs, per-poll lesson planning and administrator/native inventory
+reads remain scaling limits; these local fixtures do not qualify a larger cohort.
+
+Released action stages in ready personal labs are observed approximately every
+20 seconds through the existing bounded guest-local Ansible launcher. Only a
+confirmed successful check advances progress; failures preserve the stage and
+unavailable results never count as passes. The worker rechecks allocation, pinned
+source and current stage before execution and rechecks allocation expiry when
+saving a passing result. Students may also queue a check explicitly. Desktop
+launches use the existing separate-origin, single-use-ticket DCV transport with
+allocation ownership in place of meeting membership. The desktop origin exposes
+the owner's lesson through authenticated `/lesson` reads and answer/check writes;
+writes require its exact Origin, JSON content type and a custom header. Every
+lesson request also binds to the run ID rendered into that desktop window, so a
+cookie replaced by another desktop tab cannot redirect an answer to another lab. It serves
+the same built UI styles locally, without infrastructure credentials or third-party
+assets. This supports a lesson panel beside the actual remote desktop; the static
+player also provides local-run guidance and cloud lifecycle controls.
+
+These learning and quota changes have local authorization, persistence, race and
+failure-case coverage. The requested hosted maintenance deployment on 2026-10-08
+passed live acceptance with real administrator/student OIDC sign-in and one
+personal AWS allocation independent of the existing ended meeting. A rendered
+native DCV session accepted guest keyboard input and sidebar answers, automatically
+advanced a pinned guest action check after instructor release, completed the
+instructor checkpoint and retained completed progress on reconnect. Both pacing
+modes, private student DTOs, portable download filtering and charged quota were
+checked through the live service. Desktop and mobile lesson layouts were inspected.
+Larger personal cohorts, full three-hour exhaustion and UTC-week reset remain
+unqualified live; prior meeting load acceptance does not qualify personal load.
+Native cleanup of the exact owned test allocation was confirmed. Temporary
+publications were unpublished and test identities removed; existing meeting/team
+records were preserved.
+The subsequent template explorer and version 2 stage extension passed local
+strict-import, authorization, cross-student solution-access, snapshot persistence
+and hosted race checks, along with the Go suite, generated-contract verification,
+UI type/build checks and browser fixtures. Template exploration, stage publishing
+and freely selectable meeting stages were inspected at 1366×768, 1024×768 and
+390/360-pixel phone widths. Browser regressions cover retained stage selection on
+same-session refresh, unlinked instructor breaks, stage-only meetings, unavailable
+revision pins without silent substitution, and late solution/template responses
+after navigation or identity changes. The extension and Example Branch version 2
+migration were deployed through verified hosted maintenance on 2026-10-09. Real
+administrator/student OIDC sessions verified template card/search/detail/stage
+exploration and pinned publication authoring at desktop and phone widths, private
+DTO/download filtering, current/completed solution reveals, future/unknown/CSRF
+denials and unchanged progress after reveal. A temporary owned personal AWS lab
+completed all six authored baseline stages using real guest checks. Rendered DCV,
+actual guest keyboard input, workstation web access, charged quota and reconnect
+with retained progress/files passed. The six-stage Example Branch baseline
+publication remains available; retained meetings and prior publications keep
+their original revisions. The exact temporary personal allocation's provider
+cleanup was confirmed, its acceptance publication was unpublished and both
+temporary OIDC identities were deleted with confirmed 404 reads. New
+incident-stage meeting controls retain local
+browser coverage and prior acceptance of the unchanged guest programs; no new
+live meeting incident run or randomized execution is claimed.
+The 2026-10-09 proportion refinements passed type/build, affected browser flows
+and negative keyboard-focus regressions, plus live sign-in and a new owned
+personal desktop lesson flow. Rendered native DCV was inspected at 1024×768,
+1366×768 and 390×900, including mobile lesson collapse and guest keyboard input.
+Instructor progression, automatic guest verification and reconnect were rechecked.
 
 The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
 memberships, template revisions, jobs and desktop ownership. SQLite transactions
@@ -454,6 +626,10 @@ at most two image-build jobs. Guest work (checks and exercises) has two separate
 slots, so bulk saturation cannot consume its capacity. A sixth slot is reserved
 for meeting destruction or authorization cleanup. Resource claims still apply
 across all lanes; same-team checks and exercises remain exclusive.
+Desktop revalidation performs durable reads and cleanup enqueueing outside the
+shared relay/ticket mutex. Authorization cleanup continues across independent
+record failures, retains uncertain intents and returns their combined error;
+one unreachable guest cannot prevent later records from being visited.
 Queued dependencies, start/finish times,
 per-template image counts, team readiness and active desktops are visible in the
 administrator's live activity view, polled every two seconds.
@@ -514,7 +690,7 @@ documents and desktops. This targeted reset does not promise to repair arbitrary
 package or SSH-daemon damage. No generic remote-command HTTP endpoint or author
 execution on the control host is introduced.
 
-New templates may supply `instructor.yaml` (version 1) and an `instructor/` folder
+New templates may supply `instructor.yaml` (version 1 or 2) and an `instructor/` folder
 in their pinned repository revision. The hosted importer extracts these **before**
 loading portable source. Notes, walkthroughs and guest programs are stored separately;
 they never enter native images, portable build snapshots or student API responses.
@@ -530,6 +706,44 @@ field, duplicate-key, alias, file, size and machine-reference validation precede
 import. Instructor notes and manifest data are never sent to a guest; only programs
 and selected assets are transferred. Students administer guests and can inspect
 program effects; this does not make those programs a guest-side security boundary.
+
+Version 2 additionally supports up to twenty template-owned `stages`, each with
+`id`, `title`, `instructions`, `kind`, `prompt`, optional `exerciseID`, and private
+`answer`, `checkID` and `solution`. Version 1 cannot contain stages. Answer stages
+require an accepted answer and no check; action stages require a pinned check
+and no answer; instructor checkpoints contain neither. Exercise and check
+references must resolve within the same bundle. IDs, text sizes and combinations
+are validated before import or publication. Teaching metadata stays outside the
+portable `lab.yaml` contract and native image digest; the Git commit and template
+ID pin the full private bundle. New stage content requires a new source revision.
+
+Example Branch's version 2 teaching revision owns nine stages: six baseline
+discovery/service-verification stages eligible for personal practice and three
+recovery stages linked to its existing stopped-web, database-port and
+FTP-root/defacement exercises. All stages contain private reference solutions.
+The migration changes only instructor metadata and private repository guidance;
+portable source identity, four native image cache keys and all guest programs,
+reset steps, exercises, checks and assets remain unchanged. It imports as a new
+pinned revision and reuses existing native images; retained meetings and
+publications keep their original revisions and snapshots.
+
+Meeting stage selection is a local instructor viewing choice, without a release
+gate or guest mutation. Existing durable exercise, reset and service-check jobs
+remain the execution mechanism. Instructors can freely revisit stage instructions
+and solutions, apply a linked break to ready teams, or run meeting checks. A
+template's unlinked break definitions remain independently selectable; adding
+stages does not remove existing instructor operations. A
+stage's `checkID` does not turn the full meeting service scoreboard into a
+stage-specific check. Stage-only templates can still provide a walkthrough even
+without break definitions.
+
+Randomized practice remains unimplemented. The bounded extension is an
+author-declared variant list referencing these same stages and existing guest
+actions, rather than arbitrary generated attacks or action combinations. It
+requires validated per-attempt choices, a retained private solution and progress,
+and persisted exact choices before guest effects; a seed alone is insufficient
+for recovery. Repeat provisioning or lost guest responses must not rerandomize
+an attempt. No current catalog control implies this execution capability.
 
 Each selected team's exercise runs its pinned reset steps before applying its break.
 Fixed guest launchers stage private temporary files and invoke pinned guest-local

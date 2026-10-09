@@ -34,6 +34,9 @@ type Service struct {
 }
 
 func New(ctx context.Context, c Config, e Engine) (*Service, error) {
+	if c.WeeklyCloudMinutes < 0 || c.WeeklyCloudMinutes > 10080 {
+		return nil, fmt.Errorf("weeklyCloudMinutes must be 1–10080, or zero for the 180-minute default")
+	}
 	for _, raw := range []string{c.Origin, c.DesktopOrigin, c.Issuer} {
 		u, err := url.Parse(raw)
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
@@ -71,6 +74,21 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/callback", s.callback)
 	mux.HandleFunc("POST /auth/logout", s.authorized(false, s.logout))
 	mux.HandleFunc("GET /api/me", s.authorized(false, s.overview))
+	mux.HandleFunc("GET /api/templates", s.authorized(false, s.templateCatalog))
+	mux.HandleFunc("GET /api/templates/{id}", s.authorized(false, s.templateExplorer))
+	mux.HandleFunc("GET /api/learning", s.authorized(false, s.learningCatalog))
+	mux.HandleFunc("GET /api/learning/{id}", s.authorized(false, s.learningView))
+	mux.HandleFunc("GET /api/learning/{id}/download", s.authorized(false, s.downloadLearning))
+	mux.HandleFunc("POST /api/learning/{id}/answer", s.authorized(false, s.answerLearning))
+	mux.HandleFunc("POST /api/learning/{id}/solution", s.authorized(false, s.solutionLearning))
+	mux.HandleFunc("POST /api/learning/{id}/check", s.authorized(false, s.checkLearning))
+	mux.HandleFunc("POST /api/learning/{id}/start", s.authorized(false, s.startPractice))
+	mux.HandleFunc("POST /api/learning/{id}/stop", s.authorized(false, s.stopPractice))
+	mux.HandleFunc("POST /api/learning/{id}/access", s.authorized(false, s.launchPractice))
+	mux.HandleFunc("GET /api/admin/learning", s.authorized(true, s.learningAdmin))
+	mux.HandleFunc("POST /api/admin/learning/publish", s.authorized(true, s.publishLearning))
+	mux.HandleFunc("POST /api/admin/learning/release", s.authorized(true, s.releaseLearning))
+	mux.HandleFunc("POST /api/admin/learning/unpublish", s.authorized(true, s.unpublishLearning))
 	mux.HandleFunc("POST /api/team", s.authorized(false, s.join))
 	mux.HandleFunc("POST /api/access", s.authorized(false, s.launch))
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
@@ -267,7 +285,10 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, v Session) {
 	}{true})
 }
 func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	return decodeLimit(w, r, dst, 16<<10)
+}
+func decodeLimit(w http.ResponseWriter, r *http.Request, dst any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if e := d.Decode(dst); e != nil {

@@ -1,44 +1,39 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { LogIn, ShieldCheck } from "@lucide/svelte";
+  import { LogIn, ShieldCheck, RotateCw } from "@lucide/svelte";
   import { session, loading, loadError, refresh } from "./api";
   import Notice from "./Notice.svelte";
+  import EmptyState from "./EmptyState.svelte";
   let { admin = false, children }: { admin?: boolean; children: Snippet } =
     $props();
 </script>
 
-{#if $loading}<div class="flex min-h-48 items-center gap-3" role="status">
+{#if $loading}<div
+    class="flex min-h-48 items-center gap-3 text-sm text-base-content/75"
+    role="status"
+  >
     <span class="loading loading-spinner loading-sm"></span>Loading your
     workspace…
   </div>
 {:else if $loadError && !$session}<Notice message={$loadError} /><button
     class="btn btn-sm min-h-11"
-    onclick={refresh}>Retry</button
+    onclick={refresh}><RotateCw size={15} />Retry</button
   >
-{:else if !$session}<section
-    class="max-w-lg border-t border-base-content/10 py-8"
+{:else if !$session}<EmptyState icon={LogIn} title="Sign in to continue">
+    Use your CDC account to open practice labs, join a team and access your
+    desktop.
+    {#snippet actions()}<a
+        href="/auth/login"
+        data-sveltekit-reload
+        class="btn btn-sm min-h-11 btn-primary"
+        >Continue with CDC ID <LogIn size={16} /></a
+      >{/snippet}
+  </EmptyState>
+{:else if admin && !$session.user.admin}<EmptyState
+    icon={ShieldCheck}
+    title="For meeting administrators"
   >
-    <LogIn size={24} aria-hidden="true" />
-    <h2 class="mt-4 text-lg font-semibold">Sign in to continue</h2>
-    <p class="mt-2 mb-5 text-sm leading-relaxed text-base-content/75">
-      Use your CDC account to join a team and access your lab.
-    </p>
-    <a
-      href="/auth/login"
-      data-sveltekit-reload
-      class="btn btn-sm min-h-11 btn-primary"
-      >Continue with CDC ID <LogIn size={16} /></a
-    >
-  </section>
-{:else if admin && !$session.user.admin}<section
-    class="border-t border-base-content/10 py-8"
-  >
-    <ShieldCheck size={24} />
-    <h2 class="mt-4 text-lg font-semibold">For meeting administrators</h2>
-    <p class="mt-2 text-sm text-base-content/75">
-      You can access your team's workspace from <a class="link" href="/lab/"
-        >Your lab</a
-      >.
-    </p>
-  </section>
+    You can practice from <a class="link" href="/labs/">Labs</a> or open your
+    team's workspace from <a class="link" href="/lab/">Your lab</a>.
+  </EmptyState>
 {:else}{@render children()}{/if}

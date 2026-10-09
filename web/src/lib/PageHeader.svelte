@@ -10,7 +10,7 @@
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
     <h1 class="text-xl font-semibold tracking-tight">{title}</h1>
-    {#if description}<p class="mt-1 text-sm text-base-content/75">
+    {#if description}<p class="mt-1 max-w-[72ch] text-sm leading-relaxed text-base-content/75">
         {description}
       </p>{/if}
   </div>

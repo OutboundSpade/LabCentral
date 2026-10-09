@@ -1,7 +1,8 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
-  import { Users, ArrowRight, Check, LogOut, Clock } from "@lucide/svelte";
+  import { Users, ArrowRight, Check, LogOut, RotateCw } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
+  import EmptyState from "$lib/EmptyState.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
   import Notice from "$lib/Notice.svelte";
   import Status from "$lib/Status.svelte";
@@ -87,7 +88,10 @@
 
 <svelte:head><title>Choose your team · LabCentral</title></svelte:head>
 <div class="max-w-3xl">
-  <PageHeader title="Choose your team" />
+  <PageHeader
+    title="Choose your team"
+    description="Teams share one meeting lab. Each member gets a separate desktop workspace."
+  />
   <Guard>
     {#if $session?.meeting && !["ended", "ending"].includes($session.meeting.status)}
       <h2 class="mb-3 text-sm font-medium">{$session.meeting.name}</h2>
@@ -160,32 +164,33 @@
           >
         </div>{/if}
     {:else}
-      <section class="border-t border-base-content/10 py-8">
-        <Users size={24} aria-hidden="true" />
-        <h2 class="mt-4 text-lg font-semibold">
-          {$session?.meeting?.status === "ending"
-            ? "This meeting is ending"
-            : $session?.meeting?.status === "ended"
-              ? "This meeting has ended"
-              : "No meeting is open yet"}
-        </h2>
-        <p class="mt-2 text-sm">
-          {$session?.meeting?.status === "ending"
-            ? "Lab cleanup is in progress. Teams are no longer available."
-            : $session?.meeting?.status === "ended"
-              ? "Lab access has ended. Join the next meeting for a fresh workspace."
-              : "Teams appear when a meeting opens."}
-        </p>
-        <Notice message={error} dismissible /><button
-          class="btn btn-sm min-h-11 mt-5"
-          onclick={checkAgain}>Check again</button
-        >{#if checked}<p
-            class="mt-3 text-xs text-base-content/75"
-            role="status"
-          >
-            Checked at {checked}
-          </p>{/if}
-      </section>
+      <EmptyState
+        icon={Users}
+        title={$session?.meeting?.status === "ending"
+          ? "This meeting is ending"
+          : $session?.meeting?.status === "ended"
+            ? "This meeting has ended"
+            : "No meeting is open yet"}
+      >
+        {$session?.meeting?.status === "ending"
+          ? "Lab cleanup is in progress. Teams are no longer available."
+          : $session?.meeting?.status === "ended"
+            ? "Lab access has ended. Join the next meeting for a fresh workspace."
+            : "Teams appear when a meeting opens."}
+        Practice labs stay available in the meantime.
+        <Notice message={error} dismissible />
+        {#snippet actions()}<button
+            class="btn btn-sm min-h-11"
+            onclick={checkAgain}><RotateCw size={15} />Check again</button
+          ><a class="btn btn-sm btn-ghost min-h-11" href="/labs/"
+            >Practice labs<ArrowRight size={15} /></a
+          >{#if checked}<p
+              class="basis-full text-xs text-base-content/75"
+              role="status"
+            >
+              Checked at {checked}
+            </p>{/if}{/snippet}
+      </EmptyState>
     {/if}
   </Guard>
 </div>

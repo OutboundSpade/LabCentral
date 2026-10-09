@@ -27,6 +27,22 @@ func (s *Service) retryDisposition(ctx context.Context, j Job) (blocked string, 
 		return "Use the latest failed attempt.", false, nil
 	}
 	switch j.Kind {
+	case "practice-prepare", "practice-end":
+		run, err := s.Store.practice(ctx, j.Target)
+		if err != nil {
+			return "", true, err
+		}
+		if run.Status == "ended" {
+			return "This cloud run has been cleaned up.", false, nil
+		}
+		if j.Kind == "practice-prepare" && (run.Status == "ending" || !run.Expires.After(time.Now())) {
+			return "Cloud time ended. Stop this run to finish cleanup.", false, nil
+		}
+		if j.Kind == "practice-prepare" && run.Status == "ready" {
+			return "This cloud run is already ready.", false, nil
+		}
+	case "learning-check":
+		return "Action checks are retried from the current lab stage.", false, nil
 	case "build", "remove-images":
 		var latest string
 		err = s.Store.Get(ctx, "template-operation", j.Target, &latest)

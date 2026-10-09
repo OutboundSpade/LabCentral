@@ -1,0 +1,265 @@
+package hosted
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	lc "github.com/OutboundSpade/LabCentral/v2"
+	"net/http"
+	"time"
+)
+
+func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
+	var t Template
+	var src lc.Source
+	if s.Store.Get(ctx, "template", id, &t) != nil || !t.Built || t.Removing {
+		return fmt.Errorf("The pinned images must be built before cloud practice.")
+	}
+	if s.Store.Get(ctx, "source", id, &src) != nil {
+		return fmt.Errorf("Pinned source unavailable.")
+	}
+	plan, err := lc.PlanLab(src, s.env, nil)
+	if err != nil {
+		return err
+	}
+	for _, m := range plan.Machines {
+		if m.Name == "workstation" && lc.Contains(m.Spec.Access, "desktop") {
+			return nil
+		}
+	}
+	return fmt.Errorf("Cloud practice requires a workstation with desktop access.")
+}
+func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Session) {
+	p, err := s.publication(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, 404, err.Error())
+		return
+	}
+	unlock := s.lockUser(v.User.ID)
+	defer unlock()
+	// Coordinate with image-removal eligibility and publication updates. No
+	// infrastructure mutation occurs in this request.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err = s.publication(r.Context(), p.ID)
+	if err != nil {
+		writeError(w, 404, err.Error())
+		return
+	}
+	if err = s.practiceTemplateReady(r.Context(), p.Template); err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	run, err := s.Store.reservePractice(r.Context(), v.User.ID, p.ID, s.weeklyMinutes(), time.Now().UTC())
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	writeJSON(w, 202, run)
+}
+func (s *Service) stopPractice(w http.ResponseWriter, r *http.Request, v Session) {
+	run, err := s.Store.activePractice(r.Context(), v.User.ID)
+	if err != nil {
+		writeError(w, 503, "Cloud allocation information is unavailable.")
+		return
+	}
+	if run == nil || run.LabID != r.PathValue("id") {
+		writeError(w, 409, "You have no active cloud run for this lab.")
+		return
+	}
+	ended, err := s.Store.endPractice(r.Context(), run.ID, v.User.ID)
+	if err != nil {
+		writeError(w, 503, "Cleanup intent could not be saved. Please retry.")
+		return
+	}
+	s.cancelPracticeJobs(run.ID)
+	writeJSON(w, 202, ended)
+}
+func (s *Service) cancelPracticeJobs(id string) {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	for _, job := range s.activeJobs {
+		if job.job.Kind != "practice-end" {
+			for _, c := range job.claims {
+				if c.key == "practice:"+id {
+					job.cancel()
+					break
+				}
+			}
+		}
+	}
+}
+func (s *Service) enforcePracticeDeadlines(ctx context.Context) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT id,user_id,expires,status FROM practice_runs WHERE status!='ended'`)
+	if err != nil {
+		return
+	}
+	type dueRun struct{ id, user string }
+	due := []dueRun{}
+	for rows.Next() {
+		var id, user, expiry, status string
+		if rows.Scan(&id, &user, &expiry, &status) != nil {
+			continue
+		}
+		t, e := time.Parse(time.RFC3339Nano, expiry)
+		if e == nil && (status == "ending" || !t.After(time.Now())) {
+			due = append(due, dueRun{id, user})
+		}
+	}
+	rows.Close()
+	for _, p := range due {
+		if _, err = s.Store.endPractice(ctx, p.id, p.user); err == nil {
+			s.cancelPracticeJobs(p.id)
+		}
+	}
+}
+func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
+	run, err := s.Store.practice(ctx, j.Target)
+	if err != nil {
+		return err
+	}
+	if run.Status == "ended" {
+		return nil
+	}
+	if j.Kind == "practice-end" {
+		return s.destroyPractice(ctx, run)
+	}
+	if run.Status == "ending" || !run.Expires.After(time.Now()) {
+		_, err = s.Store.endPractice(context.WithoutCancel(ctx), run.ID, run.UserID)
+		return err
+	}
+	if run.Status == "ready" {
+		return nil
+	}
+	// Expiry must interrupt native preparation even when the policy loop is
+	// waiting on identity checks. Cleanup retains this exact allocation identity.
+	ctx, cancel := context.WithDeadline(ctx, run.Expires)
+	defer cancel()
+	defer func() {
+		if err != nil {
+			saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if !run.Expires.After(time.Now()) {
+				_, save := s.Store.endPractice(saveCtx, run.ID, run.UserID)
+				err = errors.Join(err, save)
+				return
+			}
+			_, save := s.Store.DB.ExecContext(saveCtx, `UPDATE practice_runs SET status='failed',error='Cloud preparation failed. Stop this run to clean up before trying again.' WHERE id=? AND status IN ('queued','preparing')`, run.ID)
+			err = errors.Join(err, save)
+		}
+	}()
+	var p LearningPublication
+	var src lc.Source
+	if err = s.Store.Get(ctx, "learning-publication", run.LabID, &p); err != nil {
+		return err
+	}
+	if !p.Published {
+		_, err = s.Store.endPractice(context.WithoutCancel(ctx), run.ID, run.UserID)
+		return err
+	}
+	if err = s.practiceTemplateReady(ctx, p.Template); err != nil {
+		return err
+	}
+	if err = s.Store.Get(ctx, "source", p.Template, &src); err != nil {
+		return err
+	}
+	plan, err := lc.PlanLab(src, s.env, nil)
+	if err != nil {
+		return err
+	}
+	result, err := s.Store.DB.ExecContext(ctx, `UPDATE practice_runs SET status='preparing',error='' WHERE id=? AND status IN ('queued','failed','preparing')`, run.ID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count == 0 {
+		return err
+	}
+	inst, e := s.Engine.Inspect(ctx, run.InstanceID)
+	switch {
+	case errors.Is(e, sql.ErrNoRows):
+		inst, err = s.Engine.DeployWithID(ctx, plan, run.InstanceID)
+	case e != nil:
+		err = e
+	case inst.Status != "ready":
+		inst, err = s.Engine.Recover(ctx, run.InstanceID)
+	}
+	if err != nil {
+		return err
+	}
+	if inst.Plan.Source.Digest != src.Digest || inst.ID != run.InstanceID || inst.Status != "ready" {
+		return fmt.Errorf("practice allocation does not match its pinned source")
+	}
+	if !run.Expires.After(time.Now()) {
+		_, err = s.Store.endPractice(context.WithoutCancel(ctx), run.ID, run.UserID)
+		return err
+	}
+	_, err = s.Store.DB.ExecContext(ctx, `UPDATE practice_runs SET status='ready',error='' WHERE id=? AND status='preparing'`, run.ID)
+	return err
+}
+func (s *Service) destroyPractice(ctx context.Context, run practiceRecord) error {
+	unlock := s.lockUser(run.UserID)
+	defer unlock()
+	// Guest cleanup can be unreachable; native destruction must still proceed.
+	// Transport cancellation occurs first and records survive until VM absence.
+	_ = s.revokePractice(ctx, run)
+	inst, err := s.Engine.Inspect(ctx, run.InstanceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	} else if err == nil && inst.Status != "destroyed" {
+		err = s.Engine.Destroy(ctx, run.InstanceID)
+	}
+	if err != nil {
+		return err
+	}
+	if err = s.revokePractice(ctx, run); err != nil {
+		// With confirmed VM absence, residual access intents can be removed even
+		// when the provider's guest-session journal cannot contact that VM.
+		records, listErr := s.Store.List(ctx, "desktop")
+		if listErr != nil {
+			return listErr
+		}
+		for _, raw := range records {
+			var a accessRecord
+			if e := json.Unmarshal(raw, &a); e != nil {
+				return e
+			}
+			if a.UserID == run.UserID && a.InstanceID == run.InstanceID {
+				if e := s.Store.Delete(ctx, "desktop", a.ID); e != nil {
+					return e
+				}
+			}
+		}
+	}
+	// Destroy's successful return is the library's native absence confirmation.
+	// Unknown outcomes retain both identity and cleanup intent, and accrue quota.
+	_, err = s.Store.DB.ExecContext(ctx, `UPDATE practice_runs SET status='ended',ended=?,error='' WHERE id=? AND status='ending'`, time.Now().UTC().Format(time.RFC3339Nano), run.ID)
+	return err
+}
+func (s *Service) readyPractice(ctx context.Context, user, lab string) (practiceRecord, error) {
+	view, err := s.Store.activePractice(ctx, user)
+	if err != nil {
+		return practiceRecord{}, err
+	}
+	if view == nil || view.LabID != lab || view.Status != "ready" || !view.Expires.After(time.Now()) {
+		return practiceRecord{}, fmt.Errorf("Your cloud lab is not ready or its time has ended.")
+	}
+	return s.Store.practice(ctx, view.ID)
+}
+func (s *Service) revokePractice(ctx context.Context, run practiceRecord) error {
+	// Revoke only this allocation; ending a personal lab must not disconnect a
+	// student's separate meeting desktop.
+	return s.revokeMatchingDesktop(ctx, run.UserID, run.InstanceID)
+}
+func (s *Service) launchPractice(w http.ResponseWriter, r *http.Request, v Session) {
+	unlock := s.lockUser(v.User.ID)
+	defer unlock()
+	run, err := s.readyPractice(r.Context(), v.User.ID, r.PathValue("id"))
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	s.launchDesktop(w, r, v, Team{ID: "practice:" + run.ID, InstanceID: run.InstanceID}, run.Expires)
+}

@@ -8,18 +8,18 @@
     BookOpen,
     Unplug,
   } from "@lucide/svelte";
-  import MarkdownIt from "markdown-it";
   import Guard from "$lib/Guard.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
   import Notice from "$lib/Notice.svelte";
   import Status from "$lib/Status.svelte";
   import Deadline from "$lib/Deadline.svelte";
+  import EmptyState from "$lib/EmptyState.svelte";
   import { session, api, refresh } from "$lib/api";
-  import type { Launch } from "$lib/types";
+  import { launchDesktop } from "$lib/launch";
+  import { render, prose } from "$lib/markdown";
   let error = $state("");
   let busy = $state(false);
-  const markdown = new MarkdownIt({ html: false, linkify: false });
-  let handover = $derived(markdown.render($session?.lab.handover ?? ""));
+  let handover = $derived(render($session?.lab.handover ?? ""));
   let readyNotice = $state(false);
   let observedTeam = $state("");
   let previousStatus = $state("");
@@ -42,36 +42,14 @@
   });
   async function open() {
     readyNotice = false;
-    // Reserve the tab during the click; provisioning can outlast browser user activation.
-    const tab = window.open("about:blank", "_blank");
-    if (!tab) {
-      error = "Allow a new tab for LabCentral, then open your desktop again.";
-      return;
-    }
-    tab.opener = null;
-    tab.document.title = "Starting your desktop · LabCentral";
-    tab.document.body.textContent =
-      "Starting your desktop. This can take a minute…";
     busy = true;
     error = "";
     try {
-      const result = await api<Launch>("/api/access", {});
-      if (tab.closed)
-        throw new Error(
-          "Desktop tab closed. Open it again when you are ready.",
-        );
-      const form = tab.document.createElement("form");
-      form.method = "POST";
-      form.action = result.url;
-      const input = tab.document.createElement("input");
-      input.type = "hidden";
-      input.name = "ticket";
-      input.value = result.ticket;
-      form.append(input);
-      tab.document.body.replaceChildren(form);
-      form.submit();
+      await launchDesktop(
+        "/api/access",
+        "Starting your desktop. This can take a minute…",
+      );
     } catch (e) {
-      tab.close();
       error = (e as Error).message;
     } finally {
       await refresh();
@@ -96,34 +74,37 @@
   ><title>{readyNotice ? "Lab ready" : "Your lab"} · LabCentral</title
   ></svelte:head
 >
-<PageHeader title="Your lab" />
+<PageHeader
+  title="Your lab"
+  description="Your team's meeting desktop and handover. Meeting labs are removed when the meeting ends."
+/>
 <Guard
   ><Notice message={error} dismissible />
   {#if $session?.meeting?.status === "ended" || $session?.meeting?.status === "ending"}
-    <section class="max-w-lg border-t border-base-content/10 py-8">
-      <Clock size={24} />
-      <h2 class="mt-4 text-lg font-semibold">
-        {$session.meeting.status === "ending"
-          ? "This meeting is ending"
-          : "This meeting has ended"}
-      </h2>
-      <p class="mt-2 text-sm leading-relaxed">
-        {$session.meeting.status === "ending"
-          ? "The team's machines and workspaces are being removed."
-          : "The team's lab access has ended. Workspace files are no longer available."}
-        Join the next meeting for a fresh lab.
-      </p>
-      <a href="/teams/" class="btn btn-sm min-h-11 mt-5">Back to teams</a>
-    </section>
+    <EmptyState
+      icon={Clock}
+      title={$session.meeting.status === "ending"
+        ? "This meeting is ending"
+        : "This meeting has ended"}
+    >
+      {$session.meeting.status === "ending"
+        ? "The team's machines and workspaces are being removed."
+        : "The team's lab access has ended. Workspace files are no longer available."}
+      Join the next meeting for a fresh lab, or keep practicing from Labs.
+      {#snippet actions()}<a href="/labs/" class="btn btn-sm min-h-11 btn-primary"
+          >Practice labs</a
+        ><a href="/teams/" class="btn btn-sm min-h-11">Back to teams</a
+        >{/snippet}
+    </EmptyState>
   {:else if !$session?.lab.team}
-    <section class="max-w-lg border-t border-base-content/10 py-8">
-      <Users size={24} />
-      <h2 class="mt-4 text-lg font-semibold">Choose a team</h2>
-      <p class="mt-2 text-sm">Join a team to access its lab.</p>
-      <a href="/teams/" class="btn btn-sm min-h-11 btn-primary mt-5"
-        >Choose a team</a
-      >
-    </section>
+    <EmptyState icon={Users} title="Choose a team">
+      Join a team to access its meeting lab.
+      {#snippet actions()}<a href="/teams/" class="btn btn-sm min-h-11 btn-primary"
+          >Choose a team</a
+        ><a href="/labs/" class="btn btn-sm min-h-11 btn-ghost"
+          >Practice labs</a
+        >{/snippet}
+    </EmptyState>
   {:else}
     <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <aside
@@ -248,9 +229,7 @@
           <BookOpen size={17} class="text-base-content/75" />
           <h2 class="text-base font-semibold">Student handover</h2>
         </div>
-        <article
-          class="prose prose-invert prose-sm max-w-[68ch] prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-base prose-h3:text-sm prose-a:text-primary"
-        >
+        <article class={prose}>
           {@html handover}
         </article>
       </section>

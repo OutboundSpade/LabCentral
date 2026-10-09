@@ -9,6 +9,7 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -76,6 +77,8 @@ func (s *Service) policyLoop(ctx context.Context) {
 	defer tick.Stop()
 	for {
 		s.enforceDeadline(ctx)
+		s.enforcePracticeDeadlines(ctx)
+		s.scheduleLearningChecks(ctx)
 		s.scheduleChecks(ctx)
 		s.revalidateDesktops(ctx)
 		select {
@@ -90,10 +93,15 @@ func (s *Service) recoverAccess(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
+	var failures []error
 	for _, b := range rows {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(failures, err)...)
+		}
 		var record accessRecord
 		if e = json.Unmarshal(b, &record); e != nil {
-			return e
+			failures = append(failures, e)
+			continue
 		}
 		unlock := s.lockUser(record.UserID)
 		s.mu.Lock()
@@ -115,13 +123,19 @@ func (s *Service) recoverAccess(ctx context.Context) error {
 		}
 		unlock()
 		if e != nil {
-			return e
+			// Preserve uncertain ownership, but still recover other users. A
+			// single unreachable guest must not strand the rest of this batch.
+			failures = append(failures, e)
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 func (s *Service) runJob(ctx context.Context, j Job) error {
 	switch j.Kind {
+	case "practice-prepare", "practice-end":
+		return s.runPractice(ctx, j)
+	case "learning-check":
+		return s.runLearningCheck(ctx, j)
 	case "access-cleanup":
 		return s.recoverAccess(ctx)
 	case "check":
@@ -162,8 +176,11 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 				failures = append(failures, e)
 				continue
 			}
+			if strings.HasPrefix(a.TeamID, "practice:") {
+				continue
+			}
 			unlock := s.lockUser(a.UserID)
-			e = s.revokeUser(ctx, a.UserID)
+			e = s.revokeMatchingDesktop(ctx, a.UserID, a.InstanceID)
 			unlock()
 			// Engine destruction retains access cleanup intent until VM absence.
 		}

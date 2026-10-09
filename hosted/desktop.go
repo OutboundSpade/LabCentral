@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -40,23 +41,28 @@ func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
 		writeError(w, 409, e.Error())
 		return
 	}
+	s.launchDesktop(w, r, v, team, meeting.Expires)
+}
+
+// Caller holds the user lock; the same transport is authorized against either
+// explicit meeting membership or an independently owned practice allocation.
+func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Session, team Team, expiry time.Time) {
 	id := digest(team.InstanceID + "\x00workstation\x00" + v.User.ID)[:24]
 	s.mu.Lock()
 	d := s.desktops[id]
 	s.mu.Unlock()
 	if d != nil && (d.ctx.Err() != nil || !d.info.Expires.After(time.Now()) || d.record.SessionID != v.ID) {
-		if e = s.revokeUser(r.Context(), v.User.ID); e != nil {
+		if e := s.revokeMatchingDesktop(r.Context(), v.User.ID, team.InstanceID); e != nil {
 			writeError(w, 503, "Your previous desktop is closing. Please retry.")
 			return
 		}
 		d = nil
 	}
-	expiry := meeting.Expires
 	if v.Expires.Before(expiry) {
 		expiry = v.Expires
 	}
 	record := accessRecord{id, v.User.ID, v.ID, team.ID, team.InstanceID, expiry}
-	if e = s.Store.Put(r.Context(), "desktop", id, record); e != nil {
+	if e := s.Store.Put(r.Context(), "desktop", id, record); e != nil {
 		writeError(w, 503, "Could not reserve your desktop.")
 		return
 	}
@@ -171,9 +177,30 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Desktop access has ended.", 403)
 		return
 	}
+	if r.URL.Path == "/lesson" || r.URL.Path == "/lesson/answer" || r.URL.Path == "/lesson/check" {
+		s.desktopLesson(w, r, d)
+		return
+	}
+	if r.URL.Path == "/lesson-client.js" {
+		http.ServeFile(w, r, filepath.Join(s.Config.WebRoot, "lesson.js"))
+		return
+	}
+	if r.URL.Path == "/lesson-ui.css" {
+		s.desktopLessonStyles(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/_app/") {
+		http.FileServer(http.Dir(s.Config.WebRoot)).ServeHTTP(w, r)
+		return
+	}
 	if r.URL.Path == "/" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(strings.ReplaceAll(desktopHTML, "{{origin}}", html.EscapeString(s.Config.Origin))))
+		practiceID := ""
+		if strings.HasPrefix(d.record.TeamID, "practice:") {
+			practiceID = strings.TrimPrefix(d.record.TeamID, "practice:")
+		}
+		page := strings.NewReplacer("{{origin}}", html.EscapeString(s.Config.Origin), "{{practiceRun}}", html.EscapeString(practiceID)).Replace(desktopHTML)
+		_, _ = w.Write([]byte(page))
 		return
 	}
 	if r.URL.Path == "/desktop.css" {
@@ -235,12 +262,19 @@ func (s *Service) desktopAuthorized(ctx context.Context, d *desktopSession) bool
 	if e != nil || v.User.ID != d.record.UserID {
 		return false
 	}
+	if strings.HasPrefix(d.record.TeamID, "practice:") {
+		run, err := s.Store.practice(ctx, strings.TrimPrefix(d.record.TeamID, "practice:"))
+		return err == nil && run.UserID == v.User.ID && run.InstanceID == d.record.InstanceID && run.Status == "ready" && run.Expires.After(time.Now())
+	}
 	team, _, e := s.readyTeam(ctx, d.record.UserID)
 	return e == nil && team.ID == d.record.TeamID && team.InstanceID == d.record.InstanceID
 }
 
 // Caller holds the user lock. Durable records are removed only after provider confirmation.
 func (s *Service) revokeUser(ctx context.Context, user string) error {
+	return s.revokeMatchingDesktop(ctx, user, "")
+}
+func (s *Service) revokeMatchingDesktop(ctx context.Context, user, instance string) error {
 	records, e := s.Store.List(ctx, "desktop")
 	if e != nil {
 		return e
@@ -250,7 +284,7 @@ func (s *Service) revokeUser(ctx context.Context, user string) error {
 		if e = json.Unmarshal(b, &record); e != nil {
 			return e
 		}
-		if record.UserID != user {
+		if record.UserID != user || (instance != "" && record.InstanceID != instance) {
 			continue
 		}
 		s.mu.Lock()
@@ -300,12 +334,15 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 		})
 	}
 	checks.Wait()
-	s.mu.Lock()
+	// The single store connection may be busy with a durable transaction. Relay
+	// and launch-ticket access must not wait behind that database work.
 	records, _ := s.Store.List(ctx, "desktop")
+	cleanup := false
+	s.mu.Lock()
 	for _, b := range records {
 		var a accessRecord
 		if json.Unmarshal(b, &a) == nil && (s.desktops[a.ID] == nil || s.desktops[a.ID].ctx.Err() != nil) {
-			_, _ = s.Store.Enqueue(ctx, "access-cleanup", "pending")
+			cleanup = true
 			break
 		}
 	}
@@ -315,9 +352,14 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 		}
 	}
 	s.mu.Unlock()
+	if cleanup {
+		// Recovery rechecks active relays while holding each user's lock, so a
+		// concurrent reconnect can safely make this cleanup signal obsolete.
+		_, _ = s.Store.Enqueue(ctx, "access-cleanup", "pending")
+	}
 }
 
-const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting…</p><button id="clipboard" type="button" disabled title="Copy from the desktop. Paste with Ctrl+V or ⌘V.">Copy from desktop</button><button id="paste" type="button" disabled>Paste to desktop</button><button id="fullscreen" type="button">Full screen</button></header><main id="desktop-viewport" aria-label="Remote desktop"><div id="dcv-display"></div></main><dialog id="paste-dialog" aria-labelledby="paste-title"><h2 id="paste-title">Paste to desktop</h2><p><label for="paste-text">Paste text here with Ctrl+V or ⌘V.</label></p><textarea id="paste-text" rows="4" cols="28" spellcheck="false" autocomplete="off" aria-describedby="paste-help"></textarea><p id="paste-help">Then paste inside the desktop.<br>Terminals use Ctrl+Shift+V.</p><form method="dialog"><button>Cancel</button></form></dialog><script type="module" src="/client.js"></script></body></html>`
+const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body data-practice-run="{{practiceRun}}"><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting…</p><button id="clipboard" type="button" disabled title="Copy from the desktop. Paste with Ctrl+V or ⌘V.">Copy from desktop</button><button id="paste" type="button" disabled>Paste to desktop</button><button id="fullscreen" type="button">Full screen</button></header><main id="desktop-viewport" aria-label="Remote desktop"><div id="dcv-display"></div></main><dialog id="paste-dialog" aria-labelledby="paste-title"><h2 id="paste-title">Paste to desktop</h2><p><label for="paste-text">Paste text here with Ctrl+V or ⌘V.</label></p><textarea id="paste-text" rows="4" cols="28" spellcheck="false" autocomplete="off" aria-describedby="paste-help"></textarea><p id="paste-help">Then paste inside the desktop.<br>Terminals use Ctrl+Shift+V.</p><form method="dialog"><button>Cancel</button></form></dialog><script type="module" src="/client.js"></script></body></html>`
 const desktopCSS = `:root{font-family:system-ui,sans-serif;color-scheme:dark;color:#eceaf0;background:#15141b}*{box-sizing:border-box}body{margin:0;height:100dvh;display:flex;flex-direction:column}header{display:flex;align-items:center;gap:1rem;padding:.65rem 1rem;background:#1c1a24;flex-wrap:wrap;font-size:.85rem}header p{flex:1;margin:0}a{color:#c5a3ef;font-weight:600}button{border:1px solid #454051;border-radius:.5rem;padding:.4rem .7rem;background:#25222f;color:inherit;cursor:pointer}a:focus-visible,button:focus-visible{outline:3px solid #c5a3ef;outline-offset:3px}main{flex:1;min-height:0;overflow:hidden;position:relative}#dcv-display{width:100%;height:100%;transform-origin:top left}main:fullscreen{width:100vw;height:100vh} @media(max-width:480px){header{gap:.5rem;font-size:.75rem}header p{flex-basis:45%}button:disabled{opacity:.5;cursor:default}}`
 const desktopJS = `import dcv from '/dcvjs/dcv.js';
 const status=document.getElementById('status');
@@ -338,6 +380,7 @@ const fit=()=>{const ratio=Math.min(1,viewport.clientWidth/display.offsetWidth,v
 const resize=()=>{fit();if(connection){connection.requestResolution(Math.max(320,viewport.clientWidth),Math.max(240,viewport.clientHeight))?.catch(()=>{})}};
 new ResizeObserver(fit).observe(display);
 new ResizeObserver(resize).observe(viewport);
+if(document.body.dataset.practiceRun)import('/lesson-client.js').catch(()=>{});
 dcv.setLogLevel(dcv.LogLevel.ERROR);
 try {
  const response=await fetch('/credentials',{cache:'no-store'});

@@ -345,6 +345,22 @@ try {
         .getByRole("button", { name: "Run on 0 teams", exact: true })
         .isDisabled(),
     );
+    // Tabbing through a long team list keeps focus above the sticky action bar
+    // (and the phone navigation beneath it).
+    await page.getByLabel("Team 1", { exact: true }).focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+    const focus = await page
+      .getByRole("group", { name: "Exercise actions" })
+      .evaluate((bar) => ({
+        name: document.activeElement.getAttribute("aria-label"),
+        bottom: document.activeElement.getBoundingClientRect().bottom,
+        bar: bar.getBoundingClientRect().top,
+      }));
+    assert.equal(focus.name, "Team 13");
+    assert(
+      focus.bottom <= focus.bar,
+      `focused team hidden by exercise actions: ${JSON.stringify(focus)}`,
+    );
     await page.getByLabel("Team 1", { exact: true }).check();
     await page
       .getByRole("button", { name: "Run on 1 team", exact: true })
@@ -377,9 +393,22 @@ try {
     await page
       .getByRole("heading", { name: "Choose your team", exact: true })
       .waitFor();
+    // The heading renders before the session loads; wait for the student's own
+    // team status so the privacy check runs against the loaded team list.
+    const ownTeam = page.locator("main li").filter({ hasText: "Your team" });
+    await ownTeam.locator(".text-success").waitFor();
     assert.equal(
       await page.locator("main .text-success").count(),
       1,
+      "Other-team state exposed to student",
+    );
+    assert.equal(
+      await page
+        .locator("main li")
+        .filter({ hasNotText: "Your team" })
+        .locator(".text-success")
+        .count(),
+      0,
       "Other-team state exposed to student",
     );
     await page

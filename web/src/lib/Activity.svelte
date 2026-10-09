@@ -144,8 +144,9 @@
       class:btn-ghost={filter !== "failed"}
       aria-pressed={filter === "failed"}
       onclick={() => (filter = "failed")}
-      >{#if filter === "failed"}<Check size={13} aria-hidden="true" />{/if}Needs
-      attention
+      >{#if filter === "failed"}<Check size={13} aria-hidden="true" />{/if}<span
+        class="whitespace-nowrap">Needs attention</span
+      >
       <span
         class="rounded-selector px-1 tabular-nums"
         class:bg-error={failed.length > 0}

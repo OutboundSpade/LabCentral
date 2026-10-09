@@ -148,6 +148,7 @@ export interface InstructorView {
   notes: string;
   checks: CheckDefinition[];
   exercises: ExerciseDefinition[];
+  stages: TemplateStage[];
 }
 export interface CheckDefinition {
   id: string;
@@ -178,4 +179,158 @@ export interface CheckResult {
   points: number;
   passed: boolean;
   report: string;
+}
+export interface LearningStep {
+  id: string;
+  title: string;
+  instructions: string;
+  kind: string;
+  prompt: string;
+  hasSolution?: boolean;
+}
+export interface LearningStepInput {
+  id: string;
+  title: string;
+  instructions: string;
+  kind: string;
+  prompt: string;
+  answer: string;
+  checkID: string;
+  solution?: string;
+}
+export interface PublishLearningRequest {
+  template: string;
+  title: string;
+  description: string;
+  mode: string;
+  estimatedMinutes: number;
+  steps: LearningStepInput[];
+  stageIDs?: string[];
+}
+export interface LearningPublication {
+  id: string;
+  template: string;
+  title: string;
+  description: string;
+  mode: string;
+  estimatedMinutes: number;
+  steps: LearningStepInput[];
+  published: boolean;
+  publishedAt: string;
+  releasedSteps: number;
+}
+export interface LearningLab {
+  id: string;
+  template: string;
+  title: string;
+  description: string;
+  mode: string;
+  estimatedMinutes: number;
+  stepCount: number;
+  publishedAt: string;
+  completedSteps: number;
+}
+export interface LearningProgress {
+  labID: string;
+  completedSteps: number;
+  updated: string;
+  lastAnswer?: string;
+  lastFeedback?: string;
+}
+export interface CloudQuota {
+  limitMinutes: number;
+  usedSeconds: number;
+  remainingSeconds: number;
+  resetsAt: string;
+}
+export interface PracticeRun {
+  id: string;
+  labID: string;
+  userID: string;
+  status: string;
+  created: string;
+  expires: string;
+  endedAt?: string | null;
+  error?: string;
+}
+export interface LearningCheck {
+  id: string;
+  labID: string;
+  stepID: string;
+  status: string;
+  report: string;
+  updated: string;
+}
+export interface LearningCatalog {
+  labs: LearningLab[];
+  quota: CloudQuota;
+  run: PracticeRun | null;
+}
+export interface LearningView {
+  lab: LearningLab;
+  steps: LearningStep[];
+  progress: LearningProgress;
+  quota: CloudQuota;
+  run: PracticeRun | null;
+  releasedSteps: number;
+  cloudReady: boolean;
+  localAvailable: boolean;
+  check: LearningCheck | null;
+}
+export interface LearningAdminView {
+  labs: LearningPublication[];
+  quotaMinutes: number;
+}
+export interface ReleaseLearningRequest {
+  id: string;
+  releasedSteps: number;
+}
+export interface LearningAnswerRequest {
+  stepID: string;
+  answer: string;
+}
+export interface LearningCheckRequest {
+  stepID: string;
+}
+export interface TemplateStage {
+  id: string;
+  title: string;
+  instructions: string;
+  kind: string;
+  prompt: string;
+  answer: string;
+  checkID: string;
+  exerciseID: string;
+  solution: string;
+}
+export interface PublicTemplate {
+  id: string;
+  name: string;
+  commit: string;
+  commitTitle: string;
+  committedAt?: string | null;
+  description: string;
+  handover: string;
+  imagesBuilt: boolean;
+  machines: PublicTemplateMachine[];
+  stageCount: number;
+  stages: LearningStep[];
+  practiceStageIDs: string[];
+}
+export interface PublicTemplateMachine {
+  name: string;
+  cpu: number;
+  memory: string;
+  disk: string;
+  access: string[];
+}
+export interface TemplateCatalog {
+  templates: PublicTemplate[];
+}
+export interface LearningSolutionRequest {
+  stepID: string;
+}
+export interface LearningSolution {
+  stepID: string;
+  solution: string;
 }

@@ -2,7 +2,12 @@
   import { Clock, TriangleAlert } from "@lucide/svelte";
   import { date } from "./api";
   import { now } from "./time";
-  let { expires, label = "Ends at" }: { expires: string; label?: string } =
+  let {
+    expires,
+    label = "Ends at",
+    warning = "Your files will be deleted when the meeting ends. Save your work now.",
+    due = "The meeting deadline has passed. Lab cleanup is due.",
+  }: { expires: string; label?: string; warning?: string; due?: string } =
     $props();
   const remaining = $derived(Math.max(0, Date.parse(expires) - $now));
   const minutes = $derived(Math.ceil(remaining / 60000));
@@ -26,10 +31,8 @@
   {#if urgent}
     <div class="alert alert-soft alert-warning mt-3 text-sm" role="alert">
       <TriangleAlert size={18} aria-hidden="true" /><span
-        >{remaining === 0
-          ? "The meeting deadline has passed. Lab cleanup is due."
-          : "15 minutes or less remain."} Your files will be deleted when the meeting
-        ends. Save your work now.</span
+        >{remaining === 0 ? due : "15 minutes or less remain."}
+        {warning}</span
       >
     </div>
   {/if}

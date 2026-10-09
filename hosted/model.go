@@ -10,19 +10,20 @@ import (
 )
 
 type Config struct {
-	Root              string `json:"root"`
-	Origin            string `json:"origin"`
-	DesktopOrigin     string `json:"desktopOrigin"`
-	Issuer            string `json:"issuer"`
-	BackchannelOrigin string `json:"backchannelOrigin,omitempty"`
-	ClientID          string `json:"clientID"`
-	ClientSecret      string `json:"clientSecret"`
-	Repository        string `json:"repository"`
-	DeployKey         string `json:"deployKey"`
-	KnownHosts        string `json:"knownHosts"`
-	Environment       string `json:"environment"`
-	WebRoot           string `json:"webRoot"`
-	SDKRoot           string `json:"sdkRoot"`
+	WeeklyCloudMinutes int    `json:"weeklyCloudMinutes,omitempty"`
+	Root               string `json:"root"`
+	Origin             string `json:"origin"`
+	DesktopOrigin      string `json:"desktopOrigin"`
+	Issuer             string `json:"issuer"`
+	BackchannelOrigin  string `json:"backchannelOrigin,omitempty"`
+	ClientID           string `json:"clientID"`
+	ClientSecret       string `json:"clientSecret"`
+	Repository         string `json:"repository"`
+	DeployKey          string `json:"deployKey"`
+	KnownHosts         string `json:"knownHosts"`
+	Environment        string `json:"environment"`
+	WebRoot            string `json:"webRoot"`
+	SDKRoot            string `json:"sdkRoot"`
 }
 type User struct {
 	ID    string `json:"id"`

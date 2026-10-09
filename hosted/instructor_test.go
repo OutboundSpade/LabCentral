@@ -41,7 +41,7 @@ func TestInstructorFilesExcludedBeforePortableSnapshot(t *testing.T) {
 	}
 }
 func TestInstructorManifestRejectsAmbiguity(t *testing.T) {
-	for _, raw := range []string{"version: 1\nversion: 1\n", "version: 1\nunknown: true\n", "version: 1\nnotes: &x private\nchecks: *x\n", "version: 2\n", "version: 1\n---\nversion: 1\n"} {
+	for _, raw := range []string{"version: 1\nversion: 1\n", "version: 1\nunknown: true\n", "version: 1\nnotes: &x private\nchecks: *x\n", "version: 3\n", "version: 1\n---\nversion: 1\n"} {
 		dir := t.TempDir()
 		_ = os.WriteFile(filepath.Join(dir, "instructor.yaml"), []byte(raw), 0600)
 		if _, err := extractInstructor(dir); err == nil {

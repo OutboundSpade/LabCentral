@@ -13,6 +13,7 @@
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
+  import AdminNav from "$lib/AdminNav.svelte";
   import Status from "$lib/Status.svelte";
   import PollStatus from "$lib/PollStatus.svelte";
   import { jobName } from "$lib/job";
@@ -85,6 +86,7 @@
 </script>
 
 <svelte:head><title>Lab templates · LabCentral</title></svelte:head>
+{#if $session?.user.admin}<AdminNav />{/if}
 <PageHeader
   title="Lab templates"
   description="Revisions stay pinned. Existing labs keep their current revision."
@@ -253,6 +255,7 @@
                     {job.error}
                   </p>{/if}
                 <div class="mt-3 flex flex-wrap gap-2">
+                  <a class="btn btn-sm min-h-11 btn-ghost lg:min-h-8" href={`/labs/?template=${encodeURIComponent(template.id)}`}>Explore template</a>
                   {#if !template.built && !template.removing}<button
                       class="btn btn-sm min-h-11 lg:min-h-8"
                       class:btn-primary={template.latest}
@@ -302,8 +305,12 @@
               : `Show ${earlier} earlier ${earlier === 1 ? "revision" : "revisions"}`}</button
           >{/if}
       </section>
+      <!-- On short laptop screens the pinned activity feed scrolls on its own. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <aside
-        class="min-w-0 lg:sticky lg:top-6 lg:border-l lg:border-base-content/10 lg:pl-6"
+        class="min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:border-l lg:border-base-content/10 lg:pr-1 lg:pl-6"
+        aria-labelledby="activity-title"
+        tabindex="0"
       >
         <Activity {data} onchange={refreshAdmin} />
       </aside>

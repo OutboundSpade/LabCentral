@@ -25,6 +25,32 @@ type jobTiming struct {
 func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 	claims := []jobClaim{}
 	switch j.Kind {
+	case "practice-prepare", "practice-end":
+		run, err := s.Store.practice(ctx, j.Target)
+		if err != nil {
+			return nil, err
+		}
+		claims = append(claims, jobClaim{"practice:" + run.ID, true})
+		if j.Kind == "practice-prepare" {
+			var p LearningPublication
+			if err = s.Store.Get(ctx, "learning-publication", run.LabID, &p); err != nil {
+				return nil, err
+			}
+			claims = append(claims, jobClaim{"template:" + p.Template, false})
+			keys, err := s.templateKeys(ctx, p.Template)
+			if err != nil {
+				return nil, err
+			}
+			for _, key := range keys {
+				claims = append(claims, jobClaim{"image:" + key, false})
+			}
+		}
+	case "learning-check":
+		var check learningCheckRecord
+		if err := s.Store.Get(ctx, "learning-check", j.Target, &check); err != nil {
+			return nil, err
+		}
+		claims = append(claims, jobClaim{"practice:" + check.RunID, true})
 	case "refresh":
 		claims = append(claims, jobClaim{"repository", true})
 	case "access-cleanup":
@@ -101,9 +127,9 @@ func (s *Service) releaseTeamClaim(jobID, teamID string) {
 // every guest-operation slot. Resource dependencies apply across all lanes.
 func jobLane(kind string) string {
 	switch kind {
-	case "end", "access-cleanup":
+	case "end", "access-cleanup", "practice-end":
 		return "cleanup"
-	case "check", "exercise":
+	case "check", "exercise", "learning-check":
 		return "guest"
 	default:
 		return "bulk"
@@ -154,7 +180,7 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 				blocked = true
 			}
 			// End cancels its dependencies, then waits for their durable checkpoint.
-			if j.Kind == "end" && claimsConflict(claims, active.claims) && active.job.Kind != "access-cleanup" && active.job.Kind != "end" {
+			if (j.Kind == "end" || j.Kind == "practice-end") && claimsConflict(claims, active.claims) && jobLane(active.job.Kind) != "cleanup" {
 				active.cancel()
 			}
 		}

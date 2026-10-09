@@ -20,7 +20,10 @@ func OpenStore(root string) (*Store, error) {
 	_, e = s.DB.Exec(`CREATE TABLE IF NOT EXISTS memberships(user_id TEXT PRIMARY KEY,team_id TEXT NOT NULL,pending_team TEXT NOT NULL DEFAULT '',switching INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS teams(id TEXT PRIMARY KEY,meeting_id TEXT NOT NULL,name TEXT NOT NULL,capacity INTEGER NOT NULL,instance_id TEXT NOT NULL,status TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,target TEXT NOT NULL,status TEXT NOT NULL,error TEXT NOT NULL DEFAULT '',created TEXT NOT NULL);
- CREATE UNIQUE INDEX IF NOT EXISTS active_job ON jobs(kind,target) WHERE status IN ('queued','running');`)
+ CREATE UNIQUE INDEX IF NOT EXISTS active_job ON jobs(kind,target) WHERE status IN ('queued','running');
+ CREATE TABLE IF NOT EXISTS practice_runs(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,lab_id TEXT NOT NULL,instance_id TEXT NOT NULL,status TEXT NOT NULL,created TEXT NOT NULL,expires TEXT NOT NULL,ended TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '');
+ CREATE UNIQUE INDEX IF NOT EXISTS active_practice_user ON practice_runs(user_id) WHERE status != 'ended';
+ CREATE INDEX IF NOT EXISTS practice_quota_history ON practice_runs(user_id,ended,created);`)
 	if e != nil {
 		s.Close()
 		return nil, e
@@ -190,7 +193,7 @@ func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
 
 // QueuedJobs reads the whole queue, so blocked work cannot hide unrelated jobs.
 func (s *Store) QueuedJobs(ctx context.Context) ([]Job, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE status='queued' ORDER BY CASE kind WHEN 'end' THEN 0 WHEN 'access-cleanup' THEN 1 ELSE 2 END,created,id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE status='queued' ORDER BY CASE kind WHEN 'end' THEN 0 WHEN 'practice-end' THEN 0 WHEN 'access-cleanup' THEN 1 ELSE 2 END,created,id`)
 	if err != nil {
 		return nil, err
 	}

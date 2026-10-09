@@ -40,6 +40,21 @@ type TemplateCheck struct {
 	Points int             `json:"points" yaml:"points"`
 	Steps  []GuestPlaybook `json:"steps" yaml:"steps"`
 }
+
+// TemplateStage is private author metadata. Student APIs explicitly project
+// instructional fields and solution availability into LearningStep; actual
+// solution text requires the deliberate solution-reveal endpoint.
+type TemplateStage struct {
+	ID           string `json:"id" yaml:"id"`
+	Title        string `json:"title" yaml:"title"`
+	Instructions string `json:"instructions" yaml:"instructions"`
+	Kind         string `json:"kind" yaml:"kind"`
+	Prompt       string `json:"prompt" yaml:"prompt"`
+	Answer       string `json:"answer" yaml:"answer"`
+	CheckID      string `json:"checkID" yaml:"checkID"`
+	ExerciseID   string `json:"exerciseID" yaml:"exerciseID"`
+	Solution     string `json:"solution" yaml:"solution"`
+}
 type InstructorBundle struct {
 	Assets    []string           `json:"assets" yaml:"assets"`
 	Version   int                `json:"version" yaml:"version"`
@@ -47,16 +62,18 @@ type InstructorBundle struct {
 	Exercises []TemplateExercise `json:"exercises" yaml:"exercises"`
 	Reset     []GuestPlaybook    `json:"reset" yaml:"reset"`
 	Checks    []TemplateCheck    `json:"checks" yaml:"checks"`
+	Stages    []TemplateStage    `json:"stages" yaml:"stages"`
 	Files     []lc.File          `json:"files" yaml:"-"`
 }
 type InstructorView struct {
 	Notes     string               `json:"notes"`
 	Checks    []CheckDefinition    `json:"checks"`
 	Exercises []ExerciseDefinition `json:"exercises"`
+	Stages    []TemplateStage      `json:"stages"`
 }
 
 func (b InstructorBundle) view() InstructorView {
-	v := InstructorView{Notes: b.Notes, Checks: []CheckDefinition{}, Exercises: []ExerciseDefinition{}}
+	v := InstructorView{Notes: b.Notes, Checks: []CheckDefinition{}, Exercises: []ExerciseDefinition{}, Stages: append([]TemplateStage{}, b.Stages...)}
 	for _, c := range b.Checks {
 		v.Checks = append(v.Checks, CheckDefinition{c.ID, c.Name, c.Points})
 	}
@@ -66,8 +83,9 @@ func (b InstructorBundle) view() InstructorView {
 	return v
 }
 
-// Instructor material is extracted before portable source loading: it is never
-// part of images, handovers, build provenance or student APIs.
+// Instructor material is extracted before portable source loading: the bundle
+// never enters images, handovers or build provenance. Student APIs use explicit
+// instructional projections, never the private bundle.
 func extractInstructor(root string) (*InstructorBundle, error) {
 	path := filepath.Join(root, "instructor.yaml")
 	raw, err := os.ReadFile(path)
@@ -124,7 +142,7 @@ func extractInstructor(root string) (*InstructorBundle, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return nil, fmt.Errorf("expected one instructor document")
 	}
-	if bundle.Version != 1 || len(bundle.Exercises) > 20 || len(bundle.Checks) > 20 || len(bundle.Notes) > 32000 {
+	if (bundle.Version != 1 && bundle.Version != 2) || len(bundle.Exercises) > 20 || len(bundle.Checks) > 20 || len(bundle.Notes) > 32000 || len(bundle.Stages) > 20 || (bundle.Version == 1 && len(bundle.Stages) > 0) {
 		return nil, fmt.Errorf("invalid instructor manifest bounds/version")
 	}
 	files := filepath.Join(root, "instructor")
@@ -225,6 +243,45 @@ func (b InstructorBundle) validate(src lc.Source) error {
 		seen[c.ID] = true
 		if err := validate(c.Steps); err != nil {
 			return err
+		}
+	}
+	return b.validateStages()
+}
+
+func (b InstructorBundle) validateStages() error {
+	if len(b.Stages) > 20 || (len(b.Stages) > 0 && b.Version != 2) {
+		return fmt.Errorf("template stages require instructor version 2 and at most 20 stages")
+	}
+	checks, exercises, seen := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, c := range b.Checks {
+		checks[c.ID] = true
+	}
+	for _, x := range b.Exercises {
+		exercises[x.ID] = true
+	}
+	for _, stage := range b.Stages {
+		if !stepIDPattern.MatchString(stage.ID) || seen[stage.ID] || !cleanName(stage.Title) || strings.TrimSpace(stage.Instructions) == "" || len(stage.Instructions) > 6000 || len(stage.Prompt) > 1000 || len(stage.Solution) > 6000 {
+			return fmt.Errorf("template stages require unique IDs, titles and bounded instructions, prompts and solutions")
+		}
+		seen[stage.ID] = true
+		if stage.ExerciseID != "" && !exercises[stage.ExerciseID] {
+			return fmt.Errorf("stage %q references an unknown exercise", stage.ID)
+		}
+		switch stage.Kind {
+		case "answer":
+			if strings.TrimSpace(stage.Answer) == "" || len(stage.Answer) > 1000 || stage.CheckID != "" {
+				return fmt.Errorf("answer stages require a bounded answer and no action check")
+			}
+		case "action":
+			if !checks[stage.CheckID] || stage.Answer != "" {
+				return fmt.Errorf("action stages require a pinned check and no answer")
+			}
+		case "instructor":
+			if stage.Answer != "" || stage.CheckID != "" {
+				return fmt.Errorf("instructor stages cannot contain an answer or check")
+			}
+		default:
+			return fmt.Errorf("stage kind must be answer, action or instructor")
 		}
 	}
 	return nil

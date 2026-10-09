@@ -69,8 +69,8 @@ fifteen, thirty and sixty minutes. Ready teams can be checked while other teams
 are still preparing. Schedules start paused and stop when the meeting ends. See
 [ARCHITECTURE.md](ARCHITECTURE.md#hosted-team-service) for the manifest contract.
 
-The five prerendered routes are `/`, `/teams/`, `/lab/`, `/admin/`, and
-`/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
+The eight prerendered routes are `/`, `/labs/`, `/learn/`, `/teams/`, `/lab/`,
+`/admin/`, `/admin/labs/`, and `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
 identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC
 sign-in, retained workspaces, team switching, revocation, network isolation,
 Example Branch exercises, cleanup and backup restoration.
@@ -85,16 +85,109 @@ walkthrough before team selection, with a sticky action bar and a counted team-l
 confirmation.
 
 Administrators can select ready teams under **Manage meeting → Exercises** to
-stop Apache, move it to port 8080, or simulate an SSH intrusion. Every break first
-restores and verifies the exercise baseline. **Reset web server** restores the
-Apache listener/site, homepage, and synthetic support account; it removes the
-exercise key and artifact while preserving bank data, publications, desktops,
-and historical logs. **Check recovery** verifies the website from the workstation
-and checks for remaining intrusion artifacts. Controls, results and instructor
-walkthroughs require administrator authorization. This is a targeted exercise
-reset, not a full VM restore; unrelated package or SSH configuration damage can
-require operator recovery. Exercises use the meeting's pinned source and do not
-require new images.
+apply the meeting revision's breaks. The current Example Branch template stops
+Apache, moves the database listener, or disrupts FTP publishing and defaces the
+homepage and branch-hours document. Every break first restores and verifies the
+exercise baseline. Reset restores the authored baseline while preserving bank
+data, other publications, desktops and historical logs. **Check services** runs
+the revision's full checks. Controls, results and instructor walkthroughs require
+administrator authorization. This is a targeted exercise reset, not a full VM
+restore; unrelated package or configuration damage can require operator recovery.
+Exercises use the meeting's pinned source and do not require new images. Older
+meeting revisions retain their original exercise definitions.
+
+## Explore templates and publish practice
+
+**Labs** has a card-based template browser and a separate practice catalog. Explore
+a pinned revision to read its handover, inspect its machines and preview its
+stages. Search helps find templates; revision selection keeps exploration
+attached to the exact source. Browsing does not provision resources. Image status
+reflects the saved build record; cloud readiness is checked when starting practice.
+
+Hosted templates can own stages in `instructor.yaml` version 2. A stage contains
+student instructions and an answer, a pinned action check, or an instructor
+checkpoint. It can link an existing break and include an author-written solution.
+The template owns this material once, alongside its existing reset and check
+definitions. Accepted answers, guest programs and private references stay out of
+ordinary student responses and downloads.
+
+In **Manage meeting → Exercises**, instructors can choose any template stage,
+read its instructions and solution, and apply its linked break to selected ready
+teams. Other template breaks remain available separately. Selecting a stage does
+not mutate the guests. Breaks, resets and meeting
+checks remain explicit actions, so instructors can prepare labs ahead of time
+and move around during a walkthrough without publishing or releasing a lesson.
+Meeting checks run the template's full service-check set.
+
+Example Branch's version 2 revision provides six baseline practice stages covering
+the ledger dependency, banking page, FTP login root, publishing timer and published
+branch hours. Three additional recovery stages link the stopped-web, database-port
+and FTP-defacement breaks. Each stage includes a private reference solution.
+
+Under **Admin → Published labs**, select a pinned revision and its reusable
+practice stages. Publishing snapshots those definitions, including private
+answers and solutions; later template imports cannot change an existing lesson.
+Personal practice follows the selected stages in template order. Break-dependent
+and instructor stages remain meeting-only: personal runs currently start from
+the image baseline. Older revisions without stages retain the manual lesson
+editor, and previously published instructor-paced lessons retain their release
+controls. Saved progress is preserved. Where an author supplies a solution,
+students can explicitly choose **View solution** for a current or completed
+released stage. Viewing it does not complete that stage.
+
+The practice catalog lists published lessons and each student's cloud allowance.
+Personal cloud labs default to **three hours per student per UTC week**, resetting
+on Monday. Operators can set `weeklyCloudMinutes` in the protected hosted config.
+Time counts from allocation reservation through confirmed cleanup, including
+preparation and pending cleanup. Cloud runs require built images and a workstation
+desktop. Only one personal cloud run can be active per student. It ends when its
+reserved time expires; stopping deletes its workspace after cleanup confirmation.
+Meeting cleanup and team membership are independent of these personal allocations.
+
+The guided player shows the stage rail, instructions, answer/check controls and
+workspace options. Active cloud action stages are checked periodically and advance
+only after a confirmed pass. Previously published instructor-paced lessons still
+require their instructor's release before completing later stages.
+The cloud desktop can read and submit the current lesson on its own authenticated
+origin, so lessons can accompany the actual remote display.
+
+**Run on your own infrastructure** downloads pinned portable source and student
+instructions. Use the standalone CLI with your own AWS or Proxmox environment;
+a laptop hypervisor or Docker runner is not included. The download excludes
+instructor files, accepted answers, provider configuration and credentials. Hosted
+quota does not apply to your own resources, and you must clean those up yourself.
+Cloud action verification is unavailable for local runs; answers can still be
+submitted through the guided player.
+
+Randomized scenario execution is not implemented. The intended small extension
+is a set of author-defined variants that reuse a template's breaks, checks and
+solutions. A future attempt must persist its selected variant and private answer
+key before guest effects and keep progress per attempt. Choosing among validated
+scenarios is preferable to generating arbitrary attacks or combining breaks whose
+reset behavior is unknown.
+
+The redesign and practice workflows were deployed on 2026-10-08, with mobile and
+laptop proportion refinements on 2026-10-09. Live acceptance
+covered real administrator/student OIDC sign-in, one personal AWS allocation,
+rendered DCV with guest keyboard input, sidebar answers, automatic guest checks,
+instructor releases, reconnect, saved progress and charged quota. Desktop and mobile
+lesson layouts were inspected. Larger personal cohorts and full weekly quota
+exhaustion/reset were not qualified live; local authorization, persistence, race
+and failure tests cover those controls. The exact test allocation was confirmed
+destroyed, temporary lessons were unpublished and the existing meeting was preserved.
+Phone navigation reserves safe areas and keyboard focus clearance. Short laptop
+screens have scrollable activity feeds and a narrower desktop instructions panel.
+The template explorer, shared stages and Example Branch version 2 migration were
+deployed on 2026-10-09. Live checks covered real administrator/student OIDC,
+template exploration at desktop and phone widths, pinned publication snapshots,
+solution access, all six baseline stages with native guest checks, rendered DCV,
+guest keyboard input and retained progress/files on reconnect. The published
+**Example Branch: baseline practice** remains available. The migration preserves
+existing meeting revisions and publications; the three incident stages are for
+new meetings using the migrated revision. The temporary test allocation was
+confirmed destroyed, its acceptance lesson unpublished and test identities
+removed. Randomized execution
+remains unimplemented.
 
 Operator setup uses the native CloudFormation templates in `tools/hosted/`.
 `identity.yaml` requires the repository's exact `sub_claim_prefix` from
@@ -218,6 +311,38 @@ See [examples](examples/README.md) for a server, web/database pair, and workstat
 Inputs support `string`, `integer`, and `boolean`; input defaults and the CLI's
 inputs JSON values are strings, then converted to their declared Ansible types.
 Do not put secrets in inputs: source and build provenance are retained locally.
+
+For a template in the hosted repository, place reusable teaching material in
+`instructor.yaml`. For example, a baseline Ubuntu lab can offer an answer stage
+and an independent meeting discussion:
+
+```yaml
+version: 2
+stages:
+  - id: identify-init
+    title: Identify the service manager
+    instructions: Run `ps -p 1 -o comm=` on the server.
+    kind: answer
+    prompt: Which service manager is running as process 1?
+    answer: systemd
+    solution: |
+      Run `ps -p 1 -o comm=`. On this Ubuntu image, process 1 is `systemd`.
+      Use `systemctl status SERVICE` to inspect a managed service.
+  - id: discuss-recovery
+    title: Review a recovery plan
+    instructions: Explain how you would diagnose a stopped web service.
+    kind: instructor
+    prompt: Compare service status, listening ports and application logs.
+    solution: Check the service status, inspect its logs and listener, then verify access from the workstation.
+```
+
+Action stages add `checkID` referring to a check in this same manifest. A stage
+can add `exerciseID` referring to an existing break; the instructor explicitly
+applies that break during a meeting. Check and break playbooks still belong under
+`instructor/` and run only inside guests. The hosted importer removes this private
+material before loading portable source. Keep accepted answers and solutions in
+the private manifest, not in the student handover or portable playbooks. Solutions
+are intentionally visible when a practice learner chooses **View solution**.
 
 ## Configure an environment
 

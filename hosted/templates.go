@@ -105,6 +105,12 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 			}
 		}
 		t.RemovalBlocked = removalBlock(*t, keys, meeting, instances)
+		if t.RemovalBlocked == "" {
+			t.RemovalBlocked, err = s.practiceImageBlock(ctx, keys)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i], out[j]
@@ -198,6 +204,11 @@ func (s *Service) queueTemplateOperationLocked(ctx context.Context, kind, id str
 		if reason := removalBlock(t, keys, m, instances); reason != "" {
 			return Job{}, errors.New(reason)
 		}
+		if reason, err := s.practiceImageBlock(ctx, keys); err != nil {
+			return Job{}, err
+		} else if reason != "" {
+			return Job{}, errors.New(reason)
+		}
 		t.Removing = true
 		t.Built = false
 	}
@@ -275,6 +286,11 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 			return err
 		}
 		if reason := removalBlock(t, keys, m, instances); reason != "" {
+			return errors.New(reason)
+		}
+		if reason, err := s.practiceImageBlock(ctx, keys); err != nil {
+			return err
+		} else if reason != "" {
 			return errors.New(reason)
 		}
 		others, err := s.rawTemplates(ctx)
