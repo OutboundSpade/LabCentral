@@ -139,7 +139,7 @@
           <h3 class="text-lg font-semibold">{stage.title}</h3>
           <div class={[prose, "mt-3 break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"]}>{@html render(stage.instructions)}</div>
           {#if stage.prompt}<p class="mt-3 text-sm leading-relaxed">{stage.prompt}</p>{/if}
-          {#key stage.id}{#if stage.solution || stage.answer}<details class="collapse collapse-arrow panel mt-4">
+          {#key stage.id}{#if stage.solution || stage.answer}<details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4">
             <summary class="collapse-title flex items-center gap-2 text-sm font-medium"><LockKeyhole size={14} />Instructor solution</summary>
             <div class="collapse-content">{#if stage.solution}<div class={prose}>{@html render(stage.solution)}</div>{/if}{#if stage.answer}<p class="mt-3 text-sm">Accepted answer: <code>{stage.answer}</code></p>{/if}</div>
           </details>{/if}{/key}
@@ -154,7 +154,7 @@
         </select>
       </div>
     {/if}
-    {#if otherBreaks.length}<details class="collapse collapse-arrow panel mt-4">
+    {#if otherBreaks.length}<details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4">
       <summary class="collapse-title text-sm font-medium">Other template breaks · {otherBreaks.length}</summary>
       <div class="collapse-content">
         <label class="label mb-2 text-sm" for="other-template-break">Other template break</label>
@@ -165,7 +165,7 @@
       </div>
     </details>{/if}
     {#if definition}<details
-        class="collapse collapse-arrow panel mt-4"
+        class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4"
       >
         <summary class="collapse-title text-sm font-medium"
           >Instructor walkthrough</summary
@@ -285,7 +285,7 @@
       {chosen.length}
       {chosen.length === 1 ? "team" : "teams"} selected
     </p>
-    <details class="collapse collapse-arrow panel mt-3">
+    <details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-3">
       <summary class="collapse-title text-sm">Selected teams</summary>
       <div class="collapse-content">
         <!-- Keyboard scrolling for large team selections. -->

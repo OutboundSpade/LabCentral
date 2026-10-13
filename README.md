@@ -71,8 +71,8 @@ fifteen, thirty and sixty minutes. Ready teams can be checked while other teams
 are still preparing. Schedules start paused and stop when the meeting ends. See
 [ARCHITECTURE.md](ARCHITECTURE.md#hosted-team-service) for the manifest contract.
 
-The eight prerendered routes are `/`, `/labs/`, `/learn/`, `/teams/`, `/lab/`,
-`/admin/`, `/admin/labs/`, and `/admin/templates/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
+The nine prerendered routes are `/`, `/labs/`, `/learn/`, `/teams/`, `/lab/`,
+`/admin/`, `/admin/labs/`, `/admin/templates/`, and `/admin/terminal/`. The SvelteKit UI uses daisyUI and Lucide; a Go service supplies
 identity, APIs, jobs and desktop authorization. Live acceptance covers real OIDC
 sign-in, retained workspaces, team switching, revocation, network isolation,
 Example Branch exercises, cleanup and backup restoration.
@@ -99,14 +99,26 @@ restore; unrelated package or configuration damage can require operator recovery
 Exercises use the meeting's pinned source and do not require new images. Older
 meeting revisions retain their original exercise definitions.
 
-## Explore templates and publish practice
+Under **Admin → Meeting → Coach machine access**, choose a ready team and machine,
+then select **Open SSH**. It opens a full terminal in a separate tab. Resize the
+window to resize the guest terminal; use **Copy selection** or your browser's paste
+shortcut to transfer text. **Disconnect** stops the shell and automatic retries.
+Transient failures retry with a fresh authorization check. Reconnection starts a
+new shell, keeps the visible scrollback and never resends commands; working directory
+and running interactive programs are not restored. Access revocation, meeting expiry
+and normal shell exit stop retries. Sessions renew after ten minutes. Disconnect
+before running checks or resets on the same machine.
 
-**Practice** opens the published lab catalog; its **Templates** view is a
-card-based template browser. Explore
-a pinned revision to read its handover, inspect its machines and preview its
-stages. Search helps find templates; revision selection keeps exploration
-attached to the exact source. Browsing does not provision resources. Image status
-reflects the saved build record; cloud readiness is checked when starting practice.
+## Template library and repeatable practice
+
+**Practice** opens the template library. Each template has a category, difficulty,
+estimated duration, skill tags, machine inventory and pinned revision. Search and
+filters help choose baseline practice or an authored randomized scenario. Explore
+its handover and stages before starting. Browsing and creating a saved attempt do
+not provision resources; cloud preparation remains an explicit action in the player.
+Image status reflects the saved build record; readiness is validated before cloud
+reservation. **My attempts** keeps each student's independent progress and exact
+revision, with prior shared lesson links retained for existing users.
 
 Hosted templates can own stages in `instructor.yaml` version 2. A stage contains
 student instructions and an answer, a pinned action check, or an instructor
@@ -128,19 +140,20 @@ the ledger dependency, banking page, FTP login root, publishing timer and publis
 branch hours. Three additional recovery stages link the stopped-web, database-port
 and FTP-defacement breaks. Each stage includes a private reference solution.
 
-Under **Admin → Published labs**, choose **New lab**, then a pinned revision and its reusable
-practice stages. Publishing snapshots those definitions, including private
-answers and solutions; later template imports cannot change an existing lesson.
-Personal practice follows the selected stages in template order. Break-dependent
-and instructor stages remain meeting-only: personal runs currently start from
-the image baseline. Older revisions without stages retain the manual lesson
-editor, and previously published instructor-paced lessons retain their release
-controls. Saved progress is preserved. Where an author supplies a solution,
-students can explicitly choose **View solution** for a current or completed
-released stage. Viewing it does not complete that stage.
+Choose **Start practice** from a template revision for its authored baseline
+stages, or **New scenario** for a randomized drill. Every attempt snapshots its
+stages, private answer key and guest definitions and starts with independent
+progress. A retried creation request resumes the same saved attempt. Students can
+resume previous attempts; **Try again** returns to the exact template revision to
+create another. The temporary **Published labs** editor and navigation are removed;
+its old administrative route redirects to **Templates**. Stored shared lessons,
+progress and cleanup records remain readable; no live publication was deleted by
+this source change.
 
-The practice catalog lists published lessons, progress and each student's
-remaining cloud time.
+An author's optional solution can be deliberately revealed for a current or
+completed released stage. Viewing it does not complete that stage. Historical
+instructor-paced lessons retain their release behavior through the existing API.
+
 Personal cloud labs default to **three hours per student per UTC week**, resetting
 on Monday. Operators can set `weeklyCloudMinutes` in the protected hosted config.
 Time counts from allocation reservation through confirmed cleanup, including
@@ -165,12 +178,37 @@ quota does not apply to your own resources, and you must clean those up yourself
 Cloud action verification is unavailable for local runs; answers can still be
 submitted through the guided player.
 
-Randomized scenario execution is not implemented. The intended small extension
-is a set of author-defined variants that reuse a template's breaks, checks and
-solutions. A future attempt must persist its selected variant and private answer
-key before guest effects and keep progress per attempt. Choosing among validated
-scenarios is preferable to generating arbitrary attacks or combining breaks whose
-reset behavior is unknown.
+Randomized scenarios select from an author's distinct, explicitly compatible
+combinations of existing breaks and recovery stages. The selected combination is
+saved privately before guest effects; repeat attempts avoid the immediately
+previous combination. Cloud preparation restores the baseline once, then applies
+all selected breaks without resetting between them. A confirmed checkpoint allows
+preparation to resume without repeating effects. An interrupted or uncertain guest
+mutation requires stopping, confirmed cleanup and a new attempt. Selected program
+IDs and the private variant stay out of student responses. Scenario practice
+requires hosted preparation; portable downloads remain available for baseline labs.
+
+The standard source library under [templates](templates/README.md) includes a
+small CCDC service-recovery lab with three baseline stages, two independent breaks
+and three combinations, including a simultaneous web/scheduler outage. It uses
+the existing pinned private-repository importer; its README describes authoring and
+import. The library, configurable worker/engine limits, CLI improvements and
+new-tab xterm.js administrator terminal were deployed on 2026-10-13. Live acceptance
+used real administrator/student OIDC and native AWS guests. It covered terminal
+keyboard input, ANSI rendering, selection, mobile PTY resize, reconnect without
+input replay, retained scrollback and authorization revocation. The CCDC template
+was imported and both images built. A combined web/scheduler outage was observed
+and repaired through a rendered student desktop; native checks saved both stages.
+A second allocation applied a different, single-break scenario with fresh progress
+while preserving the earlier attempt's completion. Test allocations were stopped
+with confirmed cleanup. Initial cold desktop launches returned temporary failures.
+A subsequent deployment on the same day preloaded CPU graphics libraries before
+DCV session creation. The untouched native AWS workstation then opened on its first
+request, rendered the desktop and accepted keyboard input; the cold request took
+about a minute. A first launch after a confirmed guest reboot also passed, in
+about two seconds, with the student's previous file retained. Larger cohorts,
+configured capacity ceilings and Proxmox scenario
+acceptance remain unqualified.
 
 The redesign and practice workflows were deployed on 2026-10-08, with mobile and
 laptop proportion refinements on 2026-10-09. Live acceptance
@@ -192,8 +230,15 @@ guest keyboard input and retained progress/files on reconnect. The published
 existing meeting revisions and publications; the three incident stages are for
 new meetings using the migrated revision. The temporary test allocation was
 confirmed destroyed, its acceptance lesson unpublished and test identities
-removed. Randomized execution
-remains unimplemented.
+removed. Randomized execution was not part of that release.
+
+The simplified navigation, practice player and lab-frame logo were deployed on
+2026-10-09 after Blueprint review and local type/build, race and browser checks.
+Real OIDC desktop/mobile UI checks and native desktop keyboard/lesson-answer
+verification passed; existing meeting, team and publication records were preserved.
+All temporary test allocations and identities were confirmed removed. One AWS
+preparation attempt encountered a route-table lookup error and was cleaned up
+before the successful desktop test; this rollout adds no cohort/load qualification.
 
 Operator setup uses the native CloudFormation templates in `tools/hosted/`.
 `identity.yaml` requires the repository's exact `sub_claim_prefix` from
@@ -212,6 +257,56 @@ When the public IDP hostname challenges machine traffic, set `backchannelOrigin`
 to its trusted HTTPS origin (for CDC, `https://id.example.org`). Issuer and
 audience verification remain enabled against the canonical advertised issuer.
 The server never needs the OIDC provider administrative API key.
+
+Operational limits belong in this protected JSON file. Merge the following
+sections into the existing configuration and restart the service to apply them:
+
+```json
+{
+  "weeklyCloudMinutes": 180,
+  "worker": {
+    "maxProvisioningConcurrency": 3,
+    "maxBulkJobs": 3,
+    "maxGuestJobs": 2,
+    "maxImageBuildJobs": 2,
+    "jobTimeoutMinutes": 120
+  },
+  "engine": {
+    "maxImageBuildConcurrency": 3,
+    "maxMachineConcurrency": 4,
+    "maxCleanupConcurrency": 4
+  }
+}
+```
+
+| Setting | Default | Meaning |
+| --- | ---: | --- |
+| `worker.maxProvisioningConcurrency` | 3 | Total simultaneous team and personal lab preparations in this service |
+| `worker.maxBulkJobs` | 3 | Build, preparation, repository refresh and image removal jobs |
+| `worker.maxGuestJobs` | 2 | Checks and exercises, independent of bulk capacity |
+| `worker.maxImageBuildJobs` | 2 | Image-build jobs within the bulk budget |
+| `worker.jobTimeoutMinutes` | 120 | Maximum job duration; allocation expiry can interrupt work sooner |
+| `engine.maxImageBuildConcurrency` | 3 | Parallel images within each build operation |
+| `engine.maxMachineConcurrency` | 4 | Parallel machine creates within each lab deployment |
+| `engine.maxCleanupConcurrency` | 4 | Parallel machine deletions within each lab cleanup |
+| `weeklyCloudMinutes` | 180 | Each student's weekly personal cloud allowance |
+
+Concurrency values accept 1–32; job timeout accepts 1–1440 minutes. Omitted or
+zero values select defaults. Image-build jobs cannot exceed bulk jobs; when
+omitted, their limit is the smaller of two and the bulk budget. A further worker
+slot remains reserved for cleanup. Engine limits apply to each operation, so
+three concurrent lab preparations with four machine creates each can issue up
+to twelve machine creates. Raising limits does not increase provider quotas.
+Waiting preparations remain cancellable and keep their original allocation IDs.
+
+```sh
+labcentral-server --config /path/to/protected-service.json --check-config
+```
+
+This checks static policy and prints effective limits without disclosing
+credentials, starting providers or contacting OIDC. Files, identity and native
+capacity still require their separate checks. These settings are local operator
+configuration; they are not served through student APIs.
 
 ```sh
 npm --prefix web ci
@@ -493,6 +588,38 @@ noninteractive execution. Deploy builds missing images and previews that work.
 Use `--json` for versioned results and progress records. The library never prompts,
 prints, or opens a browser. Desktop access prints a one-use loopback URL and guest
 credentials; keep the command running and press Ctrl-C to revoke the session.
+
+Use `labcentral help deploy`, `labcentral help access`, or `labcentral image --help`
+for focused usage and examples. Flags can appear before or after arguments:
+`labcentral plan examples/single --environment /path/to/aws.yaml`. Invalid commands,
+missing arguments and unsupported access methods fail before starting a provider.
+Human-readable lists have aligned column headings; `--json` retains the versioned
+result contract for automation.
+
+Save recurring paths and concurrency limits with `labcentral config init`.
+It creates a mode-0600 file at `$XDG_CONFIG_HOME/labcentral/config.json` (normally
+`~/.config/labcentral/config.json`) and refuses to overwrite an existing file.
+Edit it with absolute paths:
+
+```json
+{
+  "state": "/path/to/private/state",
+  "environment": "/path/to/aws.yaml",
+  "provider": "/path/to/labcentral-provider",
+  "engine": {
+    "maxImageBuildConcurrency": 2,
+    "maxMachineConcurrency": 2,
+    "maxCleanupConcurrency": 4
+  }
+}
+```
+
+Empty paths keep built-in defaults. The CLI automatically reads the default file
+when it exists. Select another with `--config FILE` or `LABCENTRAL_CONFIG`; an
+explicitly selected missing file is an error. Command flags override saved values.
+`labcentral config show` displays the resolved settings. One-off overrides are
+`--image-build-concurrency N`, `--machine-concurrency N`, and `--cleanup-concurrency N`.
+Saved configuration cannot enable `--yes`, and contains no infrastructure credentials.
 
 For the graphical workstation:
 

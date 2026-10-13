@@ -1,0 +1,15 @@
+- name: Build investigation workstation
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install investigation tools
+      ansible.builtin.apt:
+        name: [curl, tcpdump, jq, mousepad, openssh-client]
+        state: present
+        update_cache: true
+    - name: Write training welcome
+      ansible.builtin.copy:
+        dest: /etc/motd
+        mode: '0644'
+        content: 'Branch recovery: read the handover and investigate services.'

@@ -57,6 +57,8 @@ type LearningPublication struct {
 	Published        bool                `json:"published"`
 	PublishedAt      time.Time           `json:"publishedAt"`
 	ReleasedSteps    int                 `json:"releasedSteps"`
+	OwnerID          string              `json:"ownerID,omitempty"`
+	ScenarioID       string              `json:"scenarioID,omitempty"`
 }
 type LearningLab struct {
 	ID               string    `json:"id"`
@@ -68,6 +70,8 @@ type LearningLab struct {
 	StepCount        int       `json:"stepCount"`
 	PublishedAt      time.Time `json:"publishedAt"`
 	CompletedSteps   int       `json:"completedSteps"`
+	Attempt          bool      `json:"attempt,omitempty"`
+	ScenarioID       string    `json:"scenarioID,omitempty"`
 }
 type LearningProgress struct {
 	LabID          string    `json:"labID"`
@@ -106,15 +110,16 @@ type LearningCatalog struct {
 	Run   *PracticeRun  `json:"run"`
 }
 type LearningView struct {
-	Lab            LearningLab      `json:"lab"`
-	Steps          []LearningStep   `json:"steps"`
-	Progress       LearningProgress `json:"progress"`
-	Quota          CloudQuota       `json:"quota"`
-	Run            *PracticeRun     `json:"run"`
-	ReleasedSteps  int              `json:"releasedSteps"`
-	CloudReady     bool             `json:"cloudReady"`
-	LocalAvailable bool             `json:"localAvailable"`
-	Check          *LearningCheck   `json:"check"`
+	Lab            LearningLab              `json:"lab"`
+	Steps          []LearningStep           `json:"steps"`
+	Progress       LearningProgress         `json:"progress"`
+	Quota          CloudQuota               `json:"quota"`
+	Run            *PracticeRun             `json:"run"`
+	ReleasedSteps  int                      `json:"releasedSteps"`
+	CloudReady     bool                     `json:"cloudReady"`
+	LocalAvailable bool                     `json:"localAvailable"`
+	Check          *LearningCheck           `json:"check"`
+	Scenario       *TemplateScenarioSummary `json:"scenario,omitempty"`
 }
 type LearningAdminView struct {
 	Labs         []LearningPublication `json:"labs"`
@@ -153,7 +158,7 @@ func (s *Service) weeklyMinutes() int {
 }
 func progressKey(user, lab string) string { return digest(user + "\x00" + lab) }
 func (p LearningPublication) summary(progress LearningProgress) LearningLab {
-	return LearningLab{p.ID, p.Template, p.Title, p.Description, p.Mode, p.EstimatedMinutes, len(p.Steps), p.PublishedAt, progress.CompletedSteps}
+	return LearningLab{ID: p.ID, Template: p.Template, Title: p.Title, Description: p.Description, Mode: p.Mode, EstimatedMinutes: p.EstimatedMinutes, StepCount: len(p.Steps), PublishedAt: p.PublishedAt, CompletedSteps: progress.CompletedSteps, Attempt: p.OwnerID != "", ScenarioID: p.ScenarioID}
 }
 func (s *Store) learningProgress(ctx context.Context, user, lab string) (LearningProgress, error) {
 	p := LearningProgress{LabID: lab}
@@ -184,7 +189,7 @@ func (s *Store) publications(ctx context.Context, publishedOnly bool) ([]Learnin
 func (s *Service) publication(ctx context.Context, id string) (LearningPublication, error) {
 	var p LearningPublication
 	err := s.Store.Get(ctx, "learning-publication", id, &p)
-	if err != nil || !p.Published {
+	if err != nil || !p.Published || s.studentTemplate(ctx, p.Template) != nil {
 		return p, fmt.Errorf("This lab is not published.")
 	}
 	return p, nil
@@ -205,12 +210,21 @@ func (s *Service) learningCatalog(w http.ResponseWriter, r *http.Request, v Sess
 	writeJSON(w, 200, out)
 }
 func (s *Service) learningView(w http.ResponseWriter, r *http.Request, v Session) {
-	p, err := s.publication(r.Context(), r.PathValue("id"))
+	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
 	}
 	out := LearningView{Steps: []LearningStep{}, ReleasedSteps: p.ReleasedSteps, LocalAvailable: true}
+	if p.ScenarioID != "" {
+		var attempt templateAttempt
+		if s.Store.Get(r.Context(), "template-attempt", p.ID, &attempt) != nil || attempt.UserID != v.User.ID || attempt.ID != p.ID || attempt.Template != p.Template || attempt.ScenarioID != p.ScenarioID || attempt.Scenario == nil {
+			writeError(w, 503, "Your scenario intent is unavailable.")
+			return
+		}
+		out.Scenario = attempt.Scenario
+		out.LocalAvailable = false
+	}
 	out.Progress, err = s.Store.learningProgress(r.Context(), v.User.ID, p.ID)
 	out.Lab = p.summary(out.Progress)
 	for _, step := range p.Steps {
@@ -309,6 +323,10 @@ func (s *Service) publishLearning(w http.ResponseWriter, r *http.Request, v Sess
 		writeError(w, 503, "Template checks are unavailable.")
 		return
 	}
+	if bundle.Audience == "coaches" {
+		writeError(w, 409, "Coach-only templates cannot be published for students.")
+		return
+	}
 	if len(req.StageIDs) > 0 {
 		if len(req.Steps) > 0 || req.Mode != "self-paced" {
 			writeError(w, 400, "Choose template stages for a self-paced publication without manual stages.")
@@ -328,7 +346,7 @@ func (s *Service) publishLearning(w http.ResponseWriter, r *http.Request, v Sess
 	if req.Mode == "instructor" {
 		released = 1
 	}
-	p := LearningPublication{randomID(12), req.Template, req.Title, req.Description, req.Mode, req.EstimatedMinutes, req.Steps, true, time.Now().UTC(), released}
+	p := LearningPublication{ID: randomID(12), Template: req.Template, Title: req.Title, Description: req.Description, Mode: req.Mode, EstimatedMinutes: req.EstimatedMinutes, Steps: req.Steps, Published: true, PublishedAt: time.Now().UTC(), ReleasedSteps: released}
 	if err = s.Store.Put(r.Context(), "learning-publication", p.ID, p); err != nil {
 		writeError(w, 503, "Publication could not be saved.")
 		return
@@ -421,7 +439,7 @@ func (s *Service) solutionLearning(w http.ResponseWriter, r *http.Request, v Ses
 	}
 	unlock := s.lockUser(v.User.ID)
 	defer unlock()
-	p, err := s.publication(r.Context(), r.PathValue("id"))
+	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
@@ -450,7 +468,7 @@ func (s *Service) answerLearning(w http.ResponseWriter, r *http.Request, v Sessi
 	}
 	unlock := s.lockUser(v.User.ID)
 	defer unlock()
-	p, err := s.publication(r.Context(), r.PathValue("id"))
+	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
@@ -483,9 +501,13 @@ func (s *Service) answerLearning(w http.ResponseWriter, r *http.Request, v Sessi
 // Only the retained portable snapshot is downloadable. Instructor answers,
 // playbooks, provider configuration and infrastructure credentials are excluded.
 func (s *Service) downloadLearning(w http.ResponseWriter, r *http.Request, v Session) {
-	p, err := s.publication(r.Context(), r.PathValue("id"))
+	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
+		return
+	}
+	if p.ScenarioID != "" {
+		writeError(w, 409, "Randomized scenarios require hosted preparation. Choose baseline practice for a portable download.")
 		return
 	}
 	var src lc.Source

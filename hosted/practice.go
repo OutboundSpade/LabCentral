@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
+	if err := s.studentTemplate(ctx, id); err != nil {
+		return err
+	}
 	var t Template
 	var src lc.Source
 	if s.Store.Get(ctx, "template", id, &t) != nil || !t.Built || t.Removing {
@@ -32,7 +35,7 @@ func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
 	return fmt.Errorf("Cloud practice requires a workstation with desktop access.")
 }
 func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Session) {
-	p, err := s.publication(r.Context(), r.PathValue("id"))
+	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
@@ -43,7 +46,7 @@ func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Sessio
 	// infrastructure mutation occurs in this request.
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, err = s.publication(r.Context(), p.ID)
+	p, err = s.ownedPublication(r.Context(), p.ID, v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
@@ -51,6 +54,17 @@ func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Sessio
 	if err = s.practiceTemplateReady(r.Context(), p.Template); err != nil {
 		writeError(w, 409, err.Error())
 		return
+	}
+	if p.ScenarioID != "" {
+		var ended int
+		if err = s.Store.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM practice_runs WHERE lab_id=? AND status='ended'`, p.ID).Scan(&ended); err != nil {
+			writeError(w, 503, "Scenario history is unavailable.")
+			return
+		}
+		if ended > 0 {
+			writeError(w, 409, "Create a new scenario attempt to practice again. This attempt retains its progress.")
+			return
+		}
 	}
 	run, err := s.Store.reservePractice(r.Context(), v.User.ID, p.ID, s.weeklyMinutes(), time.Now().UTC())
 	if err != nil {
@@ -159,6 +173,9 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 		_, err = s.Store.endPractice(context.WithoutCancel(ctx), run.ID, run.UserID)
 		return err
 	}
+	if p.OwnerID != "" && p.OwnerID != run.UserID {
+		return fmt.Errorf("practice allocation does not own its attempt")
+	}
 	if err = s.practiceTemplateReady(ctx, p.Template); err != nil {
 		return err
 	}
@@ -169,6 +186,25 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 	if err != nil {
 		return err
 	}
+	if p.OwnerID != "" {
+		bundle, e := s.learningBundle(ctx, p)
+		if e != nil {
+			return e
+		}
+		if e = bundle.validate(src); e != nil {
+			return e
+		}
+	}
+	if p.ScenarioID != "" {
+		if _, e := s.scenarioIntent(ctx, run, p, src); e != nil {
+			return e
+		}
+	}
+	release, err := s.acquireProvisioning(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	result, err := s.Store.DB.ExecContext(ctx, `UPDATE practice_runs SET status='preparing',error='' WHERE id=? AND status IN ('queued','failed','preparing')`, run.ID)
 	if err != nil {
 		return err
@@ -191,6 +227,9 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 	}
 	if inst.Plan.Source.Digest != src.Digest || inst.ID != run.InstanceID || inst.Status != "ready" {
 		return fmt.Errorf("practice allocation does not match its pinned source")
+	}
+	if err = s.prepareScenario(ctx, run, p, src); err != nil {
+		return err
 	}
 	if !run.Expires.After(time.Now()) {
 		_, err = s.Store.endPractice(context.WithoutCancel(ctx), run.ID, run.UserID)
@@ -245,6 +284,9 @@ func (s *Service) readyPractice(ctx context.Context, user, lab string) (practice
 	}
 	if view == nil || view.LabID != lab || view.Status != "ready" || !view.Expires.After(time.Now()) {
 		return practiceRecord{}, fmt.Errorf("Your cloud lab is not ready or its time has ended.")
+	}
+	if err = s.practiceDisclosure(ctx, lab); err != nil {
+		return practiceRecord{}, err
 	}
 	return s.Store.practice(ctx, view.ID)
 }

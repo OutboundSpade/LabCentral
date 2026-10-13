@@ -15,6 +15,21 @@ type Run func(context.Context, string) ([]byte, error)
 
 var errEmptyStatus = errors.New("DCV returned an empty session status; readiness is unconfirmed")
 
+// Xdcv loads Mesa and LLVM lazily while initializing GLX, even with DCV-GL off.
+// On a freshly restored image those reads can exceed the launcher's display-fd
+// deadline. Read the executable, CPU graphics modules and their dependencies
+// before starting that clock. This also works with already captured images and
+// does not change the server configuration or another user's session.
+const warmGraphics = `sudo bash -c 'set -euo pipefail
+for file in /usr/bin/Xdcv /usr/lib/xorg/modules/extensions/libglx.so /usr/lib/*/libGLX_mesa.so.* /usr/lib/*/libgallium*.so /usr/lib/*/dri/swrast_dri.so; do
+  if test -f "$file"; then
+    cat "$file" >/dev/null
+    ldd "$file"
+  fi
+done | awk '\''/=> \// {print $3} /^\// {print $1}'\'' | sort -u | while IFS= read -r file; do
+  cat "$file" >/dev/null
+done'`
+
 type session struct {
 	ID      string `json:"id"`
 	Status  string `json:"status"`
@@ -57,8 +72,13 @@ func start(ctx context.Context, run Run, user, id string, timeout, interval time
 	if !valid.MatchString(user) || !valid.MatchString(id) {
 		return fmt.Errorf("invalid DCV session identity")
 	}
+	if _, err := run(ctx, warmGraphics); err != nil {
+		return fmt.Errorf("prepare DCV graphics libraries: %w", err)
+	}
 	for attempt := 0; attempt < 2; attempt++ {
-		if _, err := run(ctx, "sudo dcv create-session --type virtual --user "+user+" --owner "+user+" "+id); err != nil {
+		// CPU-backed virtual desktops must not initialize DCV-GL: it can leave
+		// Xdcv starting without a usable display on hosts with no GPU.
+		if _, err := run(ctx, "sudo dcv create-session --type virtual --gl off --user "+user+" --owner "+user+" "+id); err != nil {
 			return err
 		}
 		wait, cancel := context.WithTimeout(ctx, timeout)

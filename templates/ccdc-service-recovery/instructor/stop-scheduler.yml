@@ -1,0 +1,14 @@
+- name: Stop scheduled branch operations
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Stop cron while retaining its jobs
+      ansible.builtin.systemd_service:
+        name: cron
+        state: stopped
+    - name: Confirm the scheduler is stopped
+      ansible.builtin.command: systemctl is-active cron
+      register: state
+      changed_when: false
+      failed_when: state.stdout != 'inactive'

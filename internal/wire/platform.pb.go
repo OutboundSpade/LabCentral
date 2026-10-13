@@ -1114,6 +1114,7 @@ type Machine struct {
 	Memory        string                 `protobuf:"bytes,3,opt,name=memory,proto3" json:"memory,omitempty"`
 	Disk          string                 `protobuf:"bytes,4,opt,name=disk,proto3" json:"disk,omitempty"`
 	Access        []string               `protobuf:"bytes,5,rep,name=access,proto3" json:"access,omitempty"`
+	HostnamePeers []string               `protobuf:"bytes,6,rep,name=hostname_peers,json=hostnamePeers,proto3" json:"hostname_peers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1179,6 +1180,13 @@ func (x *Machine) GetDisk() string {
 func (x *Machine) GetAccess() []string {
 	if x != nil {
 		return x.Access
+	}
+	return nil
+}
+
+func (x *Machine) GetHostnamePeers() []string {
+	if x != nil {
+		return x.HostnamePeers
 	}
 	return nil
 }
@@ -1423,6 +1431,7 @@ type Image struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Base          string                 `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
 	Playbook      string                 `protobuf:"bytes,2,opt,name=playbook,proto3" json:"playbook,omitempty"`
+	Files         []string               `protobuf:"bytes,3,rep,name=files,proto3" json:"files,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1469,6 +1478,13 @@ func (x *Image) GetPlaybook() string {
 		return x.Playbook
 	}
 	return ""
+}
+
+func (x *Image) GetFiles() []string {
+	if x != nil {
+		return x.Files
+	}
+	return nil
 }
 
 type Network struct {
@@ -2213,13 +2229,14 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\x0fhost_public_key\x18\r \x01(\tR\rhostPublicKey\"9\n" +
 	"\tHostEntry\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\"u\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\"\x9c\x01\n" +
 	"\aMachine\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x10\n" +
 	"\x03cpu\x18\x02 \x01(\x05R\x03cpu\x12\x16\n" +
 	"\x06memory\x18\x03 \x01(\tR\x06memory\x12\x12\n" +
 	"\x04disk\x18\x04 \x01(\tR\x04disk\x12\x16\n" +
-	"\x06access\x18\x05 \x03(\tR\x06access\"\xc1\x01\n" +
+	"\x06access\x18\x05 \x03(\tR\x06access\x12%\n" +
+	"\x0ehostname_peers\x18\x06 \x03(\tR\rhostnamePeers\"\xc1\x01\n" +
 	"\fPlannedImage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12.\n" +
 	"\x04base\x18\x02 \x01(\v2\x1a.labcentral.plugin.v2.BaseR\x04base\x12\x1a\n" +
@@ -2247,10 +2264,11 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1d.labcentral.plugin.v2.MachineR\x05value:\x028\x01\x1aV\n" +
 	"\vInputsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.labcentral.plugin.v2.InputR\x05value:\x028\x01\"7\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.labcentral.plugin.v2.InputR\x05value:\x028\x01\"M\n" +
 	"\x05Image\x12\x12\n" +
 	"\x04base\x18\x01 \x01(\tR\x04base\x12\x1a\n" +
-	"\bplaybook\x18\x02 \x01(\tR\bplaybook\"%\n" +
+	"\bplaybook\x18\x02 \x01(\tR\bplaybook\x12\x14\n" +
+	"\x05files\x18\x03 \x03(\tR\x05files\"%\n" +
 	"\aNetwork\x12\x1a\n" +
 	"\binternet\x18\x01 \x01(\bR\binternet\"Q\n" +
 	"\x05Input\x12\x12\n" +

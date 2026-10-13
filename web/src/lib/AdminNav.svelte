@@ -2,7 +2,6 @@
   import { page } from "$app/state";
   const sections = [
     { href: "/admin/", label: "Meeting" },
-    { href: "/admin/labs/", label: "Published labs" },
     { href: "/admin/templates/", label: "Templates" },
   ];
 </script>

@@ -18,6 +18,7 @@
     api,
   } from "$lib/api";
   import { get } from "svelte/store";
+  import { clearAttemptRequests } from "$lib/library";
   import Notice from "$lib/Notice.svelte";
   import Logo from "$lib/Logo.svelte";
   let { children } = $props();
@@ -36,6 +37,9 @@
   async function logout() {
     try {
       await api("/auth/logout", {});
+      // Confirmed sign-out: invalidate identity guards before the hard navigation.
+      clearAttemptRequests();
+      session.set(null);
       location.assign("/");
     } catch (e) {
       error = (e as Error).message;
@@ -74,6 +78,8 @@
         ]
       : []),
   ]);
+  // The coach console tab is a full-width workspace without the phone tab bar.
+  const workspace = $derived(page.url.pathname.startsWith("/admin/terminal/"));
   function active(within: string[]) {
     return within.some((prefix) => page.url.pathname.startsWith(prefix));
   }
@@ -117,7 +123,10 @@
       {#if $session}
         <nav
           aria-label="Main navigation"
-          class="fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-base-content/10 bg-base-200 pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] lg:static lg:mr-auto lg:justify-start lg:gap-1 lg:border-0 lg:bg-transparent lg:p-0"
+          class={[
+            "fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-base-content/10 bg-base-200 pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] lg:static lg:mr-auto lg:justify-start lg:gap-1 lg:border-0 lg:bg-transparent lg:p-0",
+            workspace && "max-lg:hidden",
+          ]}
         >
           {#each destinations as destination}
             <a
@@ -171,7 +180,9 @@
   </header>
   <main
     id="main"
-    class="mx-auto max-w-6xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:pt-10 lg:pb-16"
+    class={workspace
+      ? "w-full"
+      : "mx-auto max-w-6xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:pt-10 lg:pb-16"}
   >
     <Notice message={error} dismissible />{@render children()}
   </main>

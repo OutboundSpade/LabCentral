@@ -10,11 +10,42 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
+	root := t.TempDir()
+	declaration := []byte("version: 2\nname: private-source\nimages:\n  base:\n    base: ubuntu\n    playbook: build.yml\n    files: [build.yml]\nmachines:\n  bank:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n    hostnamePeers: [bank]\n  coach:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n")
+	if err := os.WriteFile(filepath.Join(root, "lab.yaml"), declaration, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "build.yml"), []byte("- hosts: all\n  tasks: []\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	source, err := lc.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := lc.Command{Source: source, Machine: lc.PlannedMachine{Spec: source.Lab.Machines["bank"]}}
+	wireCommand := &wire.Command{}
+	if err := wireconvert.Encode(command, wireCommand); err != nil {
+		t.Fatal(err)
+	}
+	var received lc.Command
+	if err := wireconvert.Decode(wireCommand, &received); err != nil {
+		t.Fatal(err)
+	}
+	if err := lc.Validate(received.Source); err != nil {
+		t.Fatal("provider cannot validate retained declaration:", err)
+	}
+	if len(received.Source.Lab.Images["base"].Files) != 1 || len(received.Machine.Spec.HostnamePeers) != 1 || received.Machine.Spec.HostnamePeers[0] != "bank" {
+		t.Fatal("source privacy selections were lost across provider protocol")
+	}
+}
 
 func TestTypedProtocolRoundTrip(t *testing.T) {
 	c := lc.Command{ClientPrivateKey: []byte("transient"), Operation: "op", Environment: lc.Environment{Version: 2, Platform: "aws", Bases: map[string]lc.Base{"ubuntu": {ID: "ami", DiskGiB: 8}}}, Source: lc.Source{Files: []lc.File{{Path: "lab.yaml", Content: []byte("version: 2")}}}, Prior: lc.Resource{Data: json.RawMessage(`{"native":"state"}`)}}

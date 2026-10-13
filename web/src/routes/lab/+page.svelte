@@ -106,7 +106,7 @@
     </PageHeader>
     <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-12">
       <aside class="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
-        <section class="panel p-5" aria-labelledby="desktop-title">
+        <section class="rounded-box border border-base-content/9 bg-base-200/70 p-5" aria-labelledby="desktop-title">
           <div class="flex items-center justify-between gap-3">
             <h2 id="desktop-title" class="text-sm font-medium">Your desktop</h2>
             <span aria-live="polite" aria-atomic="true"
@@ -161,7 +161,7 @@
             <summary class="cursor-pointer text-xs text-base-content/70 hover:text-base-content"
               >Using your desktop</summary
             >
-            <ul class="mt-2 list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
+            <ul class="mt-2 [list-style-type:disc] space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
               <li>After 60 idle minutes the desktop disconnects; reopen it to resume.</li>
               <li>Paste inside the desktop with Ctrl+V (⌘V); terminals use Ctrl+Shift+V.</li>
               <li><strong>Copy from desktop</strong> needs clipboard permission.</li>
@@ -169,8 +169,8 @@
             </ul>
           </details>
         </section>
-        <section class="panel p-5" aria-labelledby="team-title">
-          <h2 id="team-title" class="eyebrow">Machines</h2>
+        <section class="rounded-box border border-base-content/9 bg-base-200/70 p-5" aria-labelledby="team-title">
+          <h2 id="team-title" class="text-xs font-medium text-base-content/70">Machines</h2>
           <ul class="mt-2 space-y-1.5">
             {#each $session.lab.machines as machine}<li
                 class="flex items-center gap-2.5 text-sm"
@@ -180,7 +180,7 @@
                 ><Status status={machine.status} />
               </li>{:else}<li class="text-sm text-base-content/70">Preparing machines…</li>{/each}
           </ul>
-          <h2 class="eyebrow mt-5">Teammates</h2>
+          <h2 class="text-xs font-medium text-base-content/70 mt-5">Teammates</h2>
           <p class="mt-2 text-sm leading-relaxed">
             {($session.lab.teammates ?? []).map((m) => m.name).join(", ") || "No one else yet."}
           </p>

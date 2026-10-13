@@ -102,7 +102,7 @@
           <span class="loading loading-spinner loading-sm"></span>Your previous
           desktop is closing. Retry the same team to finish your change.
         </div>{/if}
-      <ul class="panel divide-y divide-base-content/8">
+      <ul class="rounded-box border border-base-content/9 bg-base-200/70 divide-y divide-base-content/8">
         {#each $session.teams as team}
           {@const mine = team.id === $session.membership.teamID}
           {@const full = team.members >= team.capacity}

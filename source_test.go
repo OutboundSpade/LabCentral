@@ -153,3 +153,44 @@ func TestDesktopPolicyInvalidatesOnlyDesktopBuilds(t *testing.T) {
 		}
 	}
 }
+
+func TestHostnamePeerSelectionValidation(t *testing.T) {
+	for _, peers := range []string{"[missing]", "[one, one]"} {
+		dir := t.TempDir()
+		declaration := strings.Replace(sample, "access: [ssh]", "access: [ssh]\n    hostnamePeers: "+peers, 1)
+		if err := os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte(declaration), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(dir); err == nil {
+			t.Fatal("invalid peer inventory accepted", peers)
+		}
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte(strings.Replace(sample, "access: [ssh]", "access: [ssh]\n    hostnamePeers: [one]", 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	src, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.Lab.Machines["one"].HostnamePeers) != 1 {
+		t.Fatal("hostname inventory not retained")
+	}
+}
+
+func TestImageBuildFileSelectionValidation(t *testing.T) {
+	for name, files := range map[string]string{"unknown": "[build.yml, missing.txt]", "duplicate": "[build.yml, build.yml]", "missing playbook": "[data.txt]"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			declaration := strings.Replace(sample, "base: ubuntu-24.04", "base: ubuntu-24.04\n    playbook: build.yml\n    files: "+files, 1)
+			for path, data := range map[string]string{"lab.yaml": declaration, "build.yml": "- hosts: localhost\n  tasks: []\n", "data.txt": "training data"} {
+				if err := os.WriteFile(filepath.Join(dir, path), []byte(data), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Load(dir); err == nil {
+				t.Fatal("invalid build selection accepted")
+			}
+		})
+	}
+}

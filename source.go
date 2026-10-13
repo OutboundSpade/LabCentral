@@ -199,9 +199,26 @@ func Validate(s Source) error {
 		if i.Playbook != "" && !paths[i.Playbook] {
 			return problem(Invalid, "images."+n+".playbook", "file is not part of the source")
 		}
+		if len(i.Files) > 0 && (i.Playbook == "" || !Contains(i.Files, i.Playbook)) {
+			return problem(Invalid, "images."+n+".files", "selected build files require the image playbook")
+		}
+		seenFiles := map[string]bool{}
+		for _, path := range i.Files {
+			if !paths[path] || seenFiles[path] {
+				return problem(Invalid, "images."+n+".files", "use unique files from the pinned source")
+			}
+			seenFiles[path] = true
+		}
 	}
 	for n, m := range l.Machines {
 		f := "machines." + n
+		peers := map[string]bool{}
+		for _, peer := range m.HostnamePeers {
+			if _, ok := l.Machines[peer]; !ok || peers[peer] {
+				return problem(Invalid, f+".hostnamePeers", "use unique declared machine names")
+			}
+			peers[peer] = true
+		}
 		if !namePattern.MatchString(n) {
 			return problem(Invalid, f, "invalid name")
 		}

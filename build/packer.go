@@ -235,7 +235,9 @@ func Generate(c lc.Command, dir string) (Config, error) {
 		Playbook  string   `json:"playbook_file"`
 		Directory string   `json:"playbook_dir"`
 		Arguments []string `json:"extra_arguments"`
-	}{"ansible-local", "sudo /opt/labcentral-ansible/bin/ansible-playbook", filepath.Join(dir, "source", im.Playbook), filepath.Join(dir, "source"), []string{"--extra-vars=@/tmp/labcentral-inputs.json"}}))
+		Staging   string   `json:"staging_directory"`
+		Clean     bool     `json:"clean_staging_directory"`
+	}{"ansible-local", "sudo /opt/labcentral-ansible/bin/ansible-playbook", filepath.Join(dir, "source", im.Playbook), filepath.Join(dir, "source"), []string{"--extra-vars=@/tmp/labcentral-inputs.json"}, "/tmp/labcentral-source", true}))
 	if im.Desktop {
 		desktop := []string{"set -eu", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xfce4 lightdm dbus-x11 xorg", "printf '%s\\n' 'exec startxfce4' | sudo tee /etc/skel/.xsession >/dev/null"}
 		if c.Environment.Platform == "aws" {
@@ -252,7 +254,7 @@ func Generate(c lc.Command, dir string) (Config, error) {
 	cfg.Provisioners = append(cfg.Provisioners, raw(struct {
 		Type   string   `json:"type"`
 		Inline []string `json:"inline"`
-	}{"shell", []string{"set -eu", "sudo rm -f /tmp/labcentral-inputs.json", "sudo find /root /home -type f -name authorized_keys -delete", "sudo rm -f /etc/ssh/ssh_host_*", "if systemctl list-unit-files dcvserver.service --no-legend | grep -q dcvserver; then sudo systemctl stop dcvserver; sudo rm -f /etc/dcv/dcv.pem /etc/dcv/dcv.key /var/lib/dcv/.config/NICE/dcv/private/dcv.pem /var/lib/dcv/.config/NICE/dcv/private/dcv.key; fi", "sudo cloud-init clean --logs --machine-id", "sudo sync"}}))
+	}{"shell", []string{"set -eu", "sudo rm -f /tmp/labcentral-inputs.json", "sudo rm -rf /tmp/labcentral-source", "sudo find /root /home -type f -name authorized_keys -delete", "sudo rm -f /etc/ssh/ssh_host_*", "if systemctl list-unit-files dcvserver.service --no-legend | grep -q dcvserver; then sudo systemctl stop dcvserver; sudo rm -f /etc/dcv/dcv.pem /etc/dcv/dcv.key /var/lib/dcv/.config/NICE/dcv/private/dcv.pem /var/lib/dcv/.config/NICE/dcv/private/dcv.key; fi", "sudo cloud-init clean --logs --machine-id", "sudo sync"}}))
 	return cfg, nil
 }
 func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
@@ -271,17 +273,8 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 			}
 			return lc.Result{}, fmt.Errorf("recovery_required: incomplete build resources were cleaned; remove the failed attempt with image abandon before rebuilding")
 		}
-		if err = os.MkdirAll(filepath.Join(dir, "source"), 0700); err != nil {
+		if err = stageImageSource(c, dir); err != nil {
 			return lc.Result{}, err
-		}
-		for _, f := range c.Source.Files {
-			p := filepath.Join(dir, "source", filepath.FromSlash(f.Path))
-			if err = os.MkdirAll(filepath.Dir(p), 0700); err != nil {
-				return lc.Result{}, err
-			}
-			if err = os.WriteFile(p, f.Content, 0600); err != nil {
-				return lc.Result{}, err
-			}
 		}
 		pin, err := hashFile(c.Environment.Build.Packer)
 		if err != nil || pin != c.Environment.Build.PackerSHA256 {
@@ -382,4 +375,24 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+func stageImageSource(c lc.Command, dir string) error {
+	if err := os.MkdirAll(filepath.Join(dir, "source"), 0700); err != nil {
+		return err
+	}
+	for _, f := range c.Source.Files {
+		selected := c.Source.Lab.Images[c.Image.Name].Files
+		if len(selected) > 0 && !lc.Contains(selected, f.Path) {
+			continue
+		}
+		p := filepath.Join(dir, "source", filepath.FromSlash(f.Path))
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, f.Content, 0600); err != nil {
+			return err
+		}
+	}
+	return nil
 }

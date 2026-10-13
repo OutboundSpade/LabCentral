@@ -148,6 +148,10 @@ func claimsConflict(a, b []jobClaim) bool {
 }
 
 func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, done chan<- error) error {
+	if err := s.Config.Worker.Validate(); err != nil {
+		return err
+	}
+	limits := s.Config.Worker.Effective()
 	jobs, err := s.Store.QueuedJobs(ctx)
 	if err != nil {
 		return err
@@ -185,11 +189,11 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 			}
 		}
 		lane := jobLane(j.Kind)
-		if blocked || len(s.activeJobs) >= 6 || (lane == "bulk" && bulk >= 3) || (lane == "guest" && guest >= 2) || (j.Kind == "build" && builds >= 2) {
+		if blocked || len(s.activeJobs) >= limits.MaxBulkJobs+limits.MaxGuestJobs+1 || (lane == "bulk" && bulk >= limits.MaxBulkJobs) || (lane == "guest" && guest >= limits.MaxGuestJobs) || (j.Kind == "build" && builds >= limits.MaxImageBuildJobs) {
 			s.jobMu.Unlock()
 			continue
 		}
-		taskCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+		taskCtx, cancel := context.WithTimeout(ctx, time.Duration(limits.JobTimeoutMinutes)*time.Minute)
 		result, err := s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='running',error='' WHERE id=? AND status='queued'`, j.ID)
 		if err != nil {
 			cancel()

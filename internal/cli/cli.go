@@ -17,8 +17,9 @@ import (
 )
 
 type options struct {
-	root, env, provider, inputFile string
-	json, yes                      bool
+	root, env, provider, inputFile, configFile string
+	json, yes                                  bool
+	engine                                     lc.EngineOptions
 }
 
 func defaults() options {
@@ -31,33 +32,93 @@ func defaults() options {
 	return options{root: filepath.Join(root, "labcentral", "v2"), provider: filepath.Join(filepath.Dir(exe), "labcentral-provider")}
 }
 func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer) error {
-	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Fprintln(out, "LabCentral v2\nUsage: labcentral COMMAND [OPTIONS] [ARGUMENTS]\n\nCommands: init validate plan build deploy list inspect access recover destroy\n          environment check|init|fingerprint-plugins   image list|builds|remove|abandon\n\nCommon options: --environment FILE --state DIR --provider FILE --json --yes\nPlan/build/deploy: --inputs FILE (JSON object of declared input values as strings)\nAccess: labcentral access [OPTIONS] INSTANCE MACHINE ssh|desktop\nFlags precede positional arguments.")
-		return nil
+	if len(args) == 0 {
+		return help(out, "")
 	}
-	command := args[0]
-	args = args[1:]
-	sub := ""
-	if command == "environment" || command == "image" {
-		if len(args) == 0 {
-			return fmt.Errorf("subcommand required")
+	flags, positionals, err := interspersed(args)
+	if err != nil {
+		return err
+	}
+	helpRequested := wantsHelp(flags)
+	if len(positionals) == 0 {
+		if helpRequested {
+			return help(out, "")
 		}
-		sub = args[0]
-		args = args[1:]
+		return fmt.Errorf("a command is required; run 'labcentral help'")
+	}
+	if positionals[0] == "help" {
+		return help(out, strings.Join(positionals[1:], " "))
+	}
+	command, sub := positionals[0], ""
+	args = positionals[1:]
+	key := command
+	if command == "environment" || command == "image" || command == "config" {
+		if len(args) == 0 {
+			if helpRequested {
+				return help(out, key)
+			}
+			return fmt.Errorf("%s requires a subcommand; run 'labcentral help %s'", command, command)
+		}
+		sub, args = args[0], args[1:]
+		key += " " + sub
+	}
+	spec, known := commands[key]
+	if !known {
+		return unknownCommand(key)
+	}
+	if helpRequested {
+		return help(out, key)
 	}
 	o := defaults()
-	f := flag.NewFlagSet(command, flag.ContinueOnError)
+	o.configFile = defaultConfigPath()
+	if key != "config init" {
+		if err := loadDefaults(flags, &o); err != nil {
+			return err
+		}
+	}
+	f := flag.NewFlagSet(key, flag.ContinueOnError)
 	f.SetOutput(errOut)
+	if JSONOutput(flags) {
+		f.SetOutput(io.Discard)
+	}
+	f.Usage = func() { _ = help(errOut, key) }
+	f.StringVar(&o.configFile, "config", o.configFile, "CLI defaults JSON file")
 	f.StringVar(&o.root, "state", o.root, "private local state directory")
-	f.StringVar(&o.env, "environment", "", "environment YAML")
+	f.StringVar(&o.env, "environment", o.env, "environment YAML")
 	f.StringVar(&o.provider, "provider", o.provider, "platform executable")
 	f.StringVar(&o.inputFile, "inputs", "", "input values JSON file")
+	limits := o.engine.Effective()
+	f.IntVar(&o.engine.MaxImageBuildConcurrency, "image-build-concurrency", limits.MaxImageBuildConcurrency, "parallel image builds per operation (1–32)")
+	f.IntVar(&o.engine.MaxMachineConcurrency, "machine-concurrency", limits.MaxMachineConcurrency, "parallel machine creates per instance (1–32)")
+	f.IntVar(&o.engine.MaxCleanupConcurrency, "cleanup-concurrency", limits.MaxCleanupConcurrency, "parallel machine deletes per instance (1–32)")
 	f.BoolVar(&o.json, "json", false, "versioned JSON output")
 	f.BoolVar(&o.yes, "yes", false, "confirm mutations without prompting")
-	if err := f.Parse(args); err != nil {
+	f.BoolVar(&helpRequested, "help", false, "show command help")
+	f.BoolVar(&helpRequested, "h", false, "show command help")
+	if err := f.Parse(append(append(flags, "--"), args...)); err != nil {
+		return err
+	}
+	if err := o.engine.Validate(); err != nil {
 		return err
 	}
 	args = f.Args()
+	labels := strings.Fields(spec.args)
+	minimum := len(labels)
+	if minimum > 0 && strings.HasPrefix(labels[0], "[") {
+		minimum = 0
+	}
+	if len(args) < minimum {
+		return usageError(key, "missing "+labels[len(args)])
+	}
+	if len(args) > len(labels) {
+		return usageError(key, "too many arguments")
+	}
+	if spec.environment && o.env == "" {
+		return usageError(key, "--environment is required; pass a file or save an absolute path in your CLI config")
+	}
+	if command == "access" && args[2] != "ssh" && args[2] != "desktop" {
+		return usageError(key, "access method must be ssh or desktop")
+	}
 	emit := func(v any) error {
 		if !o.json && readable(out, v) {
 			return nil
@@ -78,12 +139,34 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 		}
 		return args[n], nil
 	}
+	if command == "config" {
+		if sub == "init" {
+			path := o.configFile
+			if len(args) > 0 {
+				path = args[0]
+			}
+			if err := initConfig(path); err != nil {
+				return err
+			}
+			return emit("Created CLI defaults at " + path + ". Set absolute environment, state or provider paths; command flags override them.")
+		}
+		return emit(struct {
+			ConfigFile  string           `json:"configFile"`
+			State       string           `json:"state"`
+			Environment string           `json:"environment"`
+			Provider    string           `json:"provider"`
+			Engine      lc.EngineOptions `json:"engine"`
+		}{o.configFile, o.root, o.env, o.provider, o.engine.Effective()})
+	}
 	if command == "init" {
 		dir, err := arg(0)
 		if err != nil {
 			return err
 		}
-		return initialize(dir)
+		if err := initialize(dir); err != nil {
+			return err
+		}
+		return emit("Created " + dir + ". Run 'labcentral validate " + dir + "' to check your source.")
 	}
 	if command == "environment" && sub == "init" {
 		file, err := arg(0)
@@ -94,7 +177,10 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 		if err != nil {
 			return err
 		}
-		return initEnvironment(file, platform)
+		if err := initEnvironment(file, platform); err != nil {
+			return err
+		}
+		return emit("Created " + file + ". Fill in your environment and pinned toolchain before running 'labcentral environment check --environment " + file + "'.")
 	}
 	if command == "environment" && sub == "fingerprint-plugins" {
 		dir, err := arg(0)
@@ -120,6 +206,9 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 			return err
 		}
 		if command == "validate" {
+			if !o.json {
+				return emit("Valid source: " + source.Lab.Name + "\nDigest: " + source.Digest)
+			}
 			return emit(struct {
 				Name   string `json:"name"`
 				Digest string `json:"sourceDigest"`
@@ -187,7 +276,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 			fmt.Fprintf(errOut, "%s %s %s\n", event.Stage, event.Resource, event.Message)
 		}
 	}
-	engine, err := lc.Open(o.root, provider, observe)
+	engine, err := lc.OpenWithOptions(o.root, provider, observe, o.engine)
 	if err != nil {
 		return err
 	}
@@ -218,7 +307,9 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 	case "deploy":
 		r, err := engine.Deploy(ctx, plan)
 		if err != nil {
-			fmt.Fprintf(errOut, "Instance: %s\n", r.ID)
+			if r.ID != "" && !o.json {
+				fmt.Fprintf(errOut, "Instance: %s\nResume this attempt: labcentral recover %s --state %q\n", r.ID, r.ID, o.root)
+			}
 			return err
 		}
 		return emit(r)
@@ -228,6 +319,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 			return err
 		}
 		if !o.yes {
+			fmt.Fprintf(errOut, "%s %s (state: %s)\n", key, id, o.root)
 			if err = confirm(in, errOut); err != nil {
 				return err
 			}
@@ -250,6 +342,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 			return err
 		}
 		if !o.yes {
+			fmt.Fprintf(errOut, "%s %s (state: %s)\n", key, id, o.root)
 			if err = confirm(in, errOut); err != nil {
 				return err
 			}
@@ -288,6 +381,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 				return err
 			}
 			if !o.yes {
+				fmt.Fprintf(errOut, "%s %s (state: %s)\n", "image "+sub, key, o.root)
 				if err = confirm(in, errOut); err != nil {
 					return err
 				}

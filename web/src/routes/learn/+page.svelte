@@ -14,7 +14,9 @@
     Hourglass,
     Laptop,
     Play,
+    RotateCcw,
     Send,
+    Shuffle,
     ShieldCheck,
     Square,
     TriangleAlert,
@@ -27,6 +29,7 @@
   import Deadline from "$lib/Deadline.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
   import StageRail from "$lib/StageRail.svelte";
+  import AttemptButton from "$lib/AttemptButton.svelte";
   import { session, api, APIError, refresh, date } from "$lib/api";
   import { launchDesktop } from "$lib/launch";
   import { render, prose } from "$lib/markdown";
@@ -40,9 +43,16 @@
     runLabel,
     hours,
   } from "$lib/learning";
+  import {
+    templatePath,
+    attemptBlocked,
+    difficultyLabel,
+    minutes,
+    breakRange,
+    type AttemptView,
+  } from "$lib/library";
   import type {
     LearningSolution,
-    LearningView,
     LearningProgress,
     LearningCheck,
     PracticeRun,
@@ -53,7 +63,7 @@
   const id = $derived(
     browser && mounted ? (page.url.searchParams.get("id") ?? "") : "",
   );
-  let view = $state<LearningView | null>(null);
+  let view = $state<AttemptView | null>(null);
   let failure = $state("");
   let missing = $state(false);
   let error = $state("");
@@ -80,7 +90,7 @@
     const n = ++seq;
     if (!s || !lab) return;
     try {
-      const next = await api<LearningView>(endpoint(lab));
+      const next = await api<AttemptView>(endpoint(lab));
       if (n !== seq || s !== scope || lab !== loadedID) return;
       view = next;
       failure = "";
@@ -350,11 +360,15 @@
       copied = "Copy is unavailable here. Select the commands to copy them.";
     }
   }
+  const scenario = $derived(view?.scenario ?? null);
+  const randomized = $derived(!!scenario || !!view?.lab.scenarioID);
   const startBlocked = $derived(
     !view
       ? ""
       : !view.cloudReady
-        ? "Cloud workspaces aren't available for this lab yet. You can run it locally."
+        ? scenario
+          ? "Cloud workspaces aren't available for this scenario yet."
+          : "Cloud workspaces aren't available for this lab yet. You can run it locally."
         : otherRun
           ? "Another lab's cloud workspace is still running."
           : view.quota.remainingSeconds < 60
@@ -379,21 +393,24 @@
 <Guard>
   {#if !mounted}<p class="sr-only" role="status">Loading lab…</p>
   {:else if !id}<EmptyState icon={BookOpen} title="Choose a lab">
-      Open a published lab from the catalog to see its stages and workspace.
+      Open a template from the library to start practice, or continue one of
+      your attempts.
       {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
-          >Browse labs<ArrowRight size={15} /></a
-        >{/snippet}
+          >Browse templates<ArrowRight size={15} /></a
+        ><a class="btn btn-sm min-h-11" href="/labs/?view=attempts">My attempts</a>{/snippet}
     </EmptyState>
   {:else if missing}<EmptyState icon={BookOpen} title="This lab is unavailable">
-      It may have been unpublished. Your saved progress is kept; any active
-      cloud workspace can still be stopped from the lab catalog.
+      It may no longer be offered. Your saved progress is kept; any active
+      cloud workspace can still be stopped from the library.
       {#snippet actions()}<a class="btn btn-sm min-h-11" href="/labs/"
-          ><ArrowLeft size={15} />Back to labs</a
+          ><ArrowLeft size={15} />Back to library</a
         >{/snippet}
     </EmptyState>
   {:else if view}
-    <a class="btn btn-sm btn-ghost min-h-11 mb-3 -ml-3 text-base-content/70" href="/labs/"
-      ><ArrowLeft size={15} />Practice labs</a
+    <a
+      class="btn btn-sm btn-ghost min-h-11 mb-3 -ml-3 text-base-content/70"
+      href={view.lab.attempt ? "/labs/?view=attempts" : "/labs/"}
+      ><ArrowLeft size={15} />{view.lab.attempt ? "My attempts" : "Lab library"}</a
     >
     <div class="mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
       <div class="min-w-0">
@@ -402,6 +419,15 @@
             class="mt-1.5 max-w-[60ch] text-sm text-base-content/70"
           >
             {view.lab.description}
+          </p>{/if}
+        {#if view.lab.attempt}<p
+            class="mt-2 flex flex-wrap items-center gap-x-4 text-xs text-base-content/70"
+          >
+            <span>{randomized ? "Randomized scenario" : "Baseline practice"} attempt</span>
+            <span>Started {date(view.lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}</span>
+            <a class="link link-hover inline-flex min-h-11 items-center lg:min-h-0" href={templatePath(view.lab.template)}
+              >Template revision</a
+            >
           </p>{/if}
       </div>
       <div class="flex w-full items-center gap-3 sm:w-56">
@@ -416,9 +442,30 @@
         >
       </div>
     </div>
+    {#if scenario}<section
+        aria-labelledby="scenario-title"
+        class="rounded-box border border-base-content/9 bg-base-200/70 mb-4 px-4 py-3 text-sm"
+      >
+        <p class="flex items-center gap-2 text-xs font-medium text-base-content/70">
+          <Shuffle size={13} aria-hidden="true" />Randomized scenario
+        </p>
+        <h2 id="scenario-title" class="mt-1 font-semibold">{scenario.title}</h2>
+        {#if scenario.description}<p class="mt-1 max-w-[68ch] leading-relaxed text-base-content/80">
+            {scenario.description}
+          </p>{/if}
+        <p class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/70">
+          {#if scenario.difficulty}<span>{difficultyLabel(scenario.difficulty)}</span>{/if}
+          {#if scenario.estimatedMinutes}<span>{minutes(scenario.estimatedMinutes)}</span>{/if}
+          <span>{breakRange(scenario)}</span>
+        </p>
+        <p class="mt-2 max-w-[68ch] text-xs leading-relaxed text-base-content/70">
+          This attempt has its own saved variant, used when you start its cloud
+          workspace. Investigate to find what changed.
+        </p>
+      </section>{/if}
     <section
       aria-labelledby="workspace-title"
-      class="panel mb-8 flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3"
+      class="rounded-box border border-base-content/9 bg-base-200/70 mb-8 flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3"
     >
       <h2 id="workspace-title" class="sr-only">Workspace</h2>
       {#if ownRun}
@@ -443,8 +490,10 @@
             </div>
           {:else if ownRun.status === "failed"}
             <p class="mt-0.5 break-words text-error">
-              {ownRun.error || "The workspace could not be prepared."} Stop it, then
-              start again.
+              {ownRun.error || "The workspace could not be prepared."}
+              {#if randomized}Stop it to clean up, then start a new scenario attempt
+                from the <a class="link" href={templatePath(view.lab.template)}>template revision</a
+                >.{:else}Stop it, then start again.{/if}
             </p>
           {:else if ownRun.status === "ending"}
             <p class="mt-0.5 text-base-content/70">
@@ -480,6 +529,7 @@
           <p class="mt-0.5 text-base-content/70" id="start-blocked">
             {#if startBlocked}{startBlocked}
               {#if otherRun}<a class="link" href={learnPath(otherRun.labID)}>Go to that lab</a>{/if}
+            {:else if randomized}Scenarios run only in a private cloud workspace.
             {:else}Start a private cloud copy of this lab's machines.{/if}
           </p>
         </div>
@@ -495,12 +545,12 @@
               startDialog.showModal();
             }}><Play size={15} />Start cloud workspace</button
           >
-          <button
-            type="button"
-            class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
-            onclick={() => localDialog.showModal()}
-            ><Laptop size={15} />Run locally</button
-          >
+          {#if !randomized}<button
+              type="button"
+              class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+              onclick={() => localDialog.showModal()}
+              ><Laptop size={15} />Run locally</button
+            >{/if}
         </div>
       {/if}
     </section>
@@ -523,7 +573,7 @@
           />
         </nav>
         <section class="min-w-0" aria-labelledby="stage-title">
-          <details class="collapse collapse-arrow panel mb-6 lg:hidden">
+          <details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mb-6 lg:hidden">
             <summary class="collapse-title min-h-11 text-sm font-medium"
               >Stages · {completed} of {steps.length} complete</summary
             >
@@ -540,22 +590,42 @@
             </div>
           </details>
           {#if finished}<div
-              class="alert alert-soft alert-success mb-6 text-sm"
+              class="alert alert-soft alert-success mb-3 text-sm"
               role="status"
             >
               <CircleCheck size={18} aria-hidden="true" /><span
                 >Lab complete. All {steps.length} stages are done.</span
               >
-            </div>{/if}
+            </div>
+            {#if view.lab.attempt}<div class="mb-6 flex flex-wrap items-center gap-2">
+                <AttemptButton
+                  template={view.lab.template}
+                  scenarioID={view.lab.scenarioID ?? ""}
+                  label={randomized ? "New scenario" : "Try again"}
+                  name={randomized
+                    ? `New scenario: ${scenario?.title ?? view.lab.title}`
+                    : `Try again: ${view.lab.title}`}
+                  icon={randomized ? Shuffle : RotateCcw}
+                  primary
+                  blocked={attemptBlocked(view.run)}
+                  describedby="repeat-help"
+                />
+                <a class="btn btn-sm btn-ghost min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}
+                  >Template revision<ArrowRight size={15} /></a
+                >
+                {#if attemptBlocked(view.run)}<p id="repeat-help" class="basis-full text-xs text-base-content/70">
+                    {attemptBlocked(view.run)}
+                  </p>{/if}
+              </div>{:else}<div class="mb-6"></div>{/if}{/if}
           {#if step}
-            <p class="eyebrow">
+            <p class="text-xs font-medium text-base-content/70">
               Stage {shown + 1} of {steps.length}
             </p>
             <h2 id="stage-title" class="mt-1 text-xl font-semibold tracking-tight">
               {stepReleased ? step.title : `Stage ${shown + 1}`}
             </h2>
             {#if !stepReleased}
-              <div class="panel mt-5 flex items-start gap-3 p-4 text-sm">
+              <div class="rounded-box border border-base-content/9 bg-base-200/70 mt-5 flex items-start gap-3 p-4 text-sm">
                 <Hourglass size={17} class="mt-0.5 shrink-0 text-base-content/70" aria-hidden="true" />
                 <div>
                   <p class="font-medium">Waiting for your instructor</p>
@@ -571,7 +641,7 @@
               <section
                 aria-label="Stage task"
                 class={[
-                  "panel mt-8 p-5",
+                  "rounded-box border border-base-content/9 bg-base-200/70 mt-8 p-5",
                   isCurrent ? "border-primary/40" : "",
                 ]}
               >
@@ -705,7 +775,7 @@
               </section>
               {#if step.hasSolution && shown <= completed}
                 <section class="mt-4" aria-label="Stage solution">
-                  {#if solution}<div class={[prose, "panel p-5"]}>{@html render(solution)}</div><button class="btn btn-sm btn-ghost min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
+                  {#if solution}<div class={[prose, "rounded-box border border-base-content/9 bg-base-200/70 p-5"]}>{@html render(solution)}</div><button class="btn btn-sm btn-ghost min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
                   {:else}<button type="button" class="btn btn-sm btn-ghost min-h-11 -ml-3 text-base-content/70" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
                   {#if solutionError}<p class="mt-2 text-sm text-error" role="alert">{solutionError}</p>{/if}
                 </section>
@@ -804,7 +874,7 @@
       Proxmox environment. Answers still save here; workspace checks need the
       cloud workspace.
     </p>
-    {#if view?.localAvailable}<a
+    {#if view?.localAvailable && !randomized}<a
         class="btn btn-sm btn-primary min-h-11 mt-4"
         href={endpoint(view.lab.id, "download")}
         download

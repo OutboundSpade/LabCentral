@@ -16,12 +16,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if err := cli.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
-		jsonOutput := false
-		for _, arg := range os.Args[1:] {
-			if arg == "--json" || arg == "--json=true" {
-				jsonOutput = true
-			}
-		}
+		jsonOutput := cli.JSONOutput(os.Args[1:])
 		if jsonOutput {
 			var typed *lc.Error
 			if !errors.As(err, &typed) {

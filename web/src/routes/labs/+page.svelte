@@ -5,9 +5,10 @@
   import TemplateExplorer from "$lib/TemplateExplorer.svelte";
   import {
     ArrowRight,
-    BookOpen,
-    Search,
+    History,
+    LibraryBig,
     RotateCw,
+    Shuffle,
     Square,
     Cloud,
   } from "@lucide/svelte";
@@ -16,7 +17,7 @@
   import Notice from "$lib/Notice.svelte";
   import Quota from "$lib/Quota.svelte";
   import Status from "$lib/Status.svelte";
-  import { session, api, APIError, refresh } from "$lib/api";
+  import { session, api, APIError, refresh, date } from "$lib/api";
   import {
     sessionScope,
     learnPath,
@@ -25,24 +26,28 @@
     transitional,
     runLabel,
   } from "$lib/learning";
-  import type { LearningCatalog, PracticeRun } from "$lib/types";
+  import {
+    attempts as ownAttempts,
+    legacy as legacyLabs,
+    templatePath,
+    type AttemptCatalog,
+  } from "$lib/library";
+  import type { PracticeRun } from "$lib/types";
   let mounted = $state(false);
-  onMount(() => { mounted = true; });
-  // Practice is the default view; templates are a secondary, browse-only view.
-  const practice = $derived(
-    !(
-      browser &&
+  onMount(() => {
+    mounted = true;
+  });
+  // The template library is the default view; attempt history is secondary.
+  const history = $derived(
+    browser &&
       mounted &&
-      (page.url.searchParams.get("view") === "templates" ||
-        page.url.searchParams.has("template") ||
-        page.url.searchParams.has("q"))
-    ),
+      page.url.searchParams.get("view") === "attempts" &&
+      !page.url.searchParams.has("template"),
   );
-  let catalog = $state<LearningCatalog | null>(null);
+  let catalog = $state<AttemptCatalog | null>(null);
   let failure = $state("");
   let error = $state("");
   let busy = $state(false);
-  let query = $state("");
   let stopDialog: HTMLDialogElement;
   let scope = "";
   let seq = 0;
@@ -51,7 +56,7 @@
     const n = ++seq;
     if (!s) return;
     try {
-      const next = await api<LearningCatalog>("/api/learning");
+      const next = await api<AttemptCatalog>("/api/learning");
       if (n !== seq || s !== scope) return;
       catalog = next;
       failure = "";
@@ -84,17 +89,9 @@
     }, interval);
     return () => clearInterval(timer);
   });
-  const labs = $derived(catalog?.labs ?? []);
-  const visible = $derived(
-    labs.filter(
-      (lab) =>
-        (!query.trim() ||
-          `${lab.title} ${lab.description}`
-            .toLowerCase()
-            .includes(query.trim().toLowerCase())),
-    ),
-  );
-  const runLab = $derived(labs.find((lab) => lab.id === run?.labID));
+  const mine = $derived(ownAttempts(catalog));
+  const earlier = $derived(legacyLabs(catalog));
+  const runLab = $derived(catalog?.labs.find((lab) => lab.id === run?.labID));
   const meetingOpen = $derived(
     !!$session?.meeting &&
       !["ended", "ending"].includes($session.meeting.status),
@@ -115,42 +112,52 @@
       void load();
     }
   }
+  const tab =
+    "-mb-px flex min-h-11 items-center gap-2 border-b-2 focus-visible:outline-2 focus-visible:outline-primary";
 </script>
 
-<svelte:head><title>{practice ? "Practice labs" : "Lab templates"} · LabCentral</title></svelte:head>
-<PageHeader title={practice ? "Practice labs" : "Lab templates"}>
-  {#if practice && catalog}<div class="w-48"><Quota quota={catalog.quota} /></div>{/if}
+<svelte:head
+  ><title>{history ? "My attempts" : "Lab library"} · LabCentral</title></svelte:head
+>
+<PageHeader title="Lab library">
+  {#if catalog}<div class="w-48"><Quota quota={catalog.quota} /></div>{/if}
 </PageHeader>
 <Guard>
-  <nav class="mb-6 flex gap-5 border-b border-base-content/8 text-sm" aria-label="Lab catalog views">
-    <a class={["-mb-px flex min-h-11 items-center border-b-2", practice ? "border-primary font-medium" : "border-transparent text-base-content/70 hover:text-base-content"]} aria-current={practice ? "page" : undefined} href="/labs/">Labs</a>
-    <a class={["-mb-px flex min-h-11 items-center border-b-2", !practice ? "border-primary font-medium" : "border-transparent text-base-content/70 hover:text-base-content"]} aria-current={!practice ? "page" : undefined} href="/labs/?view=templates">Templates</a>
-  </nav>
-  {#if !practice}<TemplateExplorer labs={catalog?.labs ?? null} practiceError={failure} retryPractice={load} />{:else}
-  <Notice message={error} dismissible />
-  {#if failure && catalog}<p class="mb-4 text-sm text-warning" role="status">
-      Updates are unavailable ({failure}). Showing the last loaded list.
-    </p>{/if}
-  {#if meetingOpen && $session?.meeting}<div
-      class="panel mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm"
+  <nav class="mb-6 flex gap-5 border-b border-base-content/8 text-sm" aria-label="Library views">
+    <a
+      class={[tab, !history ? "border-primary font-medium" : "border-transparent text-base-content/70 hover:text-base-content"]}
+      aria-current={!history ? "page" : undefined}
+      href="/labs/"><LibraryBig size={15} aria-hidden="true" />Templates</a
     >
-      <span class="size-2 shrink-0 rounded-full bg-success" aria-hidden="true"></span>
-      <p class="min-w-0 flex-1">
-        <span class="font-medium">{$session.meeting.name}</span>
-        <span class="text-base-content/70">is in progress</span>
-      </p>
-      <a
-        class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
-        href={$session.membership.teamID ? "/lab/" : "/teams/"}
-        >{$session.membership.teamID ? "Go to your lab" : "Choose your team"}<ArrowRight
-          size={15}
-        /></a
+    <a
+      class={[tab, history ? "border-primary font-medium" : "border-transparent text-base-content/70 hover:text-base-content"]}
+      aria-current={history ? "page" : undefined}
+      href="/labs/?view=attempts"
+      ><History size={15} aria-hidden="true" />My attempts{#if mine.length}<span
+          class="badge badge-sm badge-ghost">{mine.length}</span
+        >{/if}</a
+    >
+  </nav>
+  <Notice message={error} dismissible />
+  {#if meetingOpen && $session?.meeting}<div
+        class="rounded-box border border-base-content/9 bg-base-200/70 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm"
       >
-    </div>{/if}
-  {#if catalog}
+        <span class="size-2 shrink-0 rounded-full bg-success" aria-hidden="true"></span>
+        <p class="min-w-0 flex-1">
+          <span class="font-medium">{$session.meeting.name}</span>
+          <span class="text-base-content/70">is in progress</span>
+        </p>
+        <a
+          class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
+          href={$session.membership.teamID ? "/lab/" : "/teams/"}
+          >{$session.membership.teamID ? "Go to your lab" : "Choose your team"}<ArrowRight
+            size={15}
+          /></a
+        >
+      </div>{/if}
     {#if run}<section
         aria-labelledby="run-title"
-        class="panel mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3"
+        class="rounded-box border border-base-content/9 bg-base-200/70 mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3"
       >
         <Cloud size={17} class="shrink-0 text-base-content/70" aria-hidden="true" />
         <div class="min-w-0 flex-1 basis-56 text-sm">
@@ -164,9 +171,7 @@
           {#if run.error}<p class="mt-1 break-words text-error">{run.error}</p>{/if}
         </div>
         <div class="flex flex-wrap gap-2">
-          {#if runLab}<a class="btn btn-sm min-h-11 lg:min-h-8" href={learnPath(runLab.id)}
-              >Open lab</a
-            >{/if}
+          <a class="btn btn-sm min-h-11 lg:min-h-8" href={learnPath(run.labID)}>Open lab</a>
           {#if run.status !== "ending"}<button
               type="button"
               class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
@@ -178,93 +183,99 @@
             >{/if}
         </div>
       </section>{/if}
-    <section aria-label="Published labs">
-      {#if labs.length > 1}<label class="input input-sm mb-5 min-h-11 w-full sm:max-w-xs lg:min-h-9">
-          <Search size={15} aria-hidden="true" class="opacity-60" />
-          <input
-            id="lab-search"
-            type="search"
-            aria-label="Search labs"
-            bind:value={query}
-            placeholder="Search labs"
-            autocomplete="off"
-          />
-        </label>{/if}
-      {#if query.trim()}<p class="sr-only" role="status">
-          {visible.length} of {labs.length} labs shown
-        </p>{/if}
+  {#if !history}
+    <TemplateExplorer {catalog} catalogError={failure} retryCatalog={load} />
+  {:else if catalog}
+    {#if failure}<p class="mb-4 text-sm text-warning" role="status">
+        Updates are unavailable ({failure}). Showing your last loaded attempts.
+      </p>{/if}
+    <section aria-label="My attempts">
       <ul class="grid gap-3 sm:grid-cols-2">
-        {#each visible as lab (lab.id)}
+        {#each mine as lab (lab.id)}
           {@const done = lab.stepCount > 0 && lab.completedSteps >= lab.stepCount}
-          {@const verb = done ? "Review" : lab.completedSteps ? "Continue" : "Open"}
-          <li class="panel flex min-w-0 flex-col p-5 transition-colors hover:border-base-content/20">
-            <div class="flex items-start justify-between gap-3">
-              <h2 class="text-base font-semibold leading-snug">
-                <a class="hover:underline" href={learnPath(lab.id)}>{lab.title}</a>
-              </h2>
-              {#if run?.labID === lab.id}<Status status={run.status} label={runLabel(run.status)} />{:else if lab.mode === "instructor"}<span class="badge badge-sm badge-ghost shrink-0">Instructor-led</span>{/if}
-            </div>
-            {#if lab.description}<p
-                class="mt-1.5 line-clamp-2 text-sm leading-relaxed text-base-content/70"
-              >
-                {lab.description}
-              </p>{/if}
-            <div class="mt-auto flex items-center gap-4 pt-5">
-              <div class="min-w-0 flex-1 text-xs tabular-nums text-base-content/70">
-                {#if lab.completedSteps}<p>
-                    {done ? "Complete" : `${lab.completedSteps} of ${lab.stepCount} stages`}
-                  </p>
-                  <progress
-                    class="progress progress-primary mt-1.5 h-1 w-full"
-                    value={lab.completedSteps}
-                    max={lab.stepCount || 1}
-                    aria-hidden="true"
-                  ></progress>{:else}<p>
-                    {lab.stepCount} {lab.stepCount === 1 ? "stage" : "stages"} · {lab.estimatedMinutes} min
-                  </p>{/if}
+          {@const verb = done ? "Review" : "Continue"}
+          <li class="card card-sm border border-base-content/9 bg-base-200/70 min-w-0">
+            <div class="card-body">
+              <div class="flex items-start justify-between gap-3">
+                <h2 class="card-title break-words text-base leading-snug">
+                  <a class="hover:underline" href={learnPath(lab.id)}>{lab.title}</a>
+                </h2>
+                {#if run?.labID === lab.id}<Status
+                    status={run.status}
+                    label={runLabel(run.status)}
+                  />{:else if lab.scenarioID}<span class="badge badge-sm badge-ghost shrink-0"
+                    ><Shuffle size={12} aria-hidden="true" />Randomized</span
+                  >{/if}
               </div>
-              <a
-                class={["btn btn-sm min-h-11 lg:min-h-8", lab.completedSteps && !done ? "btn-primary" : ""]}
-                href={learnPath(lab.id)}
-                aria-label={`${verb} ${lab.title}`}
-                >{done ? "Review" : lab.completedSteps ? "Continue" : "Start"}<ArrowRight
-                  size={15}
-                /></a
-              >
+              <p class="grow-0 text-xs text-base-content/70">
+                Started {date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}
+              </p>
+              <div class="mt-auto pt-3 text-xs tabular-nums text-base-content/70">
+                <p>
+                  {done
+                    ? "Complete"
+                    : `${lab.completedSteps} of ${lab.stepCount} ${lab.stepCount === 1 ? "stage" : "stages"}`}
+                </p>
+                <progress
+                  class="progress mt-1.5 h-1 w-full"
+                  value={lab.completedSteps}
+                  max={lab.stepCount || 1}
+                  aria-hidden="true"
+                ></progress>
+              </div>
+              <div class="card-actions items-center justify-between pt-1">
+                <a
+                  class="link link-hover inline-flex min-h-11 items-center text-xs text-base-content/70 lg:min-h-8"
+                  href={templatePath(lab.template)}
+                  aria-label={`Template revision for ${lab.title}`}>Template revision</a
+                >
+                <a
+                  class={["btn btn-sm min-h-11 lg:min-h-8", done ? "" : "btn-primary"]}
+                  href={learnPath(lab.id)}
+                  aria-label={`${verb} ${lab.title}, started ${date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}`}
+                  >{verb}<ArrowRight size={15} /></a
+                >
+              </div>
             </div>
           </li>
         {:else}
           <li class="py-10 text-center sm:col-span-2">
-            {#if labs.length}
-              <p class="text-sm font-medium">No labs match “{query.trim()}”.</p>
-              <button
-                type="button"
-                class="btn btn-sm btn-ghost min-h-11 mt-3"
-                onclick={() => (query = "")}>Clear search</button
-              >
-            {:else}
-              <BookOpen size={22} class="mx-auto text-base-content/60" aria-hidden="true" />
-              <p class="mt-3 text-base font-semibold">No labs yet</p>
-              <p class="mt-1 text-sm text-base-content/70">
-                {#if $session?.user.admin}Publish one from <a class="link" href="/admin/labs/">Published labs</a
-                  >.{:else}Labs appear here when an instructor publishes them.{/if}
-              </p>
-            {/if}
+            <History size={22} class="mx-auto text-base-content/60" aria-hidden="true" />
+            <p class="mt-3 text-base font-semibold">No attempts yet</p>
+            <p class="mt-1 text-sm text-base-content/70">
+              Start baseline practice or a scenario from a template.
+            </p>
+            <a class="btn btn-sm min-h-11 mt-4" href="/labs/">Browse templates<ArrowRight size={15} /></a>
           </li>
         {/each}
       </ul>
     </section>
+    {#if earlier.length}<section
+        class="mt-10 border-t border-base-content/8 pt-5"
+        aria-labelledby="earlier-labs-title"
+      >
+        <h2 id="earlier-labs-title" class="text-xs font-medium text-base-content/70">
+          Earlier published labs
+        </h2>
+        <ul class="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+          {#each earlier as lab (lab.id)}<li>
+              <a
+                class="link link-hover inline-flex min-h-11 items-center text-sm lg:min-h-8"
+                href={learnPath(lab.id)}>{lab.title}</a
+              >
+            </li>{/each}
+        </ul>
+      </section>{/if}
   {:else if failure}
     <Notice message={failure} />
     <button class="btn btn-sm min-h-11" onclick={() => load()}
       ><RotateCw size={15} />Retry</button
     >
   {:else}
-    <div role="status" aria-label="Loading labs" class="grid gap-3 sm:grid-cols-2">
-      {#each [0, 1, 2, 3] as row (row)}<div class="skeleton h-36 rounded-box"></div>{/each}
-      <span class="sr-only">Loading labs…</span>
+    <div role="status" aria-label="Loading attempts" class="grid gap-3 sm:grid-cols-2">
+      {#each [0, 1] as row (row)}<div class="skeleton h-36 rounded-box"></div>{/each}
+      <span class="sr-only">Loading attempts…</span>
     </div>
-  {/if}
   {/if}
 </Guard>
 <dialog bind:this={stopDialog} class="modal" aria-labelledby="catalog-stop-title">

@@ -42,9 +42,17 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 				if err = s.Store.Get(ctx, "template", out.Meeting.Template, &t); err == nil {
 					out.Lab.Handover = t.Handover
 				}
+				policy, policyErr := s.Store.instructorPolicy(ctx, out.Meeting.Template)
+				if policyErr != nil {
+					writeError(w, 503, "Lab information is unavailable.")
+					return
+				}
 				inst, e := s.Engine.Inspect(ctx, team.InstanceID)
 				if e == nil {
 					for _, m := range inst.Plan.Machines {
+						if !v.User.Admin && lc.Contains(policy.HiddenMachines, m.Name) {
+							continue
+						}
 						out.Lab.Machines = append(out.Lab.Machines, Machine{m.Name, inst.Status, lc.Contains(m.Spec.Access, "desktop")})
 					}
 				}

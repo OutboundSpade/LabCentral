@@ -30,21 +30,14 @@ type Service struct {
 	userLocks      sync.Map
 	jobMu          sync.Mutex
 	activeJobs     map[string]runningJob
+	provisionOnce  sync.Once
+	provisionSlots chan struct{}
 	exerciseRunner func(context.Context, Team, ExerciseRun, lc.Source) (string, error)
 }
 
 func New(ctx context.Context, c Config, e Engine) (*Service, error) {
-	if c.WeeklyCloudMinutes < 0 || c.WeeklyCloudMinutes > 10080 {
-		return nil, fmt.Errorf("weeklyCloudMinutes must be 1–10080, or zero for the 180-minute default")
-	}
-	for _, raw := range []string{c.Origin, c.DesktopOrigin, c.Issuer} {
-		u, err := url.Parse(raw)
-		if err != nil || u.Scheme != "https" || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
-			return nil, fmt.Errorf("origins and issuer must be absolute HTTPS origins")
-		}
-	}
-	if c.Origin == c.DesktopOrigin {
-		return nil, fmt.Errorf("desktop requires a separate origin")
+	if err := ValidateConfig(c); err != nil {
+		return nil, err
 	}
 	identity, err := NewOIDC(ctx, c)
 	if err != nil {
@@ -76,6 +69,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.authorized(false, s.overview))
 	mux.HandleFunc("GET /api/templates", s.authorized(false, s.templateCatalog))
 	mux.HandleFunc("GET /api/templates/{id}", s.authorized(false, s.templateExplorer))
+	mux.HandleFunc("POST /api/templates/{id}/attempt", s.authorized(false, s.createTemplateAttempt))
 	mux.HandleFunc("GET /api/learning", s.authorized(false, s.learningCatalog))
 	mux.HandleFunc("GET /api/learning/{id}", s.authorized(false, s.learningView))
 	mux.HandleFunc("GET /api/learning/{id}/download", s.authorized(false, s.downloadLearning))
@@ -92,6 +86,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/team", s.authorized(false, s.join))
 	mux.HandleFunc("POST /api/access", s.authorized(false, s.launch))
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
+	mux.HandleFunc("GET /api/admin/teams/{id}/machines", s.authorized(true, s.coachMachines))
+	mux.HandleFunc("GET /api/admin/teams/{id}/machines/{machine}/terminal", s.authorized(true, s.coachTerminal))
 	mux.HandleFunc("GET /api/admin", s.authorized(true, s.admin))
 	mux.HandleFunc("POST /api/admin/meeting", s.authorized(true, s.createMeeting))
 	mux.HandleFunc("POST /api/admin/prepare", s.authorized(true, s.prepareMeeting))

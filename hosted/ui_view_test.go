@@ -21,6 +21,9 @@ func TestOverviewDesktopAvailabilityIsScoped(t *testing.T) {
 	s.Engine = uiViewEngine{Engine: s.Engine}
 	ctx := context.Background()
 	teams := setupMeeting(t, s.Store)
+	if err := s.Store.Put(context.Background(), "template", "", Template{}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[0].ID, "meeting"); err != nil {
 		t.Fatal(err)
 	}

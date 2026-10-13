@@ -18,7 +18,7 @@ func (s *Service) checkLearning(w http.ResponseWriter, r *http.Request, v Sessio
 	}
 	unlock := s.lockUser(v.User.ID)
 	defer unlock()
-	p, err := s.publication(r.Context(), r.PathValue("id"))
+	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
@@ -80,7 +80,7 @@ func (s *Service) scheduleLearningChecks(ctx context.Context) {
 	}
 	rows.Close()
 	for _, c := range list {
-		p, err := s.publication(ctx, c.lab)
+		p, err := s.ownedPublication(ctx, c.lab, c.user)
 		if err != nil {
 			continue
 		}
@@ -226,7 +226,7 @@ func (s *Service) runLearningCheck(ctx context.Context, j Job) (err error) {
 	if err != nil || run.ID != check.RunID {
 		return fmt.Errorf("verification allocation is no longer ready")
 	}
-	p, err := s.publication(ctx, check.LabID)
+	p, err := s.ownedPublication(ctx, check.LabID, check.UserID)
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (s *Service) runLearningCheck(ctx context.Context, j Job) (err error) {
 	if err = s.Store.Get(ctx, "source", p.Template, &src); err != nil {
 		return err
 	}
-	if err = s.Store.Get(ctx, "template-instructor", p.Template, &bundle); err != nil {
+	if bundle, err = s.learningBundle(ctx, p); err != nil {
 		return err
 	}
 	if err = bundle.validate(src); err != nil {

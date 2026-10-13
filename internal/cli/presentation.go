@@ -4,6 +4,7 @@ import (
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"io"
+	"text/tabwriter"
 )
 
 func readable(out io.Writer, value any) bool {
@@ -35,22 +36,37 @@ func readable(out io.Writer, value any) bool {
 		if len(v) == 0 {
 			fmt.Fprintln(out, "No instances.")
 		}
-		for _, i := range v {
-			fmt.Fprintf(out, "%s  %s  %s\n", i.ID, i.Name, i.Status)
+		if len(v) > 0 {
+			table := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(table, "ID\tNAME\tSTATUS")
+			for _, i := range v {
+				fmt.Fprintf(table, "%s\t%s\t%s\n", i.ID, i.Name, i.Status)
+			}
+			_ = table.Flush()
 		}
 	case []lc.ImageRecord:
 		if len(v) == 0 {
 			fmt.Fprintln(out, "No images.")
 		}
-		for _, i := range v {
-			fmt.Fprintf(out, "%s  %s  %s\n", i.Key, i.Name, i.Resource.ID)
+		if len(v) > 0 {
+			table := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(table, "KEY\tNAME\tNATIVE ID")
+			for _, i := range v {
+				fmt.Fprintf(table, "%s\t%s\t%s\n", i.Key, i.Name, i.Resource.ID)
+			}
+			_ = table.Flush()
 		}
 	case []lc.Command:
 		if len(v) == 0 {
 			fmt.Fprintln(out, "No build intents.")
 		}
-		for _, c := range v {
-			fmt.Fprintf(out, "%s  %s  %s\n", c.Image.CacheKey, c.Image.Name, c.Owner)
+		if len(v) > 0 {
+			table := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(table, "KEY\tIMAGE\tOWNER")
+			for _, c := range v {
+				fmt.Fprintf(table, "%s\t%s\t%s\n", c.Image.CacheKey, c.Image.Name, c.Owner)
+			}
+			_ = table.Flush()
 		}
 	case lc.AccessInfo:
 		fmt.Fprintf(out, "Session: %s\nURL: %s\nExpires: %s\n", v.ID, v.URL, v.Expires)

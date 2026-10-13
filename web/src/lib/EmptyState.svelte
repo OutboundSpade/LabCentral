@@ -13,7 +13,7 @@
   } = $props();
 </script>
 
-<section class="panel mx-auto max-w-md px-6 py-10 text-center">
+<section class="rounded-box border border-base-content/9 bg-base-200/70 mx-auto max-w-md px-6 py-10 text-center">
   <span
     class="mx-auto grid size-11 place-items-center rounded-full bg-base-300 text-base-content/70"
     ><Icon size={20} /></span

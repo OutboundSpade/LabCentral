@@ -308,51 +308,27 @@ try {
           return route.fulfill({ status: 202, json: run });
         }
       }
-      if (path === "/api/admin/learning")
-        return route.fulfill({ json: { labs: publications, quotaMinutes: 180 } });
-      if (path === "/api/admin/learning/publish") {
-        const created = {
-          ...body,
-          id: "fresh",
-          published: true,
-          publishedAt: iso(0),
-          releasedSteps: body.mode === "instructor" ? 1 : body.steps.length,
-        };
-        publications.push(created);
-        progress.fresh = 0;
-        return route.fulfill({ status: 201, json: created });
-      }
-      if (path === "/api/admin/learning/release") {
-        const p = publications.find((p) => p.id === body.id);
-        p.releasedSteps = body.releasedSteps;
-        return route.fulfill({ json: p });
-      }
-      if (path === "/api/admin/learning/unpublish") {
-        const p = publications.find((p) => p.id === body.id);
-        p.published = false;
-        return route.fulfill({ json: p });
-      }
       throw new Error(`Unexpected request ${request.method()} ${path}`);
     });
 
-    // Catalog: signed-in home without a live meeting.
+    // Signed-in home without a live meeting opens the template-first library.
     await page.goto(app + "/");
     await page.waitForURL(app + "/labs/");
-    await page.getByRole("heading", { name: "Practice labs", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Lab library", exact: true }).waitFor();
     await page.getByText("2 h 30 m", { exact: true }).waitFor();
-    await page.getByRole("link", { name: "Continue Network mapping", exact: true }).waitFor();
-    await page.getByText("Instructor-led", { exact: true }).waitFor();
-    await page.getByLabel("Search labs").fill("network");
-    await page.getByText("1 of 2 labs shown", { exact: true }).waitFor();
-    await page.getByLabel("Search labs").fill("no such lab");
-    await page.getByRole("button", { name: "Clear search" }).click();
-    await page.getByRole("link", { name: "Open Web recovery", exact: true }).waitFor();
-    assert(await fits(page), "catalog overflow");
+    await page.getByRole("heading", { name: "No templates yet", exact: true }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "Published labs" }).count(), 0);
+    // Legacy publications are not attempts; their links stay reachable from history.
+    await page.getByRole("link", { name: /My attempts/ }).click();
+    await page.getByText("No attempts yet", { exact: true }).waitFor();
+    const earlier = page.getByRole("region", { name: "Earlier published labs" });
+    await earlier.getByRole("link", { name: "Network mapping", exact: true }).waitFor();
+    assert(await fits(page), "history overflow");
     if (evidence)
       await page.screenshot({ path: `${evidence}/labs-${width}.png`, fullPage: true });
 
     // Guided player: wrong answers keep the stage; correct answers advance.
-    await page.getByRole("link", { name: "Open Web recovery", exact: true }).click();
+    await earlier.getByRole("link", { name: "Web recovery", exact: true }).click();
     await page.waitForURL("**/learn/?id=web");
     await page.getByRole("heading", { name: "Web recovery", level: 1 }).waitFor();
     await page.getByRole("heading", { name: "Find the port", level: 2 }).waitFor();
@@ -460,62 +436,21 @@ try {
     viewFailure = false;
     user = "student";
 
-    // Publishing, release and unpublish for administrators.
-    publications.push({
-      ...publications[1],
-      id: "ops",
-      title: "Operations drill",
-      releasedSteps: 1,
-      steps: [...publications[1].steps, { ...publications[1].steps[0], id: "step-3" }],
-    });
+    // Publishing is retired: its route redirects administrators to image management.
     admin = true;
     await page.goto(app + "/admin/labs/");
-    await page.getByRole("heading", { name: "Published labs", exact: true }).waitFor();
-    await page.getByRole("navigation", { name: "Administration" }).waitFor();
-    await page.getByRole("button", { name: "New lab" }).click();
-    await page.getByLabel("Title", { exact: true }).fill("Log review");
-    await page.getByLabel("Stage title").fill("Read the log");
-    await page.getByLabel("Instructions").fill("Open `/var/log/auth.log`.");
-    await page.getByRole("button", { name: "Add stage" }).click();
-    await page.locator("#step-2-title").fill("Lock the account");
-    await page.locator("#step-2-kind").selectOption("action");
-    await page.locator("#step-2-instructions").fill("Disable the support user.");
-    await page.getByRole("button", { name: "Publish lab" }).click();
-    await page.getByText("Stage 1 needs an accepted answer.", { exact: true }).waitFor();
-    await page.getByText("Stage 2 needs a check from this revision.", { exact: true }).waitFor();
-    assert.equal(calls.filter((c) => c.path.endsWith("/publish")).length, 0);
-    await page.locator("#step-1-answer").fill("sshd");
-    await page.locator("#step-2-check").selectOption("web");
-    await page.getByRole("button", { name: "Publish lab" }).click();
-    await page.getByText("Published “Log review”.", { exact: false }).waitFor();
-    const published = calls.find((c) => c.path.endsWith("/publish")).body;
+    await page.waitForURL(app + "/admin/templates/");
+    await page.getByRole("heading", { name: "Lab templates", exact: true }).waitFor();
     assert.deepEqual(
-      published.steps.map((s) => [s.id, s.kind, s.answer, s.checkID]),
-      [
-        ["step-1", "answer", "sshd", ""],
-        ["step-2", "action", "", "web"],
-      ],
+      await page.getByRole("navigation", { name: "Administration" }).getByRole("link").allInnerTexts(),
+      ["Meeting", "Templates"],
     );
-    assert.equal(published.template, "revision");
-    assert.equal(published.mode, "self-paced");
-    await page.getByRole("button", { name: "Release stage 2" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Release stage" }).click();
-    await page.getByRole("dialog").waitFor({ state: "hidden" });
-    assert.deepEqual(calls.at(-1), {
-      path: "/api/admin/learning/release",
-      body: { id: "ops", releasedSteps: 2 },
-    });
-    await page.getByRole("button", { name: "Unpublish" }).first().click();
-    await page.getByRole("dialog").getByRole("button", { name: "Unpublish lab" }).click();
-    await page.getByRole("dialog").waitFor({ state: "hidden" });
-    assert.equal(calls.at(-1).path, "/api/admin/learning/unpublish");
-    assert(await fits(page), "publishing overflow");
-    if (evidence)
-      await page.screenshot({ path: `${evidence}/admin-labs-${width}.png`, fullPage: true });
+    assert.equal(calls.filter((c) => c.path.startsWith("/api/admin/learning")).length, 0);
+    assert(await fits(page), "admin templates overflow");
     assert.deepEqual(errors, []);
     await context.close();
     console.log(
-      `PASS learning (local mocks): catalog search, answers, confirmed cloud start/stop, desktop ticket, verified action, instructor release, session isolation, publishing (${width})`,
+      `PASS learning (local mocks): library home, legacy lesson links, answers, confirmed cloud start/stop, desktop ticket, verified action, instructor release, session isolation, retired publishing redirect (${width})`,
     );
   }
 } finally {

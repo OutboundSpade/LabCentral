@@ -1,0 +1,14 @@
+- name: Stop the branch web service
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Stop nginx while retaining valid configuration
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: stopped
+    - name: Confirm the service is stopped
+      ansible.builtin.command: systemctl is-active nginx
+      register: state
+      changed_when: false
+      failed_when: state.stdout != 'inactive'

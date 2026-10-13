@@ -15,7 +15,7 @@
 
 <div class="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
   <div class="min-w-0">
-    {#if eyebrow}<div class="eyebrow mb-1.5">{@render eyebrow()}</div>{/if}
+    {#if eyebrow}<div class="text-xs font-medium text-base-content/70 mb-1.5">{@render eyebrow()}</div>{/if}
     <h1 class="text-2xl font-semibold tracking-tight">{title}</h1>
     {#if description}<p class="mt-1.5 max-w-[60ch] text-sm text-base-content/70">
         {description}

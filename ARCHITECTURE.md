@@ -32,6 +32,18 @@ HTTPS API client, `build` generates platform-owned Packer configuration, and `ac
 handles SSH and desktop transports. The public process client also allows an
 external application to use the same implementation.
 
+`OpenWithOptions` accepts portable `EngineOptions` for image-build, machine-create
+and machine-cleanup concurrency within each operation. Existing `Open` callers
+retain defaults of three images, four creates and four deletions. Validation
+rejects limits outside 1–32 before opening state; zero selects the default.
+Waiting native operations check cancellation before invoking a provider.
+The CLI accepts these limits as flags or private JSON defaults under the XDG
+config directory, with explicit `--config`/`LABCENTRAL_CONFIG` selection and
+command-line overrides. Saved paths must be absolute; automatic mutation approval
+cannot be saved. Command help, interspersed options and positional validation do
+not start the provider; local lists remain available without it. Structured JSON
+results preserve version 2, while ordinary lists use aligned column headings.
+
 The provider never opens the library database. It owns a separate mutation
 journal for native subresources. The current provider executable routes both
 platforms in one separate process; splitting it into platform-specific binaries
@@ -40,6 +52,9 @@ operator code, not a sandbox for arbitrary third-party executables. The protocol
 is generated from typed Go structures, uses explicit version 2 envelopes, bounds
 message size, and rejects unsupported versions. Resource-specific opaque bytes
 are adapter state, never author-supplied portable manifests.
+Image file selections and machine hostname peers use appended protocol fields,
+preserving existing field numbers. A source-validation round trip checks that
+these restrictions survive transmission to the provider before image building.
 
 ## Source, environment and plans
 
@@ -380,19 +395,19 @@ Primary sources, retrieved 2026-09-28:
 
 The static UI keeps SvelteKit, the dark-purple daisyUI theme, Instrument Sans and
 Lucide icons. Its local SVG mark is a central node inside a lab frame. The layout
+uses static Tailwind utilities for its shared panel surfaces and section labels and
 favours a few quiet panels over ruled sections, short labels over explanatory
 copy, and purple only for selection and principal actions. A sticky top bar has
 three destinations: Practice (catalog, templates and player), Meeting (team choice
 or the team lab, with a dot while a meeting is open) and Admin. On phones it
 becomes role-appropriate bottom navigation; the header carries no backdrop filter,
 so the fixed phone navigation stays anchored to the viewport. Administration has a
-secondary Meeting, Published labs and Templates switcher. The header shows
+secondary Meeting and Templates switcher. The header shows
 administrative activity only while operations run or need attention.
-Practice defaults to published labs as cards with progress; template browsing is
-a secondary view. The guided player has a stage rail beside the stage and a single
-workspace strip; local download and CLI commands open in a dialog. The publishing
-editor stays hidden until an administrator starts a new lab, edits one as new or
-arrives from a template revision. The team lab page titles the team, and its desktop
+Practice defaults to the template library with category, difficulty, duration and
+skill tags, baseline/scenario availability, pinned detail and owned attempt history. The guided player has a stage rail beside the stage and a single
+workspace strip; local download and CLI commands open in a dialog. The temporary publication editor is removed; its guarded administrative route
+redirects to Templates. Existing stored lessons and progress remain readable. The team lab page titles the team, and its desktop
 panel precedes the handover on narrow screens while the handover stays on the left
 on desktop.
 Phone navigation reserves bottom and lateral safe areas; primary touch controls
@@ -415,8 +430,7 @@ explains unavailable teams. Primary controls have larger touch targets, flat sec
 reduce visual noise, and purple identifies selection and principal actions. Shared deadline displays
 count down using the browser clock and warn at fifteen
 minutes that workspace files will be deleted. Signed-in home navigation redirects
-to the lab or team list during an open meeting, and otherwise to the published
-lab catalog. Team changes require a named confirmation and recheck the
+to the lab or team list during an open meeting, and otherwise to the template library. Team changes require a named confirmation and recheck the
 current membership before submitting. Desktop readiness transitions update the
 page title and an accessible status region; the launch label stays fixed. Desktop
 help describes idle reconnects and browser clipboard behavior. Instructor meeting
@@ -432,29 +446,47 @@ Template commit links use a sanitized administrator-only repository URL supplied
 by the API. HTTP authorization, meeting policy, queue claims and native desktop
 behavior remain unchanged for team meetings.
 
-### Published practice labs
+### Template library and practice attempts
 
 The hosted learning layer adds `/labs/`, `/learn/?id=PUBLICATION_ID` and
-`/admin/labs/` to the existing static routes. `/labs/` separates template browsing
-from published practice, with revision detail links at `/labs/?template=TEMPLATE_ID`.
+`/admin/labs/` to the existing static routes. `/labs/` is the template-first library,
+with revision detail links at `/labs/?template=TEMPLATE_ID`; the old admin publication
+route redirects to `/admin/templates/` after authorization.
 Authenticated `GET /api/templates` and `GET /api/templates/{id}` return explicit
 public projections: revision metadata, description, student handover, declared
-machine sizes/access, safe stage instructions and IDs eligible for baseline
-practice. They never serialize the private `Template` or `InstructorBundle`.
+machine sizes/access, safe stage instructions, library metadata, scenario summaries and IDs eligible for
+baseline practice. Variant IDs, selected break IDs, private programs, checks and
+answers never enter these projections. They never serialize the private `Template` or `InstructorBundle`.
 The saved `imagesBuilt` flag is informational; reads do not inspect providers,
 and cloud admission still validates readiness. Browsing never provisions guests.
 
-Administrators publish immutable lesson definitions against an imported template
-revision, independently of the current meeting. Version 2 instructor manifests
-own reusable stages. A publication request can supply `stageIDs`; the server
-resolves their instructions, answers, checks and solutions from the pinned bundle
-and snapshots the chosen definitions. A request cannot combine stage IDs with
-manual definitions. Template-stage publications are self-paced and exclude
-instructor checkpoints and stages with `exerciseID`, because personal allocations
-currently start from baseline images without applying a break. The UI selects
-stages in template order; the API preserves the validated supplied order.
-Legacy manually authored definitions and instructor-paced publications remain
-readable and retain their behavior; no stored progress or revision is rewritten.
+Version 2 instructor manifests own reusable stages and optional standardized
+`library` metadata: category, beginner/intermediate/advanced difficulty, estimated
+minutes and up to twelve unique tags. The standard authored source library lives
+under `templates/`. Its service-recovery template provides a Linux workstation,
+branch services, baseline stages and independently composable web/scheduler breaks.
+It is imported through the configured private template repository; source presence
+and strict-import tests do not establish native image or guest acceptance.
+
+Authenticated, CSRF-checked `POST /api/templates/{id}/attempt` accepts an optional
+`scenarioID` and a required random 24-hex `requestID`. A per-user lock and transaction
+save an owned publication snapshot and private attempt together, without provisioning.
+The request key binds identity, template and mode. Retrying the same key returns the
+same attempt; changing its meaning is rejected. The static client retains only the
+owner, template/scenario keys and random request IDs in per-tab session storage until
+a confirmed outcome, preserving unknown requests across reloads and transient session
+refresh failures. A confirmed sign-out or different identity clears them; unavailable
+storage falls back to in-memory retry keys and attempt history. Baseline attempts select eligible
+authored stages in template order. Another attempt starts new progress while retaining
+prior progress. All student reads, answers, checks, solutions, downloads and cloud
+starts enforce attempt ownership; catalogs batch only that user's attempt progress.
+Active cloud cleanup must finish before creating another attempt.
+
+Legacy shared publications and instructor-paced lessons retain their stored API
+behavior and progress. Their editor and navigation have been removed, with no
+name-based deletion or mutation of live publications. Administrative API authoring
+remains available for retained integrations. Template-stage publications snapshot
+selected definitions and exclude exercise-linked stages and instructor checkpoints.
 
 A publication has a title, description, estimated duration,
 self-paced or instructor pacing, and 1–20 ordered stages. Each stage uses a
@@ -594,6 +626,20 @@ personal desktop lesson flow. Rendered native DCV was inspected at 1024×768,
 1366×768 and 390×900, including mobile lesson collapse and guest keyboard input.
 Instructor progression, automatic guest verification and reconnect were rechecked.
 
+The simplified navigation, practice/player layouts and lab-frame mark were deployed
+through verified hosted maintenance on 2026-10-09 after Blueprint source/rendered
+review, Svelte type/build checks, generated-contract verification, Go checks/race
+checks and all five frontend plus hosted/access browser suites. Eight deployed
+route bodies and the logo matched the exact tested build. Real administrator and
+student OIDC sessions passed desktop/mobile UI and authorization checks. An owned
+personal AWS desktop rendered at both widths, accepted guest keyboard input and
+wrong/correct lesson-sidebar answers. One separate preparation attempt failed with
+an EC2 route-table lookup error; its cleanup was confirmed before a later successful
+allocation. All three owned test allocations and temporary identities were confirmed
+removed. Existing meeting, team and publication records remained unchanged. This
+does not add cohort/load or meeting-exercise qualification. Detailed evidence and
+installation identifiers remain outside source.
+
 The `hosted` package owns typed users, server-side OIDC sessions, meetings, teams,
 memberships, template revisions, jobs and desktop ownership. SQLite transactions
 reserve destination capacity before a team switch. New meetings default to five
@@ -632,9 +678,9 @@ claim after its native operation and durable readiness checkpoint. Already-ready
 teams are not inspected, recovered or rewritten by preparation retries. Team claims
 serialize provisioning, exercises and checks for the same team; checks on a ready
 team can run while other teams are preparing. Unrelated queued work can bypass a blocked
-job. Bulk work (build, preparation, refresh and image removal) has three slots, with
-at most two image-build jobs. Guest work (checks and exercises) has two separate
-slots, so bulk saturation cannot consume its capacity. A sixth slot is reserved
+job. Bulk work (build, preparation, refresh and image removal) defaults to three slots, with
+at most two image-build jobs. Guest work (checks and exercises) defaults to two separate
+slots, so bulk saturation cannot consume its capacity. An additional slot is reserved
 for meeting destruction or authorization cleanup. Resource claims still apply
 across all lanes; same-team checks and exercises remain exclusive.
 Desktop revalidation performs durable reads and cleanup enqueueing outside the
@@ -652,11 +698,30 @@ Retries show pending, accepted or rejected feedback inside Live activity; select
 filters use an explicit check mark and selection color separate from error counts.
 The complete active
 queue remains visible even when its jobs predate the bounded recent history.
-A prepare job runs at most
-three team deployments concurrently. Each team persists its own readiness or failure;
+A prepare job defaults to at most
+three team deployments concurrently. A shared, cancellable provisioning gate also
+includes personal practice, so team and personal preparations together cannot
+exceed `worker.maxProvisioningConcurrency`. Ready teams need no gate or native work;
+waiting teams recheck meeting state after admission. Personal preparations acquire
+the gate before their durable preparing transition, preserving an intervening stop.
+Cleanup never acquires the provisioning gate. Each team persists its own readiness or failure;
 one failure does not cancel peers. Meetings with both ready and failed teams report
 `partial`; all-team failures report `failed`. Aggregated job errors name the failed teams, and
 retry reconciles their reserved instance IDs while keeping ready teams accessible.
+The protected service config exposes startup-only `worker` limits for provisioning,
+bulk, guest and image-build jobs and job timeout, plus portable `engine` limits for
+native work within each operation. Defaults remain three/two/two jobs and 120
+minutes; concurrency accepts 1–32 and timeout 1–1440 minutes. Image-build jobs cannot
+exceed bulk capacity; an omitted image limit adapts to the smaller bulk budget.
+The total worker ceiling is bulk plus guest capacity plus one reserved cleanup slot.
+Allocation deadlines still override job timeout. The server validates static
+limits before starting the provider, and `--check-config` reports effective policy
+without OIDC, provider startup or secrets. Config changes require restart and are
+not exposed in public DTOs. Local tests cover configured limits, shared admission,
+cancelled waiters, cleanup admission, reopened readiness and private CLI defaults.
+The service deployed with these options on 2026-10-13 and completed native AWS
+meeting/personal preparation and cleanup under the existing defaults. Configured
+capacity ceilings and larger concurrent cohorts remain unqualified live.
 The provider permits unrelated image builds, networking and machine operations
 concurrently. Owner fences serialize networking, image and access lifecycle work;
 distinct machines share the owner fence and have their own name fences. Create,
@@ -738,6 +803,172 @@ reset steps, exercises, checks and assets remain unchanged. It imports as a new
 pinned revision and reuses existing native images; retained meetings and
 publications keep their original revisions and snapshots.
 
+The private template repository additionally contains a separate `branch-services-ir`
+template derived from that pinned v2 source. It preserves the original template
+and adds a fifth, controlled support guest. Persistent UTC journals, native FTP
+logging and targeted audit rules are provisioned in the new images. Runtime
+preparation observes actual kernel audit readiness over pinned SSH and persists a fresh run
+identity, victim clock timestamp, journal cursor and log offsets on the coach guest
+before any attack effects. The support
+guest uses only synthetic training credentials and guest-generated keys, performs
+a real FTP upload and password SSH login, writes key persistence and a harmless
+staging artifact, then holds a key-authenticated session for at most eight hours.
+It pins the victim's prepared host public key and never automatically reconnects.
+
+Private guest checks require native FTP account/source/PID records linked to audit
+publication writes, SSH authentication linked through PAM audit sessions to key
+and staging writes, a matching active connection and visible publication effects.
+FTP privilege separation may leave the upload worker's loginuid unset; its native
+upload PID supplies the account/source link rather than an invented audit-session
+claim. Native vsftpd audit paths may be relative to its chroot; the publication
+correlation accepts that exact path only with the native vsftpd executable,
+authenticated upload PID, account and publication audit rule. Evidence receipts
+cannot replace raw logs. Missing or truncated/rotated
+logs, audit loss and stale-run records fail the gate. Observational recovery checks
+require removed access/persistence, rotated training credentials, fresh publisher
+authentication and clean source/visible content. Coaches assess the report.
+
+Targeted reset stops the owned support service first, verifies its exact retained
+key identity, removes only run-owned guest artifacts, and restores the synthetic
+service baseline while preserving other keys, publications, bank data, desktops
+and historical evidence. Unknown ownership or remaining sessions requires manual
+review. The changed portable source binds all five image cache keys to new builds.
+On 2026-10-12, all five images built and passed native AWS boot validation in the
+explicitly configured hosted test environment. A disposable five-VM team on pinned
+private revision `3d68fa8` passed real OIDC/student DCV keyboard access, native
+logging and incident correlation, deliberate logging-misconfiguration rejection,
+containment and credential/publisher recovery, and retained raw evidence after an
+actual victim reboot. Targeted reset preserved unrelated keys/publications and the
+actual student workspace; reapplication produced a distinct run identity/key and
+passed the native evidence gate again.
+One initial desktop launch failed with an unrecorded response; its cause remains
+unverified. Retained access cleanup completed, and the bounded retry and subsequent
+native desktop/keyboard/mobile checks passed.
+A fresh five-VM team's first launch reproduced HTTP 503 after 51.75 seconds.
+Native workstation logs showed Xdcv failing to initialize its display with GL
+enabled. Virtual-session creation now explicitly uses `--gl off` on these
+CPU-backed desktops, while still requiring an observed running X display.
+The native diagnostic session reached a display in 9.362 seconds. After a
+confirmed workstation reboot and deployment of that change, the first real
+student launch returned HTTP 200 in 2.925 seconds; native keyboard input,
+website access and both student documents were independently verified in the
+guest. The exact owned desktop closed successfully. Affected DCV/access/build
+and hosted race checks passed. This proves the observed cold launch on one AWS
+team, not classroom concurrency or every future first launch.
+That fresh team's actual incident application passed again: website, FTP,
+logging readiness and native incident correlation passed, while altered-publication
+and incomplete-containment failures remained the expected active-incident results.
+The latest three original-template revision cards also confirmed their already
+available four-image cache; no original template source or image was replaced.
+AWS confirmed all three owned rehearsal allocations destroyed; temporary OIDC users and
+sessions were removed. All eight pre-existing AWS images and all five IR images
+were retained, with the original 43-file template and publication snapshots unchanged.
+This is one-team AWS qualification; it does not establish a new
+classroom load test or Proxmox qualification. The revision remains unpublished,
+and the original Example Branch template and existing publications retain their
+original source and snapshots.
+
+Instructor bundles may declare `audience: coaches` and `hiddenMachines`. The
+IR revision uses these to exclude the whole revision from student template
+catalogs, direct revision views, publications, practice admission, solution
+reveals and source downloads. Publication requests for coach-only revisions are
+rejected. Retained accidental publications are also filtered and denied; missing
+or inconsistent privacy metadata fails closed. Admin template views retain notes,
+stages, solutions and walkthroughs. The authenticated template explorer projects
+coach-only revisions and the complete topology only for admin sessions, labels
+them Coach-only, and omits the publication link. Its cached views are cleared on
+role changes as well as identity changes. The student meeting handover contains only
+bank access and an open investigation assignment. Student inventories omit hidden
+guests, while administrator inventories include all machines.
+
+Optional portable image `files` selects exactly which pinned source files reach
+that image's build guest. Nonempty selections require the image playbook and
+reject duplicate or unknown paths; omission preserves existing author inputs.
+The IR bank/workstation images select only their own provisioning files, shared
+operations tasks and required public assets. They never receive `lab.yaml`, the
+support provisioning program or other image inputs. This prevents full topology
+from leaking through retained or recoverable build files. Packer uses a fixed
+source staging directory with explicit cleanup, and the final guest sanitizer
+also removes that directory before capture ([Ansible Local provisioner reference](https://developer.hashicorp.com/packer/integrations/hashicorp/ansible/latest/components/provisioner/ansible-local), retrieved 2026-10-12).
+Hidden-machine teaching metadata requires explicit student-image file selections
+that exclude the full topology manifest and private image playbooks. Native
+filesystem inspection of the newly built images remains an acceptance gate.
+
+Optional portable `hostnamePeers` selects each machine's initial `/etc/hosts`
+entries by declared peer name; omission preserves the original all-peer behavior.
+Validation rejects duplicates and unknown peers before provisioning. This is
+portable name-resolution configuration, independent of HTTP identity or roles;
+it is not a network firewall. Hidden-machine instructor metadata requires explicit
+student-guest peer lists excluding hidden guests. Students may discover the
+source address through genuine logs or network observation, as intended, without
+being told the source's coach role or receiving its login credentials.
+
+Guest steps may select explicit `files` and request selected `guestHosts` public
+addresses/host keys from the pinned instance. Coach-only templates require
+explicit file selections for bank guests. The IR actor, verifier, generated keys,
+expected correlations and durable run/evidence receipts reside solely on support.
+Bank VMs receive ordinary baseline/service-check inputs, never the actor or
+verifier bundle. No actor handshake or saved solution is written to bank storage.
+The coach verifier uses the synthetic, publicly documented bankops training
+account to observe bank services over pinned SSH; these operations create their
+own distinguishable bankops sessions. No management or provider private key is
+copied to a guest. The support image has no student operations account and permits
+only management-key SSH for the library's lab account. Guest root access on a bank
+VM does not grant access to coach storage; attack artifacts and raw logs remain
+available for investigation. Unavailable observation or changed credentials fail
+the checks and require coach review.
+
+Administrators can select a ready meeting team and any declared SSH machine,
+including support, in the meeting's Coach machine access picker. **Open SSH**
+opens `/admin/terminal/` in a separate tab, with the meeting, revision, team,
+machine and opaque library allocation ID pinned in its URL. The admin-only
+machine endpoint projects those names, pinned context, status and access without
+infrastructure addresses
+or credentials. A separate interactive SSH WebSocket verifies the app Origin,
+admin session and first-message CSRF/context/dimensions, then binds the team,
+deadline, instance, source digest and declared machine to library-owned SSH material. It never accepts
+a browser-supplied guest address, credential or remote-command job; interactive
+keyboard input travels as binary frames.
+Native ownership and the private lab address must match the plan; the management
+endpoint may be the provider's distinct public address and remains host-key pinned.
+Session/role and current meeting/team access are rechecked while connected;
+revocation or expiry closes the channel. Bounded WebSocket Ping/Pong keepalives
+release quiet half-open transports without delaying authorization checks.
+Sessions last at most ten minutes and hold the machine/lifecycle fence, so coaches
+must disconnect before running checks or resets on that machine. The locally
+bundled xterm.js terminal renders ANSI output and raw keyboard bytes, with a
+`xterm-256color` guest PTY. The server sends a ready control frame before accepting
+interactive input; bounded resize controls update the guest PTY. Browser scrollback
+and pending renderer writes are bounded and not persisted. Clearing access or
+meeting context replaces the renderer, discarding queued output and selection
+before delayed parsing can repaint old data. Excess output stops the connection
+with a manual reconnect option. Output never controls browser navigation,
+clipboard writes or the page title.
+Transient transport failures use bounded backoff and repeat fresh session and
+inventory authorization before each attempt. Recovery opens a new shell within the
+same allocation, retains visible scrollback with a fresh-shell boundary and never
+replays input. Normal shell exit, explicit disconnect, revoked access and expired
+meetings stop recovery. The ten-minute channel limit requires a fresh shell too;
+it is distinguished from meeting expiry. Cancellation releases the SSH connection
+and library fence. A recovery boundary cancels an incomplete escape sequence and
+saves the current cursor before leaving an alternate buffer and resetting terminal
+modes, preserving normal-buffer history before the new shell's first output.
+The xterm.js terminal was deployed on 2026-10-13. Live real-OIDC/native-AWS checks
+covered the picker and separate tab, keyboard input, ANSI styles, actual selection
+and clipboard copy, mobile PTY resize, offline/online recovery with retained
+scrollback and no input replay, explicit disconnect/reconnect and normal shell exit.
+Student access and invalid first-message CSRF were rejected; an active native SSH
+WebSocket closed with authorization code 4003 after administrator logout.
+This is an authenticated interactive guest transport, not a remote-command job
+endpoint. The 2026-10-12 native AWS rehearsal verified administrator SSH access to
+all five guests, the rendered coach console at desktop and phone widths, and
+rejection of student access and an invalid first-message CSRF. Student inventories
+and direct revision views hid the coach guest/private revision; actual bank-image
+filesystem and hostname inspection found no private scenario programs or source
+staging directory. The coach guest rejected the student training password, and a
+deliberately wrong native SSH host pin was rejected. Local fixtures remain separate
+from this native evidence, which is retained outside tracked source.
+
 Meeting stage selection is a local instructor viewing choice, without a release
 gate or guest mutation. Existing durable exercise, reset and service-check jobs
 remain the execution mechanism. Instructors can freely revisit stage instructions
@@ -748,13 +979,52 @@ stage's `checkID` does not turn the full meeting service scoreboard into a
 stage-specific check. Stage-only templates can still provide a walkthrough even
 without break definitions.
 
-Randomized practice remains unimplemented. The bounded extension is an
-author-declared variant list referencing these same stages and existing guest
-actions, rather than arbitrary generated attacks or action combinations. It
-requires validated per-attempt choices, a retained private solution and progress,
-and persisted exact choices before guest effects; a seed alone is insufficient
-for recovery. Repeat provisioning or lost guest responses must not rerandomize
-an attempt. No current catalog control implies this execution capability.
+Randomized personal practice uses version 2 author-defined `scenarios` (at most twelve).
+Each has a unique ID, briefing, difficulty, duration and 2–32 distinct variants.
+A variant has its own ID, an explicit `compatible: true` certification, 1–8 existing
+`exerciseIDs` in execution order and 1–20 self-paced `stageIDs`. Every selected break
+requires an action recovery stage, and linked stages must belong to selected breaks.
+Duplicate combinations, unknown references, missing verification, coach-only scenarios,
+invalid bounds and missing resets are rejected before provisioning. Authors must
+qualify each combination: break programs cannot reset or undo another selected break.
+The server does not infer compatibility from arbitrary Ansible or generate attacks.
+
+Attempt creation draws a cryptographically random variant, excluding the immediately
+previous saved variant for that student/template/scenario. The exact choice, full
+private instructor snapshot and answer key are committed before allocation or guest
+mutation. Retries and server restarts never rerandomize that attempt. Public views
+include only the scenario briefing/summary and instructional stages; ordinary reads
+omit selected program IDs and private variant details. Baseline downloads remain
+portable; scenario downloads are denied because guest preparation is hosted-only.
+
+After exact-instance deployment and source validation, the worker saves an `applying`
+scenario journal, restores the baseline once and applies all chosen breaks. Only
+confirmed completion saves `applied` before readiness. An applied checkpoint resumes
+without repeating guest effects; an interrupted applying checkpoint remains unknown
+and refuses reapplication. Failures retain the allocation, quota charge and cleanup
+intent; students stop, wait for confirmed cleanup and create a new attempt. An ended
+scenario allocation cannot restart the old attempt. Guest checks use the attempt's
+private snapshot. Existing same-allocation scheduler claims serialize preparation,
+verification and cleanup, while meeting operations remain independent.
+
+These library/scenario changes were deployed on 2026-10-13. Local tests cover
+strict import, compatibility/reference rejection, student ownership,
+concurrent request deduplication, reopened persistence, independent progress, checkpoint
+recovery, combined-break sequencing and uncertain guest/cleanup outcomes. Browser
+fixtures cover desktop/mobile layouts, lost-response replay across reloads, actual
+logout, delayed responses and unavailable browser storage. Separate live acceptance
+used real administrator/student OIDC and the imported, pinned CCDC service-recovery
+template with two completed native AWS images. A rendered student DCV session and
+guest keyboard input confirmed both services were initially inactive, repaired
+them, and passed both native recovery checks with saved progress. A second distinct
+allocation confirmed a web-only outage, an active scheduler and independent zero
+progress while the first attempt retained completion. Both allocations and the
+owned meeting were stopped with confirmed cleanup. The legacy Published labs
+navigation/editor was removed; stored legacy publication/history records were
+retained. Initial cold desktop starts needed retries. The subsequent DCV startup
+correction described below passed the first request on an untouched AWS
+workstation. Larger cohorts and Proxmox scenario acceptance remain unqualified.
+Host configuration, credentials and raw evidence stay outside source.
 
 Each selected team's exercise runs its pinned reset steps before applying its break.
 Fixed guest launchers stage private temporary files and invoke pinned guest-local
@@ -830,6 +1100,23 @@ wait for DCV to report a running X display while holding the workstation's machi
 lock and a shared instance lifecycle guard. They bypass the hosted job queue;
 server checks on another machine do not delay launch or revocation. Launches and
 checks on the same workstation remain serialized.
+Before creating a virtual session, the shared DCV startup helper reads Xdcv,
+the CPU graphics modules and their shared-library dependencies in the guest.
+This moves fresh-image disk reads outside DCV's short display startup deadline;
+it also applies to existing captured images. Preparation errors or cancellation
+return before creating the session. The helper uses a fail-fast pipeline so a
+failed module or dependency read cannot be hidden by a successful later command.
+The 2026-10-13 cold-start fix reproduced a first-request failure on a fresh AWS
+workstation: Xdcv exhausted its display-number deadline while initializing GLX.
+Reading the graphics libraries before session creation allowed it to start.
+The deployed fix passed a real-OIDC student's first request on an untouched
+workstation in 60.4 seconds, including library preparation. DCV created one session,
+reported a running display and rendered the desktop; keyboard input wrote a receipt
+that was independently confirmed through pinned guest SSH. Local failure/race
+checks cover preparation read failures, cancellation and unknown session outcomes.
+A changed native boot ID confirmed a subsequent reboot; the original student
+receipt survived before reconnection. Its first desktop request returned in
+2.1 seconds and again rendered and accepted keyboard input without a user retry.
 A failed asynchronous launch is retried once only after confirmed session absence;
 unknown outcomes remain errors. Reconnects recheck the native session and replace
 a failed session and relay while preserving the home directory. The browser shows

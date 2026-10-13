@@ -110,6 +110,7 @@ message Machine {
   string memory = 3 [json_name = "memory"];
   string disk = 4 [json_name = "disk"];
   repeated string access = 5 [json_name = "access"];
+  repeated string hostname_peers = 6 [json_name = "hostnamePeers"];
 }
 message PlannedImage {
   string name = 1 [json_name = "name"];
@@ -136,6 +137,7 @@ message Lab {
 message Image {
   string base = 1 [json_name = "base"];
   string playbook = 2 [json_name = "playbook"];
+  repeated string files = 3 [json_name = "files"];
 }
 message Network {
   bool internet = 1 [json_name = "internet"];

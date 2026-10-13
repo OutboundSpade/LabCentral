@@ -558,3 +558,26 @@ func TestParallelProxmoxAllocationAndRecovery(t *testing.T) {
 		}
 	}
 }
+
+func TestPreparePreservesExplicitHostnameInventoryAcrossRestart(t *testing.T) {
+	root := t.TempDir()
+	engine, err := Open(root, freshFake(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	instance := Instance{ID: "hostname-privacy", Plan: Plan{Environment: testEnvironment(), Machines: []PlannedMachine{{Name: "bank", Spec: Machine{HostnamePeers: []string{"bank"}}}, {Name: "coach"}}}}
+	if err = engine.prepare(context.Background(), &instance); err != nil {
+		t.Fatal(err)
+	}
+	if len(instance.Plan.Machines[0].Hosts) != 1 || instance.Plan.Machines[0].Hosts[0].Name != "bank" || len(instance.Plan.Machines[1].Hosts) != 2 {
+		t.Fatal(instance.Plan.Machines)
+	}
+	var stored Instance
+	if err = engine.state.Get(context.Background(), "instance", instance.ID, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored.Plan.Machines[0].Hosts) != 1 || len(stored.Plan.Machines[1].Hosts) != 2 {
+		t.Fatal("hostname policy not persisted")
+	}
+}

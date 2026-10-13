@@ -1,0 +1,15 @@
+- name: Check scheduled branch operations
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Require an active scheduler
+      ansible.builtin.command: systemctl is-active cron
+      changed_when: false
+    - name: Read the heartbeat job
+      ansible.builtin.slurp:
+        src: /etc/cron.d/branch-operations
+      register: job
+    - name: Verify its destination
+      ansible.builtin.assert:
+        that: "'/var/lib/branch-operations/heartbeat' in (job.content | b64decode)"

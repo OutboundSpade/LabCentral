@@ -42,19 +42,6 @@
   --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
 }
 
-/* One quiet surface style groups related controls without extra rules. */
-@utility panel {
-  border-radius: var(--radius-box);
-  border: 1px solid color-mix(in oklab, var(--color-base-content) 9%, transparent);
-  background-color: color-mix(in oklab, var(--color-base-200) 70%, transparent);
-}
-@utility eyebrow {
-  font-size: var(--text-xs);
-  line-height: var(--text-xs--line-height);
-  font-weight: 500;
-  color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
-}
-
 /* SvelteKit's inline announcer style is blocked by our CSP in Firefox.
    Keep navigation announcements available to screen readers via external CSS. */
 #svelte-announcer {

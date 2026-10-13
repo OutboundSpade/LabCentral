@@ -37,15 +37,17 @@ type Lab struct {
 	Inputs      map[string]Input   `yaml:"inputs,omitempty" json:"inputs,omitempty"`
 }
 type Image struct {
-	Base     string `yaml:"base" json:"base"`
-	Playbook string `yaml:"playbook,omitempty" json:"playbook,omitempty"`
+	Base     string   `yaml:"base" json:"base"`
+	Playbook string   `yaml:"playbook,omitempty" json:"playbook,omitempty"`
+	Files    []string `yaml:"files,omitempty" json:"files,omitempty"`
 }
 type Machine struct {
-	Image  string   `yaml:"image" json:"image"`
-	CPU    int      `yaml:"cpu" json:"cpu"`
-	Memory string   `yaml:"memory" json:"memory"`
-	Disk   string   `yaml:"disk" json:"disk"`
-	Access []string `yaml:"access,omitempty" json:"access,omitempty"`
+	Image         string   `yaml:"image" json:"image"`
+	CPU           int      `yaml:"cpu" json:"cpu"`
+	Memory        string   `yaml:"memory" json:"memory"`
+	Disk          string   `yaml:"disk" json:"disk"`
+	Access        []string `yaml:"access,omitempty" json:"access,omitempty"`
+	HostnamePeers []string `yaml:"hostnamePeers,omitempty" json:"hostnamePeers,omitempty"`
 }
 type Network struct {
 	Internet bool `yaml:"internet,omitempty" json:"internet"`

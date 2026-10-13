@@ -59,6 +59,9 @@ func TestGeneratedPackerConfiguration(t *testing.T) {
 			if strings.Contains(string(b), "shell-local") {
 				t.Fatal("local code execution")
 			}
+			if !strings.Contains(string(b), `"clean_staging_directory":true`) || !strings.Contains(string(b), `"staging_directory":"/tmp/labcentral-source"`) || !strings.Contains(string(b), "sudo rm -rf /tmp/labcentral-source") {
+				t.Fatal("build source staging is not cleared before capture")
+			}
 			if !strings.Contains(string(b), "ansible-local") {
 				t.Fatal("missing guest controller")
 			}
@@ -167,5 +170,31 @@ func TestFailedValidationRetryRequiresConfirmedCleanup(t *testing.T) {
 				t.Fatal("retry would discover previous machine command")
 			}
 		})
+	}
+}
+
+func TestOnlySelectedBuildFilesEnterImageStaging(t *testing.T) {
+	dir := t.TempDir()
+	command := lc.Command{Image: lc.PlannedImage{Name: "bank"}, Source: lc.Source{Lab: lc.Lab{Images: map[string]lc.Image{"bank": {Files: []string{"bank.yml", "shared.txt"}}}}, Files: []lc.File{{Path: "bank.yml", Content: []byte("bank")}, {Path: "shared.txt", Content: []byte("public handover")}, {Path: "lab.yaml", Content: []byte("PRIVATE-TOPOLOGY")}, {Path: "coach.yml", Content: []byte("PRIVATE-COACH-IMAGE")}}}}
+	if err := stageImageSource(command, dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"lab.yaml", "coach.yml"} {
+		if _, err := os.Stat(filepath.Join(dir, "source", name)); !os.IsNotExist(err) {
+			t.Fatal("unselected source staged", name, err)
+		}
+	}
+	for _, name := range []string{"bank.yml", "shared.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, "source", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy := t.TempDir()
+	command.Source.Lab.Images["bank"] = lc.Image{}
+	if err := stageImageSource(command, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "source", "shared.txt")); err != nil {
+		t.Fatal("legacy build input changed", err)
 	}
 }

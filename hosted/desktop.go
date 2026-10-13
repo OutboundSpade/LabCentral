@@ -264,7 +264,8 @@ func (s *Service) desktopAuthorized(ctx context.Context, d *desktopSession) bool
 	}
 	if strings.HasPrefix(d.record.TeamID, "practice:") {
 		run, err := s.Store.practice(ctx, strings.TrimPrefix(d.record.TeamID, "practice:"))
-		return err == nil && run.UserID == v.User.ID && run.InstanceID == d.record.InstanceID && run.Status == "ready" && run.Expires.After(time.Now())
+		publicationErr := s.practiceDisclosure(ctx, run.LabID)
+		return err == nil && publicationErr == nil && run.UserID == v.User.ID && run.InstanceID == d.record.InstanceID && run.Status == "ready" && run.Expires.After(time.Now())
 	}
 	team, _, e := s.readyTeam(ctx, d.record.UserID)
 	return e == nil && team.ID == d.record.TeamID && team.InstanceID == d.record.InstanceID

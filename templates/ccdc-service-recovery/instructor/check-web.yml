@@ -1,0 +1,14 @@
+- name: Check the branch website
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Require an active web service
+      ansible.builtin.command: systemctl is-active nginx
+      changed_when: false
+    - name: Require the correct website
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: website
+      failed_when: website.status != 200 or 'Branch operations online' not in website.content

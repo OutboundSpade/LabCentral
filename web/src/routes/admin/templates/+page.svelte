@@ -10,6 +10,8 @@
     Trash2,
     Clock,
     LockKeyhole,
+    LibraryBig,
+    BookOpen,
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
@@ -88,7 +90,9 @@
 <svelte:head><title>Lab templates · LabCentral</title></svelte:head>
 {#if $session?.user.admin}<AdminNav />{/if}
 <PageHeader title="Lab templates">
-  {#if $session?.user.admin}<button
+  {#if $session?.user.admin}<a class="btn btn-sm btn-ghost min-h-11 lg:min-h-8" href="/labs/"
+      ><LibraryBig size={15} />Student library</a
+    ><button
       class="btn btn-sm min-h-11 lg:min-h-8"
       disabled={busy || refreshing}
       onclick={() => run("/api/admin/templates/refresh")}
@@ -109,8 +113,41 @@
       class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
     >
       <section class="min-w-0">
+        <details
+          class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mb-4"
+        >
+          <summary class="collapse-title flex min-h-11 items-center gap-2 text-sm font-medium"
+            ><BookOpen size={14} aria-hidden="true" />Authoring practice</summary
+          >
+          <div class="collapse-content space-y-2 text-sm leading-relaxed text-base-content/80">
+            <p>
+              Students start practice from the <a class="link" href="/labs/">library</a>; nothing
+              is published here. Each revision's <code>instructor.yaml</code> supplies it:
+            </p>
+            <ul class="[list-style-type:disc] space-y-1 pl-5">
+              <li>
+                <code>stages</code> without a break or instructor checkpoint become baseline
+                practice from the image's initial state.
+              </li>
+              <li>
+                <code>scenarios</code> combine compatible breaks into randomized attempts. Each
+                attempt saves its variant before any guest change and runs only in a cloud
+                workspace.
+              </li>
+              <li>
+                <code>library</code> sets the category, difficulty, duration and tags shown on
+                template cards.
+              </li>
+            </ul>
+            <p class="text-base-content/70">
+              Revisions are pinned: attempts keep the exact revision they started from. Cloud
+              practice needs built images and a desktop <code>workstation</code>; baseline practice
+              can still run locally.
+            </p>
+          </div>
+        </details>
         <ul
-          class="panel divide-y divide-base-content/8"
+          class="rounded-box border border-base-content/9 bg-base-200/70 divide-y divide-base-content/8"
           aria-label="Template revision history"
         >
           {#each data.templates as template, index (template.id)}
@@ -207,7 +244,7 @@
                       .join(", ")} on shared resources.
                   </p>{/if}
                 {#if template.instructor}<details
-                    class="collapse collapse-arrow panel mt-4"
+                    class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4"
                   >
                     <summary
                       class="collapse-title flex items-center gap-2 text-sm font-medium"
@@ -252,7 +289,12 @@
                     {job.error}
                   </p>{/if}
                 <div class="mt-3 flex flex-wrap gap-2">
-                  <a class="btn btn-sm min-h-11 btn-ghost lg:min-h-8" href={`/labs/?template=${encodeURIComponent(template.id)}`}>Preview</a>
+                  <a
+                    class="btn btn-sm min-h-11 btn-ghost lg:min-h-8"
+                    href={`/labs/?template=${encodeURIComponent(template.id)}`}
+                    aria-label={`Open ${template.name} revision ${template.commit.slice(0, 7)} in the library`}
+                    ><LibraryBig size={15} />Open in library</a
+                  >
                   {#if !template.built && !template.removing}<button
                       class="btn btn-sm min-h-11 lg:min-h-8"
                       class:btn-primary={template.latest}

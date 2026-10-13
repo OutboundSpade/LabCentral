@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CoachConsole from "$lib/CoachConsole.svelte";
   import Activity from "$lib/Activity.svelte";
   import Scoreboard from "$lib/Scoreboard.svelte";
   import Exercises from "$lib/Exercises.svelte";
@@ -206,7 +207,7 @@
       >
         <section class="min-w-0">
           <form
-            class="panel max-w-xl p-6"
+            class="rounded-box border border-base-content/9 bg-base-200/70 max-w-xl p-6"
             onsubmit={(e) => {
               e.preventDefault();
               if (!selectedRevision) {
@@ -363,11 +364,11 @@
         {/if}
       </PageHeader>
       <section
-        class="panel mb-8 grid grid-cols-2 divide-base-content/8 sm:grid-cols-4 sm:divide-x"
+        class="rounded-box border border-base-content/9 bg-base-200/70 mb-8 grid grid-cols-2 divide-base-content/8 sm:grid-cols-4 sm:divide-x"
         aria-label="Meeting overview"
       >
         <div class="px-5 py-4">
-          <p class="eyebrow">Time left</p>
+          <p class="text-xs font-medium text-base-content/70">Time left</p>
           <div class="mt-1">
             {#if data.meeting.status === "ending"}<p class="text-sm text-warning">
                 Cleaning up…
@@ -379,19 +380,19 @@
           </div>
         </div>
         <div class="px-5 py-4">
-          <p class="eyebrow">Labs ready</p>
+          <p class="text-xs font-medium text-base-content/70">Labs ready</p>
           <p class="mt-1 text-lg font-semibold tabular-nums">
             {readyCount} / {data.teams.length}
           </p>
         </div>
         <div class="px-5 py-4">
-          <p class="eyebrow">Students joined</p>
+          <p class="text-xs font-medium text-base-content/70">Students joined</p>
           <p class="mt-1 text-lg font-semibold tabular-nums">
             {joined} / {seats}
           </p>
         </div>
         <div class="px-5 py-4">
-          <p class="eyebrow">Active desktops</p>
+          <p class="text-xs font-medium text-base-content/70">Active desktops</p>
           <p class="mt-1 text-lg font-semibold tabular-nums">
             {data.activeDesktops ?? 0}
           </p>
@@ -487,6 +488,7 @@
                 </tbody>
               </table>
             </div>
+            <CoachConsole {data} />
           </div>
           {#if hasExercises}<div
               role="tabpanel"

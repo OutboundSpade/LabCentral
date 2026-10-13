@@ -17,6 +17,9 @@ import (
 // Run fences one scheduler process, then admits jobs whose resource claims do
 // not conflict. End/authorization cleanup has a reserved slot.
 func (s *Service) Run(ctx context.Context) error {
+	if err := s.Config.Worker.Validate(); err != nil {
+		return err
+	}
 	unlock, err := s.Store.LockKey("hosted-worker")
 	if err != nil {
 		return err
@@ -34,7 +37,8 @@ func (s *Service) Run(ctx context.Context) error {
 	workers.Go(func() { s.policyLoop(ctx) })
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	done := make(chan error, 6)
+	limits := s.Config.Worker.Effective()
+	done := make(chan error, limits.MaxBulkJobs+limits.MaxGuestJobs+1)
 	for {
 		if err := s.dispatchJobs(ctx, &workers, done); err != nil {
 			return err
@@ -153,6 +157,9 @@ func (s *Service) runJob(ctx context.Context, j Job) error {
 	}
 }
 func (s *Service) meetingOperation(ctx context.Context, j Job) error {
+	if err := s.Config.Worker.Validate(); err != nil {
+		return err
+	}
 	m, e := s.Store.Meeting(ctx)
 	if e != nil {
 		return e
@@ -224,7 +231,7 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 	}
 	// Independent failures do not cancel peers. Only meeting expiry, end or
 	// worker shutdown cancels the shared context. Bound native API concurrency.
-	const parallelTeams = 3
+	parallelTeams := s.Config.Worker.Effective().MaxProvisioningConcurrency
 	failures := make([]error, len(teams))
 	work := make(chan int)
 	var workers sync.WaitGroup
@@ -277,17 +284,22 @@ func (s *Service) prepareTeam(ctx context.Context, meeting string, t Team, plan 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// Readiness is already durable. Retries own only unfinished teams and must
+	// not inspect, recover or rewrite ready teams while their checks run.
+	if t.Status == "ready" {
+		return nil
+	}
+	release, err := s.acquireProvisioning(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	current, err := s.Store.Meeting(ctx)
 	if err != nil {
 		return err
 	}
 	if current == nil || current.ID != meeting || current.Status == "ending" || current.Status == "ended" || !current.Expires.After(time.Now()) {
 		return fmt.Errorf("meeting is ending")
-	}
-	// Readiness is already durable. Retries own only unfinished teams and must
-	// not inspect, recover or rewrite ready teams while their checks run.
-	if t.Status == "ready" {
-		return nil
 	}
 	inst, inspect := s.Engine.Inspect(ctx, t.InstanceID)
 	if inspect == nil && inst.Status == "ready" {

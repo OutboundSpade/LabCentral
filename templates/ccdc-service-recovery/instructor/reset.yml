@@ -1,0 +1,21 @@
+- name: Restore the service exercise baseline
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Restore both services without changing student files or journals
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        masked: false
+        enabled: true
+        state: started
+      loop: [nginx, cron]
+    - name: Verify the healthy website
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: website
+      failed_when: website.status != 200 or 'Branch operations online' not in website.content
+    - name: Verify the scheduler
+      ansible.builtin.command: systemctl is-active cron
+      changed_when: false

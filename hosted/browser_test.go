@@ -242,3 +242,36 @@ func TestHostedActivityRecoveryBrowser(t *testing.T) {
 		t.Log(string(out))
 	}
 }
+
+func TestHostedCoachConsoleBrowser(t *testing.T) {
+	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
+		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
+	}
+	s, v, _, _ := privateFixture(t)
+	v.User.Admin = true
+	if err := s.Store.Put(context.Background(), "session", v.ID, v); err != nil {
+		t.Fatal(err)
+	}
+	student := v
+	student.ID = digest("blue-cookie")
+	student.User = User{ID: "blue-student", Name: "Blue Student"}
+	student.CSRF = "blue-csrf"
+	if err := s.Store.Put(context.Background(), "session", student.ID, student); err != nil {
+		t.Fatal(err)
+	}
+	s.Engine = &coachTransportEngine{Engine: s.Engine}
+	s.Config.WebRoot = filepath.Join("..", "web", "build")
+	app := httptest.NewUnstartedServer(nil)
+	s.Config.Origin = "https://" + app.Listener.Addr().String()
+	app.Config.Handler = s.Handler()
+	app.StartTLS()
+	defer app.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "node", "testdata/coach-console.mjs", app.URL)
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("browser: %v\n%s", err, out)
+	} else {
+		t.Log(string(out))
+	}
+}

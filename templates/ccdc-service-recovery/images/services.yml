@@ -1,0 +1,64 @@
+- name: Build branch services
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install branch services and diagnostic tools
+      ansible.builtin.apt:
+        name: [nginx, cron, curl, sudo, openssh-server]
+        state: present
+        update_cache: true
+    - name: Create the guest-only defender training account
+      ansible.builtin.user:
+        name: defender
+        shell: /bin/bash
+        create_home: true
+        password: '$6$branch-drill$0m3v/1z79oHhxZtZgO.JRCLYxKbi9oDcOpFPlHVwNU3TrdLpToiUB5Mwq6GhMXulAORYIkA4QtPnjWZg/R8dL0'
+    - name: Permit guest training administration
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/branch-defender
+        mode: '0440'
+        content: 'defender ALL=(ALL) NOPASSWD:ALL'
+        validate: /usr/sbin/visudo -cf %s
+    - name: Allow password SSH only for the synthetic training account
+      # Match belongs after global directives, not in an early included file:
+      # https://man.openbsd.org/sshd_config#Match
+      ansible.builtin.blockinfile:
+        path: /etc/ssh/sshd_config
+        insertafter: EOF
+        marker: '# {mark} BRANCH TRAINING'
+        block: |
+          Match User defender
+              PasswordAuthentication yes
+          Match all
+    - name: Validate SSH configuration
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+    - name: Apply training SSH configuration
+      ansible.builtin.systemd_service:
+        name: ssh
+        state: reloaded
+    - name: Create operations directory
+      ansible.builtin.file:
+        path: /var/lib/branch-operations
+        state: directory
+        mode: '0755'
+    - name: Install the branch homepage
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        mode: '0644'
+        content: |
+          <!doctype html><html lang="en"><title>Branch operations</title>
+          <h1>Branch operations online</h1><p>Keep our services available.</p></html>
+    - name: Schedule the operations heartbeat
+      ansible.builtin.cron:
+        name: Branch operations heartbeat
+        cron_file: branch-operations
+        user: root
+        job: /bin/date --utc --iso-8601=seconds > /var/lib/branch-operations/heartbeat
+    - name: Enable branch services
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: true
+        state: started
+      loop: [nginx, cron]

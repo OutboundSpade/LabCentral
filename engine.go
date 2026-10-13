@@ -27,9 +27,19 @@ type Engine struct {
 	state    *store.Store
 	provider Provider
 	observer Observer
+	options  EngineOptions
 }
 
 func Open(root string, p Provider, o Observer) (*Engine, error) {
+	return OpenWithOptions(root, p, o, EngineOptions{})
+}
+
+// OpenWithOptions opens an engine with bounded per-operation native concurrency.
+// Open preserves the default limits for existing callers.
+func OpenWithOptions(root string, p Provider, o Observer, options EngineOptions) (*Engine, error) {
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
 	if p == nil {
 		return nil, fmt.Errorf("provider is required")
 	}
@@ -43,7 +53,7 @@ func Open(root string, p Provider, o Observer) (*Engine, error) {
 	if o != nil {
 		observer = func(event Event) { observerMu.Lock(); defer observerMu.Unlock(); o(event) }
 	}
-	return &Engine{s, p, observer}, nil
+	return &Engine{state: s, provider: p, observer: observer, options: options.Effective()}, nil
 }
 func (e *Engine) Close() error { return e.state.Close() }
 func (e *Engine) emit(stage, id, msg string) {
@@ -167,7 +177,7 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 	// single ownership across processes; native work never holds the allocation fence.
 	results := make([][]ImageRecord, len(p.Images))
 	failures := make([]error, len(p.Images))
-	slots := make(chan struct{}, 3)
+	slots := make(chan struct{}, e.options.MaxImageBuildConcurrency)
 	var workers sync.WaitGroup
 	for n, im := range p.Images {
 		if im.Playbook == "" {
@@ -177,6 +187,10 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 			select {
 			case slots <- struct{}{}:
 				defer func() { <-slots }()
+				if err := ctx.Err(); err != nil {
+					failures[n] = err
+					return
+				}
 			case <-ctx.Done():
 				failures[n] = ctx.Err()
 				return
@@ -400,7 +414,13 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 		hosts = append(hosts, HostEntry{Name: m.Name, Address: m.Address})
 	}
 	for n := range i.Plan.Machines {
-		i.Plan.Machines[n].Hosts = hosts
+		m := &i.Plan.Machines[n]
+		m.Hosts = []HostEntry{}
+		for _, host := range hosts {
+			if len(m.Spec.HostnamePeers) == 0 || Contains(m.Spec.HostnamePeers, host.Name) {
+				m.Hosts = append(m.Hosts, host)
+			}
+		}
 	}
 	return e.state.Put(ctx, "instance", i.ID, i)
 }
@@ -485,13 +505,17 @@ func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 	// independently and drain all work before recording a partial failure.
 	var mu sync.Mutex
 	var workers sync.WaitGroup
-	slots := make(chan struct{}, 4)
+	slots := make(chan struct{}, e.options.MaxMachineConcurrency)
 	failures := make([]error, len(i.Plan.Machines))
 	for n, m := range i.Plan.Machines {
 		workers.Go(func() {
 			select {
 			case slots <- struct{}{}:
 				defer func() { <-slots }()
+				if err := ctx.Err(); err != nil {
+					failures[n] = err
+					return
+				}
 			case <-ctx.Done():
 				failures[n] = ctx.Err()
 				return
@@ -640,7 +664,7 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	var failures []error
 	var mu sync.Mutex
 	var workers sync.WaitGroup
-	slots := make(chan struct{}, 4)
+	slots := make(chan struct{}, e.options.MaxCleanupConcurrency)
 	for _, r := range i.Resources {
 		if r.Kind != "machine" {
 			continue
@@ -649,6 +673,12 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 			select {
 			case slots <- struct{}{}:
 				defer func() { <-slots }()
+				if err := ctx.Err(); err != nil {
+					mu.Lock()
+					failures = append(failures, err)
+					mu.Unlock()
+					return
+				}
 			case <-ctx.Done():
 				mu.Lock()
 				failures = append(failures, ctx.Err())

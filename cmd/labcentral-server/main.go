@@ -9,6 +9,7 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/hosted"
 	"github.com/OutboundSpade/LabCentral/v2/plugin"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,7 +29,11 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8080", "HTTP address behind the TLS proxy")
 	provider := flag.String("provider", "", "provider executable")
 	maintenance := flag.String("maintenance", "", "local status, recover, or cleanup operation")
+	checkConfig := flag.Bool("check-config", false, "validate static configuration and print effective worker limits without starting providers or OIDC")
 	flag.Parse()
+	if *checkConfig && *maintenance != "" {
+		return fmt.Errorf("--check-config cannot be combined with --maintenance")
+	}
 	if *config == "" {
 		return fmt.Errorf("--config is required")
 	}
@@ -43,12 +48,31 @@ func run() error {
 	if e = d.Decode(&c); e != nil {
 		return e
 	}
+	if e = d.Decode(new(any)); e != io.EOF {
+		return fmt.Errorf("configuration must contain one JSON object")
+	}
 	if *maintenance != "" {
 		result, e := hosted.Maintain(context.Background(), c.Root, *maintenance)
 		if e != nil {
 			return e
 		}
 		return json.NewEncoder(os.Stdout).Encode(result)
+	}
+	if e = hosted.ValidateConfig(c); e != nil {
+		return e
+	}
+	if *checkConfig {
+		return json.NewEncoder(os.Stdout).Encode(struct {
+			Engine             lc.EngineOptions     `json:"engine"`
+			Worker             hosted.WorkerOptions `json:"worker"`
+			WeeklyCloudMinutes int                  `json:"weeklyCloudMinutes"`
+			Note               string               `json:"note"`
+		}{c.Engine.Effective(), c.Worker.Effective(), func() int {
+			if c.WeeklyCloudMinutes == 0 {
+				return 180
+			}
+			return c.WeeklyCloudMinutes
+		}(), "Static policy validated; identity, files and native capacity were not checked."})
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -65,7 +89,7 @@ func run() error {
 		return e
 	}
 	defer p.Close()
-	engine, e := lc.Open(filepath.Join(c.Root, "engine"), p, nil)
+	engine, e := lc.OpenWithOptions(filepath.Join(c.Root, "engine"), p, nil, c.Engine)
 	if e != nil {
 		return e
 	}

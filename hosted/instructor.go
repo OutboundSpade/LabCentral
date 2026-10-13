@@ -19,8 +19,10 @@ import (
 )
 
 type GuestPlaybook struct {
-	Machine  string `json:"machine" yaml:"machine"`
-	Playbook string `json:"playbook" yaml:"playbook"`
+	Machine    string   `json:"machine" yaml:"machine"`
+	Playbook   string   `json:"playbook" yaml:"playbook"`
+	Files      []string `json:"files,omitempty" yaml:"files,omitempty"`
+	GuestHosts []string `json:"guestHosts,omitempty" yaml:"guestHosts,omitempty"`
 }
 type TemplateExercise struct {
 	ID          string          `json:"id" yaml:"id"`
@@ -56,24 +58,30 @@ type TemplateStage struct {
 	Solution     string `json:"solution" yaml:"solution"`
 }
 type InstructorBundle struct {
-	Assets    []string           `json:"assets" yaml:"assets"`
-	Version   int                `json:"version" yaml:"version"`
-	Notes     string             `json:"notes" yaml:"notes"`
-	Exercises []TemplateExercise `json:"exercises" yaml:"exercises"`
-	Reset     []GuestPlaybook    `json:"reset" yaml:"reset"`
-	Checks    []TemplateCheck    `json:"checks" yaml:"checks"`
-	Stages    []TemplateStage    `json:"stages" yaml:"stages"`
-	Files     []lc.File          `json:"files" yaml:"-"`
+	Audience       string                   `json:"audience,omitempty" yaml:"audience,omitempty"`
+	HiddenMachines []string                 `json:"hiddenMachines,omitempty" yaml:"hiddenMachines,omitempty"`
+	Assets         []string                 `json:"assets" yaml:"assets"`
+	Version        int                      `json:"version" yaml:"version"`
+	Notes          string                   `json:"notes" yaml:"notes"`
+	Exercises      []TemplateExercise       `json:"exercises" yaml:"exercises"`
+	Reset          []GuestPlaybook          `json:"reset" yaml:"reset"`
+	Checks         []TemplateCheck          `json:"checks" yaml:"checks"`
+	Stages         []TemplateStage          `json:"stages" yaml:"stages"`
+	Library        *TemplateLibraryMetadata `json:"library,omitempty" yaml:"library,omitempty"`
+	Scenarios      []TemplateScenario       `json:"scenarios,omitempty" yaml:"scenarios,omitempty"`
+	Files          []lc.File                `json:"files" yaml:"-"`
 }
 type InstructorView struct {
-	Notes     string               `json:"notes"`
-	Checks    []CheckDefinition    `json:"checks"`
-	Exercises []ExerciseDefinition `json:"exercises"`
-	Stages    []TemplateStage      `json:"stages"`
+	Audience       string               `json:"audience,omitempty"`
+	HiddenMachines []string             `json:"hiddenMachines,omitempty"`
+	Notes          string               `json:"notes"`
+	Checks         []CheckDefinition    `json:"checks"`
+	Exercises      []ExerciseDefinition `json:"exercises"`
+	Stages         []TemplateStage      `json:"stages"`
 }
 
 func (b InstructorBundle) view() InstructorView {
-	v := InstructorView{Notes: b.Notes, Checks: []CheckDefinition{}, Exercises: []ExerciseDefinition{}, Stages: append([]TemplateStage{}, b.Stages...)}
+	v := InstructorView{Audience: b.Audience, HiddenMachines: append([]string{}, b.HiddenMachines...), Notes: b.Notes, Checks: []CheckDefinition{}, Exercises: []ExerciseDefinition{}, Stages: append([]TemplateStage{}, b.Stages...)}
 	for _, c := range b.Checks {
 		v.Checks = append(v.Checks, CheckDefinition{c.ID, c.Name, c.Points})
 	}
@@ -181,6 +189,9 @@ func extractInstructor(root string) (*InstructorBundle, error) {
 	return &bundle, nil
 }
 func (b InstructorBundle) validate(src lc.Source) error {
+	if err := b.validateVisibility(src.Lab); err != nil {
+		return err
+	}
 	assetBytes := 0
 	if len(b.Assets) > 20 {
 		return fmt.Errorf("too many instructor assets")
@@ -207,6 +218,9 @@ func (b InstructorBundle) validate(src lc.Source) error {
 			return fmt.Errorf("instructor actions require one to eight steps")
 		}
 		for _, step := range steps {
+			if err := b.validateGuestInputs(src, step); err != nil {
+				return err
+			}
 			if _, ok := src.Lab.Machines[step.Machine]; !ok {
 				return fmt.Errorf("unknown instructor machine %q", step.Machine)
 			}
@@ -245,7 +259,10 @@ func (b InstructorBundle) validate(src lc.Source) error {
 			return err
 		}
 	}
-	return b.validateStages()
+	if err := b.validateStages(); err != nil {
+		return err
+	}
+	return b.validateScenarios()
 }
 
 func (b InstructorBundle) validateStages() error {
@@ -316,14 +333,9 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 				return fmt.Errorf("%s SSH unavailable", step.Machine)
 			}
 			defer client.Close()
-			files := append([]lc.File{}, b.Files...)
-			for _, asset := range b.Assets {
-				for _, file := range src.Files {
-					if file.Path == asset {
-						file.Path = "template/" + file.Path
-						files = append(files, file)
-					}
-				}
+			files, err := b.guestFiles(src, inst, step)
+			if err != nil {
+				return err
 			}
 			payload, _ := json.Marshal(struct {
 				Files    []lc.File `json:"files"`
@@ -344,4 +356,40 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 		}
 	}
 	return nil
+}
+
+func (b InstructorBundle) guestFiles(src lc.Source, inst lc.Instance, step GuestPlaybook) ([]lc.File, error) {
+	if err := b.validateGuestInputs(src, step); err != nil {
+		return nil, err
+	}
+	files := []lc.File{}
+	for _, f := range b.Files {
+		if len(step.Files) == 0 || lc.Contains(step.Files, f.Path) {
+			files = append(files, f)
+		}
+	}
+	if len(step.GuestHosts) > 0 {
+		hosts := map[string]guestIdentity{}
+		for _, name := range step.GuestHosts {
+			for _, machine := range inst.Plan.Machines {
+				if machine.Name == name {
+					hosts[name] = guestIdentity{machine.Address, machine.HostPublicKey}
+				}
+			}
+		}
+		if len(hosts) != len(step.GuestHosts) {
+			return nil, fmt.Errorf("pinned guest identities unavailable")
+		}
+		data, _ := json.Marshal(hosts)
+		files = append(files, lc.File{Path: "guest-hosts.json", Content: data})
+	}
+	for _, asset := range b.Assets {
+		for _, file := range src.Files {
+			if file.Path == asset {
+				file.Path = "template/" + file.Path
+				files = append(files, file)
+			}
+		}
+	}
+	return files, nil
 }

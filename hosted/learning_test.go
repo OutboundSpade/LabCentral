@@ -508,7 +508,8 @@ func TestPracticeDesktopAuthorizationIndependentOfMeeting(t *testing.T) {
 		t.Fatal("foreign practice desktop allowed")
 	}
 	d.record.UserID = v.User.ID
-	_ = s.Store.Put(ctx, "learning-publication", p.ID, LearningPublication{ID: p.ID, Published: false})
+	p.Published = false
+	_ = s.Store.Put(ctx, "learning-publication", p.ID, p)
 	if w := request(s, "GET", "/api/learning/linux/download", "", "", ""); w.Code != 404 {
 		t.Fatal("unpublished download allowed")
 	}
