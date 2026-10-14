@@ -93,7 +93,13 @@ func hashFile(p string) (string, error) {
 }
 func safePin(s string) bool { return regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(s) }
 func Generate(c lc.Command, dir string) (Config, error) {
+	if err := lc.CheckCommandPlatformOptions(c); err != nil {
+		return Config{}, err
+	}
 	b := c.Environment.Build
+	if c.Environment.Platform == "aws" && c.Image.BuildInstanceType != "" {
+		b.InstanceType = c.Image.BuildInstanceType
+	}
 	im := c.Image
 	var cfg Config
 	if !safePin(b.AnsibleVersion) {

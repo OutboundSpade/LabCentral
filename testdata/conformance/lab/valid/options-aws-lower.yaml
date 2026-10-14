@@ -1,0 +1,14 @@
+# platform: aws
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 6Gi
+    access: [ssh]
+    platform: {aws: {volume: {type: gp3, iops: 3000, throughput: 125}, cpuCredits: standard}}

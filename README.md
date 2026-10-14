@@ -421,13 +421,55 @@ optional inputs without defaults are omitted from Ansible variables.
 Do not put secrets in inputs: source and build provenance are retained locally.
 
 `platforms: [aws, proxmox]` optionally restricts targets; omission allows either
-platform and `[]` allows neither. Image and machine
-`platform` blocks accept empty typed `aws` and `proxmox` objects; options will be
-added later. Namespaced `extensions` on the lab, networks, images and machines
+platform and `[]` allows neither. Optional typed `platform.aws` and
+`platform.proxmox` blocks refine how each platform realizes the portable machine;
+other platforms' blocks are ignored. Authors request options and the operator's
+environment permits them. They do not change topology, reachability or access.
+For example:
+
+```yaml
+images:
+  server:
+    base: ubuntu-24.04
+    build: {playbook: images/server.yml}
+    platform:
+      aws: {buildInstanceType: t3.large}
+machines:
+  server:
+    image: server
+    cpu: 2
+    memory: 4Gi
+    disk: 32Gi
+    access: [ssh]
+    platform:
+      aws:
+        instanceType: t3.large
+        volume: {type: gp3, iops: 4000, throughput: 1000}
+        cpuCredits: standard
+      proxmox: {cpuType: host, nicModel: virtio, memoryBalloon: false}
+```
+
+| Option | Permitted request and default |
+| --- | --- |
+| Machine AWS `instanceType` | A type in `environment.aws.types` satisfying CPU/memory; omission selects the smallest fit. |
+| Machine AWS `volume.type` | `gp3` only, also the default. |
+| Machine AWS `volume.iops` | 3000–16000; default 3000. A requested volume must satisfy IOPS ≤ 500 × root disk GiB. |
+| Machine AWS `volume.throughput` | 125–1000 MiB/s; default 125, at most IOPS/4. |
+| Machine AWS `cpuCredits` | `standard` or `unlimited`, only on t2/t3/t3a/t4g; omission preserves AWS behavior. |
+| Image AWS `buildInstanceType` | A type in `environment.aws.types`, used by Packer and validation; omission uses `environment.build.instanceType`. |
+| Machine Proxmox `cpuType` | A model in `environment.proxmox.cpuTypes`; omission preserves the base CPU model. |
+| Machine Proxmox `nicModel` | `virtio` (default), `e1000`, `e1000e`, `vmxnet3` or `rtl8139`; preserves the clone's MAC. |
+| Machine Proxmox `memoryBalloon` | `false` disables ballooning; `true` targets allocated memory; omission preserves the clone setting. |
+
+Proxmox image options remain an empty object. Unknown keys are rejected, and
+planning returns field-path errors before provisioning. Image build options affect
+image cache keys; machine runtime options do not, including whole-source builds.
+
+Namespaced `extensions` on the lab, networks, images and machines
 retain JSON values (64 KiB combined). Image builds receive lab and image extensions
 as `labcentral_extensions: {lab: ..., image: ...}`. Explicit `build.files` selections
 include the playbook and limit both staged files and the source bytes in the cache
-key; omission uses the whole source.
+key; omission uses the whole source with runtime platform options excluded.
 
 The v3 format accepts Windows, author CIDRs, Internet egress, forwarding and
 multiple networks/NICs. Both platforms currently reject these during planning with
@@ -600,6 +642,13 @@ cloud-init drive, SSH, and a working QEMU guest agent. Allocate enough root disk
 for builds in the base template; the clone builder preserves that disk. Set a
 separate `build.bridge` with DHCP and approved package-repository connectivity.
 LabCentral creates full clones and grows deployment disks; it never modifies the base.
+
+Optional `proxmox.cpuTypes: [kvm64, host]` permits author CPU model requests.
+Use at most 32 unique, nonempty model strings. An empty or omitted allowlist
+permits only the inherited default, selected by omitting `cpuType`. Allowing `host`
+is the operator's choice to permit nested virtualization. Environment version
+remains 2. Firmware and disk-controller/bus choices belong to the base image,
+including future Windows bindings; clones cannot override them.
 
 Set `proxmox.tokenID` and `tokenEnv` (the name of a process environment variable
 holding the secret). Use a trusted certificate or `caFile`. An explicit

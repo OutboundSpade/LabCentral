@@ -54,7 +54,9 @@ message size, and rejects unsupported versions. Resource-specific opaque bytes
 are adapter state, never author-supplied portable manifests.
 Image file selections and machine hostname peers use appended protocol fields,
 preserving existing field numbers. A source-validation round trip checks that
-these restrictions survive transmission to the provider before image building.
+these restrictions and every platform option survive transmission to the provider
+before image building. New option, environment CPU allowlist and planned image
+fields append to the protocol without renumbering existing fields.
 
 ## Source, environment and plans
 
@@ -67,7 +69,7 @@ multiple documents. Source snapshots reject symlinks and unsafe paths and have
 bounded size/file count. The source digest binds file bytes to the parsed lab.
 
 Portable objects declare named networks, NIC host offsets, OS family and egress.
-Omission means one network `lab`, one NIC, Linux and egress `none`. Empty typed
+Omission means one network `lab`, one NIC, Linux and egress `none`. Typed
 AWS/Proxmox option structs import no provider SDK; `platforms` can restrict targets.
 Namespaced extensions retain canonical JSON without interpretation, with 64 KiB
 combined across the manifest. Builds receive lab/image extensions in generated
@@ -93,10 +95,12 @@ conversion because JSON cannot retain aliases or duplicate keys.
 
 Plans bind source, effective inputs, environment, base identities and build policy.
 An explicit `build.files` selection binds only those file bytes, the image definition
-and lab extensions; omission binds the whole source. Modified plans are revalidated
+and lab extensions; omission binds the whole source with its declaration normalized
+to exclude machine runtime options and foreign platform image blocks. Modified plans are revalidated
 before mutation. Deployment copies machine entries before adding native image
 references, addresses and keys, so independent instances preserve the caller's plan.
-AWS instance selection uses an operator allowlist and reports allocated capacity.
+AWS instance selection uses an operator allowlist and reports allocated capacity;
+an explicit machine type replaces smallest-fit selection but must satisfy CPU/memory.
 Proxmox reserves disjoint VMIDs and per-VLAN /24s.
 
 Environment files contain target identifiers, credential references, base bindings,
@@ -108,6 +112,48 @@ SQLite records. Input values are not a secret-storage interface.
 Sharing is through Git or local directories. There is no package manifest service,
 registry, template expression language, loop expansion, inheritance, or author
 Packer extension. Ansible remains ordinary author code running inside build guests.
+
+### Platform options
+
+The optional image and machine `platform.aws` / `platform.proxmox` blocks are
+implemented as additive version 3 requests. Authors request; the operator
+environment permits. Options refine realization of the portable core and cannot
+change topology, reachability, access or security posture. Strict decoding rejects
+unknown fields in either block; each platform ignores the other block's requests.
+Capabilities enumerate implemented image/machine option paths and fence future
+options until an adapter supports them. Planning and adapter check/create/build
+paths repeat field-path `Invalid`/`Unsupported` validation before native work.
+
+AWS machines accept an allowlisted `instanceType`, gp3 root `volume` performance
+and `cpuCredits`. Volume type is optional gp3 only; optional IOPS are 3000–16000
+and throughput 125–1000 MiB/s, with effective defaults 3000 and 125. Requested
+volumes enforce IOPS ≤ 500 × disk GiB and throughput ≤ IOPS/4. Omission keeps the
+existing native gp3 defaults. Credit policy is `standard` or `unlimited` and
+requires a t2/t3/t3a/t4g family, including when the type is selected automatically.
+The adapter sends EBS IOPS/throughput and an explicit credit specification only
+when requested. Image `buildInstanceType` must be in `environment.aws.types`;
+the planned image records its resolved type for both Packer and validation.
+Omission retains `environment.build.instanceType`.
+
+Proxmox machines accept `cpuType` from the operator's optional `proxmox.cpuTypes`
+allowlist (at most 32 unique, nonempty strings; environment version remains 2).
+An empty allowlist permits only the inherited default by omitting `cpuType`.
+Allowlisting `host` permits nested virtualization. `nicModel` accepts virtio,
+e1000, e1000e, vmxnet3 or rtl8139, defaults to virtio and preserves the clone's MAC.
+`memoryBalloon: false` writes `balloon: 0`; true targets allocated memory and
+omission preserves the clone's setting. Build validation VM settings remain
+unchanged. Proxmox image options remain empty. Firmware, machine type and disk
+controller/bus belong to the base binding, particularly for Windows; changing
+these on a clone can break boot and is not an author runtime option.
+
+Image options participate in image keys. Machine runtime options never change
+image keys, even without an explicit `build.files` selection. The cache hashes a
+canonical declaration with runtime options and foreign image options removed;
+other selected file bytes stay exact. Replanning under this normalization can
+require new image builds; retained image journals and installations keep their
+saved keys and identities. Local conformance, request-capture, planning, protocol
+and cache tests establish this implementation. Live AWS/Proxmox acceptance of
+these options remains pending; this source work performs no deployment.
 
 ## Builds
 
@@ -443,13 +489,6 @@ Registries, additional hosted platforms, classroom governance beyond published
 stages and meeting/team membership, and EC2 Image Builder are deferred. They should
 use the public library without putting product policy into portable lab declarations.
 This section describes proposals, not implemented contracts.
-
-### Platform options
-
-Environment files keep credentials, storage, pools, keys and subnets, and will add
-allowlists for author-requested instance types, CPU types and egress. Typed platform
-options cannot change topology, reachability or access; adapters ignore other
-platforms’ blocks.
 
 ### Networks, gateway and guests
 

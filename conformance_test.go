@@ -75,6 +75,7 @@ func conformanceEnvironment() Environment {
 	e := testEnvironment()
 	e.Bases["ubuntu-24.04"] = Base{ID: "ami-test", Identity: "immutable", User: "ubuntu", DiskGiB: 1}
 	e.AWS.Types = append(e.AWS.Types, InstanceType{Name: "large", CPU: 64, MemoryMiB: 262144})
+	e.AWS.Types = append(e.AWS.Types, InstanceType{Name: "t3.large", CPU: 2, MemoryMiB: 8192})
 	e.AWS.DesktopProfile = "license-only"
 	e.Build = BuildConfig{Packer: "/packer", PackerSHA256: strings.Repeat("a", 64), PluginDirectory: "/plugins", ToolchainID: "pinned", AnsibleVersion: "2.19.3", TimeoutSeconds: 3600}
 	return e
@@ -102,16 +103,6 @@ func TestLabConformance(t *testing.T) {
 					t.Fatal(e)
 				}
 				schemaErr := schemaYAML(schema, b)
-				s, goErr := sourceYAML(t, b)
-				if goErr == nil {
-					_, goErr = PlanLab(s, conformanceEnvironment(), nil)
-				}
-				if kind == "valid" {
-					if schemaErr != nil || goErr != nil {
-						t.Fatalf("schema=%v; Go=%v", schemaErr, goErr)
-					}
-					return
-				}
 				metadata := map[string]string{}
 				for _, line := range strings.Split(string(b), "\n") {
 					if strings.HasPrefix(line, "# ") {
@@ -120,6 +111,21 @@ func TestLabConformance(t *testing.T) {
 							metadata[parts[0]] = parts[1]
 						}
 					}
+				}
+				env := conformanceEnvironment()
+				if metadata["platform"] == "proxmox" {
+					env = platformOptionsProxmoxEnvironment()
+					env.Bases["ubuntu-24.04"] = Base{ID: "2000", Identity: "immutable", User: "ubuntu", DiskGiB: 1}
+				}
+				s, goErr := sourceYAML(t, b)
+				if goErr == nil {
+					_, goErr = PlanLab(s, env, nil)
+				}
+				if kind == "valid" {
+					if schemaErr != nil || goErr != nil {
+						t.Fatalf("schema=%v; Go=%v", schemaErr, goErr)
+					}
+					return
 				}
 				if metadata["schema"] != "reject" && metadata["schema"] != "accept" {
 					t.Fatal("case must declare schema: reject (structural) or accept (semantic)")

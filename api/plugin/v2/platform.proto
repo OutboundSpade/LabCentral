@@ -68,6 +68,7 @@ message ProxmoxConfig {
   string cidr = 14 [json_name = "cidr"];
   string gateway = 15 [json_name = "gateway"];
   bool verified_isolation = 16 [json_name = "verifiedIsolation"];
+  repeated string cputypes = 17 [json_name = "cpuTypes"];
 }
 message BuildConfig {
   string dcvurl = 1 [json_name = "dcvURL"];
@@ -130,8 +131,19 @@ message MachinePlatform {
   ProxmoxMachineOptions proxmox = 2 [json_name = "proxmox"];
 }
 message AWSMachineOptions {
+  string instance_type = 1 [json_name = "instanceType"];
+  AWSVolumeOptions volume = 2 [json_name = "volume"];
+  string cpucredits = 3 [json_name = "cpuCredits"];
+}
+message AWSVolumeOptions {
+  string type = 1 [json_name = "type"];
+  optional int32 iops = 2 [json_name = "iops"];
+  optional int32 throughput = 3 [json_name = "throughput"];
 }
 message ProxmoxMachineOptions {
+  string cputype = 1 [json_name = "cpuType"];
+  string nicmodel = 2 [json_name = "nicModel"];
+  optional bool memory_balloon = 3 [json_name = "memoryBalloon"];
 }
 message PlannedImage {
   string name = 1 [json_name = "name"];
@@ -140,6 +152,7 @@ message PlannedImage {
   string cache_key = 4 [json_name = "cacheKey"];
   bool desktop = 5 [json_name = "desktop"];
   int32 disk_gi_b = 6 [json_name = "diskGiB"];
+  string build_instance_type = 7 [json_name = "buildInstanceType"];
 }
 message Source {
   Lab lab = 1 [json_name = "lab"];
@@ -176,6 +189,7 @@ message ImagePlatform {
   ProxmoxImageOptions proxmox = 2 [json_name = "proxmox"];
 }
 message AWSImageOptions {
+  string build_instance_type = 1 [json_name = "buildInstanceType"];
 }
 message ProxmoxImageOptions {
 }

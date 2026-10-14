@@ -1,6 +1,6 @@
 # field: machines.one.platform.aws.instanceType
-# schema: reject
-# code: invalid
+# schema: accept
+# code: unsupported
 version: 3
 name: example
 images:

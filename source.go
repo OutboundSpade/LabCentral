@@ -385,6 +385,16 @@ func ValidateEnvironment(e Environment) error {
 		}
 	} else {
 		p := e.Proxmox
+		if len(p.CPUTypes) > 32 {
+			return bad("proxmox.cpuTypes", "expected at most 32 CPU models")
+		}
+		seenCPU := map[string]bool{}
+		for index, cpu := range p.CPUTypes {
+			if strings.TrimSpace(cpu) == "" || seenCPU[cpu] {
+				return bad(fmtPathIndex("proxmox.cpuTypes", index), "expected a nonempty, unique CPU model")
+			}
+			seenCPU[cpu] = true
+		}
 		u, err := url.Parse(p.URL)
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return bad("proxmox.url", "expected HTTPS endpoint without credentials/query")
@@ -417,6 +427,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		return p, err
 	}
 	if err := ValidateEnvironment(e); err != nil {
+		return p, err
+	}
+	if err := CheckPlatformOptions(s.Lab, e); err != nil {
 		return p, err
 	}
 	if e.Platform == "proxmox" && e.Proxmox.Gateway != "" {
@@ -460,6 +473,12 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			return p, problem(Invalid, "images."+n+".base", "no environment binding")
 		}
 		im := PlannedImage{Name: n, Base: b, Playbook: i.BuildPlaybook(), DiskGiB: b.DiskGiB}
+		if e.Platform == "aws" {
+			im.BuildInstanceType = e.Build.InstanceType
+			if i.Platform.AWS != nil && i.Platform.AWS.BuildInstanceType != "" {
+				im.BuildInstanceType = i.Platform.AWS.BuildInstanceType
+			}
+		}
 		minDisk := 0
 		for _, m := range s.Lab.Machines {
 			if m.Image == n {
@@ -491,7 +510,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			E      Environment
 			V      []InputValue
 			Policy string `json:"policy,omitempty"`
-		}{imageSourceDigest(s, n), im, e, p.Inputs, policy})
+		}{imageSourceDigest(s, n, e.Platform), im, e, p.Inputs, policy})
 		p.Images = append(p.Images, im)
 	}
 	for _, n := range sortedKeys(s.Lab.Machines) {
@@ -504,27 +523,11 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		}
 		pm := PlannedMachine{Name: n, Spec: m, CPU: m.CPU, MemoryMiB: mem, DiskGiB: disk / 1024}
 		if e.Platform == "aws" {
-			types := append([]InstanceType(nil), e.AWS.Types...)
-			sort.Slice(types, func(i, j int) bool {
-				if types[i].CPU != types[j].CPU {
-					return types[i].CPU < types[j].CPU
-				}
-				if types[i].MemoryMiB != types[j].MemoryMiB {
-					return types[i].MemoryMiB < types[j].MemoryMiB
-				}
-				return types[i].Name < types[j].Name
-			})
-			for _, t := range types {
-				if t.CPU >= m.CPU && t.MemoryMiB >= mem {
-					pm.InstanceType = t.Name
-					pm.CPU = t.CPU
-					pm.MemoryMiB = t.MemoryMiB
-					break
-				}
+			selected, err := selectAWSInstanceType(m, e.AWS, "machines."+n)
+			if err != nil {
+				return p, err
 			}
-			if pm.InstanceType == "" {
-				return p, problem(Unsupported, "machines."+n, "no allowed instance type satisfies requirements")
-			}
+			pm.InstanceType, pm.CPU, pm.MemoryMiB = selected.Name, selected.CPU, selected.MemoryMiB
 			if Contains(m.Access, "desktop") && e.AWS.DesktopProfile == "" {
 				return p, problem(Invalid, "environment.aws.desktopProfile", "DCV needs a license-only instance profile")
 			}

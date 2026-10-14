@@ -68,10 +68,25 @@ func (i Image) BuildFiles() []string {
 	return i.Build.Files
 }
 
-type AWSImageOptions struct{}
-type AWSMachineOptions struct{}
+type AWSImageOptions struct {
+	BuildInstanceType string `yaml:"buildInstanceType,omitempty" json:"buildInstanceType,omitempty"`
+}
+type AWSMachineOptions struct {
+	InstanceType string            `yaml:"instanceType,omitempty" json:"instanceType,omitempty"`
+	Volume       *AWSVolumeOptions `yaml:"volume,omitempty" json:"volume,omitempty"`
+	CPUCredits   string            `yaml:"cpuCredits,omitempty" json:"cpuCredits,omitempty"`
+}
+type AWSVolumeOptions struct {
+	Type       string `yaml:"type,omitempty" json:"type,omitempty"`
+	IOPS       *int   `yaml:"iops,omitempty" json:"iops,omitempty"`
+	Throughput *int   `yaml:"throughput,omitempty" json:"throughput,omitempty"`
+}
 type ProxmoxImageOptions struct{}
-type ProxmoxMachineOptions struct{}
+type ProxmoxMachineOptions struct {
+	CPUType       string `yaml:"cpuType,omitempty" json:"cpuType,omitempty"`
+	NICModel      string `yaml:"nicModel,omitempty" json:"nicModel,omitempty"`
+	MemoryBalloon *bool  `yaml:"memoryBalloon,omitempty" json:"memoryBalloon,omitempty"`
+}
 type ImagePlatform struct {
 	AWS     *AWSImageOptions     `yaml:"aws,omitempty" json:"aws,omitempty"`
 	Proxmox *ProxmoxImageOptions `yaml:"proxmox,omitempty" json:"proxmox,omitempty"`
@@ -158,22 +173,23 @@ type InstanceType struct {
 	MemoryMiB int    `yaml:"memoryMiB" json:"memoryMiB"`
 }
 type ProxmoxConfig struct {
-	InsecureSkipTLSVerify bool   `yaml:"insecureSkipTLSVerify,omitempty" json:"insecureSkipTLSVerify,omitempty"`
-	URL                   string `yaml:"url" json:"url"`
-	TokenID               string `yaml:"tokenID" json:"tokenID"`
-	TokenEnv              string `yaml:"tokenEnv" json:"tokenEnv"`
-	CAFile                string `yaml:"caFile,omitempty" json:"caFile,omitempty"`
-	Node                  string `yaml:"node" json:"node"`
-	Storage               string `yaml:"storage" json:"storage"`
-	Pool                  string `yaml:"pool" json:"pool"`
-	Bridge                string `yaml:"bridge" json:"bridge"`
-	VMIDStart             int    `yaml:"vmidStart" json:"vmidStart"`
-	VMIDEnd               int    `yaml:"vmidEnd" json:"vmidEnd"`
-	VLANStart             int    `yaml:"vlanStart" json:"vlanStart"`
-	VLANEnd               int    `yaml:"vlanEnd" json:"vlanEnd"`
-	CIDR                  string `yaml:"cidr" json:"cidr"`
-	Gateway               string `yaml:"gateway,omitempty" json:"gateway,omitempty"`
-	VerifiedIsolation     bool   `yaml:"verifiedIsolation" json:"verifiedIsolation"`
+	InsecureSkipTLSVerify bool     `yaml:"insecureSkipTLSVerify,omitempty" json:"insecureSkipTLSVerify,omitempty"`
+	URL                   string   `yaml:"url" json:"url"`
+	TokenID               string   `yaml:"tokenID" json:"tokenID"`
+	TokenEnv              string   `yaml:"tokenEnv" json:"tokenEnv"`
+	CAFile                string   `yaml:"caFile,omitempty" json:"caFile,omitempty"`
+	Node                  string   `yaml:"node" json:"node"`
+	Storage               string   `yaml:"storage" json:"storage"`
+	Pool                  string   `yaml:"pool" json:"pool"`
+	Bridge                string   `yaml:"bridge" json:"bridge"`
+	VMIDStart             int      `yaml:"vmidStart" json:"vmidStart"`
+	VMIDEnd               int      `yaml:"vmidEnd" json:"vmidEnd"`
+	VLANStart             int      `yaml:"vlanStart" json:"vlanStart"`
+	VLANEnd               int      `yaml:"vlanEnd" json:"vlanEnd"`
+	CIDR                  string   `yaml:"cidr" json:"cidr"`
+	Gateway               string   `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	VerifiedIsolation     bool     `yaml:"verifiedIsolation" json:"verifiedIsolation"`
+	CPUTypes              []string `yaml:"cpuTypes,omitempty" json:"cpuTypes,omitempty"`
 }
 type BuildConfig struct {
 	DCVURL          string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
@@ -212,12 +228,13 @@ type PlannedMachine struct {
 	HostPublicKey  string      `json:"hostPublicKey,omitempty"`
 }
 type PlannedImage struct {
-	Name     string `json:"name"`
-	Base     Base   `json:"base"`
-	Playbook string `json:"playbook,omitempty"`
-	CacheKey string `json:"cacheKey"`
-	Desktop  bool   `json:"desktop"`
-	DiskGiB  int    `json:"diskGiB"`
+	Name              string `json:"name"`
+	Base              Base   `json:"base"`
+	Playbook          string `json:"playbook,omitempty"`
+	CacheKey          string `json:"cacheKey"`
+	Desktop           bool   `json:"desktop"`
+	DiskGiB           int    `json:"diskGiB"`
+	BuildInstanceType string `json:"buildInstanceType,omitempty"`
 }
 type Plan struct {
 	Version           int              `json:"version"`

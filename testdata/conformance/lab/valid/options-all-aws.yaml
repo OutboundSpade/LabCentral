@@ -1,0 +1,15 @@
+# platform: aws
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+    platform: {aws: {buildInstanceType: t3.large}}
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 32Gi
+    access: [ssh]
+    platform: {aws: {instanceType: t3.large, volume: {type: gp3, iops: 16000, throughput: 1000}, cpuCredits: unlimited}}
