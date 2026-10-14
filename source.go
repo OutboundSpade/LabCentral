@@ -473,11 +473,10 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			return p, problem(Invalid, "images."+n+".base", "no environment binding")
 		}
 		im := PlannedImage{Name: n, Base: b, Playbook: i.BuildPlaybook(), DiskGiB: b.DiskGiB}
-		if e.Platform == "aws" {
-			im.BuildInstanceType = e.Build.InstanceType
-			if i.Platform.AWS != nil && i.Platform.AWS.BuildInstanceType != "" {
-				im.BuildInstanceType = i.Platform.AWS.BuildInstanceType
-			}
+		// Only an explicit request enters the image identity; otherwise the
+		// environment's build instance type applies, as it did before options existed.
+		if e.Platform == "aws" && i.Platform.AWS != nil {
+			im.BuildInstanceType = i.Platform.AWS.BuildInstanceType
 		}
 		minDisk := 0
 		for _, m := range s.Lab.Machines {

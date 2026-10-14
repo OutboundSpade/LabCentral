@@ -158,3 +158,24 @@ func TestOptionCapabilities(t *testing.T) {
 		t.Fatal("presence lost")
 	}
 }
+
+// Images that request no option keep the identity they had before options existed,
+// so introducing platform options never forces a rebuild.
+func TestNoImageOptionKeepsBuildTypeOutOfIdentity(t *testing.T) {
+	e := conformanceEnvironment()
+	e.Build.InstanceType = "t3.medium"
+	p, err := PlanLab(optionSource(t, "", "", true), e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Images[0].BuildInstanceType != "" {
+		t.Fatal("environment default entered the image identity", p.Images[0].BuildInstanceType)
+	}
+	empty, err := PlanLab(optionSource(t, "", "{aws: {}}", true), e, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Images[0].CacheKey != p.Images[0].CacheKey {
+		t.Fatal("an empty AWS image block changed the image key")
+	}
+}
