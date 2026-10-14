@@ -338,6 +338,13 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 			if current.Resource.ID != im.Resource.ID {
 				return problem(RecoveryRequired, im.Key, "image changed before deployment")
 			}
+			// An unconfirmed removal keeps the record; never deploy from it.
+			var cleanup Command
+			if err := e.state.Get(ctx, "image-cleanup", im.Key, &cleanup); err == nil {
+				return problem(RecoveryRequired, im.Key, "image cleanup is pending; confirm removal before deploying")
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 		}
 		native := map[string]string{}
 		for _, im := range p.Images {
