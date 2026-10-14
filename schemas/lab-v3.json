@@ -63,7 +63,12 @@
             "properties": {
               "aws": {
                 "additionalProperties": false,
-                "properties": {},
+                "properties": {
+                  "buildInstanceType": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
                 "type": "object"
               },
               "proxmox": {
@@ -275,12 +280,64 @@
             "properties": {
               "aws": {
                 "additionalProperties": false,
-                "properties": {},
+                "properties": {
+                  "cpuCredits": {
+                    "enum": [
+                      "standard",
+                      "unlimited"
+                    ],
+                    "type": "string"
+                  },
+                  "instanceType": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "volume": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "iops": {
+                        "maximum": 16000,
+                        "minimum": 3000,
+                        "type": "integer"
+                      },
+                      "throughput": {
+                        "maximum": 1000,
+                        "minimum": 125,
+                        "type": "integer"
+                      },
+                      "type": {
+                        "enum": [
+                          "gp3"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
                 "type": "object"
               },
               "proxmox": {
                 "additionalProperties": false,
-                "properties": {},
+                "properties": {
+                  "cpuType": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "memoryBalloon": {
+                    "type": "boolean"
+                  },
+                  "nicModel": {
+                    "enum": [
+                      "virtio",
+                      "e1000",
+                      "e1000e",
+                      "vmxnet3",
+                      "rtl8139"
+                    ],
+                    "type": "string"
+                  }
+                },
                 "type": "object"
               }
             },

@@ -2,16 +2,24 @@ package labcentral
 
 // Capabilities describes the portable requests implemented by a platform.
 type Capabilities struct {
-	MaxNetworks, MaxNICs   int
-	Egress, OS             []string
-	AuthorCIDR, Forwarding bool
+	MaxNetworks, MaxNICs         int
+	Egress, OS                   []string
+	AuthorCIDR, Forwarding       bool
+	ImageOptions, MachineOptions []string
 }
 
 func PlatformCapabilities(platform string) (Capabilities, bool) {
 	if platform != "aws" && platform != "proxmox" {
 		return Capabilities{}, false
 	}
-	return Capabilities{MaxNetworks: 1, MaxNICs: 1, Egress: []string{"none"}, OS: []string{"linux"}}, true
+	c := Capabilities{MaxNetworks: 1, MaxNICs: 1, Egress: []string{"none"}, OS: []string{"linux"}}
+	if platform == "aws" {
+		c.ImageOptions = []string{"buildInstanceType"}
+		c.MachineOptions = []string{"instanceType", "volume", "volume.type", "volume.iops", "volume.throughput", "cpuCredits"}
+	} else {
+		c.MachineOptions = []string{"cpuType", "nicModel", "memoryBalloon"}
+	}
+	return c, true
 }
 func CheckCapabilities(l Lab, platform string) error {
 	c, ok := PlatformCapabilities(platform)
@@ -36,6 +44,13 @@ func CheckCapabilities(l Lab, platform string) error {
 	}
 	for _, n := range sortedKeys(l.Images) {
 		v := l.Images[n]
+		var options any = v.Platform.AWS
+		if platform == "proxmox" {
+			options = v.Platform.Proxmox
+		}
+		if err := checkImplementedOptions(options, c.ImageOptions, "images."+n+".platform."+platform); err != nil {
+			return err
+		}
 		if v.OS != "" && !Contains(c.OS, v.OS) {
 			return problem(Unsupported, "images."+n+".os", "OS family is not implemented")
 		}
@@ -43,6 +58,13 @@ func CheckCapabilities(l Lab, platform string) error {
 	for _, n := range sortedKeys(l.Machines) {
 		v := l.Machines[n]
 		f := "machines." + n
+		var options any = v.Platform.AWS
+		if platform == "proxmox" {
+			options = v.Platform.Proxmox
+		}
+		if err := checkImplementedOptions(options, c.MachineOptions, f+".platform."+platform); err != nil {
+			return err
+		}
 		if len(v.NICs) > c.MaxNICs {
 			return problem(Unsupported, fmtPathIndex(f+".nics", c.MaxNICs), "multiple NICs are not implemented")
 		}

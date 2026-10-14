@@ -1,0 +1,14 @@
+# platform: proxmox
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 32Gi
+    access: [ssh]
+    platform: {proxmox: {cpuType: host, nicModel: vmxnet3, memoryBalloon: false}}

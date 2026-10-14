@@ -1,0 +1,17 @@
+# platform: aws
+# field: images.base.platform.aws.buildInstanceType
+# schema: reject
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+    platform: {aws: {buildInstanceType: 1}}
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 32Gi
+    access: [ssh]

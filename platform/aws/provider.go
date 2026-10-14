@@ -85,6 +85,9 @@ func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc
 				return lc.Result{}, err
 			}
 		}
+		if err := lc.CheckCommandPlatformOptions(c); err != nil {
+			return lc.Result{}, err
+		}
 	}
 
 	if c.Environment.Platform != "aws" {
@@ -132,6 +135,9 @@ func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc
 	}
 }
 func (p *Provider) check(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
+	if err := lc.CheckCommandPlatformOptions(c); err != nil {
+		return lc.Result{}, err
+	}
 	e := c.Environment
 	if err := checkDesktopRole(ctx, e); err != nil {
 		return lc.Result{}, err
@@ -398,6 +404,9 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	return lc.Result{Resource: lc.Resource{Kind: "network", Name: "private", ID: vpc, Owner: owner, Complete: true, Data: b}}, nil
 }
 func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
+	if err := lc.CheckCommandPlatformOptions(c); err != nil {
+		return lc.Result{}, err
+	}
 	var ns networkState
 	if err := json.Unmarshal(c.Network.Data, &ns); err != nil {
 		return lc.Result{}, err
@@ -425,6 +434,21 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	in := &ec2.RunInstancesInput{ImageId: &m.NativeImage, InstanceType: t.InstanceType(m.InstanceType), MinCount: aw.Int32(1), MaxCount: aw.Int32(1), ClientToken: aw.String(c.Owner + "-" + m.Name), UserData: aw.String(base64.StdEncoding.EncodeToString([]byte(ud))), MetadataOptions: &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)}, NetworkInterfaces: []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), SubnetId: &ns.Subnet, Groups: []string{ns.SG}, AssociatePublicIpAddress: aw.Bool(true), PrivateIpAddress: &m.Address}}, BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: im.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(m.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}}, TagSpecifications: append(specs(t.ResourceTypeInstance, c.Owner, m.Name), specs(t.ResourceTypeVolume, c.Owner, m.Name)...)}
+	if o := m.Spec.Platform.AWS; o != nil {
+		if o.Volume != nil {
+			ebs := in.BlockDeviceMappings[0].Ebs
+			if o.Volume.IOPS != nil {
+				ebs.Iops = aw.Int32(int32(*o.Volume.IOPS))
+			}
+			if o.Volume.Throughput != nil {
+				ebs.Throughput = aw.Int32(int32(*o.Volume.Throughput))
+			}
+		}
+		if o.CPUCredits != "" {
+			in.CreditSpecification = &t.CreditSpecificationRequest{CpuCredits: aw.String(o.CPUCredits)}
+		}
+	}
+
 	if lc.Contains(m.Spec.Access, "desktop") {
 		in.IamInstanceProfile = &t.IamInstanceProfileSpecification{Name: aw.String(c.Environment.AWS.DesktopProfile)}
 	}

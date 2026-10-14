@@ -1,0 +1,17 @@
+# platform: aws
+# field: machines.one.platform.aws.cpuCredits
+# schema: reject
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 32Gi
+    access: [ssh]
+    platform: {aws: {cpuCredits: auto}}

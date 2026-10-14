@@ -97,6 +97,16 @@ func validateV3(l Lab) error {
 	for _, n := range sortedKeys(l.Machines) {
 		v := l.Machines[n]
 		f := "machines." + n
+		if v.Platform.AWS != nil {
+			if err := validateAWSMachineOptions(v.Platform.AWS, f+".platform.aws"); err != nil {
+				return err
+			}
+		}
+		if v.Platform.Proxmox != nil {
+			if err := validateProxmoxMachineOptions(v.Platform.Proxmox, f+".platform.proxmox"); err != nil {
+				return err
+			}
+		}
 		if v.NICs == nil && len(networks) != 1 {
 			return problem(Invalid, f+".nics", "NICs are required when more than one network is declared")
 		}
@@ -169,20 +179,46 @@ func validateV3(l Lab) error {
 	}
 	return nil
 }
-func imageSourceDigest(s Source, n string) string {
-	im := s.Lab.Images[n]
-	if im.BuildFiles() == nil {
-		return s.Digest
+
+// Normalize the declaration so runtime options and foreign platform blocks cannot
+// invalidate an image. Other source bytes retain their exact identity.
+func imageSourceDigest(s Source, n, platform string) string {
+	lab := s.Lab
+	lab.Machines = make(map[string]Machine, len(s.Lab.Machines))
+	for name, m := range s.Lab.Machines {
+		m.Platform = MachinePlatform{}
+		lab.Machines[name] = m
 	}
+	lab.Images = make(map[string]Image, len(s.Lab.Images))
+	for name, i := range s.Lab.Images {
+		if platform == "aws" {
+			i.Platform.Proxmox = nil
+		} else {
+			i.Platform.AWS = nil
+		}
+		// Empty blocks request no option and retain the default image identity.
+		if i.Platform.AWS != nil && *i.Platform.AWS == (AWSImageOptions{}) {
+			i.Platform.AWS = nil
+		}
+		if i.Platform.Proxmox != nil {
+			i.Platform.Proxmox = nil
+		}
+		lab.Images[name] = i
+	}
+	im := lab.Images[n]
 	files := []File{}
 	for _, f := range s.Files {
-		if Contains(im.BuildFiles(), f.Path) {
-			files = append(files, f)
+		if im.BuildFiles() != nil && !Contains(im.BuildFiles(), f.Path) {
+			continue
 		}
+		if f.Path == "lab.yaml" {
+			f.Content, _ = json.Marshal(lab)
+		}
+		files = append(files, f)
 	}
 	return digest(struct {
 		Image      Image
 		Files      []File
 		Extensions Extensions
-	}{im, files, s.Lab.Extensions})
+	}{im, files, lab.Extensions})
 }

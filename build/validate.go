@@ -55,6 +55,9 @@ type validationRecord struct {
 
 // ValidateNative boots an owned disposable machine from the captured native image.
 func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Command, image lc.Resource) (lc.Resource, error) {
+	if err := lc.CheckCommandPlatformOptions(c); err != nil {
+		return image, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	dir := filepath.Join(root, c.Owner, "validation")
@@ -102,6 +105,17 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		return image, e
 	}
 	m := lc.PlannedMachine{Name: "validation", NativeImage: image.ID, CPU: 2, MemoryMiB: 4096, DiskGiB: c.Image.DiskGiB, InstanceType: c.Environment.Build.InstanceType, VMID: c.ValidationVMID, Address: "10.77.0.10", PublicKey: pub, HostPrivateKey: string(hp), HostPublicKey: hpub, Spec: lc.Machine{Image: c.Image.Name, CPU: 2, Memory: "4Gi", Disk: fmt.Sprintf("%dGi", c.Image.DiskGiB), Access: []string{"ssh"}}}
+	if c.Environment.Platform == "aws" && c.Image.BuildInstanceType != "" {
+		m.InstanceType = c.Image.BuildInstanceType
+		// Validation uses the chosen build type, without inheriting runtime options.
+		for _, t := range c.Environment.AWS.Types {
+			if t.Name == m.InstanceType {
+				m.CPU, m.MemoryMiB = t.CPU, t.MemoryMiB
+				m.Spec.CPU, m.Spec.Memory = t.CPU, fmt.Sprintf("%dMi", t.MemoryMiB)
+				break
+			}
+		}
+	}
 	if c.Image.Desktop {
 		m.Spec.Access = append(m.Spec.Access, "desktop")
 	}

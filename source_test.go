@@ -148,7 +148,7 @@ func TestDesktopPolicyInvalidatesOnlyDesktopBuilds(t *testing.T) {
 			I PlannedImage
 			E Environment
 			V []InputValue
-		}{source.Digest, image, env, plan.Inputs})
+		}{imageSourceDigest(source, image.Name, env.Platform), image, env, plan.Inputs})
 		if (key != previous) != image.Desktop {
 			t.Fatal("desktop policy must invalidate desktop images while preserving unchanged server builds", name)
 		}

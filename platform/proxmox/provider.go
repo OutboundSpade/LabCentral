@@ -163,6 +163,9 @@ func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (
 				return lc.Result{}, err
 			}
 		}
+		if err := lc.CheckCommandPlatformOptions(cmd); err != nil {
+			return lc.Result{}, err
+		}
 	}
 
 	if cmd.Environment.Platform != "proxmox" {
@@ -220,6 +223,9 @@ func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (
 	return lc.Result{}, fmt.Errorf("unsupported Proxmox action %q", cmd.Action)
 }
 func (p *Provider) check(ctx context.Context, c *Client, cmd lc.Command) (lc.Result, error) {
+	if err := lc.CheckCommandPlatformOptions(cmd); err != nil {
+		return lc.Result{}, err
+	}
 	var version struct {
 		Version string `json:"version"`
 	}
@@ -294,6 +300,9 @@ type network struct {
 }
 
 func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.Result, error) {
+	if err := lc.CheckCommandPlatformOptions(cmd); err != nil {
+		return lc.Result{}, err
+	}
 	m := cmd.Machine
 	var net network
 	if e := json.Unmarshal(cmd.Network.Data, &net); e != nil {
@@ -344,20 +353,9 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	if net.Gateway != "" {
 		ip += ",gw=" + net.Gateway
 	}
-	nic := strings.Split(v.Net0, ",")[0]
-	if !strings.HasPrefix(nic, "virtio=") {
-		nic = "virtio"
-	}
-	cfg := struct {
-		Cores  int    `json:"cores"`
-		Memory int    `json:"memory"`
-		Net0   string `json:"net0"`
-		IP     string `json:"ipconfig0"`
-		User   string `json:"ciuser"`
-		Keys   string `json:"sshkeys"`
-		Agent  string `json:"agent"`
-		Digest string `json:"digest"`
-	}{m.CPU, m.MemoryMiB, fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", nic, cmd.Environment.Proxmox.Bridge, cmd.VLAN), ip, "lab", url.QueryEscape(m.PublicKey), "enabled=1", v.Digest}
+
+	cfg := machineConfig(cmd, v, ip)
+
 	if e = c.Call(ctx, "PUT", c.VM(m.VMID, "/config"), cfg, nil); e != nil {
 		return lc.Result{}, e
 	}
@@ -635,4 +633,36 @@ func (p *Provider) CleanupBuild(ctx context.Context, cmd lc.Command) error {
 	}
 	_, e = p.destroy(ctx, c, lc.Command{Owner: cmd.Owner, Prior: lc.Resource{Kind: "machine", Name: cmd.Image.Name, ID: strconv.Itoa(cmd.Machine.VMID), Owner: cmd.Owner}})
 	return e
+}
+
+// Clone firmware and disk controllers remain properties of the base image.
+func machineConfig(cmd lc.Command, v VMConfig, ip string) map[string]any {
+	m := cmd.Machine
+	model := "virtio"
+	options := m.Spec.Platform.Proxmox
+	if options != nil && options.NICModel != "" {
+		model = options.NICModel
+	}
+	// Replace only the model, preserving the cloned NIC's MAC for every model.
+	nic := model
+	if _, mac, ok := strings.Cut(strings.Split(v.Net0, ",")[0], "="); ok && mac != "" {
+		nic += "=" + mac
+	}
+	cfg := map[string]any{
+		"cores": m.CPU, "memory": m.MemoryMiB,
+		"net0":      fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", nic, cmd.Environment.Proxmox.Bridge, cmd.VLAN),
+		"ipconfig0": ip, "ciuser": "lab", "sshkeys": url.QueryEscape(m.PublicKey), "agent": "enabled=1", "digest": v.Digest,
+	}
+	if options != nil {
+		if options.CPUType != "" {
+			cfg["cpu"] = options.CPUType
+		}
+		if options.MemoryBalloon != nil {
+			cfg["balloon"] = 0
+			if *options.MemoryBalloon {
+				cfg["balloon"] = m.MemoryMiB
+			}
+		}
+	}
+	return cfg
 }

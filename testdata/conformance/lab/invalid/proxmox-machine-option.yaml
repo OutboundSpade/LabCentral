@@ -1,4 +1,4 @@
-# field: machines.one.platform.proxmox.cpuType
+# field: machines.one.platform.proxmox.bios
 # schema: reject
 # code: invalid
 version: 3
@@ -13,4 +13,4 @@ machines:
     memory: 2Gi
     disk: 20Gi
     access: [ssh]
-    platform: {proxmox: {cpuType: host}}
+    platform: {proxmox: {bios: host}}

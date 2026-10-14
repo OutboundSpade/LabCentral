@@ -96,6 +96,18 @@ func nameSchema() map[string]any {
 func annotateSchema(object, field string, s map[string]any) {
 	enum := func(v ...string) { s["enum"] = v }
 	switch object + "." + field {
+	case "AWSImageOptions.buildInstanceType", "AWSMachineOptions.instanceType", "ProxmoxMachineOptions.cpuType":
+		s["minLength"] = 1
+	case "AWSMachineOptions.cpuCredits":
+		enum("standard", "unlimited")
+	case "AWSVolumeOptions.type":
+		enum("gp3")
+	case "AWSVolumeOptions.iops":
+		s["minimum"], s["maximum"] = 3000, 16000
+	case "AWSVolumeOptions.throughput":
+		s["minimum"], s["maximum"] = 125, 1000
+	case "ProxmoxMachineOptions.nicModel":
+		enum("virtio", "e1000", "e1000e", "vmxnet3", "rtl8139")
 	case "Lab.version":
 		s["const"] = 3
 	case "Lab.name", "Machine.image", "NIC.network":
