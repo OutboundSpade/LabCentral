@@ -58,16 +58,46 @@ these restrictions survive transmission to the provider before image building.
 
 ## Source, environment and plans
 
-Strict YAML rejects unknown/duplicate fields, aliases, multiple documents,
-unsupported topology, out-of-bound resources, missing files, and undeclared inputs.
-Source snapshots reject symlinks and unsafe paths and have bounded size/file count.
-The digest binds file bytes to the parsed lab. Plans bind source, effective input
-values, environment, base identities, and build toolchain; modified plans are
-revalidated before mutation. Deployment copies machine entries before adding
-native image references, addresses and keys, so one validated plan can deploy
-independent team instances without changing the caller's plan.
-AWS instance selection uses an operator allowlist and
-reports allocated capacity. Proxmox reserves disjoint VMIDs and per-VLAN /24s.
+`lab.yaml` version 3 replaces version 2 without an author-source compatibility reader. The format,
+plugin protocol and stored-record versions are independent; the latter remain 2.
+Within v3, changes add optional fields or accept previously unsupported values;
+changes of meaning require a new format version. Strict YAML decoding is shared
+with hosted instructor import and rejects unknown/duplicate fields, aliases and
+multiple documents. Source snapshots reject symlinks and unsafe paths and have
+bounded size/file count. The source digest binds file bytes to the parsed lab.
+
+Portable objects declare named networks, NIC host offsets, OS family and egress.
+Omission means one network `lab`, one NIC, Linux and egress `none`. Empty typed
+AWS/Proxmox option structs import no provider SDK; `platforms` can restrict targets.
+Namespaced extensions retain canonical JSON without interpretation, with 64 KiB
+combined across the manifest. Builds receive lab/image extensions in generated
+`labcentral_extensions` variables. Inputs have typed scalar defaults and optional
+500-byte descriptions; required inputs have no defaults. Optional unsupplied values
+without defaults are omitted. CLI strings are checked against their declared types.
+
+Static platform capabilities reject Windows, author CIDRs, Internet egress,
+forwarding and multiple networks/NICs before environment bindings or allocation.
+Adapters repeat these checks before native calls. Format validation still checks
+private IPv4 /16–/28 CIDRs, NIC references and unique usable offsets (4–250).
+Explicit addresses reserve offsets first; remaining machines use offsets from 11,
+skipping reservations in name order. `hostnamePeers` is `all` by default, a named
+list for selected peers, or `[]` for localhost only, including after persistence
+and plugin transport. This controls initial name resolution, not firewall policy.
+
+Go YAML tags and a structural annotation table generate `schemas/lab-v3.json`
+through `go run ./tools/schema`; a synchronization test rejects stale output. The
+conformance corpus checks strict YAML plus JSON Schema 2020-12 alongside Go
+validation/planning, distinguishing structural, source-reference and capability
+failures, and includes examples and templates. YAML-only constraints run before
+conversion because JSON cannot retain aliases or duplicate keys.
+
+Plans bind source, effective inputs, environment, base identities and build policy.
+An explicit `build.files` selection binds only those file bytes, the image definition
+and lab extensions; omission binds the whole source. Modified plans are revalidated
+before mutation. Deployment copies machine entries before adding native image
+references, addresses and keys, so independent instances preserve the caller's plan.
+AWS instance selection uses an operator allowlist and reports allocated capacity.
+Proxmox reserves disjoint VMIDs and per-VLAN /24s.
 
 Environment files contain target identifiers, credential references, base bindings,
 network requirements, and toolchain pins. They belong outside tracked source.
@@ -349,11 +379,91 @@ Service readiness and local adapter tests do not establish live platform accepta
 The hosted AWS result does not establish AWS/Proxmox portability or qualify a
 standalone cross-platform release.
 
+### Private instructor format v3
+
+The standalone `instructor` package owns private types, shared strict YAML decoding,
+field-path/line errors, full template validation and guest payload assembly. It has
+no hosted, identity, HTTP, store or provider dependency. `instructor.LoadTemplate`
+excludes private material using `lc.LoadWithOptions`, leaving author files intact.
+The CLI validates it when present; `--template` additionally requires README.md.
+Go types generate `schemas/instructor-v3.json`; schema and Go share a conformance
+corpus. Instructor v1/v2 author formats are removed. Stored history and confirmed
+cleanup retain their original identities and durable storage keys.
+
+Visibility explicitly selects students or coaches; only coaches may hide machines.
+`practice.desktopMachine` identifies a visible desktop-enabled machine for stages,
+scenarios, personal practice and meeting desktops. Visible image builds select
+explicit files excluding lab.yaml and private image playbooks, and hostnamePeers
+exclude hidden guests. Visible guest payloads are checked structurally: they cannot
+select hidden guest identities, lab.yaml, or build files used only by hidden images.
+File contents are not scanned.
+
+Checks and `breaks` retain ordered guest steps and private extensions. Nonempty
+resets are validated and breaks require a reset. Each step always includes its
+playbook and selects additional `files`, portable `assets` under `template/`, and
+optional `guestHosts` under `labcentral/hosts.json`. Generated
+`labcentral/context.json` contains machine, lab/template extensions and the owning
+check/break extensions; reset has no owner extensions. Author paths cannot enter
+reserved namespaces; duplicate destinations and file/directory collisions fail.
+Timeouts default to 90 seconds and accept 10–600, driving the guest subprocess,
+SSH wrapper and aggregate deadline. Expired steps have unknown outcomes; uncertain
+meeting mutations require an explicit reset and scenario mutations require cleanup.
+
+Stages select exactly one `completion`: an answer with 1–10 accepted values and
+explicit case policy, a pinned check or `instructor: true`. Answers trim whitespace,
+optionally fold Unicode case and compare every normalized answer digest in constant
+time. Stages may link a `break`. Scenario variants name `breaks` and `stages`, certify
+compatibility explicitly and cover each distinct selected break set with guest
+recovery checks. Library metadata and existing bounds remain enforced.
+
+The configured SSH GitHub repository supplies templates. Hosted import validates
+all directories independently and reports directory/field errors through the
+administrator API. Each bundle/source/template/head revision commits in one SQLite
+transaction; re-import preserves image and cleanup state. Runtime uses trusted
+pinned bundles with file, instance, ownership and digest execution checks. Public
+DTOs call exercises breaks; historical job/object keys stay readable. Example Branch
+fallback programs and publication authoring/release/unpublish endpoints are removed;
+stored attempts, releases, progress and cleanup remain readable.
+
 ## Proposals after the foundation
 
-Registries, additional hosted platforms, Windows, routed/multiple NIC topologies,
-classroom governance beyond published stages and meeting/team membership, and EC2 Image Builder are deferred. They should use the public library without putting product policy
-into portable lab declarations. These are proposals, not implemented contracts.
+Registries, additional hosted platforms, classroom governance beyond published
+stages and meeting/team membership, and EC2 Image Builder are deferred. They should
+use the public library without putting product policy into portable lab declarations.
+This section describes proposals, not implemented contracts.
+
+### Platform options
+
+Environment files keep credentials, storage, pools, keys and subnets, and will add
+allowlists for author-requested instance types, CPU types and egress. Typed platform
+options cannot change topology, reachability or access; adapters ignore other
+platforms’ blocks.
+
+### Networks, gateway and guests
+
+The portable declarations above reserve future routing and egress requests.
+Networks will be isolated except through declared forwarding machines. Internet
+egress will require operator enablement per network.
+
+Lab machines receive no public addresses. Each lab has one platform-owned gateway,
+outside the author inventory, that reaches each machine's first NIC for SSH, desktop
+tunnels and checks. Its host key is pinned like a machine's. On AWS the gateway sits
+in an edge subnet with the lab's only public IPv4 address; lab subnets reach it by VPC
+routing, security groups admit management only from the gateway, and egress networks
+route their default traffic to the gateway, which source-NATs only egress-network
+sources. Machines need no management NIC. On Proxmox the gateway VM joins each lab VLAN.
+At AWS us-east-1 on-demand prices, a t3.micro gateway plus one address costs about
+as much as three per-machine public addresses and less than a NAT gateway. One
+management path is preferred over separate public-address and gateway modes.
+
+Windows guests use an OS family bound to environment bases, PowerShell build
+scripts executed inside the build guest, EC2Launch or cloudbase-init bootstrap, and
+an SSH/PowerShell check launcher. Ansible for Windows may later run from a disposable
+Linux controller guest; author code never runs on the operator host.
+
+Delivery order after the portable v3 foundation: instructor migration; platform
+options; gateway and egress; multiple networks, NICs and routing; Windows. Each step
+requires live AWS and Proxmox acceptance in a configured test environment.
 
 ## Hosted team service
 
@@ -362,6 +472,23 @@ OIDC provider authentication, transactional team membership, a durable infrastru
 worker, and user-owned desktop workspaces. The library remains independent of
 HTTP and identity policy. This milestone targets AWS; Proxmox remains a library
 and CLI platform. The hosted AWS twenty-user acceptance is described above.
+
+Retained hosted state written by the v2 server remains readable after the format
+upgrade. Hosted JSON readers project instructor v1/v2 `exercises`, flat visibility,
+legacy stage fields and scenario selections into current history views without
+rewriting pinned source or guest programs. Publications, independent progress,
+release gates, attempt ownership, team membership and scoreboard results retain
+their saved identities. New attempts and guest actions on v2 source revisions
+return HTTP 409 with a historical-revision message; scheduled and interrupted
+guest work cannot execute those programs. Meeting and personal cleanup use the
+original instance identities, and image removal uses saved build cache keys, never
+the v3 planner to derive old keys. Unbuilt historical revisions can be listed
+without planning; missing keys on a built historical revision block image removal.
+Refresh imports new v3 revisions alongside the retained revisions. Local upgrade
+tests open state written by `main` using production templates at `773d88f`, with
+a fake engine; the small checked-in JSON excerpt omits guest file payloads. These
+checks establish hosted state compatibility, not live platform, OIDC or desktop
+acceptance.
 
 Native CloudFormation under `tools/hosted/` defines one t3.medium control host,
 encrypted retained EBS, an encrypted private S3 bucket with seven-day backup
@@ -460,7 +587,7 @@ answers never enter these projections. They never serialize the private `Templat
 The saved `imagesBuilt` flag is informational; reads do not inspect providers,
 and cloud admission still validates readiness. Browsing never provisions guests.
 
-Version 2 instructor manifests own reusable stages and optional standardized
+Version 3 instructor manifests own reusable stages and optional standardized
 `library` metadata: category, beginner/intermediate/advanced difficulty, estimated
 minutes and up to twelve unique tags. The standard authored source library lives
 under `templates/`. Its service-recovery template provides a Linux workstation,
@@ -484,16 +611,16 @@ Active cloud cleanup must finish before creating another attempt.
 
 Legacy shared publications and instructor-paced lessons retain their stored API
 behavior and progress. Their editor and navigation have been removed, with no
-name-based deletion or mutation of live publications. Administrative API authoring
-remains available for retained integrations. Template-stage publications snapshot
-selected definitions and exclude exercise-linked stages and instructor checkpoints.
+name-based deletion or mutation of live publications. Administrative authoring,
+release and unpublish endpoints are removed. New attempts snapshot template stages
+and exclude break-linked stages and instructor checkpoints from the baseline.
 
 A publication has a title, description, estimated duration,
 self-paced or instructor pacing, and 1–20 ordered stages. Each stage uses a
 server-matched answer, a check from that pinned revision's private instructor
-bundle, or an instructor checkpoint. Validation and source planning precede
-publication; arbitrary browser-supplied commands and playbooks are unsupported.
-Answer matching trims surrounding whitespace and otherwise preserves case.
+bundle, or an instructor checkpoint. Template validation precedes import; attempts snapshot trusted pinned definitions.
+Answer matching trims whitespace, checks all alternatives in constant time and
+uses the authored case policy. Stored single-answer lessons retain case sensitivity.
 Accepted answers, check references and solution text stay in administrator records
 and views; ordinary student DTOs contain instructions, prompts, completion rules,
 an optional solution-availability flag and their own progress. An authenticated,
@@ -505,9 +632,8 @@ renders solution Markdown with raw HTML disabled and discards revealed text on
 stage, publication or identity changes. Downloads and desktop lesson reads do
 not contain solution text. Correct answers, check results and progression are persisted. User
 locks prevent answer replay from advancing twice, and check completion commits
-its result and progression in one transaction. Instructor publications initially
-release one stage; release is monotonic and completion cannot bypass an unreleased
-stage. New content requires a new publication instead of changing existing progress.
+its result and progression in one transaction. Stored instructor publications keep their release count; completion cannot bypass
+an unreleased stage. New content requires a new publication instead of changing existing progress.
 Student instructions and the stage outline remain visible; release gates completion.
 Unpublishing hides lessons and denies new starts/downloads without removing the
 history or preventing cleanup of an existing allocation.
@@ -522,7 +648,7 @@ while following the downloaded lesson; local infrastructure cleanup is the
 operator's responsibility.
 
 Personal cloud practice is independent of team membership and meeting cleanup.
-The pinned revision must have built images and a desktop-enabled `workstation`.
+The pinned revision must have built images and its named `practice.desktopMachine`.
 One active personal allocation is allowed per student across all publications.
 A SQLite transaction records quota reservation, a fresh exact library instance
 identity and a `practice-prepare` job before native mutation. Preparation validates
@@ -738,12 +864,10 @@ transport outcomes. A rejected create can be retried; a timeout still requires
 discovery. AWS creation permissions cover tagged outputs and separately authorize
 their already-owned parent resources ([EC2 authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html), retrieved 2026-09-28).
 
-Previously imported Example Branch revisions retain three fixed hosted exercises: stop Apache,
-change its listener and virtual host to 8080, and perform a controlled SSH login
-with a synthetic support-account key and harmless homepage/file changes. Exercise
-names, walkthroughs, records and mutation endpoints are administrator-only;
-student API responses contain none of them. Guest administrators can inspect the
-effects and evidence inside their own VM.
+Retained records describe earlier fixed Example Branch exercises. Their hosted
+execution fallback is removed; new operations require pinned instructor programs.
+Administrator reads preserve historical exercise records. Guest administrators
+can inspect authored effects and evidence inside their own VMs.
 
 A transaction reserves selected ready teams and persists each exercise intent
 with its durable job. The worker rechecks the meeting, deadline and latest team
@@ -754,54 +878,26 @@ priority. The library's caller-owned SSH callback holds the selected machine fen
 and a shared lifecycle guard; destruction waits for all guests without serializing
 access to unrelated machines. Hosted policy stays outside the library.
 
-Fixed guest programs receive pinned template files as data through verified SSH.
-They restore Apache configuration, the homepage and the synthetic support account,
-remove the exercise key/artifact, and verify baseline web access from the
-workstation before applying a break. Guest commands have a timeout and a guest
-lock so an interrupted transport cannot cause overlapping scripts. Exercise SSH
-private keys stay in protected application storage, outside guest commands and
-API output, and are removed after VM destruction. Intrusion logins generate real
-SSH authentication events; reset preserves historical logs, bank data, published
-documents and desktops. This targeted reset does not promise to repair arbitrary
-package or SSH-daemon damage. No generic remote-command HTTP endpoint or author
+The fixed launcher delivers only the step’s pinned files and generated context,
+and runs author Ansible inside the verified guest under a shared guest lock.
+Timeouts leave unknown outcomes. Legacy exercise-key cleanup remains after
+confirmed VM destruction. No generic remote-command HTTP endpoint or author
 execution on the control host is introduced.
 
-New templates may supply `instructor.yaml` (version 1 or 2) and an `instructor/` folder
-in their pinned repository revision. The hosted importer extracts these **before**
-loading portable source. Notes, walkthroughs and guest programs are stored separately;
-they never enter native images, portable build snapshots or student API responses.
-Changing only instructor material can reuse the existing native images. The
-Example Branch FTP exercise leaves an older tar.gz archive in the FTP archive
-login root, with clean FTP configuration, publication source, homepage and cached
-page. It defaces the source and visible website. Restoring only the cache cannot
-repair publishing; reset restores the baseline and preserves the recovery archive.
-The manifest contains notes, exercises (ID, name, description, walkthrough, ordered
-machine/playbook steps), reset steps and checks (ID, name, points, steps). Optional `assets` name pinned
-portable-source files made available under `template/` inside the guest bundle. Strict
-field, duplicate-key, alias, file, size and machine-reference validation precedes
-import. Instructor notes and manifest data are never sent to a guest; only programs
-and selected assets are transferred. Students administer guests and can inspect
-program effects; this does not make those programs a guest-side security boundary.
+Templates supply `instructor.yaml` version 3 and optional private programs under
+`instructor/`. The importer validates the complete portable/private pair before
+provisioning and removes private files from its temporary snapshot. Bundles stay
+separate from native images, portable build provenance and ordinary student APIs.
+Step-local assets, files, identities, context and visibility follow the instructor
+contract above. Guest administrators can inspect transferred programs and effects;
+these files do not create a guest-side security boundary.
 
-Version 2 additionally supports up to twenty template-owned `stages`, each with
-`id`, `title`, `instructions`, `kind`, `prompt`, optional `exerciseID`, and private
-`answer`, `checkID` and `solution`. Version 1 cannot contain stages. Answer stages
-require an accepted answer and no check; action stages require a pinned check
-and no answer; instructor checkpoints contain neither. Exercise and check
-references must resolve within the same bundle. IDs, text sizes and combinations
-are validated before import or publication. Teaching metadata stays outside the
-portable `lab.yaml` contract and native image digest; the Git commit and template
-ID pin the full private bundle. New stage content requires a new source revision.
-
-Example Branch's version 2 teaching revision owns nine stages: six baseline
-discovery/service-verification stages eligible for personal practice and three
-recovery stages linked to its existing stopped-web, database-port and
-FTP-root/defacement exercises. All stages contain private reference solutions.
-The migration changes only instructor metadata and private repository guidance;
-portable source identity, four native image cache keys and all guest programs,
-reset steps, exercises, checks and assets remain unchanged. It imports as a new
-pinned revision and reuses existing native images; retained meetings and
-publications keep their original revisions and snapshots.
+Example Branch’s v3 teaching revision retains nine stages: six baseline discovery
+and verification stages and three recovery stages linked to stopped-web,
+database-port and FTP-root/defacement breaks. Private solutions, notes and reset
+behaviour are preserved. The v3 source and teaching migration imports as a new
+pinned revision; existing meetings and publications retain their stored snapshots.
+Local validation/import checks do not qualify native guests or images.
 
 The private template repository additionally contains a separate `branch-services-ir`
 template derived from that pinned v2 source. It preserves the original template
@@ -975,14 +1071,14 @@ remain the execution mechanism. Instructors can freely revisit stage instruction
 and solutions, apply a linked break to ready teams, or run meeting checks. A
 template's unlinked break definitions remain independently selectable; adding
 stages does not remove existing instructor operations. A
-stage's `checkID` does not turn the full meeting service scoreboard into a
+stage's `completion.check` does not turn the full meeting service scoreboard into a
 stage-specific check. Stage-only templates can still provide a walkthrough even
 without break definitions.
 
-Randomized personal practice uses version 2 author-defined `scenarios` (at most twelve).
+Randomized personal practice uses version 3 author-defined `scenarios` (at most twelve).
 Each has a unique ID, briefing, difficulty, duration and 2–32 distinct variants.
 A variant has its own ID, an explicit `compatible: true` certification, 1–8 existing
-`exerciseIDs` in execution order and 1–20 self-paced `stageIDs`. Every selected break
+`breaks` in execution order and 1–20 self-paced `stages`. Every selected break
 requires an action recovery stage, and linked stages must belong to selected breaks.
 Duplicate combinations, unknown references, missing verification, coach-only scenarios,
 invalid bounds and missing resets are rejected before provisioning. Authors must

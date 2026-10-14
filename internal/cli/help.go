@@ -74,7 +74,7 @@ Mutations ask for confirmation; --yes explicitly approves automation.`)
 		return unknownCommand(key)
 	}
 	fmt.Fprintf(out, "Usage: labcentral %s [OPTIONS] %s\n\n%s\n\nExample:\n  %s\n\n", key, spec.args, spec.description, spec.example)
-	fmt.Fprintln(out, "Options: --config FILE --state DIR --provider FILE --json --yes\n         --environment FILE --inputs FILE (JSON string values)\nConcurrency: --image-build-concurrency N --machine-concurrency N --cleanup-concurrency N (1–32)\nFlags may appear before or after arguments. Use -- to end options.")
+	fmt.Fprintln(out, "Options: --config FILE --state DIR --provider FILE --json --yes --template\n         --environment FILE --inputs FILE (JSON string values)\nConcurrency: --image-build-concurrency N --machine-concurrency N --cleanup-concurrency N (1–32)\nFlags may appear before or after arguments. Use -- to end options.")
 	if spec.environment {
 		fmt.Fprintln(out, "An environment is required: pass --environment or save it with config init.")
 	}
@@ -136,7 +136,7 @@ func interspersed(args []string) (flags, positionals []string, err error) {
 		}
 		name, _, equal := strings.Cut(strings.TrimLeft(a, "-"), "=")
 		switch name {
-		case "json", "yes", "h", "help":
+		case "json", "yes", "template", "h", "help":
 			flags = append(flags, a)
 		case "config", "state", "environment", "provider", "inputs", "image-build-concurrency", "machine-concurrency", "cleanup-concurrency":
 			flags = append(flags, a)

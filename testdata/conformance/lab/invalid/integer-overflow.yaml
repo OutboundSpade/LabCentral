@@ -1,0 +1,16 @@
+# field: inputs.count.default
+# schema: reject
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]
+inputs: {count: {type: integer, default: 9223372036854775808}}

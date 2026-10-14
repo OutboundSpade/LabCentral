@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -43,54 +45,114 @@ func digest(v any) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
-func strictYAML(data []byte, out any) error {
-	if len(data) > 1<<20 {
-		return fmt.Errorf("YAML exceeds 1 MiB")
+
+// YAMLLimits bounds strict decoding; zero values select the portable defaults.
+type YAMLLimits struct{ MaxBytes, MaxDepth int }
+
+func strictYAML(data []byte, out any) error { return DecodeStrictYAML(data, out, YAMLLimits{}) }
+
+// DecodeStrictYAML rejects unknown/duplicate fields, non-string keys, aliases and extra documents.
+func DecodeStrictYAML(data []byte, out any, limits YAMLLimits) error {
+	if limits.MaxBytes == 0 {
+		limits.MaxBytes = 1 << 20
+	}
+	if limits.MaxDepth == 0 {
+		limits.MaxDepth = 32
+	}
+	if len(data) > limits.MaxBytes {
+		return fmt.Errorf("YAML exceeds %d bytes", limits.MaxBytes)
 	}
 	var root yaml.Node
 	if e := yaml.Unmarshal(data, &root); e != nil {
 		return e
 	}
-	var visit func(*yaml.Node, int) error
-	visit = func(n *yaml.Node, d int) error {
-		if d > 32 {
-			return fmt.Errorf("YAML nesting exceeds 32")
+	_, authorPaths := out.(interface{ StrictYAMLShape() })
+	var visit func(*yaml.Node, int, string) error
+	visit = func(n *yaml.Node, d int, field string) error {
+		bad := func(message string) error {
+			if authorPaths {
+				return &Error{Code: Invalid, Field: field, Message: message}
+			}
+			return fmt.Errorf("%s", message)
+		}
+		if d > limits.MaxDepth {
+			return bad(fmt.Sprintf("YAML nesting exceeds %d", limits.MaxDepth))
 		}
 		if n.Kind == yaml.AliasNode || n.Anchor != "" {
-			return fmt.Errorf("YAML aliases and anchors are unsupported")
+			return bad("YAML aliases and anchors are unsupported")
 		}
 		if n.Kind == yaml.MappingNode {
 			seen := map[string]bool{}
 			for i := 0; i < len(n.Content); i += 2 {
 				k := n.Content[i]
+				p := k.Value
+				if field != "" {
+					p = field + "." + p
+				}
 				if k.Tag != "!!str" || seen[k.Value] {
+					if authorPaths {
+						return &Error{Code: Invalid, Field: p, Message: "duplicate or non-string key"}
+					}
 					return fmt.Errorf("line %d: duplicate or non-string key %q", k.Line, k.Value)
 				}
 				seen[k.Value] = true
+				if err := visit(n.Content[i+1], d+1, p); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
-		for _, c := range n.Content {
-			if e := visit(c, d+1); e != nil {
-				return e
+		for i, c := range n.Content {
+			p := field
+			if n.Kind == yaml.SequenceNode {
+				p = fmtPathIndex(field, i)
+			}
+			if err := visit(c, d+1, p); err != nil {
+				return err
 			}
 		}
 		return nil
 	}
-	if e := visit(&root, 0); e != nil {
+	if e := visit(&root, 0, ""); e != nil {
 		return e
+	}
+	_, labShape := out.(*Lab)
+	_, authorShape := out.(interface{ StrictYAMLShape() })
+	if (labShape || authorShape) && len(root.Content) > 0 {
+		annotate := annotateSchema
+		if author, ok := out.(interface {
+			YAMLAnnotations() func(string, string, map[string]any)
+		}); ok {
+			annotate = author.YAMLAnnotations()
+		}
+		if e := checkLabYAML(root.Content[0], reflect.TypeOf(out).Elem(), "", annotate); e != nil {
+			return e
+		}
 	}
 	d := yaml.NewDecoder(bytes.NewReader(data))
 	d.KnownFields(true)
 	if e := d.Decode(out); e != nil {
 		return e
 	}
-	var extra any
+	var extra yaml.Node
 	if e := d.Decode(&extra); e != io.EOF {
+		if authorPaths {
+			line := 0
+			if len(extra.Content) > 0 {
+				line = extra.Content[0].Line
+			}
+			return &Error{Code: Invalid, Field: "instructor.yaml", Message: fmt.Sprintf("line %d: expected exactly one YAML document", line)}
+		}
 		return fmt.Errorf("expected exactly one YAML document")
 	}
 	return nil
 }
-func Load(dir string) (Source, error) {
+
+// LoadOptions excludes author-private paths before constructing the portable snapshot.
+type LoadOptions struct{ Exclude []string }
+
+func Load(dir string) (Source, error) { return LoadWithOptions(dir, LoadOptions{}) }
+func LoadWithOptions(dir string, options LoadOptions) (Source, error) {
 	var s Source
 	root, e := filepath.Abs(dir)
 	if e != nil {
@@ -108,6 +170,14 @@ func Load(dir string) (Source, error) {
 		rel, _ := filepath.Rel(root, p)
 		if rel == "." {
 			return nil
+		}
+		for _, excluded := range options.Exclude {
+			if filepath.ToSlash(rel) == excluded {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 		}
 		if d.IsDir() {
 			if strings.HasPrefix(d.Name(), ".") {
@@ -145,7 +215,7 @@ func Load(dir string) (Source, error) {
 	for _, f := range s.Files {
 		if f.Path == "lab.yaml" {
 			if e := strictYAML(f.Content, &s.Lab); e != nil {
-				return s, problem(Invalid, "lab.yaml", e.Error())
+				return s, declarationError(e)
 			}
 		}
 	}
@@ -154,8 +224,8 @@ func Load(dir string) (Source, error) {
 }
 func Validate(s Source) error {
 	l := s.Lab
-	if l.Version != 2 {
-		return problem(Invalid, "version", "expected 2")
+	if l.Version != 3 {
+		return problem(Invalid, "version", "expected 3")
 	}
 	if !namePattern.MatchString(l.Name) {
 		return problem(Invalid, "name", "use a lowercase name of at most 48 characters")
@@ -166,9 +236,6 @@ func Validate(s Source) error {
 	if len(l.Images) == 0 || len(l.Images) > 32 {
 		return problem(Invalid, "images", "expected 1–32 images")
 	}
-	if l.Network.Internet {
-		return problem(Unsupported, "network.internet", "general runtime Internet egress is not implemented")
-	}
 	if digest(s.Files) != s.Digest {
 		return problem(Invalid, "source", "source digest mismatch")
 	}
@@ -177,7 +244,7 @@ func Validate(s Source) error {
 	for _, f := range s.Files {
 		if f.Path == "lab.yaml" {
 			if err := strictYAML(f.Content, &declared); err != nil {
-				return problem(Invalid, "lab.yaml", err.Error())
+				return declarationError(err)
 			}
 			foundDeclaration = true
 		}
@@ -192,28 +259,33 @@ func Validate(s Source) error {
 		}
 		paths[f.Path] = true
 	}
-	for n, i := range l.Images {
-		if !namePattern.MatchString(n) || !basePattern.MatchString(i.Base) {
-			return problem(Invalid, "images."+n, "invalid name or base")
+	for _, n := range sortedKeys(l.Images) {
+		i := l.Images[n]
+		if !namePattern.MatchString(n) {
+			return problem(Invalid, "images."+n, "invalid name")
 		}
-		if i.Playbook != "" && !paths[i.Playbook] {
-			return problem(Invalid, "images."+n+".playbook", "file is not part of the source")
+		if !basePattern.MatchString(i.Base) {
+			return problem(Invalid, "images."+n+".base", "invalid base")
 		}
-		if len(i.Files) > 0 && (i.Playbook == "" || !Contains(i.Files, i.Playbook)) {
-			return problem(Invalid, "images."+n+".files", "selected build files require the image playbook")
+		if i.BuildPlaybook() != "" && !paths[i.BuildPlaybook()] {
+			return problem(Invalid, "images."+n+".build.playbook", "file is not part of the source")
+		}
+		if len(i.BuildFiles()) > 0 && (i.BuildPlaybook() == "" || !Contains(i.BuildFiles(), i.BuildPlaybook())) {
+			return problem(Invalid, "images."+n+".build.files", "selected build files require the image playbook")
 		}
 		seenFiles := map[string]bool{}
-		for _, path := range i.Files {
+		for _, path := range i.BuildFiles() {
 			if !paths[path] || seenFiles[path] {
-				return problem(Invalid, "images."+n+".files", "use unique files from the pinned source")
+				return problem(Invalid, "images."+n+".build.files", "use unique files from the pinned source")
 			}
 			seenFiles[path] = true
 		}
 	}
-	for n, m := range l.Machines {
+	for _, n := range sortedKeys(l.Machines) {
+		m := l.Machines[n]
 		f := "machines." + n
 		peers := map[string]bool{}
-		for _, peer := range m.HostnamePeers {
+		for _, peer := range m.HostnamePeers.Names {
 			if _, ok := l.Machines[peer]; !ok || peers[peer] {
 				return problem(Invalid, f+".hostnamePeers", "use unique declared machine names")
 			}
@@ -244,16 +316,10 @@ func Validate(s Source) error {
 			seen[a] = true
 		}
 	}
-	for n, i := range l.Inputs {
-		if !namePattern.MatchString(n) || !Contains([]string{"string", "integer", "boolean"}, i.Type) {
-			return problem(Invalid, "inputs."+n, "invalid name or type")
-		}
-		if i.Default != "" {
-			if e := checkInput(i.Type, i.Default); e != nil {
-				return problem(Invalid, "inputs."+n, e.Error())
-			}
-		}
+	if err := validateV3(declared); err != nil {
+		return err
 	}
+
 	return nil
 }
 func checkInput(t, v string) error {
@@ -347,8 +413,22 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 	if err := Validate(s); err != nil {
 		return p, err
 	}
+	if err := CheckCapabilities(s.Lab, e.Platform); err != nil {
+		return p, err
+	}
 	if err := ValidateEnvironment(e); err != nil {
 		return p, err
+	}
+	if e.Platform == "proxmox" && e.Proxmox.Gateway != "" {
+		gateway, _ := netip.ParseAddr(e.Proxmox.Gateway)
+		host := int(gateway.As4()[3])
+		for _, name := range sortedKeys(s.Lab.Machines) {
+			for i, nic := range s.Lab.Machines[name].NICs {
+				if nic.Address != nil && *nic.Address == host {
+					return p, problem(Invalid, fmt.Sprintf("machines.%s.nics[%d].address", name, i), "explicit address collides with Proxmox gateway")
+				}
+			}
+		}
 	}
 	for n := range values {
 		if _, ok := s.Lab.Inputs[n]; !ok {
@@ -359,8 +439,12 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		d := s.Lab.Inputs[n]
 		v, ok := values[n]
 		if !ok {
-			v = d.Default
-			if d.Required && v == "" {
+			if len(d.Default) > 0 {
+				v = defaultString(d.Default)
+			} else if !d.Required {
+				continue
+			}
+			if d.Required {
 				return p, problem(Invalid, "inputs."+n, "required")
 			}
 		}
@@ -375,7 +459,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		if !ok {
 			return p, problem(Invalid, "images."+n+".base", "no environment binding")
 		}
-		im := PlannedImage{Name: n, Base: b, Playbook: i.Playbook, DiskGiB: b.DiskGiB}
+		im := PlannedImage{Name: n, Base: b, Playbook: i.BuildPlaybook(), DiskGiB: b.DiskGiB}
 		minDisk := 0
 		for _, m := range s.Lab.Machines {
 			if m.Image == n {
@@ -386,13 +470,13 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 				}
 			}
 		}
-		if im.Desktop && i.Playbook == "" {
-			return p, problem(Unsupported, "images."+n+".playbook", "desktop requires an image build with the platform access components")
+		if im.Desktop && i.BuildPlaybook() == "" {
+			return p, problem(Unsupported, "images."+n+".build.playbook", "desktop requires an image build with the platform access components")
 		}
 		if minDisk > 0 && e.Platform == "aws" {
 			im.DiskGiB = minDisk
 		}
-		if i.Playbook != "" {
+		if i.BuildPlaybook() != "" {
 			if e.Build.Packer == "" || len(e.Build.PackerSHA256) != 64 || e.Build.ToolchainID == "" || e.Build.AnsibleVersion == "" || e.Build.PluginDirectory == "" || e.Build.TimeoutSeconds < 60 {
 				return p, problem(Invalid, "environment.build", "pinned Packer, plugin directory, toolchain ID, Ansible version and timeout are required")
 			}
@@ -407,7 +491,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			E      Environment
 			V      []InputValue
 			Policy string `json:"policy,omitempty"`
-		}{s.Digest, im, e, p.Inputs, policy})
+		}{imageSourceDigest(s, n), im, e, p.Inputs, policy})
 		p.Images = append(p.Images, im)
 	}
 	for _, n := range sortedKeys(s.Lab.Machines) {
@@ -509,4 +593,12 @@ func ProxmoxSubnet(p ProxmoxConfig, vlan int) (string, string, error) {
 		gw = netip.AddrFrom4([4]byte{byte(gn >> 24), byte(gn >> 16), byte(gn >> 8), byte(gn)}).String()
 	}
 	return netip.PrefixFrom(addr, 24).String(), gw, nil
+}
+
+func declarationError(err error) error {
+	var p *Error
+	if errors.As(err, &p) {
+		return err
+	}
+	return problem(Invalid, "lab.yaml", err.Error())
 }

@@ -4,9 +4,11 @@ import (
 	"archive/tar"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"io"
 	"os"
 	"os/exec"
@@ -18,8 +20,8 @@ import (
 
 func quote(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\\''") + "'" }
 func (s *Service) syncSource(ctx context.Context) error {
-	if s.Config.Repository != "git@github.com:example/lab-templates.git" {
-		return fmt.Errorf("only the configured CDC lab repository is supported")
+	if !regexp.MustCompile(`^git@github\.com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.git$`).MatchString(s.Config.Repository) {
+		return fmt.Errorf("repository must be an SSH GitHub URL")
 	}
 	dir, e := os.MkdirTemp(s.Config.Root, "source-")
 	if e != nil {
@@ -73,74 +75,8 @@ func (s *Service) syncSource(ctx context.Context) error {
 	if wait != nil {
 		return wait
 	}
-	entries, e := os.ReadDir(filepath.Join(root, "templates"))
-	if e != nil {
+	if e = s.importSnapshot(ctx, filepath.Join(root, "templates"), commit, committed, title); e != nil {
 		return e
-	}
-	if len(entries) > 32 {
-		return fmt.Errorf("too many templates")
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(root, "templates", entry.Name())
-		instructor, e := extractInstructor(path)
-		if e != nil {
-			return e
-		}
-		src, e := lc.Load(path)
-		if e != nil {
-			return e
-		}
-		if _, e = lc.PlanLab(src, s.env, nil); e != nil {
-			return e
-		}
-		if instructor != nil {
-			if e = instructor.validate(src); e != nil {
-				return e
-			}
-		}
-		id := digest(commit + ":" + entry.Name())[:24]
-		handover, e := os.ReadFile(filepath.Join(path, "README.md"))
-		if e != nil {
-			return fmt.Errorf("template README is required: %w", e)
-		}
-		s.mu.Lock()
-		var t Template
-		if err := s.Store.Get(ctx, "template", id, &t); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			s.mu.Unlock()
-			return err
-		}
-		t.ID = id
-		t.Name = src.Lab.Name
-		t.Commit = commit
-		t.Handover = string(handover)
-		if instructor != nil {
-			view := instructor.view()
-			t.Instructor = &view
-			if e = s.Store.Put(ctx, "template-instructor", id, instructor); e != nil {
-				s.mu.Unlock()
-				return e
-			}
-		}
-		t.CommittedAt = &committed
-		t.CommitTitle = title
-		if t.ImportedAt == nil {
-			now := time.Now().UTC()
-			t.ImportedAt = &now
-		}
-		if e = s.Store.Put(ctx, "source", id, src); e != nil {
-			s.mu.Unlock()
-			return e
-		}
-		if e = s.Store.Put(ctx, "template", id, t); e == nil {
-			e = s.Store.Put(ctx, "template-head", t.Name, id)
-		}
-		s.mu.Unlock()
-		if e != nil {
-			return e
-		}
 	}
 	// Backfill dates and subjects for revisions imported before timeline metadata.
 	older, e := s.rawTemplates(ctx)
@@ -248,4 +184,122 @@ func parseCommitMetadata(output string) (time.Time, string, error) {
 		title = title[:200]
 	}
 	return at, string(title), nil
+}
+
+// Import failures describe the most recent refresh. Infrastructure failures still
+// fail the refresh; an invalid directory does not suppress valid neighbours.
+type TemplateImportFailure struct {
+	Directory string `json:"directory"`
+	Error     string `json:"error"`
+}
+type TemplateImportReport struct {
+	Commit   string                  `json:"commit"`
+	Failures []TemplateImportFailure `json:"failures"`
+}
+
+func (s *Service) importSnapshot(ctx context.Context, root, commit string, committed time.Time, title string) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	if len(entries) > 32 {
+		return fmt.Errorf("too many templates")
+	}
+	report := TemplateImportReport{Commit: commit, Failures: []TemplateImportFailure{}}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		dir := filepath.Join(root, entry.Name())
+		src, b, err := instructor.LoadTemplate(dir, true)
+		if err == nil {
+			_, err = lc.PlanLab(src, s.env, nil)
+		}
+		if err != nil {
+			report.Failures = append(report.Failures, TemplateImportFailure{entry.Name(), err.Error()})
+			continue
+		}
+		handover, err := os.ReadFile(filepath.Join(dir, "README.md"))
+		if err != nil {
+			return err
+		}
+		// Private material stays out of the disposable hosted snapshot as well.
+		if b != nil {
+			if err = os.Remove(filepath.Join(dir, "instructor.yaml")); err != nil {
+				return err
+			}
+			if err = os.RemoveAll(filepath.Join(dir, "instructor")); err != nil {
+				return err
+			}
+		}
+		id := digest(commit + ":" + entry.Name())[:24]
+		s.mu.Lock()
+		err = s.Store.importRevision(ctx, id, src, b, string(handover), commit, committed, title)
+		s.mu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return s.Store.Put(ctx, "template-import-report", "current", report)
+}
+
+// All four records commit together. Re-import preserves build/cleanup state and
+// the original import date, while safely refreshing the matching head.
+func (s *Store) importRevision(ctx context.Context, id string, src lc.Source, b *InstructorBundle, handover, commit string, committed time.Time, title string) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var t Template
+	var raw []byte
+	err = tx.QueryRowContext(ctx, `SELECT body FROM objects WHERE kind='template' AND id=?`, id).Scan(&raw)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if len(raw) > 0 {
+		if err = json.Unmarshal(raw, &t); err != nil {
+			return err
+		}
+	}
+	t.ID = id
+	t.Name = src.Lab.Name
+	t.Commit = commit
+	t.Handover = handover
+	t.CommittedAt = &committed
+	t.CommitTitle = title
+	if t.ImportedAt == nil {
+		now := time.Now().UTC()
+		t.ImportedAt = &now
+	}
+	if b != nil {
+		v := instructorView(*b)
+		t.Instructor = &v
+	}
+	put := func(kind, id string, value any) error {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO objects(kind,id,body) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body`, kind, id, raw)
+		return err
+	}
+	if b != nil {
+		if err = put("template-instructor", id, b); err != nil {
+			return err
+		}
+	}
+	if err = put("source", id, src); err != nil {
+		return err
+	}
+	if err = put("template", id, t); err != nil {
+		return err
+	}
+	if err = put("template-head", t.Name, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

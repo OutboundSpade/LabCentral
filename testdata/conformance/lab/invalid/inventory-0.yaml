@@ -1,0 +1,9 @@
+# field: images
+# schema: reject
+# code: invalid
+version: 3
+name: inventory
+images:
+  {}
+machines:
+  {}

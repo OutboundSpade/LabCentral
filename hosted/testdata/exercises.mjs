@@ -14,6 +14,6 @@ try{
  const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;if(output){fs.mkdirSync(output,{recursive:true});await page.screenshot({path:output+'/exercises-desktop.png',fullPage:true})}
  await page.setViewportSize({width:390,height:844});await page.locator('#exercises-title').scrollIntoViewIfNeeded();
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(output)await page.screenshot({path:output+'/exercises-mobile.png',fullPage:true});
- await page.getByRole('button',{name:'Reset web server',exact:true}).click();await page.getByRole('dialog').waitFor();await page.waitForTimeout(300);if(output)await page.screenshot({path:output+'/exercises-reset-mobile.png'});await page.getByRole('button',{name:'Cancel',exact:true}).click();
- console.log('Admin exercises: real API authorization, team selection, confirmation, success/failure states, walkthrough and mobile layout passed. Guest actions use a fixture.');
+ await page.getByRole('button',{name:'Reset exercise baseline',exact:true}).click();await page.getByRole('dialog').waitFor();await page.waitForTimeout(300);if(output)await page.screenshot({path:output+'/exercises-reset-mobile.png'});await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ console.log('Admin breaks: real API authorization, team selection, confirmation, success/failure states, walkthrough and mobile layout passed. Guest actions use a fixture.');
 }finally{await browser.close()}

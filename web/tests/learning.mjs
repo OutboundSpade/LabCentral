@@ -149,7 +149,7 @@ try {
       instructor: {
         notes: "",
         checks: [{ id: "web", name: "Website", points: 10 }],
-        exercises: [],
+        breaks: [],
       },
     };
     await context.route("**/desktop-test-launch", async (route) => {
@@ -202,8 +202,8 @@ try {
             teams: [],
             jobs: [],
             templates: [template],
-            exercises: [],
-            exerciseRuns: [],
+            breaks: [],
+            breakRuns: [],
           },
         });
       if (path === "/api/templates") return route.fulfill({ json: { templates: [] } });

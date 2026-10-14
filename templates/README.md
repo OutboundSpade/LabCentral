@@ -21,13 +21,13 @@ revision, then refresh and build it through Admin → Templates. No publication
 editor or manually duplicated stages are required. Templates remain pinned to
 that imported commit; existing meetings and attempts keep their revision.
 
-New templates should use version 2 instructor manifests with `library` metadata:
+Templates use version 3 instructor manifests with `library` metadata:
 category, beginner/intermediate/advanced difficulty, estimated minutes and up to
 twelve unique tags. Stages own instructions, accepted answers or check references,
-and optional solutions. Baseline stages have no linked exercise.
+and optional solutions. Baseline stages have no linked break.
 
 Randomized `scenarios` declare 2–32 distinct variants. Each variant identifies
-1–8 existing exercises in execution order, its self-paced stage IDs and an explicit
+1–8 existing `breaks` in execution order, its self-paced `stages` and an explicit
 `compatible: true` assertion. Every break must have an action recovery stage.
 Certify combinations by testing the shared reset followed by all selected breaks:
 break playbooks must not reset the lab or undo another selected break. The server
@@ -39,3 +39,14 @@ confirmed cleanup and a new attempt.
 Keep provider credentials and environment configuration outside template source.
 Qualify new images, breaks, combined cases, real OIDC and rendered desktop sessions
 in an explicitly configured test environment before claiming live acceptance.
+
+Visibility is required. `practice.desktopMachine` names a visible, desktop-enabled
+machine whenever stages or scenarios exist. Stages use exactly one `completion`:
+`answer` with accepted alternatives and case policy, `check` or `instructor: true`.
+Guest steps always deliver their playbook; `files` adds private helpers and `assets`
+selects portable files under `template/`. Generated identities and extension context
+use `labcentral/`. Reserved paths and payload collisions are rejected. A coach
+revision’s visible guests cannot receive hidden identities or private image files.
+Validate each author directory with `labcentral validate --template DIRECTORY`;
+validation preserves the author’s private files. Hosted import isolates directory
+errors, exposes them to administrators, and stores each revision in one transaction.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"net/http"
 	"time"
 )
@@ -72,6 +73,9 @@ func (s *Service) checkMeeting(ctx context.Context) (*Meeting, error) {
 	}
 	if m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) {
 		return nil, fmt.Errorf("No active meeting.")
+	}
+	if err = s.actionableRevision(ctx, m.Template); err != nil {
+		return nil, err
 	}
 	var b InstructorBundle
 	if err = s.Store.Get(ctx, "template-instructor", m.Template, &b); err != nil || len(b.Checks) == 0 {
@@ -239,8 +243,8 @@ func (s *Service) runCheck(ctx context.Context, j Job) (err error) {
 		return err
 	}
 	for _, c := range b.Checks {
-		checkCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-		failure := s.runGuestPlaybooks(checkCtx, team, src, b, c.Steps)
+		checkCtx, cancel := context.WithTimeout(ctx, instructor.Deadline(c.Steps))
+		failure := s.runGuestPlaybooks(checkCtx, team, src, b, c.Steps, c.Extensions)
 		cancel()
 		result := CheckResult{ID: c.ID, Name: c.Name, Points: c.Points, Passed: failure == nil, Status: "passed", Report: "Passed"}
 		if failure != nil {

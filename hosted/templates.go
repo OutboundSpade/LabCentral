@@ -22,6 +22,20 @@ func (s *Service) templateKeys(ctx context.Context, id string) ([]string, error)
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
+	if err = s.actionableRevision(ctx, id); errors.Is(err, errRetainedRevision) {
+		var t Template
+		if e := s.Store.Get(ctx, "template", id, &t); e != nil {
+			return nil, e
+		}
+		if !t.Built && !t.Removing {
+			return []string{}, nil
+		}
+		// Never recompute old cache keys with the v3 planner. Cleanup requires
+		// the saved identities from the original build.
+		return nil, err
+	} else if err != nil {
+		return nil, err
+	}
 	p, err := s.plan(ctx, id)
 	if err != nil {
 		return nil, err
@@ -88,6 +102,10 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 		t.Latest = head == t.ID
 		keys, e := s.templateKeys(ctx, t.ID)
 		if e != nil {
+			if errors.Is(e, errRetainedRevision) {
+				t.RemovalBlocked = "Saved image identities are unavailable for this historical revision."
+				continue
+			}
 			if !errors.Is(e, sql.ErrNoRows) {
 				return nil, e
 			}
@@ -177,6 +195,11 @@ func (s *Service) queueTemplateOperationLocked(ctx context.Context, kind, id str
 	var t Template
 	if err := s.Store.Get(ctx, "template", id, &t); err != nil {
 		return Job{}, fmt.Errorf("Template revision not found.")
+	}
+	if kind == "build" {
+		if err := s.actionableRevision(ctx, id); err != nil {
+			return Job{}, err
+		}
 	}
 	var active int
 	if err := s.Store.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE target=? AND kind IN ('build','remove-images') AND status IN ('queued','running')`, id).Scan(&active); err != nil {

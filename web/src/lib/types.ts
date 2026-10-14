@@ -3,7 +3,7 @@ export interface TemplateLibraryMetadata {
   category: string;
   difficulty: string;
   estimatedMinutes: number;
-  tags: string[];
+  tags?: string[];
 }
 export interface TemplateScenarioSummary {
   id: string;
@@ -115,6 +115,7 @@ export interface Overview {
   lab: LabView;
 }
 export interface AdminView {
+  importFailures: TemplateImportFailure[];
   joinedStudents: number;
   repositoryURL: string;
   teamDesktops: TeamDesktopCount[];
@@ -125,8 +126,8 @@ export interface AdminView {
   teams: Team[];
   jobs: Job[];
   templates: Template[];
-  exercises: ExerciseDefinition[];
-  exerciseRuns: ExerciseRun[];
+  breaks: BreakDefinition[];
+  breakRuns: BreakRun[];
 }
 export interface TeamDesktopCount {
   teamID: string;
@@ -152,13 +153,13 @@ export interface Launch {
   url: string;
   ticket: string;
 }
-export interface ExerciseDefinition {
+export interface BreakDefinition {
   id: string;
   name: string;
   description: string;
   walkthrough: string;
 }
-export interface ExerciseRun {
+export interface BreakRun {
   id: string;
   meetingID: string;
   teamID: string;
@@ -169,7 +170,7 @@ export interface ExerciseRun {
   started: string;
   updated: string;
 }
-export interface ExerciseRequest {
+export interface BreakRequest {
   action: string;
   teamIDs: string[];
 }
@@ -178,7 +179,7 @@ export interface InstructorView {
   hiddenMachines?: string[];
   notes: string;
   checks: CheckDefinition[];
-  exercises: ExerciseDefinition[];
+  breaks: BreakDefinition[];
   stages: TemplateStage[];
 }
 export interface CheckDefinition {
@@ -228,15 +229,7 @@ export interface LearningStepInput {
   answer: string;
   checkID: string;
   solution?: string;
-}
-export interface PublishLearningRequest {
-  template: string;
-  title: string;
-  description: string;
-  mode: string;
-  estimatedMinutes: number;
-  steps: LearningStepInput[];
-  stageIDs?: string[];
+  answerRule?: Answer | null;
 }
 export interface LearningPublication {
   id: string;
@@ -317,10 +310,6 @@ export interface LearningAdminView {
   labs: LearningPublication[];
   quotaMinutes: number;
 }
-export interface ReleaseLearningRequest {
-  id: string;
-  releasedSteps: number;
-}
 export interface LearningAnswerRequest {
   stepID: string;
   answer: string;
@@ -332,14 +321,27 @@ export interface TemplateStage {
   id: string;
   title: string;
   instructions: string;
-  kind: string;
-  prompt: string;
-  answer: string;
-  checkID: string;
-  exerciseID: string;
-  solution: string;
+  prompt?: string;
+  solution?: string;
+  break?: string;
+  completion: Completion;
+  extensions?: Record<string, unknown>;
+}
+export interface Completion {
+  answer?: Answer | null;
+  check?: string;
+  instructor?: boolean | null;
+}
+export interface Answer {
+  accepted: string[];
+  caseSensitive: boolean;
+}
+export interface TemplateImportFailure {
+  directory: string;
+  error: string;
 }
 export interface PublicTemplate {
+  desktopMachine?: string;
   coachOnly?: boolean;
   id: string;
   name: string;

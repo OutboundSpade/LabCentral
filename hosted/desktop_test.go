@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,19 +13,23 @@ import (
 
 type reconnectEngine struct {
 	Engine
-	info  lc.AccessInfo
-	err   error
-	opens int
+	info    lc.AccessInfo
+	err     error
+	opens   int
+	machine string
 }
 
-func (e *reconnectEngine) OpenDesktopWithOptions(context.Context, string, string, lc.AccessOptions) (lc.AccessInfo, error) {
+func (e *reconnectEngine) OpenDesktopWithOptions(_ context.Context, _ string, machine string, _ lc.AccessOptions) (lc.AccessInfo, error) {
 	e.opens++
+	e.machine = machine
 	return e.info, e.err
 }
 func TestReconnectRechecksNativeSessionAndReplacesOnlyChangedRelay(t *testing.T) {
 	s, v, _ := serviceFor(t)
 	ctx := context.Background()
 	teams := setupMeeting(t, s.Store)
+	_ = s.Store.Put(ctx, "template", "", Template{})
+	_ = s.Store.Put(ctx, "template-instructor", "", InstructorBundle{Practice: &instructor.Practice{DesktopMachine: "workstation"}})
 	if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[0].ID, "meeting"); err != nil {
 		t.Fatal(err)
 	}

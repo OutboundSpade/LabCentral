@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -14,6 +15,10 @@ var seen = map[reflect.Type]bool{}
 var order []reflect.Type
 
 func visit(t reflect.Type) {
+	if t.Kind() == reflect.Pointer {
+		visit(t.Elem())
+		return
+	}
 	if t.Kind() == reflect.Slice {
 		if t.Elem().Kind() != reflect.Uint8 {
 			visit(t.Elem())
@@ -35,6 +40,11 @@ func visit(t reflect.Type) {
 }
 func typ(t reflect.Type) string {
 	switch t.Kind() {
+	case reflect.Pointer:
+		if t.Elem().Kind() == reflect.Struct {
+			return typ(t.Elem())
+		}
+		return "optional " + typ(t.Elem())
 	case reflect.String:
 		return "string"
 	case reflect.Bool:
@@ -69,7 +79,28 @@ func main() {
 				j = f.Name
 			}
 			name := strings.ToLower(rx.ReplaceAllString(f.Name, "${1}_${2}"))
-			fmt.Fprintf(&b, "  %s %s = %d [json_name = %q];\n", typ(f.Type), name, i+1, j)
+			number := i + 1
+			if tag := f.Tag.Get("proto"); tag != "" {
+				number, _ = strconv.Atoi(tag)
+			}
+			fmt.Fprintf(&b, "  %s %s = %d [json_name = %q];\n", typ(f.Type), name, number, j)
+		}
+		used := map[int]bool{}
+		max := t.NumField()
+		for i := 0; i < t.NumField(); i++ {
+			number := i + 1
+			if tag := t.Field(i).Tag.Get("proto"); tag != "" {
+				number, _ = strconv.Atoi(tag)
+			}
+			used[number] = true
+			if number > max {
+				max = number
+			}
+		}
+		for i := 1; i <= max; i++ {
+			if !used[i] {
+				fmt.Fprintf(&b, "  reserved %d;\n", i)
+			}
 		}
 		b.WriteString("}\n")
 	}

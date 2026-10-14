@@ -33,29 +33,85 @@ type Lab struct {
 	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
 	Images      map[string]Image   `yaml:"images" json:"images"`
 	Machines    map[string]Machine `yaml:"machines" json:"machines"`
-	Network     Network            `yaml:"network,omitempty" json:"network"`
-	Inputs      map[string]Input   `yaml:"inputs,omitempty" json:"inputs,omitempty"`
+	Inputs      map[string]Input   `yaml:"inputs,omitempty" json:"inputs,omitempty" proto:"7"`
+	Platforms   *PlatformList      `yaml:"platforms,omitempty" json:"platforms,omitempty" proto:"8"`
+	Extensions  Extensions         `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"9"`
+	Networks    map[string]Network `yaml:"networks,omitempty" json:"networks,omitempty" proto:"10"`
+}
+
+// PlatformList distinguishes an omitted restriction from an explicit empty set.
+type PlatformList struct {
+	Names []string `json:"names"`
 }
 type Image struct {
-	Base     string   `yaml:"base" json:"base"`
-	Playbook string   `yaml:"playbook,omitempty" json:"playbook,omitempty"`
+	Base       string        `yaml:"base" json:"base"`
+	OS         string        `yaml:"os,omitempty" json:"os,omitempty" proto:"4"`
+	Build      *ImageBuild   `yaml:"build,omitempty" json:"build,omitempty" proto:"5"`
+	Platform   ImagePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"6"`
+	Extensions Extensions    `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"7"`
+}
+type ImageBuild struct {
+	Playbook string   `yaml:"playbook" json:"playbook"`
 	Files    []string `yaml:"files,omitempty" json:"files,omitempty"`
 }
+
+func (i Image) BuildPlaybook() string {
+	if i.Build == nil {
+		return ""
+	}
+	return i.Build.Playbook
+}
+func (i Image) BuildFiles() []string {
+	if i.Build == nil {
+		return nil
+	}
+	return i.Build.Files
+}
+
+type AWSImageOptions struct{}
+type AWSMachineOptions struct{}
+type ProxmoxImageOptions struct{}
+type ProxmoxMachineOptions struct{}
+type ImagePlatform struct {
+	AWS     *AWSImageOptions     `yaml:"aws,omitempty" json:"aws,omitempty"`
+	Proxmox *ProxmoxImageOptions `yaml:"proxmox,omitempty" json:"proxmox,omitempty"`
+}
+type MachinePlatform struct {
+	AWS     *AWSMachineOptions     `yaml:"aws,omitempty" json:"aws,omitempty"`
+	Proxmox *ProxmoxMachineOptions `yaml:"proxmox,omitempty" json:"proxmox,omitempty"`
+}
 type Machine struct {
-	Image         string   `yaml:"image" json:"image"`
-	CPU           int      `yaml:"cpu" json:"cpu"`
-	Memory        string   `yaml:"memory" json:"memory"`
-	Disk          string   `yaml:"disk" json:"disk"`
-	Access        []string `yaml:"access,omitempty" json:"access,omitempty"`
-	HostnamePeers []string `yaml:"hostnamePeers,omitempty" json:"hostnamePeers,omitempty"`
+	Image         string          `yaml:"image" json:"image"`
+	CPU           int             `yaml:"cpu" json:"cpu"`
+	Memory        string          `yaml:"memory" json:"memory"`
+	Disk          string          `yaml:"disk" json:"disk"`
+	Access        []string        `yaml:"access,omitempty" json:"access,omitempty"`
+	NICs          []NIC           `yaml:"nics,omitempty" json:"nics,omitempty" proto:"7"`
+	Forwarding    bool            `yaml:"forwarding,omitempty" json:"forwarding,omitempty" proto:"8"`
+	HostnamePeers HostnamePeers   `yaml:"hostnamePeers,omitempty" json:"hostnamePeers" proto:"9"`
+	Platform      MachinePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"10"`
+	Extensions    Extensions      `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"11"`
+}
+
+// Explicit distinguishes an empty peer list from the default all-peer inventory.
+type HostnamePeers struct {
+	Explicit bool     `json:"explicit"`
+	Names    []string `json:"names,omitempty"`
+}
+type NIC struct {
+	Network string `yaml:"network" json:"network"`
+	Address *int   `yaml:"address,omitempty" json:"address,omitempty"`
 }
 type Network struct {
-	Internet bool `yaml:"internet,omitempty" json:"internet"`
+	Egress     string     `yaml:"egress,omitempty" json:"egress,omitempty" proto:"2"`
+	CIDR       string     `yaml:"cidr,omitempty" json:"cidr,omitempty" proto:"3"`
+	Extensions Extensions `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"4"`
 }
 type Input struct {
-	Type     string `yaml:"type" json:"type"`
-	Default  string `yaml:"default,omitempty" json:"default,omitempty"`
-	Required bool   `yaml:"required,omitempty" json:"required,omitempty"`
+	Type        string    `yaml:"type" json:"type"`
+	Required    bool      `yaml:"required,omitempty" json:"required,omitempty" proto:"3"`
+	Default     JSONValue `yaml:"default,omitempty" json:"default,omitempty" proto:"4"`
+	Description string    `yaml:"description,omitempty" json:"description,omitempty" proto:"5"`
 }
 type InputValue struct {
 	Name  string `json:"name"`

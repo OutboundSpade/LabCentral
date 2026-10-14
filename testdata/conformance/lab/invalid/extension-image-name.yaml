@@ -1,0 +1,16 @@
+# field: images.base.extensions.Org.example
+# schema: reject
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+    extensions: {Org.example: 1}
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]

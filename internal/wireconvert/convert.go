@@ -33,6 +33,12 @@ func put(v reflect.Value, m protoreflect.Message) error {
 		if e != nil {
 			return e
 		}
+		if f.Kind() == reflect.Pointer && f.IsNil() {
+			continue
+		}
+		if f.Kind() == reflect.Pointer {
+			f = f.Elem()
+		}
 		if d.IsMap() {
 			mp := m.Mutable(d).Map()
 			it := f.MapRange()
@@ -95,8 +101,20 @@ func get(m protoreflect.Message, v reflect.Value) error {
 		if e != nil {
 			return e
 		}
+		if f.Kind() == reflect.Pointer {
+			if !m.Has(d) {
+				f.SetZero()
+				continue
+			}
+			f.Set(reflect.New(f.Type().Elem()))
+			f = f.Elem()
+		}
 		x := m.Get(d)
 		if d.IsMap() {
+			if x.Map().Len() == 0 {
+				f.SetZero()
+				continue
+			}
 			f.Set(reflect.MakeMap(f.Type()))
 			var err error
 			x.Map().Range(func(k protoreflect.MapKey, val protoreflect.Value) bool {
@@ -114,6 +132,10 @@ func get(m protoreflect.Message, v reflect.Value) error {
 			}
 		} else if d.IsList() {
 			ls := x.List()
+			if ls.Len() == 0 {
+				f.SetZero()
+				continue
+			}
 			f.Set(reflect.MakeSlice(f.Type(), ls.Len(), ls.Len()))
 			for i := 0; i < ls.Len(); i++ {
 				if d.Kind() == protoreflect.MessageKind {

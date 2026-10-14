@@ -46,13 +46,14 @@ try {
  // here only the terminal WebSocket is a Playwright mock (no guest, no SSH);
  // /api/me and the machine inventory remain the real authenticated HTTP API.
  const mock={hello:null,resize:[],input:[]};
- await context.routeWebSocket(/\/terminal$/,ws=>{ws.onMessage(m=>{
+ await consoleTab.routeWebSocket(/\/terminal$/,ws=>{ws.onMessage(m=>{
   if(typeof m!=='string'){mock.input.push(Buffer.from(m));return}
   const frame=JSON.parse(m);if(mock.hello){mock.resize.push(frame);return}
   mock.hello=frame;ws.send(JSON.stringify({type:'ready',expires:new Date(Date.now()+600000).toISOString()}));
   ws.send(Buffer.from('\x1b[1;32mcoach@support\x1b[0m:~$ ls\r\n\x1b[34mbin\x1b[0m  etc  var\r\n\x1b[6;20HXY\x1b[8;1Hcoach@support:~$ '));
  })});
- await consoleTab.getByRole('button',{name:'Reconnect',exact:true}).click();
+ // Initialize the page after installing its mocked WebSocket route.
+ await consoleTab.reload();
  await consoleTab.locator('[data-terminal-status="connected"]').waitFor();
  assert.equal(mock.hello.instanceID,inventory.instanceID);assert.equal(mock.hello.meetingID,inventory.meetingID);assert.equal(mock.hello.template,inventory.template);
  assert(mock.hello.cols>=2&&mock.hello.cols<=500&&mock.hello.rows>=2&&mock.hello.rows<=200,'hello dimensions bounded');

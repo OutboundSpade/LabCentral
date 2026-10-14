@@ -79,7 +79,7 @@ func TestHostedExerciseBrowser(t *testing.T) {
 	}
 	s, teams := exerciseFixture(t)
 	s.Config.WebRoot = filepath.Join("..", "web", "build")
-	s.exerciseRunner = func(_ context.Context, team Team, run ExerciseRun, _ lc.Source) (string, error) {
+	s.exerciseRunner = func(_ context.Context, team Team, run BreakRun, _ lc.Source) (string, error) {
 		if team.ID == teams[1].ID {
 			return "", fmt.Errorf("Web SSH connection unavailable; retry or reset")
 		}

@@ -23,6 +23,10 @@ func (s *Service) checkLearning(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 404, err.Error())
 		return
 	}
+	if err = s.actionableRevision(r.Context(), p.Template); err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
 	progress, err := s.Store.learningProgress(r.Context(), v.User.ID, p.ID)
 	if err != nil {
 		writeError(w, 503, "Progress is unavailable.")
@@ -82,6 +86,9 @@ func (s *Service) scheduleLearningChecks(ctx context.Context) {
 	for _, c := range list {
 		p, err := s.ownedPublication(ctx, c.lab, c.user)
 		if err != nil {
+			continue
+		}
+		if s.actionableRevision(ctx, p.Template) != nil {
 			continue
 		}
 		progress, err := s.Store.learningProgress(ctx, c.user, c.lab)
@@ -230,6 +237,9 @@ func (s *Service) runLearningCheck(ctx context.Context, j Job) (err error) {
 	if err != nil {
 		return err
 	}
+	if err = s.actionableRevision(ctx, p.Template); err != nil {
+		return err
+	}
 	progress, err := s.Store.learningProgress(ctx, check.UserID, check.LabID)
 	if err != nil {
 		return err
@@ -246,13 +256,12 @@ func (s *Service) runLearningCheck(ctx context.Context, j Job) (err error) {
 	if bundle, err = s.learningBundle(ctx, p); err != nil {
 		return err
 	}
-	if err = bundle.validate(src); err != nil {
-		return err
-	}
 	var steps []GuestPlaybook
+	var extensions lc.Extensions
 	for _, c := range bundle.Checks {
 		if c.ID == step.CheckID {
 			steps = c.Steps
+			extensions = c.Extensions
 			break
 		}
 	}
@@ -265,7 +274,7 @@ func (s *Service) runLearningCheck(ctx context.Context, j Job) (err error) {
 	if err = s.saveLearningCheck(ctx, check, false); err != nil {
 		return err
 	}
-	err = s.runGuestPlaybooks(ctx, Team{InstanceID: run.InstanceID}, src, bundle, steps)
+	err = s.runGuestPlaybooks(ctx, Team{InstanceID: run.InstanceID}, src, bundle, steps, extensions)
 	check.Updated = time.Now().UTC()
 	if errors.Is(err, errPlaybookFailed) {
 		check.Status = "failed"

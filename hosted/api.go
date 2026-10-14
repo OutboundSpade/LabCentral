@@ -2,6 +2,8 @@ package hosted
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"net/http"
@@ -50,7 +52,7 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 				inst, e := s.Engine.Inspect(ctx, team.InstanceID)
 				if e == nil {
 					for _, m := range inst.Plan.Machines {
-						if !v.User.Admin && lc.Contains(policy.HiddenMachines, m.Name) {
+						if !v.User.Admin && lc.Contains(policy.Visibility.HiddenMachines, m.Name) {
 							continue
 						}
 						out.Lab.Machines = append(out.Lab.Machines, Machine{m.Name, inst.Status, lc.Contains(m.Spec.Access, "desktop")})
@@ -127,9 +129,18 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 }
 func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	ctx := r.Context()
-	out := AdminView{RepositoryURL: repositoryURL(s.Config.Repository), TeamDesktops: []TeamDesktopCount{}, Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}, CheckRuns: []CheckRun{}, ExerciseRuns: []ExerciseRun{}, Exercises: []ExerciseDefinition{}}
+	out := AdminView{RepositoryURL: repositoryURL(s.Config.Repository), TeamDesktops: []TeamDesktopCount{}, Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}, CheckRuns: []CheckRun{}, BreakRuns: []BreakRun{}, Breaks: []BreakDefinition{}, ImportFailures: []TemplateImportFailure{}}
 	var err error
 	out.Meeting, err = s.Store.Meeting(ctx)
+	if err == nil {
+		var report TemplateImportReport
+		e := s.Store.Get(ctx, "template-import-report", "current", &report)
+		if e == nil {
+			out.ImportFailures = report.Failures
+		} else if !errors.Is(e, sql.ErrNoRows) {
+			err = e
+		}
+	}
 	if err == nil && out.Meeting != nil {
 		out.Teams, err = s.Store.Teams(ctx, out.Meeting.ID)
 		if err == nil {
@@ -176,13 +187,12 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 				continue
 			}
 			if template.Instructor != nil {
-				out.Exercises = template.Instructor.Exercises
-			} else if template.Name == "branch-services" {
-				out.Exercises = exerciseDefinitions()
+				out.Breaks = template.Instructor.Breaks
+
 			}
 			break
 		}
-		out.ExerciseRuns, err = s.exerciseRuns(ctx, out.Teams)
+		out.BreakRuns, err = s.exerciseRuns(ctx, out.Teams)
 		if err == nil {
 			out.CheckSchedule, out.CheckRuns, err = s.checkView(ctx, *out.Meeting, out.Teams)
 		}
@@ -218,6 +228,10 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 409, "Build a template revision before creating the meeting.")
 		return
 	}
+	if err := s.actionableRevision(r.Context(), q.Template); err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
 	now := time.Now().UTC()
 	m := Meeting{randomID(12), q.Name, q.Template, "waiting", now, now.Add(time.Duration(q.Hours) * time.Hour)}
 	e := s.Store.CreateMeeting(r.Context(), m, q.TeamCount, q.Capacity)
@@ -238,6 +252,12 @@ func (s *Service) meetingJob(w http.ResponseWriter, r *http.Request, kind string
 	if kind == "prepare" && (m.Status == "ending" || !m.Expires.After(time.Now())) {
 		writeError(w, 409, "The meeting has ended.")
 		return
+	}
+	if kind == "prepare" {
+		if err := s.actionableRevision(r.Context(), m.Template); err != nil {
+			writeError(w, 409, err.Error())
+			return
+		}
 	}
 	if kind == "end" {
 		s.stopProvisioning()
@@ -344,6 +364,9 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 }
 
 func (s *Service) plan(ctx context.Context, id string) (lc.Plan, error) {
+	if err := s.actionableRevision(ctx, id); err != nil {
+		return lc.Plan{}, err
+	}
 	var src lc.Source
 	if e := s.Store.Get(ctx, "source", id, &src); e != nil {
 		return lc.Plan{}, e

@@ -76,6 +76,17 @@ func apiCode(err error, code string) bool {
 	return errors.As(err, &a) && a.ErrorCode() == code
 }
 func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
+	if c.Action == "check" || c.Action == "image.build" || c.Action == "network.create" || c.Action == "machine.create" {
+		if err := lc.CheckCapabilities(c.Source.Lab, c.Environment.Platform); err != nil {
+			return lc.Result{}, err
+		}
+		if c.Machine.Name != "" {
+			if err := lc.CheckCapabilities(lc.Lab{Machines: map[string]lc.Machine{c.Machine.Name: c.Machine.Spec}}, c.Environment.Platform); err != nil {
+				return lc.Result{}, err
+			}
+		}
+	}
+
 	if c.Environment.Platform != "aws" {
 		return lc.Result{}, fmt.Errorf("wrong platform")
 	}

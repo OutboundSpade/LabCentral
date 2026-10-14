@@ -12,6 +12,7 @@
     LockKeyhole,
     LibraryBig,
     BookOpen,
+    TriangleAlert,
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
   import PageHeader from "$lib/PageHeader.svelte";
@@ -109,6 +110,28 @@
         message={data.jobs.find((j) => j.kind === "refresh")?.error ??
           "GitHub refresh failed. Please retry."}
       />{/if}
+    {#if data.importFailures?.length}<div
+        role="alert"
+        class="alert alert-soft alert-warning my-5 items-start"
+      >
+        <TriangleAlert size={18} aria-hidden="true" class="mt-0.5 shrink-0" />
+        <div class="min-w-0">
+          <p class="font-medium">
+            {data.importFailures.length === 1
+              ? "1 template was not imported"
+              : `${data.importFailures.length} templates were not imported`}
+          </p>
+          <p class="text-sm text-base-content/70">
+            Other templates imported normally. Fix these in the repository, then refresh.
+          </p>
+          <ul class="mt-2 space-y-1.5 text-sm">
+            {#each data.importFailures as failure}<li class="break-words">
+                <span class="font-medium">{failure.directory}</span>
+                <code class="ml-1 text-xs text-base-content/80">{failure.error}</code>
+              </li>{/each}
+          </ul>
+        </div>
+      </div>{/if}
     <div
       class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
     >
@@ -141,7 +164,7 @@
             </ul>
             <p class="text-base-content/70">
               Revisions are pinned: attempts keep the exact revision they started from. Cloud
-              practice needs built images and a desktop <code>workstation</code>; baseline practice
+              practice needs built images and the named <code>practice.desktopMachine</code>; baseline practice
               can still run locally.
             </p>
           </div>
@@ -258,7 +281,7 @@
                         {template.instructor.notes}
                       </p>
                       <ul class="mt-4 space-y-3">
-                        {#each template.instructor.exercises as exercise}<li>
+                        {#each template.instructor.breaks as exercise}<li>
                             <p class="font-medium">{exercise.name}</p>
                             <p
                               class="mt-1 whitespace-pre-line text-base-content/60"

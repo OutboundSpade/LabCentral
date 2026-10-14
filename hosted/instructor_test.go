@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,12 +14,12 @@ import (
 
 func TestInstructorFilesExcludedBeforePortableSnapshot(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte("version: 2\nname: private-notes\nimages:\n  base:\n    base: ubuntu-24.04\nmachines:\n  server:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 10Gi\n    access: [ssh]\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte("version: 3\nname: private-notes\nimages:\n  base:\n    base: ubuntu-24.04\nmachines:\n  server:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 10Gi\n    access: [ssh]\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	_ = os.Mkdir(filepath.Join(dir, "instructor"), 0700)
 	_ = os.WriteFile(filepath.Join(dir, "instructor", "check.yml"), []byte("- hosts: localhost\n  tasks: []\n"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "instructor.yaml"), []byte("version: 1\nnotes: private instructor sentinel\nchecks:\n  - id: service\n    name: Service\n    points: 10\n    steps:\n      - {machine: server, playbook: check.yml}\n"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "instructor.yaml"), []byte("version: 3\nvisibility: {audience: students}\nnotes: private instructor sentinel\nchecks:\n  - id: service\n    name: Service\n    points: 10\n    steps:\n      - {machine: server, playbook: check.yml}\n"), 0600)
 	bundle, err := extractInstructor(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +28,7 @@ func TestInstructorFilesExcludedBeforePortableSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = bundle.validate(src); err != nil {
+	if err = bundle.Validate(src); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range src.Files {
@@ -36,12 +37,12 @@ func TestInstructorFilesExcludedBeforePortableSnapshot(t *testing.T) {
 		}
 	}
 	bundle.Checks[0].Steps[0].Machine = "unknown"
-	if bundle.validate(src) == nil {
+	if bundle.Validate(src) == nil {
 		t.Fatal("unknown target accepted")
 	}
 }
 func TestInstructorManifestRejectsAmbiguity(t *testing.T) {
-	for _, raw := range []string{"version: 1\nversion: 1\n", "version: 1\nunknown: true\n", "version: 1\nnotes: &x private\nchecks: *x\n", "version: 3\n", "version: 1\n---\nversion: 1\n"} {
+	for _, raw := range []string{"version: 1\nversion: 1\n", "version: 1\nunknown: true\n", "version: 3\nvisibility: {audience: students}\nnotes: &x private\nchecks: *x\n", "version: 3\n", "version: 1\n---\nversion: 1\n"} {
 		dir := t.TempDir()
 		_ = os.WriteFile(filepath.Join(dir, "instructor.yaml"), []byte(raw), 0600)
 		if _, err := extractInstructor(dir); err == nil {
@@ -51,7 +52,7 @@ func TestInstructorManifestRejectsAmbiguity(t *testing.T) {
 }
 func checkFixture(t *testing.T) (*Service, []Team) {
 	s, teams := exerciseFixture(t)
-	b := InstructorBundle{Version: 1, Notes: "private instructor sentinel", Checks: []TemplateCheck{{ID: "website", Name: "Website", Points: 50, Steps: []GuestPlaybook{{Machine: "web", Playbook: "check.yml"}}}}}
+	b := InstructorBundle{Visibility: instructor.Visibility{Audience: "students"}, Practice: &instructor.Practice{DesktopMachine: "workstation"}, Version: 3, Notes: "private instructor sentinel", Checks: []TemplateCheck{{ID: "website", Name: "Website", Points: 50, Steps: []GuestPlaybook{{Machine: "web", Playbook: "check.yml"}}}}}
 	ctx := context.Background()
 	if err := s.Store.Put(ctx, "template-instructor", "", b); err != nil {
 		t.Fatal(err)
@@ -60,7 +61,7 @@ func checkFixture(t *testing.T) (*Service, []Team) {
 	if err := s.Store.Get(ctx, "template", "", &template); err != nil {
 		t.Fatal(err)
 	}
-	view := b.view()
+	view := instructorView(b)
 	template.Instructor = &view
 	if err := s.Store.Put(ctx, "template", "", template); err != nil {
 		t.Fatal(err)
@@ -183,8 +184,8 @@ func TestConfiguredInstructorTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = b.validate(src); err != nil {
+	if err = b.Validate(src); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("Imported pinned instructor metadata, %d exercises and %d checks; portable source digest %s", len(b.Exercises), len(b.Checks), src.Digest)
+	t.Logf("Imported pinned instructor metadata, %d exercises and %d checks; portable source digest %s", len(b.Breaks), len(b.Checks), src.Digest)
 }

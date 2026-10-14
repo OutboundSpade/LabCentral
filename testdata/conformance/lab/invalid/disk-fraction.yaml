@@ -1,0 +1,15 @@
+# field: machines.one.disk
+# schema: accept
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 1536Mi
+    access: [ssh]

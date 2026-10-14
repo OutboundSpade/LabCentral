@@ -1,4 +1,4 @@
-version: 2
+version: 3
 name: investigation-workstation
 inputs:
   welcome:
@@ -7,7 +7,7 @@ inputs:
 images:
   workstation:
     base: ubuntu-24.04
-    playbook: images/workstation.yml
+    build: {playbook: images/workstation.yml}
 machines:
   workstation:
     image: workstation

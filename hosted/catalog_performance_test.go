@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func BenchmarkTemplateCatalogPinnedBundles(b *testing.B) {
 		b.Fatal(err)
 	}
 	src.Files = append(src.Files, lc.File{Path: "large.txt", Content: []byte(strings.Repeat("x", 256<<10))})
-	bundle := InstructorBundle{Version: 2, Files: []lc.File{{Path: "large.yml", Content: []byte(strings.Repeat("x", 256<<10))}}, Stages: []TemplateStage{{ID: "inspect", Title: "Inspect", Kind: "answer", Instructions: "Read the service.", Answer: "private", Solution: "private"}}}
+	bundle := InstructorBundle{Visibility: instructor.Visibility{Audience: "students"}, Practice: &instructor.Practice{DesktopMachine: "workstation"}, Version: 3, Files: []lc.File{{Path: "large.yml", Content: []byte(strings.Repeat("x", 256<<10))}}, Stages: []TemplateStage{{Completion: instructor.Completion{Answer: &instructor.Answer{Accepted: []string{"private"}, CaseSensitive: true}}, ID: "inspect", Title: "Inspect", Instructions: "Read the service.", Solution: "private"}}}
 	for i := range 16 {
 		id := fmt.Sprintf("revision-%02d", i)
 		for _, o := range []struct {

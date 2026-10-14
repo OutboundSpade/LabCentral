@@ -20,22 +20,23 @@ try {
     let heldDetail=null, heldSolution=null, heldAttempt=null, reserveRemoving=false;
     const plan=[], committed=new Map();
     const stages=[
-      {id:"discover",title:"Map the branch",instructions:"## Investigate\n\nList the machines with `hostname`.\n\n<script>window.unsafe=1</script>",kind:"answer",prompt:"How many machines?",answer:"4",solution:"The branch has **four machines**.",exerciseID:"",checkID:""},
-      {id:"verify",title:"Verify the website",instructions:"Check the bank homepage from the workstation.",kind:"action",prompt:"Keep the service reachable.",answer:"",solution:"Test `curl http://web`.",exerciseID:"",checkID:"website"},
-      {id:"restore",title:"Restore the listener",instructions:"Investigate the Apache listener and restore service.",kind:"action",prompt:"Restore port 80.",answer:"",solution:"Set the listener to **80** and restart Apache.",exerciseID:"port",checkID:"website"},
-      {id:"review",title:"Group review",instructions:"Discuss what changed.",kind:"instructor",prompt:"Explain the evidence.",answer:"",solution:"Review listener configuration.",exerciseID:"",checkID:""},
+      {id:"discover",title:"Map the branch",instructions:"## Investigate\n\nList the machines with `hostname`.\n\n<script>window.unsafe=1</script>",kind:"answer",prompt:"How many machines?",answer:"4",solution:"The branch has **four machines**.",break:"",checkID:""},
+      {id:"verify",title:"Verify the website",instructions:"Check the bank homepage from the workstation.",kind:"action",prompt:"Keep the service reachable.",answer:"",solution:"Test `curl http://web`.",break:"",checkID:"website"},
+      {id:"restore",title:"Restore the listener",instructions:"Investigate the Apache listener and restore service.",kind:"action",prompt:"Restore port 80.",answer:"",solution:"Set the listener to **80** and restart Apache.",break:"port",checkID:"website"},
+      {id:"review",title:"Group review",instructions:"Discuss what changed.",kind:"instructor",prompt:"Explain the evidence.",answer:"",solution:"Review listener configuration.",break:"",checkID:""},
     ];
     const safe=s=>({id:s.id,title:s.title,instructions:s.instructions,kind:s.kind,prompt:s.prompt,hasSolution:!!s.solution});
     const machines=[{name:"workstation",cpu:2,memory:"4Gi",disk:"20Gi",access:["desktop","ssh"]},{name:"web-server-with-a-long-descriptive-machine-name-for-wrapping",cpu:2,memory:"2Gi",disk:"20Gi",access:["ssh"]}];
     const outage={id:"outage",title:"Branch outage",description:"Several branch services fail during one shift.",difficulty:"advanced",estimatedMinutes:60,variantCount:6,minBreaks:2,maxBreaks:3};
-    const newest={id:"latest",name:"branch-services",commit:"1234567890abc",commitTitle:"Add template-owned recovery stages",committedAt:iso(-10000),description:"Investigate a bank's service environment and practise recovery.",handover:"# Example Branch\nKeep customer banking available.",stageCount:4,stages:stages.map(safe),machines,imagesBuilt:true,practiceStageIDs:["discover","verify"],library:{category:"Incident response",difficulty:"intermediate",estimatedMinutes:90,tags:["ccdc","web"]},scenarios:[outage]};
+    const newest={desktopMachine:"workstation",id:"latest",name:"branch-services",commit:"1234567890abc",commitTitle:"Add template-owned recovery stages",committedAt:iso(-10000),description:"Investigate a bank's service environment and practise recovery.",handover:"# Example Branch\nKeep customer banking available.",stageCount:4,stages:stages.map(safe),machines,imagesBuilt:true,practiceStageIDs:["discover","verify"],library:{category:"Incident response",difficulty:"intermediate",estimatedMinutes:90,tags:["ccdc","web"]},scenarios:[outage]};
     const older={...newest,id:"older",commit:"abc123456789",commitTitle:"Initial branch environment",committedAt:iso(-86400000),stages:[safe(stages[0])],stageCount:1,practiceStageIDs:["discover"],scenarios:[]};
     const second={...newest,id:"network",name:"network-investigation",description:"Map a private lab network.",stages:[],stageCount:0,machines:[machines[0]],imagesBuilt:false,practiceStageIDs:[],library:{category:"Networking",difficulty:"beginner",estimatedMinutes:30,tags:["nmap"]},scenarios:[]};
     const ubuntu={...newest,id:"ubuntu",name:"ubuntu-basics",description:"Learn service management on one server.",stages:[safe(stages[0])],stageCount:1,machines:[machines[0]],imagesBuilt:false,practiceStageIDs:["discover"],library:{category:"Linux",difficulty:"beginner",estimatedMinutes:45,tags:["systemd"]},scenarios:[{...outage,id:"svc",title:"Service sweep",variantCount:3,minBreaks:1,maxBreaks:1}]};
     const dns={...newest,id:"dns",name:"dns-recovery",description:"Recover name resolution for a small office.",stages:[safe(stages[0])],stageCount:1,machines:[machines[1]],imagesBuilt:true,practiceStageIDs:["discover"],library:{category:"DNS",difficulty:"advanced",estimatedMinutes:40,tags:["bind"]},scenarios:[{...outage,id:"resolver",title:"Resolver failure"}]};
     const coach={...newest,id:"coach",name:"coach-support",coachOnly:true,description:"Coach preview environment.",library:undefined,scenarios:[{...outage,id:"coach-scenario",title:"Coach drill"}]};
     const catalog=()=>admin?[newest,second,older,ubuntu,dns,coach]:[newest,second,older,ubuntu,dns];
-    const template={id:"latest",name:newest.name,commit:newest.commit,commitTitle:newest.commitTitle,committedAt:newest.committedAt,built:true,latest:true,imagesReady:2,imagesTotal:2,buildsPending:0,removing:false,handover:newest.handover,instructor:{notes:"Instructor notes",stages,checks:[{id:"website",name:"Website",points:10}],exercises:[{id:"port",name:"Change Apache port",description:"Change the listener.",walkthrough:"Inspect the listener."},{id:"stop",name:"Stop the web service",description:"Stop Apache for recovery practice.",walkthrough:"Restart Apache and check service health."}]}};
+    const privateStages=stages.map(s=>({...s,completion:s.kind==="answer"?{answer:{accepted:[s.answer,"four"],caseSensitive:false}}:s.kind==="action"?{check:s.checkID}:{instructor:true}}));
+    const template={id:"latest",name:newest.name,commit:newest.commit,commitTitle:newest.commitTitle,committedAt:newest.committedAt,built:true,latest:true,imagesReady:2,imagesTotal:2,buildsPending:0,removing:false,handover:newest.handover,instructor:{notes:"Instructor notes",stages:privateStages,checks:[{id:"website",name:"Website",points:10}],breaks:[{id:"port",name:"Change Apache port",description:"Change the listener.",walkthrough:"Inspect the listener."},{id:"stop",name:"Stop the web service",description:"Stop Apache for recovery practice.",walkthrough:"Restart Apache and check service health."}]}};
     const teams=[{id:"t1",meetingID:"meeting",name:"Team 1",capacity:6,members:2,status:"ready"},{id:"t2",meetingID:"meeting",name:"Team 2",capacity:6,members:2,status:"ready"}];
     const meeting={id:"meeting",name:"Bank recovery meeting",template:"latest",status:"ready",created:iso(0),expires:iso(7200000)};
     const quota={limitMinutes:180,usedSeconds:0,remainingSeconds:10800,resetsAt:iso(86400000)};
@@ -81,7 +82,7 @@ try {
       if(path==="/api/learning/practice/solution") {if(heldSolution){const gate=heldSolution;heldSolution=null;await gate;} return route.fulfill({json:{stepID:body.stepID,solution:stages.find(s=>s.id===body.stepID).solution}});}
       const learning=path.match(/^\/api\/learning\/([\w-]+)$/);
       if(learning) {const lab=labs.find(l=>l.id===learning[1]); return route.fulfill(lab?{json:view(lab)}:{status:404,json:{error:"Lab not found"}});}
-      if(path==="/api/admin") return route.fulfill({json:{meeting:meetingActive?meeting:null,teams:meetingActive?teams:[],templates:[stageOnly?{...template,instructor:{...template.instructor,stages:[stages[0]],exercises:[]}}:template,{...template,id:"network",name:second.name,built:false,imagesReady:0},{...template,id:"reserve",committedAt:iso(-50000),removing:reserveRemoving}],exercises:stageOnly?[]:template.instructor.exercises,exerciseRuns:[],checkRuns:[],jobs:[],joinedStudents:4,teamDesktops:[],activeDesktops:0,repositoryURL:""}});
+      if(path==="/api/admin") return route.fulfill({json:{meeting:meetingActive?meeting:null,teams:meetingActive?teams:[],templates:[stageOnly?{...template,instructor:{...template.instructor,stages:[privateStages[0]],breaks:[]}}:template,{...template,id:"network",name:second.name,built:false,imagesReady:0},{...template,id:"reserve",committedAt:iso(-50000),removing:reserveRemoving}],breaks:stageOnly?[]:template.instructor.breaks,breakRuns:[],checkRuns:[],jobs:[],joinedStudents:4,teamDesktops:[],activeDesktops:0,repositoryURL:"",importFailures:[{directory:"bad-template",error:"invalid: stages[2].completion.check: line 44: unknown check"}]}});
       if(path==="/api/admin/meeting") {assert.equal(body.template,"latest");meetingActive=true;return route.fulfill({json:meeting});}
       if(path==="/api/admin/exercises" || path==="/api/admin/checks/run") return route.fulfill({json:{ok:true}});
       throw new Error(`Unexpected fixture request ${req.method()} ${path}`);
@@ -480,6 +481,10 @@ try {
 
     // Meeting stages remain freely selectable and explicit.
     await page.goto(app+"/admin/#exercises");
+    await page.getByLabel("Template stage").selectOption("discover");
+    await page.getByText("Instructor solution",{exact:true}).click();
+    await page.getByText("Accepted answers: 4, four (any letter case)",{exact:true}).waitFor();
+    if(evidence)await page.screenshot({path:`${evidence}/meeting-answer-stage-${width}.png`});
     await page.getByLabel("Template stage").selectOption("restore");
     await page.getByText("Instructor solution",{exact:true}).click();
     await page.getByText("Set the listener to",{exact:false}).waitFor();
@@ -505,7 +510,7 @@ try {
     await page.getByRole("dialog").waitFor({state:"hidden"});
     assert.deepEqual(writes.at(-1),{path:"/api/admin/exercises",body:{action:"stop",teamIDs:["t1","t2"]},user:"student"},"unreferenced template breaks remain operable");
     assert(await fits(page),"meeting stage width");
-    const stageOnlyRead = page.waitForResponse(async r => r.url().endsWith("/api/admin") && (await r.json()).exercises.length === 0);
+    const stageOnlyRead = page.waitForResponse(async r => r.url().endsWith("/api/admin") && (await r.json()).breaks.length === 0);
     stageOnly=true;await page.goto(app+"/admin/#exercises");
     await stageOnlyRead;
     await page.getByRole("tab",{name:"Exercises",exact:true}).waitFor();

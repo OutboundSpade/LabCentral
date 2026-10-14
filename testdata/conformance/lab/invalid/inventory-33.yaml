@@ -1,0 +1,73 @@
+# field: images
+# schema: reject
+# code: invalid
+version: 3
+name: inventory
+images:
+  image-0: {base: ubuntu-24.04}
+  image-1: {base: ubuntu-24.04}
+  image-2: {base: ubuntu-24.04}
+  image-3: {base: ubuntu-24.04}
+  image-4: {base: ubuntu-24.04}
+  image-5: {base: ubuntu-24.04}
+  image-6: {base: ubuntu-24.04}
+  image-7: {base: ubuntu-24.04}
+  image-8: {base: ubuntu-24.04}
+  image-9: {base: ubuntu-24.04}
+  image-10: {base: ubuntu-24.04}
+  image-11: {base: ubuntu-24.04}
+  image-12: {base: ubuntu-24.04}
+  image-13: {base: ubuntu-24.04}
+  image-14: {base: ubuntu-24.04}
+  image-15: {base: ubuntu-24.04}
+  image-16: {base: ubuntu-24.04}
+  image-17: {base: ubuntu-24.04}
+  image-18: {base: ubuntu-24.04}
+  image-19: {base: ubuntu-24.04}
+  image-20: {base: ubuntu-24.04}
+  image-21: {base: ubuntu-24.04}
+  image-22: {base: ubuntu-24.04}
+  image-23: {base: ubuntu-24.04}
+  image-24: {base: ubuntu-24.04}
+  image-25: {base: ubuntu-24.04}
+  image-26: {base: ubuntu-24.04}
+  image-27: {base: ubuntu-24.04}
+  image-28: {base: ubuntu-24.04}
+  image-29: {base: ubuntu-24.04}
+  image-30: {base: ubuntu-24.04}
+  image-31: {base: ubuntu-24.04}
+  image-32: {base: ubuntu-24.04}
+machines:
+  machine-0: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-1: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-2: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-3: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-4: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-5: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-6: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-7: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-8: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-9: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-10: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-11: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-12: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-13: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-14: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-15: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-16: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-17: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-18: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-19: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-20: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-21: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-22: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-23: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-24: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-25: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-26: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-27: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-28: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-29: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-30: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-31: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-32: {image: image-0, cpu: 1, memory: 256Mi, disk: 1Gi}

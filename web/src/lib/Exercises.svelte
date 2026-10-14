@@ -35,7 +35,7 @@
     data.teams.filter(
       (t) =>
         t.status === "ready" &&
-        !data.exerciseRuns?.some(
+        !data.breakRuns?.some(
           (r) =>
             r.teamID === t.id &&
             (["queued", "resetting", "applying", "checking"].includes(
@@ -51,15 +51,15 @@
   const chosen = $derived(available.filter((t) => selected.includes(t.id)));
   const template = $derived(data.templates.find((t) => t.id === data.meeting?.template));
   const stages = $derived(template?.instructor?.stages ?? []);
-  const otherBreaks = $derived(stages.length ? (data.exercises ?? []).filter(d => !stages.some(s => s.exerciseID === d.id)) : []);
+  const otherBreaks = $derived(stages.length ? (data.breaks ?? []).filter(d => !stages.some(s => s.break === d.id)) : []);
   const stage = $derived(stages.find((s) => s.id === selectedStage) ?? stages[0]);
   $effect(() => {
     const id = data.meeting?.id ?? "";
-    if (id !== meetingScope) { meetingScope = id; selected = []; selectedStage = ""; scenario = stages[0]?.exerciseID ?? ""; error = ""; }
+    if (id !== meetingScope) { meetingScope = id; selected = []; selectedStage = ""; scenario = stages[0]?.break ?? ""; error = ""; }
   });
   function chooseStage(id: string) {
     selectedStage = id;
-    scenario = stages.find((s) => s.id === id)?.exerciseID ?? "";
+    scenario = stages.find((s) => s.id === id)?.break ?? "";
     error = "";
   }
   async function checkServices() {
@@ -71,7 +71,7 @@
   const custom = $derived(
     !!data.templates.find((t) => t.id === data.meeting?.template)?.instructor,
   );
-  const definition = $derived(data.exercises?.find((d) => d.id === scenario));
+  const definition = $derived(data.breaks?.find((d) => d.id === scenario));
   const open = $derived(
     !!data.meeting &&
       !["ending", "ended"].includes(data.meeting.status) &&
@@ -100,7 +100,7 @@
   }
 </script>
 
-{#if (data.exercises?.length || stages.length) && open}
+{#if (data.breaks?.length || stages.length) && open}
   <section aria-labelledby="exercises-title">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h2
@@ -109,7 +109,7 @@
       >
         Exercises
       </h2>
-      {#if data.exercises?.length}<div class="flex flex-wrap items-center gap-2">
+      {#if data.breaks?.length}<div class="flex flex-wrap items-center gap-2">
         <button
           class="btn btn-sm min-h-11"
           disabled={busy || !available.length}
@@ -139,18 +139,18 @@
           <h3 class="text-lg font-semibold">{stage.title}</h3>
           <div class={[prose, "mt-3 break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"]}>{@html render(stage.instructions)}</div>
           {#if stage.prompt}<p class="mt-3 text-sm leading-relaxed">{stage.prompt}</p>{/if}
-          {#key stage.id}{#if stage.solution || stage.answer}<details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4">
+          {#key stage.id}{#if stage.solution || stage.completion.answer}<details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4">
             <summary class="collapse-title flex items-center gap-2 text-sm font-medium"><LockKeyhole size={14} />Instructor solution</summary>
-            <div class="collapse-content">{#if stage.solution}<div class={prose}>{@html render(stage.solution)}</div>{/if}{#if stage.answer}<p class="mt-3 text-sm">Accepted answer: <code>{stage.answer}</code></p>{/if}</div>
+            <div class="collapse-content">{#if stage.solution}<div class={prose}>{@html render(stage.solution)}</div>{/if}{#if stage.completion.answer}{@const answer = stage.completion.answer}<p class="mt-3 text-sm">{answer.accepted.length === 1 ? "Accepted answer" : "Accepted answers"}:{#each answer.accepted as value, i}{i ? "," : ""} <code>{value}</code>{/each}{answer.caseSensitive ? "" : " (any letter case)"}</p>{/if}</div>
           </details>{/if}{/key}
-          <p class="mt-3 text-xs text-base-content/60">{stage.exerciseID ? `Break: ${data.exercises.find(d => d.id === stage.exerciseID)?.name ?? stage.exerciseID}. Apply it separately to selected teams.` : `This stage has no break to apply.${template?.instructor?.checks.length ? " Service checks remain available." : ""}${data.exercises?.length ? " You can reset the exercise baseline separately." : ""}`}</p>
+          <p class="mt-3 text-xs text-base-content/60">{stage.break ? `Break: ${data.breaks.find(d => d.id === stage.break)?.name ?? stage.break}. Apply it separately to selected teams.` : `This stage has no break to apply.${template?.instructor?.checks.length ? " Service checks remain available." : ""}${data.breaks?.length ? " You can reset the exercise baseline separately." : ""}`}</p>
         </article>{/if}
       </div>
     {:else}
       <div class="mt-4 w-full sm:w-72">
-        <label class="label mb-2" for="exercise-scenario">Exercise</label>
+        <label class="label mb-2" for="exercise-scenario">Break</label>
         <select class="select select-sm min-h-11 w-full" id="exercise-scenario" bind:value={scenario} disabled={busy}>
-          <option value="" disabled>Choose an exercise</option>{#each data.exercises as d}<option value={d.id}>{d.name}</option>{/each}
+          <option value="" disabled>Choose a break</option>{#each data.breaks as d}<option value={d.id}>{d.name}</option>{/each}
         </select>
       </div>
     {/if}
@@ -177,11 +177,11 @@
           </p>
         </div>
       </details>{/if}
-    {#if data.exercises?.length}<fieldset class="mt-4">
+    {#if data.breaks?.length}<fieldset class="mt-4">
       <legend class="text-sm font-medium">Teams</legend>
       <div class="mt-2 divide-y divide-base-content/10">
         {#each data.teams as team}
-          {@const record = data.exerciseRuns?.find((r) => r.teamID === team.id)}
+          {@const record = data.breakRuns?.find((r) => r.teamID === team.id)}
           <div class="py-1">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <label class="flex min-h-11 items-center gap-3"
@@ -202,7 +202,7 @@
             </div>
             {#if record}<div class="mt-1 mb-3 ml-7 text-xs">
                 <p>
-                  {data.exercises.find((d) => d.id === record.action)?.name ??
+                  {data.breaks.find((d) => d.id === record.action)?.name ??
                     (record.action === "reset"
                       ? "Reset web server"
                       : "Check recovery")} · {date(record.started)}
@@ -243,7 +243,7 @@
       class="sticky bottom-[calc(4rem+1px+env(safe-area-inset-bottom))] z-10 mt-4 border-t border-base-content/10 bg-base-100 py-3 lg:bottom-0 lg:py-4"
     >
       <div class="flex flex-wrap items-center gap-2">
-        {#if data.exercises?.length}<button
+        {#if data.breaks?.length}<button
           class="btn btn-sm min-h-11 btn-primary"
           disabled={busy || !scenario || !chosen.length}
           onclick={() => confirm(scenario)}

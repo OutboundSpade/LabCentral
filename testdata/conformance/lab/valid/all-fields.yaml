@@ -1,0 +1,32 @@
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+    os: linux
+    build: {playbook: build.yml, files: [build.yml, data.txt]}
+    platform: {aws: {}, proxmox: {}}
+    extensions: {org.example.image: [null, true, 3, 2.5, text, {nested: []}]}
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh, desktop]
+    nics: [{network: lab, address: 4}]
+    forwarding: false
+    hostnamePeers: all
+    platform: {aws: {}, proxmox: {}}
+    extensions: {org.example.machine: false}
+description: A portable lab.
+platforms: [aws, proxmox]
+networks:
+  lab: {egress: none, extensions: {org.example.network: {setting: value}}}
+extensions: {org.example.lab: null}
+inputs:
+  text: {type: string, default: "", description: Welcome, required: false}
+  count: {type: integer, default: 0}
+  enabled: {type: boolean, default: false}
+  omitted: {type: integer}
+  optional: {type: boolean}

@@ -175,7 +175,7 @@ func TestFailedValidationRetryRequiresConfirmedCleanup(t *testing.T) {
 
 func TestOnlySelectedBuildFilesEnterImageStaging(t *testing.T) {
 	dir := t.TempDir()
-	command := lc.Command{Image: lc.PlannedImage{Name: "bank"}, Source: lc.Source{Lab: lc.Lab{Images: map[string]lc.Image{"bank": {Files: []string{"bank.yml", "shared.txt"}}}}, Files: []lc.File{{Path: "bank.yml", Content: []byte("bank")}, {Path: "shared.txt", Content: []byte("public handover")}, {Path: "lab.yaml", Content: []byte("PRIVATE-TOPOLOGY")}, {Path: "coach.yml", Content: []byte("PRIVATE-COACH-IMAGE")}}}}
+	command := lc.Command{Image: lc.PlannedImage{Name: "bank"}, Source: lc.Source{Lab: lc.Lab{Images: map[string]lc.Image{"bank": {Build: &lc.ImageBuild{Files: []string{"bank.yml", "shared.txt"}}}}}, Files: []lc.File{{Path: "bank.yml", Content: []byte("bank")}, {Path: "shared.txt", Content: []byte("public handover")}, {Path: "lab.yaml", Content: []byte("PRIVATE-TOPOLOGY")}, {Path: "coach.yml", Content: []byte("PRIVATE-COACH-IMAGE")}}}}
 	if err := stageImageSource(command, dir); err != nil {
 		t.Fatal(err)
 	}
@@ -196,5 +196,30 @@ func TestOnlySelectedBuildFilesEnterImageStaging(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(legacy, "source", "shared.txt")); err != nil {
 		t.Fatal("legacy build input changed", err)
+	}
+}
+
+func TestGeneratedAnsibleExtensionsAndTypedVariables(t *testing.T) {
+	c, dir := fixture(t, "aws")
+	c.Image.Base.ID = "ami-test"
+	c.Source.Lab.Extensions = lc.Extensions{"org.example.lab": json.RawMessage(`{"enabled":true}`)}
+	c.Source.Lab.Images = map[string]lc.Image{"base": {Extensions: lc.Extensions{"org.example.image": json.RawMessage(`[null,2,"text"]`)}}}
+	c.Inputs = []lc.InputValue{{Name: "count", Type: "integer", Value: "0"}, {Name: "enabled", Type: "boolean", Value: "false"}}
+	if _, e := Generate(c, dir); e != nil {
+		t.Fatal(e)
+	}
+	b, e := os.ReadFile(filepath.Join(dir, "inputs.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var got map[string]json.RawMessage
+	if e = json.Unmarshal(b, &got); e != nil {
+		t.Fatal(e)
+	}
+	if string(got["count"]) != "0" || string(got["enabled"]) != "false" {
+		t.Fatal("inputs lost their types", string(b))
+	}
+	if string(got["labcentral_extensions"]) != `{"image":{"org.example.image":[null,2,"text"]},"lab":{"org.example.lab":{"enabled":true}}}` {
+		t.Fatal("extensions were not passed as scoped JSON", string(b))
 	}
 }

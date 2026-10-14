@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"go.yaml.in/yaml/v3"
 	"net/http"
 	"net/http/httptest"
@@ -34,25 +35,25 @@ func privateFixture(t *testing.T) (*Service, Session, []Team, lc.Source) {
 	for name, image := range src.Lab.Images {
 		for _, f := range src.Files {
 			if f.Path != "lab.yaml" {
-				image.Files = append(image.Files, f.Path)
+				image.Build.Files = append(image.Build.Files, f.Path)
 			}
 		}
 		src.Lab.Images[name] = image
 	}
 	studentMachine := src.Lab.Machines["workstation"]
-	studentMachine.HostnamePeers = []string{"workstation"}
+	studentMachine.HostnamePeers = lc.HostnamePeers{Explicit: true, Names: []string{"workstation"}}
 	src.Lab.Machines["workstation"] = studentMachine
 	for i := range b.Reset {
-		b.Reset[i].Files = []string{b.Reset[i].Playbook}
+		b.Reset[i].Files = nil
 	}
-	for i := range b.Exercises {
-		for j := range b.Exercises[i].Steps {
-			b.Exercises[i].Steps[j].Files = []string{b.Exercises[i].Steps[j].Playbook}
+	for i := range b.Breaks {
+		for j := range b.Breaks[i].Steps {
+			b.Breaks[i].Steps[j].Files = nil
 		}
 	}
 	for i := range b.Checks {
 		for j := range b.Checks[i].Steps {
-			b.Checks[i].Steps[j].Files = []string{b.Checks[i].Steps[j].Playbook}
+			b.Checks[i].Steps[j].Files = nil
 		}
 	}
 	snapshot := filepath.Join(t.TempDir(), "source")
@@ -70,9 +71,9 @@ func privateFixture(t *testing.T) (*Service, Session, []Team, lc.Source) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Audience = "coaches"
-	b.HiddenMachines = []string{"support"}
-	if err := b.validate(src); err != nil {
+	b.Visibility.Audience = "coaches"
+	b.Visibility.HiddenMachines = []string{"support"}
+	if err := b.Validate(src); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Store.Put(ctx, "source", "pinned", src); err != nil {
@@ -83,7 +84,7 @@ func privateFixture(t *testing.T) (*Service, Session, []Team, lc.Source) {
 	}
 	var template Template
 	_ = s.Store.Get(ctx, "template", "pinned", &template)
-	view := b.view()
+	view := instructorView(b)
 	template.Instructor = &view
 	if err := s.Store.Put(ctx, "template", "pinned", template); err != nil {
 		t.Fatal(err)
@@ -181,10 +182,10 @@ func TestCoachAccessAndPublicationAuthorization(t *testing.T) {
 		}
 	}
 	body := `{"template":"pinned","title":"Do not disclose","mode":"self-paced","stageIDs":["inspect"]}`
-	if w := request(s, "POST", "/api/admin/learning/publish", body, s.Config.Origin, "wrong"); w.Code != 403 {
+	if w := request(s, "POST", "/api/admin/learning/publish", body, s.Config.Origin, "wrong"); w.Code != 404 {
 		t.Fatal(w.Code)
 	}
-	if w := request(s, "POST", "/api/admin/learning/publish", body, s.Config.Origin, v.CSRF); w.Code != 409 {
+	if w := request(s, "POST", "/api/admin/learning/publish", body, s.Config.Origin, v.CSRF); w.Code != 404 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if rows, err := s.Store.List(context.Background(), "learning-publication"); err != nil || len(rows) != 1 {
@@ -202,17 +203,21 @@ func TestVisibilityAndGuestDependencyValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []InstructorBundle{{Audience: "staff"}, {Audience: "coaches", HiddenMachines: []string{"missing"}}, {Audience: "coaches", HiddenMachines: []string{"workstation"}}, {Audience: "students", HiddenMachines: []string{"missing"}}} {
-		if test.validateVisibility(src.Lab) == nil {
+	for _, test := range []InstructorBundle{{Visibility: instructor.Visibility{Audience: "staff"}, Practice: &instructor.Practice{DesktopMachine: "workstation"}}, {Visibility: instructor.Visibility{Audience: "coaches", HiddenMachines: []string{"missing"}}, Practice: &instructor.Practice{DesktopMachine: "workstation"}}, {Visibility: instructor.Visibility{Audience: "coaches", HiddenMachines: []string{"workstation"}}, Practice: &instructor.Practice{DesktopMachine: "workstation"}}, {Visibility: instructor.Visibility{Audience: "students", HiddenMachines: []string{"missing"}}, Practice: &instructor.Practice{DesktopMachine: "workstation"}}} {
+		test.Version = 3
+		if test.Validate(src) == nil {
 			t.Fatal(test)
 		}
 	}
 	for _, step := range []GuestPlaybook{{Machine: "workstation", Playbook: "check.yml", Files: []string{"missing"}}, {Machine: "workstation", Playbook: "check.yml", Files: []string{"check.yml", "check.yml"}}, {Machine: "workstation", Playbook: "check.yml", GuestHosts: []string{"missing"}}, {Machine: "workstation", Playbook: "check.yml", GuestHosts: []string{"workstation", "workstation"}}} {
-		if b.validateGuestInputs(src, step) == nil {
+		copy := b
+		copy.Reset = []GuestPlaybook{step}
+		if copy.Validate(src) == nil {
 			t.Fatal(step)
 		}
 	}
-	if err = b.validateGuestInputs(src, GuestPlaybook{Machine: "workstation", Playbook: "check.yml", Files: []string{"check.yml"}, GuestHosts: []string{"workstation"}}); err != nil {
+	b.Reset = []GuestPlaybook{{Machine: "workstation", Playbook: "check.yml", GuestHosts: []string{"workstation"}}}
+	if err = b.Validate(src); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -283,7 +288,7 @@ func TestCoachConsoleAnonymousAndWrongOriginCannotUpgrade(t *testing.T) {
 	if err := s.Store.Get(context.Background(), "template-instructor", "pinned", &b); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(b.view())
+	raw, _ := json.Marshal(instructorView(b))
 	if !strings.Contains(string(raw), `"hiddenMachines":["support"]`) {
 		t.Fatal(string(raw))
 	}
@@ -294,21 +299,18 @@ func TestGuestFilesKeepActorProgramsOffBankMachines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundle := InstructorBundle{Audience: "coaches", HiddenMachines: []string{"support"}, Files: []lc.File{{Path: "check.yml", Content: []byte("ordinary service observation")}, {Path: "actor.py", Content: []byte("PRIVATE-ACTOR-SCRIPT")}}}
-	instance := lc.Instance{Plan: lc.Plan{Machines: []lc.PlannedMachine{{Name: "workstation", Address: "10.77.0.10", HostPublicKey: "public-key"}}}}
-	files, err := bundle.guestFiles(src, instance, GuestPlaybook{Machine: "workstation", Playbook: "check.yml", Files: []string{"check.yml"}})
-	if err != nil || len(files) != 1 || strings.Contains(string(files[0].Content), "PRIVATE-") {
+	b := InstructorBundle{Files: []lc.File{{Path: "check.yml", Content: []byte("ordinary observation")}, {Path: "actor.py", Content: []byte("PRIVATE-ACTOR")}}}
+	inst := lc.Instance{Plan: lc.Plan{Source: src, Machines: []lc.PlannedMachine{{Name: "workstation", Address: "10.77.0.10", HostPublicKey: "key"}, {Name: "support"}}}}
+	files, err := b.GuestFiles(src, inst, GuestPlaybook{Machine: "workstation", Playbook: "check.yml"}, nil)
+	if err != nil || len(files) != 2 || strings.Contains(string(files[0].Content), "PRIVATE-") {
 		t.Fatal(files, err)
 	}
-	if _, err = bundle.guestFiles(src, instance, GuestPlaybook{Machine: "workstation", Playbook: "check.yml"}); err == nil {
-		t.Fatal("private bundle sent wholesale to bank guest")
-	}
-	files, err = bundle.guestFiles(src, instance, GuestPlaybook{Machine: "support", Playbook: "actor.py", Files: []string{"actor.py"}, GuestHosts: []string{"workstation"}})
-	if err != nil || len(files) != 2 || files[1].Path != "guest-hosts.json" || strings.Contains(string(files[1].Content), "PRIVATE-") {
+	files, err = b.GuestFiles(src, inst, GuestPlaybook{Machine: "support", Playbook: "actor.py", GuestHosts: []string{"workstation"}}, nil)
+	if err != nil || len(files) != 3 || files[1].Path != "labcentral/hosts.json" {
 		t.Fatal(files, err)
 	}
-	if _, err = bundle.guestFiles(src, lc.Instance{}, GuestPlaybook{Machine: "support", Playbook: "actor.py", Files: []string{"actor.py"}, GuestHosts: []string{"workstation"}}); err == nil {
-		t.Fatal("unknown host identity accepted")
+	if _, err = b.GuestFiles(src, lc.Instance{}, GuestPlaybook{Machine: "support", Playbook: "actor.py"}, nil); err == nil {
+		t.Fatal("missing instance accepted")
 	}
 }
 

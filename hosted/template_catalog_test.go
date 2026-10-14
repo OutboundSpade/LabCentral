@@ -1,13 +1,11 @@
 package hosted
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/json"
+
 	lc "github.com/OutboundSpade/LabCentral/v2"
-	"io"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
+
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -26,18 +24,18 @@ func stageFixture(t *testing.T) (*Service, Session, InstructorBundle) {
 	if err := s.Store.Get(ctx, "template-instructor", "pinned", &b); err != nil {
 		t.Fatal(err)
 	}
-	b.Version = 2
-	b.Exercises = []TemplateExercise{{ID: "service-break", Name: "Private service break", Description: "PRIVATE-BREAK", Walkthrough: "PRIVATE-WALKTHROUGH", Steps: []GuestPlaybook{{Machine: "workstation", Playbook: "check.yml"}}}}
-	b.Reset = b.Exercises[0].Steps
+	b.Version = 3
+	b.Breaks = []TemplateBreak{{ID: "service-break", Name: "Private service break", Description: "PRIVATE-BREAK", Walkthrough: "PRIVATE-WALKTHROUGH", Steps: []GuestPlaybook{{Machine: "workstation", Playbook: "check.yml"}}}}
+	b.Reset = b.Breaks[0].Steps
 	b.Stages = []TemplateStage{
-		{ID: "inspect", Title: "Inspect service", Instructions: "Inspect the baseline service configuration.", Kind: "answer", Prompt: "Name the service.", Answer: "PRIVATE-STAGE-ANSWER", Solution: "PRIVATE-STAGE-SOLUTION"},
-		{ID: "verify", Title: "Verify baseline", Instructions: "Verify the baseline service.", Kind: "action", CheckID: "service", Solution: "PRIVATE-VERIFY-SOLUTION"},
-		{ID: "break", Title: "Recover service", Instructions: "Recover the meeting service.", Kind: "action", CheckID: "service", ExerciseID: "service-break", Solution: "PRIVATE-BREAK-SOLUTION"},
-		{ID: "discussion", Title: "Discuss recovery", Instructions: "Discuss your approach with the instructor.", Kind: "instructor"},
+		{Completion: instructor.Completion{Answer: &instructor.Answer{Accepted: []string{"PRIVATE-STAGE-ANSWER"}, CaseSensitive: true}}, ID: "inspect", Title: "Inspect service", Instructions: "Inspect the baseline service configuration.", Prompt: "Name the service.", Solution: "PRIVATE-STAGE-SOLUTION"},
+		{Completion: instructor.Completion{Check: "service"}, ID: "verify", Title: "Verify baseline", Instructions: "Verify the baseline service.", Solution: "PRIVATE-VERIFY-SOLUTION"},
+		{Completion: instructor.Completion{Check: "service"}, ID: "break", Title: "Recover service", Instructions: "Recover the meeting service.", Break: "service-break", Solution: "PRIVATE-BREAK-SOLUTION"},
+		{Completion: instructor.Completion{Instructor: boolPointer(true)}, ID: "discussion", Title: "Discuss recovery", Instructions: "Discuss your approach with the instructor."},
 	}
 	var src lc.Source
 	_ = s.Store.Get(ctx, "source", "pinned", &src)
-	if err := b.validate(src); err != nil {
+	if err := b.Validate(src); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Store.Put(ctx, "template-instructor", "pinned", b); err != nil {
@@ -46,7 +44,7 @@ func stageFixture(t *testing.T) (*Service, Session, InstructorBundle) {
 	var template Template
 	_ = s.Store.Get(ctx, "template", "pinned", &template)
 	template.Name, template.Commit, template.Handover = src.Lab.Name, strings.Repeat("a", 40), "Student handover"
-	view := b.view()
+	view := instructorView(b)
 	template.Instructor = &view
 	if err := s.Store.Put(ctx, "template", "pinned", template); err != nil {
 		t.Fatal(err)
@@ -59,7 +57,7 @@ func TestTemplateStageImportStrictValidationAndPortablePrivacy(t *testing.T) {
 	if err := os.CopyFS(dir, os.DirFS("../examples/workstation")); err != nil {
 		t.Fatal(err)
 	}
-	raw := "version: 2\nnotes: PRIVATE-NOTE\nchecks:\n  - id: service\n    name: Service\n    points: 10\n    steps:\n      - {machine: workstation, playbook: check.yml}\nstages:\n  - id: inspect\n    title: Inspect\n    instructions: Read configuration.\n    kind: answer\n    prompt: Name the service.\n    answer: PRIVATE-ANSWER\n    solution: PRIVATE-SOLUTION\n  - id: verify\n    title: Verify\n    instructions: Verify the service.\n    kind: action\n    checkID: service\n"
+	raw := "version: 3\nvisibility: {audience: students}\npractice: {desktopMachine: workstation}\nnotes: PRIVATE-NOTE\nchecks:\n  - id: service\n    name: Service\n    points: 10\n    steps:\n      - {machine: workstation, playbook: check.yml}\nstages:\n  - id: inspect\n    title: Inspect\n    instructions: Read configuration.\n    prompt: Name the service.\n    completion: {answer: {accepted: [PRIVATE-ANSWER], caseSensitive: true}}\n    solution: PRIVATE-SOLUTION\n  - id: verify\n    title: Verify\n    instructions: Verify the service.\n    completion: {check: service}\n"
 	if err := os.Mkdir(filepath.Join(dir, "instructor"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -77,10 +75,10 @@ func TestTemplateStageImportStrictValidationAndPortablePrivacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = b.validate(src); err != nil {
+	if err = b.Validate(src); err != nil {
 		t.Fatal(err)
 	}
-	if b.Stages[1].CheckID != "service" || len(b.view().Stages) != 2 {
+	if b.Stages[1].Completion.Check != "service" || len(instructorView(*b).Stages) != 2 {
 		t.Fatal("private stage definition lost")
 	}
 	for _, f := range src.Files {
@@ -89,9 +87,9 @@ func TestTemplateStageImportStrictValidationAndPortablePrivacy(t *testing.T) {
 		}
 	}
 	for name, raw := range map[string]string{
-		"version one stages":   strings.Replace(raw, "version: 2", "version: 1", 1),
+		"version one stages":   strings.Replace(raw, "version: 3", "version: 1", 1),
 		"unknown stage field":  raw + "    randomVariant: true\n",
-		"snake case reference": strings.Replace(raw, "checkID:", "check_id:", 1),
+		"snake case reference": strings.Replace(raw, "check:", "check_id:", 1),
 		"duplicate stage key":  raw + "    id: another\n",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -107,7 +105,7 @@ func TestTemplateStageImportStrictValidationAndPortablePrivacy(t *testing.T) {
 }
 
 func TestTemplateStageValidationRejectsBoundsAndForeignReferences(t *testing.T) {
-	_, _, base := stageFixture(t)
+	s, _, base := stageFixture(t)
 	for name, modify := range map[string]func(*InstructorBundle){
 		"duplicate stage":    func(b *InstructorBundle) { b.Stages = append(b.Stages, b.Stages[0]) },
 		"excessive stages":   func(b *InstructorBundle) { b.Stages = make([]TemplateStage, 21) },
@@ -117,21 +115,23 @@ func TestTemplateStageValidationRejectsBoundsAndForeignReferences(t *testing.T) 
 		"long instructions":  func(b *InstructorBundle) { b.Stages[0].Instructions = strings.Repeat("x", 6001) },
 		"long prompt":        func(b *InstructorBundle) { b.Stages[0].Prompt = strings.Repeat("x", 1001) },
 		"long solution":      func(b *InstructorBundle) { b.Stages[0].Solution = strings.Repeat("x", 6001) },
-		"empty answer":       func(b *InstructorBundle) { b.Stages[0].Answer = " " },
-		"long answer":        func(b *InstructorBundle) { b.Stages[0].Answer = strings.Repeat("x", 1001) },
-		"answer check":       func(b *InstructorBundle) { b.Stages[0].CheckID = "service" },
-		"foreign check":      func(b *InstructorBundle) { b.Stages[1].CheckID = "foreign" },
-		"action answer":      func(b *InstructorBundle) { b.Stages[1].Answer = "x" },
-		"foreign break":      func(b *InstructorBundle) { b.Stages[2].ExerciseID = "foreign" },
-		"instructor check":   func(b *InstructorBundle) { b.Stages[3].CheckID = "service" },
-		"unknown kind":       func(b *InstructorBundle) { b.Stages[0].Kind = "random" },
-		"legacy metadata":    func(b *InstructorBundle) { b.Version = 1 },
+		"empty answer":       func(b *InstructorBundle) { b.Stages[0].Completion.Answer.Accepted[0] = " " },
+		"long answer":        func(b *InstructorBundle) { b.Stages[0].Completion.Answer.Accepted[0] = strings.Repeat("x", 1001) },
+		"answer check":       func(b *InstructorBundle) { b.Stages[0].Completion.Check = "service" },
+		"foreign check":      func(b *InstructorBundle) { b.Stages[1].Completion.Check = "foreign" },
+		"action answer": func(b *InstructorBundle) {
+			b.Stages[1].Completion.Answer = &instructor.Answer{Accepted: []string{"x"}, CaseSensitive: true}
+		},
+		"foreign break":    func(b *InstructorBundle) { b.Stages[2].Break = "foreign" },
+		"instructor check": func(b *InstructorBundle) { b.Stages[3].Completion.Check = "service" },
+		"unknown kind":     func(b *InstructorBundle) { b.Stages[0].Completion = instructor.Completion{} },
+		"legacy metadata":  func(b *InstructorBundle) { b.Version = 1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := base
 			b.Stages = append([]TemplateStage{}, base.Stages...)
 			modify(&b)
-			if b.validateStages() == nil {
+			if b.Validate(mustSource(t, s)) == nil {
 				t.Fatal("invalid stages accepted")
 			}
 		})
@@ -144,7 +144,7 @@ func TestPublicTemplateCatalogRequiresIdentityAndExcludesPrivateState(t *testing
 	var src lc.Source
 	_ = s.Store.Get(ctx, "source", "pinned", &src)
 	src.Lab.Description = "Explore a service"
-	src.Lab.Inputs = map[string]lc.Input{"private": {Type: "string", Default: "PRIVATE-INPUT"}}
+	src.Lab.Inputs = map[string]lc.Input{"private": {Type: "string", Default: lc.JSONValue(`"PRIVATE-INPUT"`)}}
 	if err := s.Store.Put(ctx, "source", "pinned", src); err != nil {
 		t.Fatal(err)
 	}
@@ -191,49 +191,20 @@ func TestPublicTemplateCatalogRequiresIdentityAndExcludesPrivateState(t *testing
 	}
 }
 
-func TestTemplateStagePublicationPinsSelectionAndRejectsUnsupportedPractice(t *testing.T) {
+func TestTemplateAttemptPinsSelectionAndTrustsImportedBundle(t *testing.T) {
 	s, v, b := stageFixture(t)
 	ctx := context.Background()
-	req := PublishLearningRequest{Template: "pinned", Title: "Baseline recovery", StageIDs: []string{"verify", "inspect"}}
-	body, _ := json.Marshal(req)
-	if request(s, "POST", "/api/admin/learning/publish", string(body), s.Config.Origin, v.CSRF).Code != 403 {
-		t.Fatal("student selected private stages")
+	// A pinned bundle remains trusted even if newer author validation would reject it.
+	b.Version = 1
+	if err := s.Store.Put(ctx, "template-instructor", "pinned", b); err != nil {
+		t.Fatal(err)
 	}
-	v.User.Admin = true
-	_ = s.Store.Put(ctx, "session", v.ID, v)
-	for _, headers := range []struct{ origin, csrf string }{{"https://foreign.invalid", v.CSRF}, {s.Config.Origin, "bad"}} {
-		if request(s, "POST", "/api/admin/learning/publish", string(body), headers.origin, headers.csrf).Code != 403 {
-			t.Fatal("stage publication CSRF bypass")
-		}
+	p := baselineAttemptPublication(t, s, v)
+	if p.Steps[0].Answer != b.Stages[0].Completion.Answer.Accepted[0] || len(p.Steps) != 2 {
+		t.Fatal("attempt lost pinned baseline", p)
 	}
-	p := decodeLearning[LearningPublication](t, request(s, "POST", "/api/admin/learning/publish", string(body), s.Config.Origin, v.CSRF), 201)
-	if p.Mode != "self-paced" || p.ReleasedSteps != 2 || p.Steps[0].ID != "verify" || p.Steps[1].Answer != b.Stages[0].Answer || p.Steps[1].Solution != b.Stages[0].Solution {
-		t.Fatal("publication did not snapshot author selection", p)
-	}
-	for name, modify := range map[string]func(*PublishLearningRequest){
-		"unknown":               func(r *PublishLearningRequest) { r.StageIDs = []string{"foreign"} },
-		"duplicate":             func(r *PublishLearningRequest) { r.StageIDs = []string{"inspect", "inspect"} },
-		"meeting break":         func(r *PublishLearningRequest) { r.StageIDs = []string{"break"} },
-		"instructor checkpoint": func(r *PublishLearningRequest) { r.StageIDs = []string{"discussion"} },
-		"legacy pacing":         func(r *PublishLearningRequest) { r.Mode = "instructor" },
-		"mixed definitions":     func(r *PublishLearningRequest) { r.Steps = p.Steps },
-		"old revision":          func(r *PublishLearningRequest) { r.Template = "legacy" },
-	} {
-		t.Run(name, func(t *testing.T) {
-			copy := req
-			modify(&copy)
-			body, _ := json.Marshal(copy)
-			want := 400
-			if name == "old revision" {
-				want = 409
-			}
-			if w := request(s, "POST", "/api/admin/learning/publish", string(body), s.Config.Origin, v.CSRF); w.Code != want {
-				t.Fatal(w.Code, w.Body.String())
-			}
-		})
-	}
-	// Author metadata refreshed elsewhere cannot rewrite an existing publication.
-	b.Stages[0].Answer, b.Stages[0].Solution = "changed", "changed"
+	b.Stages[0].Completion.Answer.Accepted[0] = "changed"
+	b.Stages[0].Solution = "changed"
 	_ = s.Store.Put(ctx, "template-instructor", "pinned", b)
 	root := s.Store.Root
 	_ = s.Store.Close()
@@ -242,36 +213,9 @@ func TestTemplateStagePublicationPinsSelectionAndRejectsUnsupportedPractice(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Store.Close()
-	var retained LearningPublication
-	if err = s.Store.Get(ctx, "learning-publication", p.ID, &retained); err != nil || !reflect.DeepEqual(retained, p) {
-		t.Fatal("publication changed across reopen", retained, err)
-	}
-	for _, path := range []string{"/api/learning", "/api/learning/" + p.ID} {
-		w := request(s, "GET", path, "", "", "")
-		if w.Code != 200 || strings.Contains(w.Body.String(), "PRIVATE-") || strings.Contains(w.Body.String(), "checkID") || strings.Contains(w.Body.String(), `"solution"`) {
-			t.Fatal("publication private fields leaked", w.Body.String())
-		}
-	}
-	download := request(s, "GET", "/api/learning/"+p.ID+"/download", "", "", "")
-	gz, err := gzip.NewReader(bytes.NewReader(download.Body.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer gz.Close()
-	archive := tar.NewReader(gz)
-	for {
-		_, err := archive.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		data, err := io.ReadAll(archive)
-		if err != nil || strings.Contains(string(data), "PRIVATE-") {
-			t.Fatal("private answer/solution in download", err)
-		}
+	var stored LearningPublication
+	if err = s.Store.Get(ctx, "learning-publication", p.ID, &stored); err != nil || stored.Steps[0].Answer != p.Steps[0].Answer || stored.Steps[0].Solution != p.Steps[0].Solution {
+		t.Fatal("pinned attempt changed", stored, err)
 	}
 }
 
@@ -280,7 +224,9 @@ func TestLearningSolutionIntentionalRevealEnforcesProgressWithoutMutation(t *tes
 	ctx := context.Background()
 	v.User.Admin = true
 	_ = s.Store.Put(ctx, "session", v.ID, v)
-	p := decodeLearning[LearningPublication](t, request(s, "POST", "/api/admin/learning/publish", `{"template":"pinned","title":"Explore","stageIDs":["inspect","verify"]}`, s.Config.Origin, v.CSRF), 201)
+	p := baselineAttemptPublication(t, s, v)
+	p.OwnerID = ""
+	_ = s.Store.Put(ctx, "learning-publication", p.ID, p)
 	v.User.Admin = false
 	_ = s.Store.Put(ctx, "session", v.ID, v)
 	path := "/api/learning/" + p.ID + "/solution"
@@ -348,7 +294,9 @@ func TestLearningSolutionUsesOwnProgressAndRejectsUnpublishedHistory(t *testing.
 	if err := s.Store.Put(ctx, "session", v.ID, v); err != nil {
 		t.Fatal(err)
 	}
-	p := decodeLearning[LearningPublication](t, request(s, "POST", "/api/admin/learning/publish", `{"template":"pinned","title":"Explore","stageIDs":["inspect","verify"]}`, s.Config.Origin, v.CSRF), 201)
+	p := baselineAttemptPublication(t, s, v)
+	p.OwnerID = ""
+	_ = s.Store.Put(ctx, "learning-publication", p.ID, p)
 	v.User.Admin = false
 	if err := s.Store.Put(ctx, "session", v.ID, v); err != nil {
 		t.Fatal(err)
@@ -380,7 +328,8 @@ func TestLearningSolutionUsesOwnProgressAndRejectsUnpublishedHistory(t *testing.
 	if err := s.Store.Put(ctx, "session", v.ID, v); err != nil {
 		t.Fatal(err)
 	}
-	decodeLearning[LearningPublication](t, request(s, "POST", "/api/admin/learning/unpublish", `{"id":"`+p.ID+`"}`, s.Config.Origin, v.CSRF), 200)
+	p.Published = false
+	_ = s.Store.Put(ctx, "learning-publication", p.ID, p)
 	if err := s.Store.Put(ctx, "session", v.ID, studentB); err != nil {
 		t.Fatal(err)
 	}

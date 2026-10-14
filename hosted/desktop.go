@@ -41,13 +41,18 @@ func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
 		writeError(w, 409, e.Error())
 		return
 	}
-	s.launchDesktop(w, r, v, team, meeting.Expires)
+	machine, e := s.desktopMachine(r.Context(), meeting.Template)
+	if e != nil {
+		writeError(w, 409, e.Error())
+		return
+	}
+	s.launchDesktop(w, r, v, team, meeting.Expires, machine)
 }
 
 // Caller holds the user lock; the same transport is authorized against either
 // explicit meeting membership or an independently owned practice allocation.
-func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Session, team Team, expiry time.Time) {
-	id := digest(team.InstanceID + "\x00workstation\x00" + v.User.ID)[:24]
+func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Session, team Team, expiry time.Time, machine string) {
+	id := digest(team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24]
 	s.mu.Lock()
 	d := s.desktops[id]
 	s.mu.Unlock()
@@ -70,7 +75,7 @@ func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Sessio
 	// session can exit independently while its retained workspace remains.
 	openCtx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	info, e := s.Engine.OpenDesktopWithOptions(openCtx, team.InstanceID, "workstation", lc.AccessOptions{Principal: v.User.ID, Expires: expiry.Format(time.RFC3339), RetainWorkspace: true})
+	info, e := s.Engine.OpenDesktopWithOptions(openCtx, team.InstanceID, machine, lc.AccessOptions{Principal: v.User.ID, Expires: expiry.Format(time.RFC3339), RetainWorkspace: true})
 	if e != nil {
 		writeError(w, 503, "Your desktop could not start. Retry shortly; your files are retained.")
 		return
@@ -392,3 +397,16 @@ try {
  try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false;paste.disabled=false}else if(event.name==='paste'&&pasteDialog.open){pasteDialog.close();status.textContent='Connected · clipboard ready; paste inside the desktop.'}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;paste.disabled=true;pasteDialog.close();pasteText.value='';connection=null;status.textContent='Disconnected. Return to your lab to reconnect.'}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
  }});
 }catch{status.textContent='Access ended. Return to your lab to reconnect.'}`
+
+// Desktop policy is pinned to the template. Ownership/membership is checked by
+// the caller and the library verifies the instance's machine and desktop access.
+func (s *Service) desktopMachine(ctx context.Context, template string) (string, error) {
+	b, err := s.Store.instructorPolicy(ctx, template)
+	if err != nil {
+		return "", err
+	}
+	if b.Practice == nil || b.Practice.DesktopMachine == "" || lc.Contains(b.Visibility.HiddenMachines, b.Practice.DesktopMachine) {
+		return "", fmt.Errorf("Pinned desktop machine unavailable.")
+	}
+	return b.Practice.DesktopMachine, nil
+}

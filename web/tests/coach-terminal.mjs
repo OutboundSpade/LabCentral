@@ -119,8 +119,8 @@ async function fixture({ width = 1365, height = 900, admin = true, clock = true 
           teams,
           jobs: [],
           templates: [],
-          exercises: [],
-          exerciseRuns: [],
+          breaks: [],
+          breakRuns: [],
         },
       });
     }

@@ -9,6 +9,7 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/access"
 	"github.com/OutboundSpade/LabCentral/v2/build"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"github.com/OutboundSpade/LabCentral/v2/plugin"
 	"io"
 	"os"
@@ -18,7 +19,7 @@ import (
 
 type options struct {
 	root, env, provider, inputFile, configFile string
-	json, yes                                  bool
+	json, yes, template                        bool
 	engine                                     lc.EngineOptions
 }
 
@@ -91,6 +92,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 	f.IntVar(&o.engine.MaxImageBuildConcurrency, "image-build-concurrency", limits.MaxImageBuildConcurrency, "parallel image builds per operation (1–32)")
 	f.IntVar(&o.engine.MaxMachineConcurrency, "machine-concurrency", limits.MaxMachineConcurrency, "parallel machine creates per instance (1–32)")
 	f.IntVar(&o.engine.MaxCleanupConcurrency, "cleanup-concurrency", limits.MaxCleanupConcurrency, "parallel machine deletes per instance (1–32)")
+	f.BoolVar(&o.template, "template", false, "require hosted template README")
 	f.BoolVar(&o.json, "json", false, "versioned JSON output")
 	f.BoolVar(&o.yes, "yes", false, "confirm mutations without prompting")
 	f.BoolVar(&helpRequested, "help", false, "show command help")
@@ -201,7 +203,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 		if err != nil {
 			return err
 		}
-		source, err := lc.Load(dir)
+		source, _, err := instructor.LoadTemplate(dir, o.template)
 		if err != nil {
 			return err
 		}
@@ -468,7 +470,7 @@ func initialize(dir string) error {
 	if err := os.MkdirAll(filepath.Join(dir, "images"), 0755); err != nil {
 		return err
 	}
-	if err := writeNew(filepath.Join(dir, "lab.yaml"), []byte("version: 2\nname: hello-lab\nimages:\n  server:\n    base: ubuntu-24.04\n    playbook: images/server.yml\nmachines:\n  server:\n    image: server\n    cpu: 2\n    memory: 2Gi\n    disk: 20Gi\n    access: [ssh]\n")); err != nil {
+	if err := writeNew(filepath.Join(dir, "lab.yaml"), []byte("version: 3\nname: hello-lab\nimages:\n  server:\n    base: ubuntu-24.04\n    build:\n      playbook: images/server.yml\nmachines:\n  server:\n    image: server\n    cpu: 2\n    memory: 2Gi\n    disk: 20Gi\n    access: [ssh]\n")); err != nil {
 		return err
 	}
 	return writeNew(filepath.Join(dir, "images", "server.yml"), []byte("- name: Prepare server\n  hosts: localhost\n  connection: local\n  become: true\n  tasks:\n    - name: Install nginx\n      ansible.builtin.apt:\n        name: nginx\n        state: present\n        update_cache: true\n"))

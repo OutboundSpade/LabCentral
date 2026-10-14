@@ -8,8 +8,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +33,7 @@ func learningFixture(t *testing.T) (*Service, Session, LearningPublication) {
 	for _, o := range []struct {
 		kind  string
 		value any
-	}{{"source", src}, {"template", Template{ID: "pinned", Built: true}}, {"template-images", []string{"shared-workstation"}}, {"template-instructor", InstructorBundle{Version: 1, Notes: "PRIVATE-INSTRUCTOR-SENTINEL", Files: []lc.File{{Path: "check.yml", Content: []byte("- hosts: localhost\n  tasks: []\n")}}, Checks: []TemplateCheck{{ID: "service", Name: "Service", Points: 10, Steps: []GuestPlaybook{{Machine: "workstation", Playbook: "check.yml"}}}}}}} {
+	}{{"source", src}, {"template", Template{ID: "pinned", Built: true}}, {"template-images", []string{"shared-workstation"}}, {"template-instructor", InstructorBundle{Visibility: instructor.Visibility{Audience: "students"}, Practice: &instructor.Practice{DesktopMachine: "workstation"}, Version: 3, Notes: "PRIVATE-INSTRUCTOR-SENTINEL", Files: []lc.File{{Path: "check.yml", Content: []byte("- hosts: localhost\n  tasks: []\n")}}, Checks: []TemplateCheck{{ID: "service", Name: "Service", Points: 10, Steps: []GuestPlaybook{{Machine: "workstation", Playbook: "check.yml"}}}}}}} {
 		if err = s.Store.Put(ctx, o.kind, "pinned", o.value); err != nil {
 			t.Fatal(err)
 		}
@@ -58,9 +58,8 @@ func decodeLearning[T any](t *testing.T, w *httptest.ResponseRecorder, want int)
 func TestLearningAuthorizationPublicationAndPrivateDownloads(t *testing.T) {
 	s, v, p := learningFixture(t)
 	ctx := context.Background()
-	req := PublishLearningRequest{Template: p.Template, Title: p.Title, Mode: p.Mode, EstimatedMinutes: 30, Steps: p.Steps}
-	body, _ := json.Marshal(req)
-	for _, path := range []string{"/api/admin/learning", "/api/admin/learning/publish", "/api/admin/learning/release", "/api/admin/learning/unpublish"} {
+	body, _ := json.Marshal(p)
+	for _, path := range []string{"/api/admin/learning"} {
 		method := "POST"
 		if path == "/api/admin/learning" {
 			method = "GET"
@@ -114,21 +113,10 @@ func TestLearningAuthorizationPublicationAndPrivateDownloads(t *testing.T) {
 	if err = s.Store.Put(ctx, "session", v.ID, v); err != nil {
 		t.Fatal(err)
 	}
-	if w := request(s, "POST", "/api/admin/learning/publish", string(body), s.Config.Origin, "bad"); w.Code != 403 {
-		t.Fatal("publication bypassed CSRF")
-	}
-	published := decodeLearning[LearningPublication](t, request(s, "POST", "/api/admin/learning/publish", string(body), s.Config.Origin, v.CSRF), 201)
-	if published.ID == p.ID || published.Template != p.Template || published.Steps[0].Answer == "" {
-		t.Fatal("publication did not pin private definition")
-	}
-	req.Steps[1].CheckID = "foreign"
-	body, _ = json.Marshal(req)
-	if w := request(s, "POST", "/api/admin/learning/publish", string(body), s.Config.Origin, v.CSRF); w.Code != 400 {
-		t.Fatal("foreign check published", w.Body.String())
-	}
-	pubs, _ := s.Store.publications(ctx, false)
-	if len(pubs) != 2 {
-		t.Fatal("invalid publication persisted")
+	for _, path := range []string{"publish", "release", "unpublish"} {
+		if w := request(s, "POST", "/api/admin/learning/"+path, string(body), s.Config.Origin, v.CSRF); w.Code != 404 {
+			t.Fatal("removed authoring route remains", path, w.Code)
+		}
 	}
 	_ = s.Store.Put(ctx, "learning-progress", progressKey("another", p.ID), LearningProgress{LabID: p.ID, CompletedSteps: 2, LastAnswer: "OTHER-STUDENT-SENTINEL"})
 	if w := request(s, "GET", "/api/learning", "", "", ""); strings.Contains(w.Body.String(), "OTHER-STUDENT") {
@@ -176,10 +164,8 @@ func TestLearningAnswersConcurrentReplayAndPersistedInstructorGates(t *testing.T
 	}
 	v.User.Admin = true
 	_ = s.Store.Put(ctx, "session", v.ID, v)
-	decodeLearning[LearningPublication](t, request(s, "POST", "/api/admin/learning/release", `{"id":"linux","releasedSteps":2}`, s.Config.Origin, v.CSRF), 200)
-	if w := request(s, "POST", "/api/admin/learning/release", `{"id":"linux","releasedSteps":1}`, s.Config.Origin, v.CSRF); w.Code != 409 {
-		t.Fatal("release moved backwards")
-	}
+	p.ReleasedSteps = 2
+	_ = s.Store.Put(ctx, "learning-publication", p.ID, p) // historical instructor release
 	root := s.Store.Root
 	_ = s.Store.Close()
 	s.Store, err = OpenStore(root)
@@ -603,19 +589,5 @@ func TestMeetingCleanupPreservesIndependentPracticeDesktop(t *testing.T) {
 	}
 	if err = s.Store.Get(ctx, "desktop", a.ID, new(accessRecord)); err != nil {
 		t.Fatal("personal desktop intent deleted", err)
-	}
-}
-
-func TestLearningValidationRejectsUnboundedOrAmbiguousStages(t *testing.T) {
-	base := PublishLearningRequest{Title: "Linux", Mode: "self-paced", EstimatedMinutes: 30, Steps: []LearningStepInput{{ID: "one", Title: "One", Instructions: "Inspect a service", Kind: "answer", Answer: "apache2"}}}
-	for name, modify := range map[string]func(*PublishLearningRequest){"duplicate": func(p *PublishLearningRequest) { p.Steps = append(p.Steps, p.Steps[0]) }, "foreign check": func(p *PublishLearningRequest) { p.Steps[0].Kind = "action"; p.Steps[0].CheckID = "unknown" }, "instructor without pacing": func(p *PublishLearningRequest) { p.Steps[0].Kind = "instructor"; p.Steps[0].Answer = "" }, "unsafe ID": func(p *PublishLearningRequest) { p.Steps[0].ID = "../stage" }, "empty answer": func(p *PublishLearningRequest) { p.Steps[0].Answer = " " }, "excessive instructions": func(p *PublishLearningRequest) { p.Steps[0].Instructions = strings.Repeat("x", 6001) }} {
-		t.Run(name, func(t *testing.T) {
-			copy := base
-			copy.Steps = append([]LearningStepInput{}, base.Steps...)
-			modify(&copy)
-			if err := validateLearning(copy, InstructorBundle{}); err == nil {
-				t.Fatal(fmt.Sprintf("accepted %s", name))
-			}
-		})
 	}
 }

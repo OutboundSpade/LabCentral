@@ -1,0 +1,602 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "breaks": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "breaks"
+        ]
+      },
+      "then": {
+        "required": [
+          "reset"
+        ]
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "stages": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "stages"
+            ]
+          },
+          {
+            "properties": {
+              "scenarios": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "scenarios"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "practice"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "breaks": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 6000,
+            "minLength": 0,
+            "type": "string"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "type": "object"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "assets": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 20,
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "files": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "guestHosts": {
+                  "items": {
+                    "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                    "type": "string"
+                  },
+                  "maxItems": 32,
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "machine": {
+                  "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                  "type": "string"
+                },
+                "playbook": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "pattern": "^[a-zA-Z0-9_./-]+$",
+                  "type": "string"
+                },
+                "timeoutSeconds": {
+                  "default": 90,
+                  "maximum": 600,
+                  "minimum": 10,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "machine",
+                "playbook"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "type": "array"
+          },
+          "walkthrough": {
+            "maxLength": 32000,
+            "minLength": 0,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "maxItems": 20,
+      "minItems": 0,
+      "type": "array"
+    },
+    "checks": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "extensions": {
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "type": "object"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "points": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "assets": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 20,
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "files": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "guestHosts": {
+                  "items": {
+                    "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                    "type": "string"
+                  },
+                  "maxItems": 32,
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "machine": {
+                  "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                  "type": "string"
+                },
+                "playbook": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "pattern": "^[a-zA-Z0-9_./-]+$",
+                  "type": "string"
+                },
+                "timeoutSeconds": {
+                  "default": 90,
+                  "maximum": 600,
+                  "minimum": 10,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "machine",
+                "playbook"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "points",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "maxItems": 20,
+      "minItems": 0,
+      "type": "array"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+      },
+      "type": "object"
+    },
+    "library": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 80,
+          "minLength": 1,
+          "type": "string"
+        },
+        "difficulty": {
+          "enum": [
+            "beginner",
+            "intermediate",
+            "advanced"
+          ],
+          "type": "string"
+        },
+        "estimatedMinutes": {
+          "maximum": 1440,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "tags": {
+          "items": {
+            "maxLength": 48,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 12,
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "category",
+        "difficulty",
+        "estimatedMinutes"
+      ],
+      "type": "object"
+    },
+    "notes": {
+      "maxLength": 32000,
+      "minLength": 0,
+      "type": "string"
+    },
+    "practice": {
+      "additionalProperties": false,
+      "properties": {
+        "desktopMachine": {
+          "pattern": "^[a-z][a-z0-9-]{0,47}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "desktopMachine"
+      ],
+      "type": "object"
+    },
+    "reset": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "files": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "guestHosts": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9-]{0,47}$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "machine": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "playbook": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_./-]+$",
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "default": 90,
+            "maximum": 600,
+            "minimum": 10,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "machine",
+          "playbook"
+        ],
+        "type": "object"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "type": "array"
+    },
+    "scenarios": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "difficulty": {
+            "enum": [
+              "beginner",
+              "intermediate",
+              "advanced"
+            ],
+            "type": "string"
+          },
+          "estimatedMinutes": {
+            "maximum": 1440,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "variants": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "breaks": {
+                  "items": {
+                    "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                    "type": "string"
+                  },
+                  "maxItems": 8,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "compatible": {
+                  "const": true,
+                  "type": "boolean"
+                },
+                "id": {
+                  "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                  "type": "string"
+                },
+                "stages": {
+                  "items": {
+                    "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                    "type": "string"
+                  },
+                  "maxItems": 20,
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "id",
+                "compatible",
+                "breaks",
+                "stages"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "minItems": 2,
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "difficulty",
+          "estimatedMinutes",
+          "variants"
+        ],
+        "type": "object"
+      },
+      "maxItems": 12,
+      "minItems": 0,
+      "type": "array"
+    },
+    "stages": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "break": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "completion": {
+            "additionalProperties": false,
+            "maxProperties": 1,
+            "minProperties": 1,
+            "properties": {
+              "answer": {
+                "additionalProperties": false,
+                "properties": {
+                  "accepted": {
+                    "items": {
+                      "maxLength": 1000,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 10,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "caseSensitive": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "accepted",
+                  "caseSensitive"
+                ],
+                "type": "object"
+              },
+              "check": {
+                "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                "type": "string"
+              },
+              "instructor": {
+                "const": true,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "type": "object"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "instructions": {
+            "maxLength": 6000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 1000,
+            "minLength": 0,
+            "type": "string"
+          },
+          "solution": {
+            "maxLength": 6000,
+            "minLength": 0,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "instructions",
+          "completion"
+        ],
+        "type": "object"
+      },
+      "maxItems": 20,
+      "minItems": 0,
+      "type": "array"
+    },
+    "version": {
+      "const": 3,
+      "type": "integer"
+    },
+    "visibility": {
+      "additionalProperties": false,
+      "properties": {
+        "audience": {
+          "enum": [
+            "students",
+            "coaches"
+          ],
+          "type": "string"
+        },
+        "hiddenMachines": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "audience"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "version",
+    "visibility"
+  ],
+  "title": "LabCentral v3 private instructor source",
+  "type": "object"
+}

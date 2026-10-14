@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
+	if err := s.actionableRevision(ctx, id); err != nil {
+		return err
+	}
 	if err := s.studentTemplate(ctx, id); err != nil {
 		return err
 	}
@@ -27,12 +30,16 @@ func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	desktop, err := s.desktopMachine(ctx, id)
+	if err != nil {
+		return err
+	}
 	for _, m := range plan.Machines {
-		if m.Name == "workstation" && lc.Contains(m.Spec.Access, "desktop") {
+		if m.Name == desktop && lc.Contains(m.Spec.Access, "desktop") {
 			return nil
 		}
 	}
-	return fmt.Errorf("Cloud practice requires a workstation with desktop access.")
+	return fmt.Errorf("Cloud practice requires the template desktop machine.")
 }
 func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Session) {
 	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
@@ -187,11 +194,8 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 		return err
 	}
 	if p.OwnerID != "" {
-		bundle, e := s.learningBundle(ctx, p)
+		_, e := s.learningBundle(ctx, p)
 		if e != nil {
-			return e
-		}
-		if e = bundle.validate(src); e != nil {
 			return e
 		}
 	}
@@ -303,5 +307,15 @@ func (s *Service) launchPractice(w http.ResponseWriter, r *http.Request, v Sessi
 		writeError(w, 409, err.Error())
 		return
 	}
-	s.launchDesktop(w, r, v, Team{ID: "practice:" + run.ID, InstanceID: run.InstanceID}, run.Expires)
+	p, err := s.ownedPublication(r.Context(), run.LabID, v.User.ID)
+	if err != nil {
+		writeError(w, 409, "Pinned template unavailable.")
+		return
+	}
+	machine, err := s.desktopMachine(r.Context(), p.Template)
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
+	s.launchDesktop(w, r, v, Team{ID: "practice:" + run.ID, InstanceID: run.InstanceID}, run.Expires, machine)
 }

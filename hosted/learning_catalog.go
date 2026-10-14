@@ -46,7 +46,7 @@ func (s *Store) learningCatalogLabs(ctx context.Context, user string) ([]Learnin
 				err = policyErr
 				break
 			}
-			if policy.Audience == "coaches" {
+			if policy.Visibility.Audience == "coaches" {
 				continue
 			}
 			publication.StepCount = len(publication.Steps)

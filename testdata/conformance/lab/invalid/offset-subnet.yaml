@@ -1,0 +1,17 @@
+# field: machines.one.nics[0].address
+# schema: accept
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]
+    nics: [{network: lab, address: 15}]
+networks: {lab: {cidr: 10.0.0.0/28}}

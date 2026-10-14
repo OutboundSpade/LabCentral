@@ -25,10 +25,10 @@ export function scenarios(t: LibraryTemplate | null | undefined) {
   return t?.scenarios ?? [];
 }
 
-// Cloud practice needs built images and a desktop-enabled workstation.
+// Cloud practice uses the template’s pinned desktop machine.
 export function desktopWorkstation(t: LibraryTemplate) {
   return t.machines.some(
-    (m) => m.name === "workstation" && m.access.includes("desktop"),
+    (m) => m.name === t.desktopMachine && m.access.includes("desktop"),
   );
 }
 

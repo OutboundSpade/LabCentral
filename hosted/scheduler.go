@@ -89,7 +89,7 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 	case "end":
 		claims = append(claims, jobClaim{"meeting:" + j.Target, true}, jobClaim{"desktops", true})
 	case "exercise":
-		var r ExerciseRun
+		var r BreakRun
 		if err := s.Store.Get(ctx, "exercise", j.Target, &r); err != nil {
 			return nil, err
 		}

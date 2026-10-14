@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,18 +33,29 @@ func exerciseFixture(t *testing.T) (*Service, []Team) {
 	if err := s.Store.Put(context.Background(), "template-images", "", []string{}); err != nil {
 		t.Fatal(err)
 	}
-	s.exerciseRunner = func(context.Context, Team, ExerciseRun, lc.Source) (string, error) { return "verified", nil }
+	b := InstructorBundle{Version: 3, Visibility: instructor.Visibility{Audience: "students"}, Practice: &instructor.Practice{DesktopMachine: "workstation"}, Files: []lc.File{{Path: "reset.yml", Content: []byte("- hosts: localhost\n  tasks: []\n")}}, Reset: []GuestPlaybook{{Machine: "web", Playbook: "reset.yml"}}}
+	for _, x := range []struct{ id, name string }{{"stop-web", "Web service stopped"}, {"change-port", "Web port changed"}, {"ssh-intrusion", "Simulated SSH intrusion"}} {
+		b.Breaks = append(b.Breaks, TemplateBreak{ID: x.id, Name: x.name, Description: "A fixture service break.", Walkthrough: "Inspect and restore the fixture service.", Steps: b.Reset})
+	}
+	_ = s.Store.Put(context.Background(), "template-instructor", "", b)
+	var template Template
+	_ = s.Store.Get(context.Background(), "template", "", &template)
+	view := instructorView(b)
+	template.Instructor = &view
+	_ = s.Store.Put(context.Background(), "template", "", template)
+
+	s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) { return "verified", nil }
 	return s, teams
 }
-func queueExercise(t *testing.T, s *Service, team, action string) ExerciseRun {
+func queueExercise(t *testing.T, s *Service, team, action string) BreakRun {
 	t.Helper()
-	runs, e := s.queueExercises(context.Background(), ExerciseRequest{Action: action, TeamIDs: []string{team}}, "admin")
+	runs, e := s.queueExercises(context.Background(), BreakRequest{Action: action, TeamIDs: []string{team}}, "admin")
 	if e != nil {
 		t.Fatal(e)
 	}
 	return runs[0]
 }
-func finishExerciseJob(t *testing.T, s *Service, run ExerciseRun, err error) {
+func finishExerciseJob(t *testing.T, s *Service, run BreakRun, err error) {
 	t.Helper()
 	state := "complete"
 	if err != nil {
@@ -80,7 +92,7 @@ func TestExercisesRequireAdminAndCSRF(t *testing.T) {
 func TestExerciseSelectionAtomicAndConcurrent(t *testing.T) {
 	s, teams := exerciseFixture(t)
 	ctx := context.Background()
-	for _, req := range []ExerciseRequest{{"arbitrary", []string{teams[0].ID}}, {"reset", []string{teams[0].ID, "foreign"}}, {"reset", []string{teams[0].ID, teams[0].ID}}} {
+	for _, req := range []BreakRequest{{"arbitrary", []string{teams[0].ID}}, {"reset", []string{teams[0].ID, "foreign"}}, {"reset", []string{teams[0].ID, teams[0].ID}}} {
 		if _, e := s.queueExercises(ctx, req, "admin"); e == nil {
 			t.Fatal("invalid selection accepted")
 		}
@@ -95,7 +107,7 @@ func TestExerciseSelectionAtomicAndConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, e := s.queueExercises(ctx, ExerciseRequest{"stop-web", []string{teams[0].ID}}, "admin"); e == nil {
+			if _, e := s.queueExercises(ctx, BreakRequest{"stop-web", []string{teams[0].ID}}, "admin"); e == nil {
 				wins.Add(1)
 			}
 		}()
@@ -109,7 +121,7 @@ func TestExerciseReplayFailureAndSupersession(t *testing.T) {
 	s, teams := exerciseFixture(t)
 	ctx := context.Background()
 	calls := 0
-	s.exerciseRunner = func(context.Context, Team, ExerciseRun, lc.Source) (string, error) {
+	s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) {
 		calls++
 		return "", errors.New("response lost")
 	}
@@ -120,7 +132,7 @@ func TestExerciseReplayFailureAndSupersession(t *testing.T) {
 		t.Fatal("lost response passed")
 	}
 	finishExerciseJob(t, s, run, err)
-	var saved ExerciseRun
+	var saved BreakRun
 	s.Store.Get(ctx, "exercise", run.ID, &saved)
 	if saved.Status != "failed" {
 		t.Fatal(saved)
@@ -129,7 +141,7 @@ func TestExerciseReplayFailureAndSupersession(t *testing.T) {
 	if err = s.runExercise(ctx, j); err == nil || calls != 1 {
 		t.Fatal("superseded break ran again")
 	}
-	s.exerciseRunner = func(context.Context, Team, ExerciseRun, lc.Source) (string, error) {
+	s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) {
 		calls++
 		return "reset verified", nil
 	}
@@ -159,7 +171,7 @@ func TestExerciseInterruptedRunResumesAndOtherTeamsProgress(t *testing.T) {
 	if e := s.Store.Put(ctx, "exercise", first.ID, first); e != nil {
 		t.Fatal(e)
 	}
-	s.exerciseRunner = func(_ context.Context, team Team, _ ExerciseRun, _ lc.Source) (string, error) {
+	s.exerciseRunner = func(_ context.Context, team Team, _ BreakRun, _ lc.Source) (string, error) {
 		if team.ID == teams[0].ID {
 			return "", errors.New("web unavailable")
 		}
@@ -179,14 +191,14 @@ func TestExerciseExpiryAndConcurrentReset(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan error, 1)
-	s.exerciseRunner = func(context.Context, Team, ExerciseRun, lc.Source) (string, error) {
+	s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) {
 		close(entered)
 		<-release
 		return "done", nil
 	}
 	go func() { done <- s.runExercise(ctx, Job{Target: run.ID}) }()
 	<-entered
-	if _, e := s.queueExercises(ctx, ExerciseRequest{"reset", []string{teams[0].ID}}, "admin"); e == nil {
+	if _, e := s.queueExercises(ctx, BreakRequest{"reset", []string{teams[0].ID}}, "admin"); e == nil {
 		t.Fatal("overlapping reset accepted")
 	}
 	close(release)
@@ -197,7 +209,7 @@ func TestExerciseExpiryAndConcurrentReset(t *testing.T) {
 	m, _ := s.Store.Meeting(ctx)
 	m.Expires = time.Now().Add(-time.Second)
 	s.Store.Put(ctx, "meeting", "current", m)
-	s.exerciseRunner = func(context.Context, Team, ExerciseRun, lc.Source) (string, error) {
+	s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) {
 		t.Fatal("expired exercise mutated guest")
 		return "", nil
 	}

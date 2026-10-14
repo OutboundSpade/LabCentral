@@ -16,6 +16,7 @@ import (
 // PublicTemplate is an explicit instructional projection of a pinned revision.
 // Never marshal Template or InstructorBundle through a student-facing route.
 type PublicTemplate struct {
+	DesktopMachine   string                    `json:"desktopMachine,omitempty"`
 	CoachOnly        bool                      `json:"coachOnly,omitempty"`
 	ID               string                    `json:"id"`
 	Name             string                    `json:"name"`
@@ -78,7 +79,7 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 		if policyErr != nil {
 			return nil, policyErr
 		}
-		if policy.Audience == "coaches" && !coach {
+		if policy.Visibility.Audience == "coaches" && !coach {
 			continue
 		}
 		if !sourceID.Valid {
@@ -99,11 +100,15 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 		}
 		stages := []TemplateStage{}
 		if rawStages.Valid {
-			if err := json.Unmarshal([]byte(rawStages.String), &stages); err != nil {
+			stages, err = retainedStages([]byte(rawStages.String))
+			if err != nil {
 				return nil, err
 			}
 		}
-		public := PublicTemplate{CoachOnly: policy.Audience == "coaches", ID: t.ID, Name: t.Name, Commit: t.Commit, CommitTitle: t.CommitTitle, CommittedAt: t.CommittedAt, Handover: t.Handover, ImagesBuilt: t.Built && !t.Removing, Description: lab.Description, Machines: []PublicTemplateMachine{}, Stages: []LearningStep{}, PracticeStageIDs: []string{}}
+		public := PublicTemplate{CoachOnly: policy.Visibility.Audience == "coaches", ID: t.ID, Name: t.Name, Commit: t.Commit, CommitTitle: t.CommitTitle, CommittedAt: t.CommittedAt, Handover: t.Handover, ImagesBuilt: t.Built && !t.Removing, Description: lab.Description, Machines: []PublicTemplateMachine{}, Stages: []LearningStep{}, PracticeStageIDs: []string{}}
+		if policy.Practice != nil {
+			public.DesktopMachine = policy.Practice.DesktopMachine
+		}
 		public.Scenarios = []TemplateScenarioSummary{}
 		if rawLibrary.Valid {
 			if err := json.Unmarshal([]byte(rawLibrary.String), &public.Library); err != nil {
@@ -111,12 +116,12 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 			}
 		}
 		if rawScenarios.Valid {
-			var scenarios []TemplateScenario
-			if err := json.Unmarshal([]byte(rawScenarios.String), &scenarios); err != nil {
+			scenarios, err := retainedScenarios([]byte(rawScenarios.String))
+			if err != nil {
 				return nil, err
 			}
 			for _, scenario := range scenarios {
-				public.Scenarios = append(public.Scenarios, scenario.summary())
+				public.Scenarios = append(public.Scenarios, scenarioSummary(scenario))
 			}
 		}
 		for name, machine := range lab.Machines {
@@ -124,8 +129,8 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 		}
 		sort.Slice(public.Machines, func(i, j int) bool { return public.Machines[i].Name < public.Machines[j].Name })
 		for _, stage := range stages {
-			public.Stages = append(public.Stages, LearningStep{stage.ID, stage.Title, stage.Instructions, stage.Kind, stage.Prompt, strings.TrimSpace(stage.Solution) != ""})
-			if (stage.Kind == "answer" || stage.Kind == "action") && stage.ExerciseID == "" {
+			public.Stages = append(public.Stages, LearningStep{stage.ID, stage.Title, stage.Instructions, stage.Kind(), stage.Prompt, strings.TrimSpace(stage.Solution) != ""})
+			if (stage.Kind() == "answer" || stage.Kind() == "action") && stage.Break == "" {
 				public.PracticeStageIDs = append(public.PracticeStageIDs, stage.ID)
 			}
 		}

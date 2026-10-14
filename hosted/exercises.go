@@ -11,17 +11,17 @@ import (
 	"time"
 )
 
-type ExerciseDefinition struct {
+type BreakDefinition struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Walkthrough string `json:"walkthrough"`
 }
-type ExerciseRequest struct {
+type BreakRequest struct {
 	Action  string   `json:"action"`
 	TeamIDs []string `json:"teamIDs"`
 }
-type ExerciseRun struct {
+type BreakRun struct {
 	ID          string    `json:"id"`
 	MeetingID   string    `json:"meetingID"`
 	TeamID      string    `json:"teamID"`
@@ -33,26 +33,8 @@ type ExerciseRun struct {
 	Updated     time.Time `json:"updated"`
 }
 
-func exerciseDefinitions() []ExerciseDefinition {
-	return []ExerciseDefinition{
-		{"stop-web", "Web service stopped", "Stop Apache with valid configuration.", "On web: sudo systemctl status apache2; sudo journalctl -u apache2. Start it with sudo systemctl start apache2. Verify http://web from the workstation."},
-		{"change-port", "Web port changed", "Move Apache from port 80 to 8080.", "On web: sudo ss -ltnp; inspect /etc/apache2/ports.conf and /etc/apache2/sites-available/000-default.conf. Restore Listen 80 and <VirtualHost *:80>, run sudo apache2ctl configtest, then sudo systemctl restart apache2. Verify http://web from the workstation."},
-		{"ssh-intrusion", "Simulated SSH intrusion", "A controlled login leaves an unexpected SSH key and a changed homepage.", "On web: sudo journalctl -u ssh.service --since the exercise start time. Investigate svc_reports, its ~/.ssh/authorized_keys and /var/www/branch-services/public/index.php. Remove the unexpected key, terminate unwanted svc_reports sessions, and restore the homepage. Remove /tmp/branch-review.txt, the harmless exercise artifact. Discuss account hardening and credential rotation. Reset restores exercise files; historical logs remain."},
-	}
-}
-func validExercise(action string) bool {
-	if action == "reset" || action == "check" {
-		return true
-	}
-	for _, d := range exerciseDefinitions() {
-		if d.ID == action {
-			return true
-		}
-	}
-	return false
-}
-func (s *Service) exerciseRuns(ctx context.Context, teams []Team) ([]ExerciseRun, error) {
-	out := []ExerciseRun{}
+func (s *Service) exerciseRuns(ctx context.Context, teams []Team) ([]BreakRun, error) {
+	out := []BreakRun{}
 	for _, t := range teams {
 		var id string
 		err := s.Store.Get(ctx, "exercise-current", t.ID, &id)
@@ -62,7 +44,7 @@ func (s *Service) exerciseRuns(ctx context.Context, teams []Team) ([]ExerciseRun
 		if err != nil {
 			return nil, err
 		}
-		var run ExerciseRun
+		var run BreakRun
 		if err = s.Store.Get(ctx, "exercise", id, &run); err != nil {
 			return nil, err
 		}
@@ -71,7 +53,7 @@ func (s *Service) exerciseRuns(ctx context.Context, teams []Team) ([]ExerciseRun
 	return out, nil
 }
 func (s *Service) startExercises(w http.ResponseWriter, r *http.Request, v Session) {
-	var req ExerciseRequest
+	var req BreakRequest
 	if !decode(w, r, &req) {
 		return
 	}
@@ -84,7 +66,7 @@ func (s *Service) startExercises(w http.ResponseWriter, r *http.Request, v Sessi
 }
 
 // Selection, per-team exclusion, intent, and job creation commit together.
-func (s *Service) queueExercises(ctx context.Context, req ExerciseRequest, actor string) ([]ExerciseRun, error) {
+func (s *Service) queueExercises(ctx context.Context, req BreakRequest, actor string) ([]BreakRun, error) {
 	if len(req.TeamIDs) < 1 || len(req.TeamIDs) > 5 {
 		return nil, fmt.Errorf("Choose an exercise and one to five ready teams.")
 	}
@@ -119,13 +101,22 @@ func (s *Service) queueExercises(ctx context.Context, req ExerciseRequest, actor
 		return nil, err
 	}
 	defer tx.Rollback()
-	runs := []ExerciseRun{}
+	runs := []BreakRun{}
 	seen := map[string]bool{}
 	for _, id := range req.TeamIDs {
 		if _, ok := allowed[id]; !ok || seen[id] {
 			return nil, fmt.Errorf("Select each ready team once.")
 		}
 		seen[id] = true
+		if req.Action != "reset" {
+			var uncertain int
+			if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM objects current JOIN objects run ON run.kind='exercise' AND run.id=json_extract(current.body,'$') WHERE current.kind='exercise-current' AND current.id=? AND json_extract(run.body,'$.status')='unknown'`, id).Scan(&uncertain); err != nil {
+				return nil, err
+			}
+			if uncertain > 0 {
+				return nil, fmt.Errorf("The previous guest mutation has an unknown outcome; run an explicit reset first.")
+			}
+		}
 		var count int
 		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM objects WHERE kind='exercise' AND json_extract(body,'$.teamID')=? AND json_extract(body,'$.status') IN ('queued','resetting','applying','checking')`, id).Scan(&count); err != nil {
 			return nil, err
@@ -140,7 +131,7 @@ func (s *Service) queueExercises(ctx context.Context, req ExerciseRequest, actor
 			return nil, fmt.Errorf("%s has an exercise recovery queued.", allowed[id].Name)
 		}
 		now := time.Now().UTC()
-		run := ExerciseRun{ID: randomID(12), MeetingID: m.ID, TeamID: id, Action: req.Action, Status: "queued", RequestedBy: actor, Started: now, Updated: now}
+		run := BreakRun{ID: randomID(12), MeetingID: m.ID, TeamID: id, Action: req.Action, Status: "queued", RequestedBy: actor, Started: now, Updated: now}
 		b, _ := json.Marshal(run)
 		if _, err = tx.ExecContext(ctx, `INSERT INTO objects VALUES('exercise',?,?)`, run.ID, b); err != nil {
 			return nil, err
@@ -164,12 +155,15 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 			s.mu.Unlock()
 		}
 	}()
-	var run ExerciseRun
+	var run BreakRun
 	if err = s.Store.Get(ctx, "exercise", j.Target, &run); err != nil {
 		return err
 	}
 	if run.Status == "complete" {
 		return nil
+	}
+	if run.Status == "unknown" {
+		return fmt.Errorf("Guest mutation outcome is unknown; confirm recovery through an explicit reset.")
 	}
 	// Every replay validates the current assignment. Old failures cannot re-break a reset lab.
 	var current string
@@ -182,6 +176,9 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	defer func() {
 		if err != nil {
 			run.Status = "failed"
+			if errors.Is(err, errGuestUnknown) {
+				run.Status = "unknown"
+			}
 			run.Report = err.Error()
 			run.Updated = time.Now().UTC()
 			saveCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -218,8 +215,7 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	}
 	ctx, cancel := context.WithDeadline(ctx, m.Expires)
 	defer cancel()
-	ctx, stop := context.WithTimeout(ctx, 3*time.Minute)
-	defer stop()
+
 	run.Status = "resetting"
 	if run.Action == "check" {
 		run.Status = "checking"
@@ -231,27 +227,25 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	s.mu.Unlock()
 	locked = false
 	runner := s.exerciseRunner
-	if runner == nil {
-		runner = s.executeExercise
-	}
+
 	var bundle InstructorBundle
 	var report string
-	if lookup := s.Store.Get(ctx, "template-instructor", m.Template, &bundle); lookup == nil {
+	if runner != nil {
+		report, err = runner(ctx, team, run, src)
+	} else if lookup := s.Store.Get(ctx, "template-instructor", m.Template, &bundle); lookup == nil {
 		steps := bundle.Reset
 		if run.Action == "check" {
 			return fmt.Errorf("Use the template scoreboard checks for this revision.")
 		}
 		if err = s.runGuestPlaybooks(ctx, team, src, bundle, steps); err == nil && run.Action != "reset" {
-			for _, x := range bundle.Exercises {
+			for _, x := range bundle.Breaks {
 				if x.ID == run.Action {
-					err = s.runGuestPlaybooks(ctx, team, src, bundle, x.Steps)
+					err = s.runGuestPlaybooks(ctx, team, src, bundle, x.Steps, x.Extensions)
 					break
 				}
 			}
 		}
 		report = "Template exercise complete; pinned guest playbooks passed."
-	} else if errors.Is(lookup, sql.ErrNoRows) {
-		report, err = runner(ctx, team, run, src)
 	} else {
 		err = lookup
 	}
@@ -265,22 +259,19 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 }
 
 func (s *Service) validateExercise(ctx context.Context, template, action string, src lc.Source) error {
-	var bundle InstructorBundle
-	err := s.Store.Get(ctx, "template-instructor", template, &bundle)
-	if errors.Is(err, sql.ErrNoRows) {
-		if !validExercise(action) {
-			return fmt.Errorf("Choose a supported exercise.")
-		}
-		_, err = exerciseBaseline(src)
+	if err := s.actionableRevision(ctx, template); err != nil {
 		return err
 	}
+	var bundle InstructorBundle
+	err := s.Store.Get(ctx, "template-instructor", template, &bundle)
+
 	if err != nil {
 		return err
 	}
 	if action == "reset" && len(bundle.Reset) > 0 {
 		return nil
 	}
-	for _, x := range bundle.Exercises {
+	for _, x := range bundle.Breaks {
 		if x.ID == action {
 			return nil
 		}

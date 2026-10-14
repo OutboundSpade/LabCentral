@@ -1,0 +1,16 @@
+# field: networks.lab.cidr
+# schema: accept
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]
+networks: {lab: {cidr: 10.0.0.0/29}}

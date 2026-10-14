@@ -166,7 +166,7 @@
     !!data?.templates.find((t) => t.id === data.meeting?.template)?.instructor
       ?.checks.length,
   );
-  const hasExercises = $derived(!!(data?.exercises?.length || data?.templates.find(t => t.id === data.meeting?.template)?.instructor?.stages?.length));
+  const hasExercises = $derived(!!(data?.breaks?.length || data?.templates.find(t => t.id === data.meeting?.template)?.instructor?.stages?.length));
   const tabs = $derived([
     { id: "teams", label: "Teams" },
     ...(hasExercises ? [{ id: "exercises", label: "Exercises" }] : []),

@@ -32,7 +32,7 @@ type Service struct {
 	activeJobs     map[string]runningJob
 	provisionOnce  sync.Once
 	provisionSlots chan struct{}
-	exerciseRunner func(context.Context, Team, ExerciseRun, lc.Source) (string, error)
+	exerciseRunner func(context.Context, Team, BreakRun, lc.Source) (string, error)
 }
 
 func New(ctx context.Context, c Config, e Engine) (*Service, error) {
@@ -80,9 +80,6 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/learning/{id}/stop", s.authorized(false, s.stopPractice))
 	mux.HandleFunc("POST /api/learning/{id}/access", s.authorized(false, s.launchPractice))
 	mux.HandleFunc("GET /api/admin/learning", s.authorized(true, s.learningAdmin))
-	mux.HandleFunc("POST /api/admin/learning/publish", s.authorized(true, s.publishLearning))
-	mux.HandleFunc("POST /api/admin/learning/release", s.authorized(true, s.releaseLearning))
-	mux.HandleFunc("POST /api/admin/learning/unpublish", s.authorized(true, s.unpublishLearning))
 	mux.HandleFunc("POST /api/team", s.authorized(false, s.join))
 	mux.HandleFunc("POST /api/access", s.authorized(false, s.launch))
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))

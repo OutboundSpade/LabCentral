@@ -1,15 +1,13 @@
-version: 2
+version: 3
 name: ccdc-service-recovery
 description: Restore a branch website and scheduled operations while keeping evidence of your investigation.
 images:
   services:
     base: ubuntu-24.04
-    playbook: images/services.yml
-    files: [images/services.yml]
+    build: {playbook: images/services.yml, files: [images/services.yml]}
   workstation:
     base: ubuntu-24.04
-    playbook: images/workstation.yml
-    files: [images/workstation.yml]
+    build: {playbook: images/workstation.yml, files: [images/workstation.yml]}
 machines:
   services:
     image: services

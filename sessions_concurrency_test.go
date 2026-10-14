@@ -45,7 +45,7 @@ func desktopFenceFixture(t *testing.T) (*Engine, *Engine, Instance, *desktopFenc
 	t.Helper()
 	dir := t.TempDir()
 	source := strings.Replace(sample, "  one:", "  web:", 1)
-	source = strings.Replace(source, "    base: ubuntu-24.04", "    base: ubuntu-24.04\n    playbook: base.yml", 1) + `  workstation:
+	source = strings.Replace(source, "    base: ubuntu-24.04", "    base: ubuntu-24.04\n    build:\n      playbook: base.yml", 1) + `  workstation:
     image: base
     cpu: 2
     memory: 2Gi

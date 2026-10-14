@@ -199,7 +199,14 @@ func Generate(c lc.Command, dir string) (Config, error) {
 		Type   string   `json:"type"`
 		Inline []string `json:"inline"`
 	}{"shell", bootstrap}))
-	vars := map[string]json.RawMessage{}
+	labExtensions, imageExtensions := c.Source.Lab.Extensions, c.Source.Lab.Images[c.Image.Name].Extensions
+	if labExtensions == nil {
+		labExtensions = lc.Extensions{}
+	}
+	if imageExtensions == nil {
+		imageExtensions = lc.Extensions{}
+	}
+	vars := map[string]json.RawMessage{"labcentral_extensions": raw(map[string]lc.Extensions{"lab": labExtensions, "image": imageExtensions})}
 	for _, v := range c.Inputs {
 		switch v.Type {
 		case "string":
@@ -382,7 +389,7 @@ func stageImageSource(c lc.Command, dir string) error {
 		return err
 	}
 	for _, f := range c.Source.Files {
-		selected := c.Source.Lab.Images[c.Image.Name].Files
+		selected := c.Source.Lab.Images[c.Image.Name].BuildFiles()
 		if len(selected) > 0 && !lc.Contains(selected, f.Path) {
 			continue
 		}

@@ -154,6 +154,17 @@ func checkOwner(v VMConfig, owner, name string) error {
 	return nil
 }
 func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (lc.Result, error) {
+	if cmd.Action == "check" || cmd.Action == "image.build" || cmd.Action == "network.create" || cmd.Action == "machine.create" {
+		if err := lc.CheckCapabilities(cmd.Source.Lab, cmd.Environment.Platform); err != nil {
+			return lc.Result{}, err
+		}
+		if cmd.Machine.Name != "" {
+			if err := lc.CheckCapabilities(lc.Lab{Machines: map[string]lc.Machine{cmd.Machine.Name: cmd.Machine.Spec}}, cmd.Environment.Platform); err != nil {
+				return lc.Result{}, err
+			}
+		}
+	}
+
 	if cmd.Environment.Platform != "proxmox" {
 		return lc.Result{}, fmt.Errorf("wrong platform")
 	}

@@ -1,0 +1,6 @@
+# field: version
+# code: invalid
+# schema: reject
+version: 3
+version: 3
+visibility: {audience: students}

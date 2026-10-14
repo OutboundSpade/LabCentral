@@ -120,7 +120,7 @@ Image status reflects the saved build record; readiness is validated before clou
 reservation. **My attempts** keeps each student's independent progress and exact
 revision, with prior shared lesson links retained for existing users.
 
-Hosted templates can own stages in `instructor.yaml` version 2. A stage contains
+Hosted templates own stages in `instructor.yaml` version 3. A stage contains
 student instructions and an answer, a pinned action check, or an instructor
 checkpoint. It can link an existing break and include an author-written solution.
 The template owns this material once, alongside its existing reset and check
@@ -135,7 +135,7 @@ checks remain explicit actions, so instructors can prepare labs ahead of time
 and move around during a walkthrough without publishing or releasing a lesson.
 Meeting checks run the template's full service-check set.
 
-Example Branch's version 2 revision provides six baseline practice stages covering
+Example Branch's version 3 revision provides six baseline practice stages covering
 the ledger dependency, banking page, FTP login root, publishing timer and published
 branch hours. Three additional recovery stages link the stopped-web, database-port
 and FTP-defacement breaks. Each stage includes a private reference solution.
@@ -152,12 +152,12 @@ this source change.
 
 An author's optional solution can be deliberately revealed for a current or
 completed released stage. Viewing it does not complete that stage. Historical
-instructor-paced lessons retain their release behavior through the existing API.
+instructor-paced lessons retain their stored release gates.
 
 Personal cloud labs default to **three hours per student per UTC week**, resetting
 on Monday. Operators can set `weeklyCloudMinutes` in the protected hosted config.
 Time counts from allocation reservation through confirmed cleanup, including
-preparation and pending cleanup. Cloud runs require built images and a workstation
+preparation and pending cleanup. Cloud runs require built images and the template’s named practice
 desktop. Only one personal cloud run can be active per student. It ends when its
 reserved time expires; stopping deletes its workspace after cleanup confirmation.
 Meeting cleanup and team membership are independent of these personal allocations.
@@ -380,12 +380,13 @@ Run `labcentral help` for flags. Flags precede positional arguments.
 ## Author a lab
 
 ```yaml
-version: 2
+version: 3
 name: web-investigation
 images:
   workstation:
     base: ubuntu-24.04
-    playbook: images/workstation.yml
+    build:
+      playbook: images/workstation.yml
 machines:
   workstation:
     image: workstation
@@ -395,55 +396,91 @@ machines:
     access: [ssh, desktop]
 ```
 
-One private IPv4 network is implicit. Machines resolve each other's declared names.
+Omitting `networks` gives one private IPv4 network named `lab`; omitting `nics`
+attaches a machine to the only network. NIC `address` selects a host offset from
+4–250. Other machines receive addresses from offset 11, skipping reserved offsets,
+in name order. `hostnamePeers` defaults to `all`; a list selects peers and `[]`
+leaves only localhost entries.
 General Internet egress is denied at runtime. Build networking is separate.
 `desktop` selects DCV on AWS and the VM's graphical console on Proxmox; these
-have different session behavior. Images without a playbook use the bound base
+have different session behavior. Images without `build` use the bound base
 unchanged for SSH labs. Desktop images require a playbook so the build installs
 the platform access components.
 
 Share the directory through Git or copy it. The library snapshots source and
 records its identity automatically. Source cannot contain symlinks, hidden files,
-provider configuration, expression templates, inheritance, or multiple networks.
+provider configuration, expression templates, or inheritance.
 Source paths use letters, numbers, underscores, dashes, dots, and slashes.
 Ansible's own expressions execute inside the temporary build guest.
 
 See [examples](examples/README.md) for a server, web/database pair, and workstation.
-Inputs support `string`, `integer`, and `boolean`; input defaults and the CLI's
-inputs JSON values are strings, then converted to their declared Ansible types.
+Inputs support `string`, `integer`, and `boolean`, with matching YAML scalar
+defaults and optional descriptions (500 bytes). Required inputs cannot have defaults.
+The CLI accepts string values and checks them against the declared type. Unsupplied
+optional inputs without defaults are omitted from Ansible variables.
 Do not put secrets in inputs: source and build provenance are retained locally.
+
+`platforms: [aws, proxmox]` optionally restricts targets; omission allows either
+platform and `[]` allows neither. Image and machine
+`platform` blocks accept empty typed `aws` and `proxmox` objects; options will be
+added later. Namespaced `extensions` on the lab, networks, images and machines
+retain JSON values (64 KiB combined). Image builds receive lab and image extensions
+as `labcentral_extensions: {lab: ..., image: ...}`. Explicit `build.files` selections
+include the playbook and limit both staged files and the source bytes in the cache
+key; omission uses the whole source.
+
+The v3 format accepts Windows, author CIDRs, Internet egress, forwarding and
+multiple networks/NICs. Both platforms currently reject these during planning with
+field-path errors. Only Linux, one network/NIC and egress `none` are implemented.
+The generated contract is [schemas/lab-v3.json](schemas/lab-v3.json).
 
 For a template in the hosted repository, place reusable teaching material in
 `instructor.yaml`. For example, a baseline Ubuntu lab can offer an answer stage
 and an independent meeting discussion:
 
 ```yaml
-version: 2
+version: 3
+visibility: {audience: students}
+practice: {desktopMachine: workstation}
 stages:
   - id: identify-init
     title: Identify the service manager
     instructions: Run `ps -p 1 -o comm=` on the server.
-    kind: answer
     prompt: Which service manager is running as process 1?
-    answer: systemd
-    solution: |
-      Run `ps -p 1 -o comm=`. On this Ubuntu image, process 1 is `systemd`.
-      Use `systemctl status SERVICE` to inspect a managed service.
+    completion:
+      answer: {accepted: [systemd], caseSensitive: true}
+    solution: Inspect process 1, then use systemctl status SERVICE.
   - id: discuss-recovery
     title: Review a recovery plan
     instructions: Explain how you would diagnose a stopped web service.
-    kind: instructor
-    prompt: Compare service status, listening ports and application logs.
-    solution: Check the service status, inspect its logs and listener, then verify access from the workstation.
+    completion: {instructor: true}
+    solution: Inspect service status, logs and listeners, then verify access.
 ```
 
-Action stages add `checkID` referring to a check in this same manifest. A stage
-can add `exerciseID` referring to an existing break; the instructor explicitly
-applies that break during a meeting. Check and break playbooks still belong under
-`instructor/` and run only inside guests. The hosted importer removes this private
-material before loading portable source. Keep accepted answers and solutions in
-the private manifest, not in the student handover or portable playbooks. Solutions
-are intentionally visible when a practice learner chooses **View solution**.
+Action stages use `completion: {check: CHECK_ID}`. A stage can link a `break`
+from the same manifest; instructors apply it explicitly during a meeting.
+Each completion has exactly one key. Answers trim whitespace and match any of
+1–10 accepted values; `caseSensitive: false` folds case.
+
+Check, break and reset steps name a machine and a playbook under `instructor/`.
+The playbook is always delivered; `files` lists extra instructor-relative files,
+and `assets` lists portable files delivered under `template/`. Optional
+`guestHosts` produces pinned identities in `labcentral/hosts.json`.
+`labcentral/context.json` contains the machine and lab, template and owning
+check/break extensions. Author paths cannot use the reserved `template/` or
+`labcentral/` namespaces. Step `timeoutSeconds` defaults to 90 and accepts 10–600;
+a timeout leaves an unknown outcome.
+
+The standalone `instructor` package validates this private contract against the
+portable source. `labcentral validate DIR` includes it when present and excludes
+private material without modifying the author directory. Use
+`labcentral validate --template DIR` to require a hosted README too. The generated
+contract is [schemas/instructor-v3.json](schemas/instructor-v3.json).
+Hosted import validates each directory independently, reports individual failures
+to administrators and commits each complete revision atomically. Pinned bundles
+are trusted during execution. Keep answers, solutions and private extensions out
+of handovers and portable playbooks. **View solution** intentionally reveals the
+current or completed practice stage’s solution.
 
 ## Configure an environment
 

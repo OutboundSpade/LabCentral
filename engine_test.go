@@ -566,7 +566,7 @@ func TestPreparePreservesExplicitHostnameInventoryAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	instance := Instance{ID: "hostname-privacy", Plan: Plan{Environment: testEnvironment(), Machines: []PlannedMachine{{Name: "bank", Spec: Machine{HostnamePeers: []string{"bank"}}}, {Name: "coach"}}}}
+	instance := Instance{ID: "hostname-privacy", Plan: Plan{Environment: testEnvironment(), Machines: []PlannedMachine{{Name: "bank", Spec: Machine{HostnamePeers: HostnamePeers{Explicit: true, Names: []string{"bank"}}}}, {Name: "coach"}}}}
 	if err = engine.prepare(context.Background(), &instance); err != nil {
 		t.Fatal(err)
 	}

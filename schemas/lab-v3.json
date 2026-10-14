@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "extensions": {
+      "additionalProperties": true,
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+      },
+      "type": "object"
+    },
+    "images": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "pattern": "^[a-z][a-z0-9.-]{0,63}$",
+            "type": "string"
+          },
+          "build": {
+            "additionalProperties": false,
+            "properties": {
+              "files": {
+                "items": {
+                  "pattern": "^[a-zA-Z0-9_./-]+$",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "playbook": {
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9_./-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "playbook"
+            ],
+            "type": "object"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "type": "object"
+          },
+          "os": {
+            "default": "linux",
+            "enum": [
+              "linux",
+              "windows"
+            ],
+            "type": "string"
+          },
+          "platform": {
+            "additionalProperties": false,
+            "properties": {
+              "aws": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              },
+              "proxmox": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "base"
+        ],
+        "type": "object"
+      },
+      "maxProperties": 32,
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,47}$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "inputs": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "string"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "default": {
+                  "maxLength": 4096,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "integer"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "default": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "boolean"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "default": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "required": {
+                  "const": true
+                }
+              },
+              "required": [
+                "required"
+              ]
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "default"
+                ]
+              }
+            }
+          }
+        ],
+        "properties": {
+          "default": {},
+          "description": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "integer",
+              "boolean"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,47}$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "machines": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "items": {
+              "enum": [
+                "ssh",
+                "desktop"
+              ]
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "cpu": {
+            "maximum": 64,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "disk": {
+            "pattern": "^([1-9][0-9]*)(Mi|Gi)$",
+            "type": "string"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "type": "object"
+          },
+          "forwarding": {
+            "type": "boolean"
+          },
+          "hostnamePeers": {
+            "oneOf": [
+              {
+                "const": "all"
+              },
+              {
+                "items": {
+                  "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              }
+            ]
+          },
+          "image": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
+          "memory": {
+            "pattern": "^([1-9][0-9]*)(Mi|Gi)$",
+            "type": "string"
+          },
+          "nics": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "maximum": 250,
+                  "minimum": 4,
+                  "type": "integer"
+                },
+                "network": {
+                  "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "network"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "platform": {
+            "additionalProperties": false,
+            "properties": {
+              "aws": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              },
+              "proxmox": {
+                "additionalProperties": false,
+                "properties": {},
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "image",
+          "cpu",
+          "memory",
+          "disk"
+        ],
+        "type": "object"
+      },
+      "maxProperties": 32,
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,47}$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9-]{0,47}$",
+      "type": "string"
+    },
+    "networks": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "cidr": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "egress": {
+            "default": "none",
+            "enum": [
+              "none",
+              "internet"
+            ],
+            "type": "string"
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,47}$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "platforms": {
+      "items": {
+        "enum": [
+          "aws",
+          "proxmox"
+        ]
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "version": {
+      "const": 3,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version",
+    "name",
+    "images",
+    "machines"
+  ],
+  "title": "LabCentral v3 lab source",
+  "type": "object"
+}

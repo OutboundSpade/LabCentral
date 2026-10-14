@@ -4,12 +4,12 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"net/http"
 	"regexp"
 	"sort"
@@ -28,23 +28,15 @@ type LearningStep struct {
 	HasSolution  bool   `json:"hasSolution,omitempty"`
 }
 type LearningStepInput struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Instructions string `json:"instructions"`
-	Kind         string `json:"kind"`
-	Prompt       string `json:"prompt"`
-	Answer       string `json:"answer"`
-	CheckID      string `json:"checkID"`
-	Solution     string `json:"solution,omitempty"`
-}
-type PublishLearningRequest struct {
-	Template         string              `json:"template"`
-	Title            string              `json:"title"`
-	Description      string              `json:"description"`
-	Mode             string              `json:"mode"`
-	EstimatedMinutes int                 `json:"estimatedMinutes"`
-	Steps            []LearningStepInput `json:"steps"`
-	StageIDs         []string            `json:"stageIDs,omitempty"`
+	ID           string             `json:"id"`
+	Title        string             `json:"title"`
+	Instructions string             `json:"instructions"`
+	Kind         string             `json:"kind"`
+	Prompt       string             `json:"prompt"`
+	Answer       string             `json:"answer"`
+	CheckID      string             `json:"checkID"`
+	Solution     string             `json:"solution,omitempty"`
+	AnswerRule   *instructor.Answer `json:"answerRule,omitempty"`
 }
 type LearningPublication struct {
 	ID               string              `json:"id"`
@@ -124,10 +116,6 @@ type LearningView struct {
 type LearningAdminView struct {
 	Labs         []LearningPublication `json:"labs"`
 	QuotaMinutes int                   `json:"quotaMinutes"`
-}
-type ReleaseLearningRequest struct {
-	ID            string `json:"id"`
-	ReleasedSteps int    `json:"releasedSteps"`
 }
 type LearningAnswerRequest struct {
 	StepID string `json:"stepID"`
@@ -263,105 +251,11 @@ func (s *Service) learningAdmin(w http.ResponseWriter, r *http.Request, v Sessio
 
 var stepIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,47}$`)
 
-func validateLearning(req PublishLearningRequest, b InstructorBundle) error {
-	if !cleanName(req.Title) || len(req.Description) > 2000 || req.EstimatedMinutes < 1 || req.EstimatedMinutes > 1440 || len(req.Steps) < 1 || len(req.Steps) > 20 || (req.Mode != "self-paced" && req.Mode != "instructor") {
-		return fmt.Errorf("Use a title, 1–1440 estimated minutes, a pacing mode and 1–20 stages.")
-	}
-	checks := map[string]bool{}
-	for _, c := range b.Checks {
-		checks[c.ID] = true
-	}
-	seen := map[string]bool{}
-	for _, step := range req.Steps {
-		if !stepIDPattern.MatchString(step.ID) || seen[step.ID] || !cleanName(step.Title) || len(step.Instructions) == 0 || len(step.Instructions) > 6000 || len(step.Prompt) > 1000 || len(step.Solution) > 6000 {
-			return fmt.Errorf("Each stage needs a unique ID, title and bounded instructions.")
-		}
-		seen[step.ID] = true
-		switch step.Kind {
-		case "answer":
-			if strings.TrimSpace(step.Answer) == "" || len(step.Answer) > 1000 || step.CheckID != "" {
-				return fmt.Errorf("Answer stages require an accepted answer and no action check.")
-			}
-		case "action":
-			if !checks[step.CheckID] || step.Answer != "" {
-				return fmt.Errorf("Action stages require a check from the pinned revision and no accepted answer.")
-			}
-		case "instructor":
-			if req.Mode != "instructor" || step.Answer != "" || step.CheckID != "" {
-				return fmt.Errorf("Instructor checkpoints require instructor pacing and no answer or check.")
-			}
-		default:
-			return fmt.Errorf("Stage kind must be answer, action or instructor.")
-		}
-	}
-	return nil
-}
-func (s *Service) publishLearning(w http.ResponseWriter, r *http.Request, v Session) {
-	var req PublishLearningRequest
-	if !decodeLimit(w, r, &req, 256<<10) {
-		return
-	}
-	if req.Mode == "" {
-		req.Mode = "self-paced"
-	}
-	if req.EstimatedMinutes == 0 {
-		req.EstimatedMinutes = 30
-	}
-	var template Template
-	var src lc.Source
-	var bundle InstructorBundle
-	if s.Store.Get(r.Context(), "template", req.Template, &template) != nil || s.Store.Get(r.Context(), "source", req.Template, &src) != nil {
-		writeError(w, 409, "Choose an imported template revision.")
-		return
-	}
-	if _, err := lc.PlanLab(src, s.env, nil); err != nil {
-		writeError(w, 409, "The pinned source cannot be planned in this environment.")
-		return
-	}
-	err := s.Store.Get(r.Context(), "template-instructor", req.Template, &bundle)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		writeError(w, 503, "Template checks are unavailable.")
-		return
-	}
-	if bundle.Audience == "coaches" {
-		writeError(w, 409, "Coach-only templates cannot be published for students.")
-		return
-	}
-	if len(req.StageIDs) > 0 {
-		if len(req.Steps) > 0 || req.Mode != "self-paced" {
-			writeError(w, 400, "Choose template stages for a self-paced publication without manual stages.")
-			return
-		}
-		req.Steps, err = resolvePracticeStages(req.StageIDs, bundle)
-		if err != nil {
-			writeError(w, 400, err.Error())
-			return
-		}
-	}
-	if err = validateLearning(req, bundle); err != nil {
-		writeError(w, 400, err.Error())
-		return
-	}
-	released := len(req.Steps)
-	if req.Mode == "instructor" {
-		released = 1
-	}
-	p := LearningPublication{ID: randomID(12), Template: req.Template, Title: req.Title, Description: req.Description, Mode: req.Mode, EstimatedMinutes: req.EstimatedMinutes, Steps: req.Steps, Published: true, PublishedAt: time.Now().UTC(), ReleasedSteps: released}
-	if err = s.Store.Put(r.Context(), "learning-publication", p.ID, p); err != nil {
-		writeError(w, 503, "Publication could not be saved.")
-		return
-	}
-	writeJSON(w, 201, p)
-}
-
 // Practice starts from built baseline images. Meeting-only breaks and instructor
 // checkpoints cannot be represented as an independently runnable publication.
 func resolvePracticeStages(ids []string, bundle InstructorBundle) ([]LearningStepInput, error) {
 	if len(ids) < 1 || len(ids) > 20 {
 		return nil, fmt.Errorf("Choose 1–20 stages from the pinned template revision.")
-	}
-	if err := bundle.validateStages(); err != nil {
-		return nil, err
 	}
 	byID := map[string]TemplateStage{}
 	for _, stage := range bundle.Stages {
@@ -373,51 +267,13 @@ func resolvePracticeStages(ids []string, bundle InstructorBundle) ([]LearningSte
 		if !ok || seen[id] {
 			return nil, fmt.Errorf("Choose unique stages from this pinned template revision.")
 		}
-		if stage.ExerciseID != "" || stage.Kind == "instructor" {
+		if stage.Break != "" || stage.Kind() == "instructor" {
 			return nil, fmt.Errorf("Stage %q requires a meeting exercise or instructor; choose stages that work on the personal lab baseline.", id)
 		}
 		seen[id] = true
-		out = append(out, LearningStepInput{stage.ID, stage.Title, stage.Instructions, stage.Kind, stage.Prompt, stage.Answer, stage.CheckID, stage.Solution})
+		out = append(out, learningStage(stage))
 	}
 	return out, nil
-}
-func (s *Service) releaseLearning(w http.ResponseWriter, r *http.Request, v Session) {
-	var req ReleaseLearningRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p, err := s.publication(r.Context(), req.ID)
-	if err != nil || p.Mode != "instructor" || req.ReleasedSteps < p.ReleasedSteps || req.ReleasedSteps > len(p.Steps) {
-		writeError(w, 409, "Release stages in order for a published instructor-paced lab.")
-		return
-	}
-	p.ReleasedSteps = req.ReleasedSteps
-	if err = s.Store.Put(r.Context(), "learning-publication", p.ID, p); err != nil {
-		writeError(w, 503, "Stage release could not be saved.")
-		return
-	}
-	writeJSON(w, 200, p)
-}
-func (s *Service) unpublishLearning(w http.ResponseWriter, r *http.Request, v Session) {
-	var req TargetRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var p LearningPublication
-	if s.Store.Get(r.Context(), "learning-publication", req.ID, &p) != nil {
-		writeError(w, 404, "Publication is unavailable.")
-		return
-	}
-	p.Published = false
-	if err := s.Store.Put(r.Context(), "learning-publication", p.ID, p); err != nil {
-		writeError(w, 503, "Publication could not be updated.")
-		return
-	}
-	writeJSON(w, 200, p)
 }
 func currentLearningStep(p LearningPublication, progress LearningProgress, id string) (LearningStepInput, error) {
 	n := progress.CompletedSteps
@@ -485,8 +341,11 @@ func (s *Service) answerLearning(w http.ResponseWriter, r *http.Request, v Sessi
 	}
 	progress.LastAnswer = req.Answer
 	progress.LastFeedback = "That answer did not match. Review the lab and try again."
-	got, want := digest(strings.TrimSpace(req.Answer)), digest(strings.TrimSpace(step.Answer))
-	if subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1 {
+	rule := step.AnswerRule
+	if rule == nil {
+		rule = &instructor.Answer{Accepted: []string{step.Answer}, CaseSensitive: true}
+	}
+	if rule.Matches(req.Answer) {
 		progress.CompletedSteps++
 		progress.LastFeedback = "Answer accepted. Your progress is saved."
 	}
@@ -539,4 +398,12 @@ func (s *Service) downloadLearning(w http.ResponseWriter, r *http.Request, v Ses
 	if tw.WriteHeader(&tar.Header{Name: "LAB-INSTRUCTIONS.md", Mode: 0600, Size: int64(len(content)), Typeflag: tar.TypeReg}) == nil {
 		_, _ = tw.Write(content)
 	}
+}
+
+func learningStage(st TemplateStage) LearningStepInput {
+	answer := ""
+	if st.Completion.Answer != nil && len(st.Completion.Answer.Accepted) > 0 {
+		answer = st.Completion.Answer.Accepted[0]
+	}
+	return LearningStepInput{ID: st.ID, Title: st.Title, Instructions: st.Instructions, Kind: st.Kind(), Prompt: st.Prompt, Answer: answer, CheckID: st.Completion.Check, Solution: st.Solution, AnswerRule: st.Completion.Answer}
 }

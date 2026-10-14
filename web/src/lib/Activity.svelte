@@ -65,7 +65,7 @@
     const t = data.templates.find((t) => t.id === job.target);
     if (t) return `${t.name} · ${t.commit.slice(0, 7)}`;
     const r =
-      data.exerciseRuns?.find((r) => r.id === job.target) ??
+      data.breakRuns?.find((r) => r.id === job.target) ??
       data.checkRuns?.find((r) => r.id === job.target);
     return (
       data.teams.find((t) => t.id === r?.teamID)?.name ??

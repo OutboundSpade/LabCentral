@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"sync"
 	"testing"
 	"time"
@@ -231,7 +232,7 @@ func TestChecksRunAsEachTeamBecomesReadyDuringPreparation(t *testing.T) {
 	s, teams := prepareFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	bundle := InstructorBundle{Version: 1, Checks: []TemplateCheck{{ID: "website", Name: "Website", Points: 100, Steps: []GuestPlaybook{{Machine: "server", Playbook: "check.yml"}}}}}
+	bundle := InstructorBundle{Visibility: instructor.Visibility{Audience: "students"}, Practice: &instructor.Practice{DesktopMachine: "workstation"}, Version: 3, Checks: []TemplateCheck{{ID: "website", Name: "Website", Points: 100, Steps: []GuestPlaybook{{Machine: "server", Playbook: "check.yml"}}}}}
 	if err := s.Store.Put(ctx, "template-instructor", "", bundle); err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +353,7 @@ func TestChecksRunAsEachTeamBecomesReadyDuringPreparation(t *testing.T) {
 		t.Fatal("ready-team check blocked by unrelated preparation")
 	}
 	// Exercises on that same ready team still wait for its in-flight check.
-	exercise := ExerciseRun{ID: "same-team-exercise", MeetingID: "meeting", TeamID: teams[0].ID}
+	exercise := BreakRun{ID: "same-team-exercise", MeetingID: "meeting", TeamID: teams[0].ID}
 	if err = s.Store.Put(ctx, "exercise", exercise.ID, exercise); err != nil {
 		t.Fatal(err)
 	}

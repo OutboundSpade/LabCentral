@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/wire"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,7 +21,11 @@ import (
 
 func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 	root := t.TempDir()
-	declaration := []byte("version: 2\nname: private-source\nimages:\n  base:\n    base: ubuntu\n    playbook: build.yml\n    files: [build.yml]\nmachines:\n  bank:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n    hostnamePeers: [bank]\n  coach:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n")
+	declaration := []byte("version: 3\nname: private-source\nimages:\n  base:\n    base: ubuntu\n    build:\n      playbook: build.yml\n      files: [build.yml]\nmachines:\n  bank:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n    hostnamePeers: [bank]\n  coach:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n")
+	declaration = append(declaration, []byte("    hostnamePeers: []\n")...)
+	declaration = []byte(strings.ReplaceAll(string(declaration), "    base: ubuntu\n", "    base: ubuntu\n    os: windows\n    platform: {aws: {}, proxmox: {}}\n    extensions: {org.example.image: [null, false, 1]}\n"))
+	declaration = []byte(strings.ReplaceAll(string(declaration), "    hostnamePeers: [bank]", "    hostnamePeers: [bank]\n    nics: [{network: lab, address: 250}]\n    forwarding: true\n    platform: {aws: {}, proxmox: {}}\n    extensions: {org.example.machine: {key: value}}"))
+	declaration = append(declaration, []byte("platforms: [aws, proxmox]\nnetworks: {lab: {egress: internet, cidr: 10.0.0.0/24, extensions: {org.example.network: 2}}}\nextensions: {org.example.lab: true}\ninputs: {count: {type: integer, default: 0, description: Count}, enabled: {type: boolean, default: false}}\n")...)
 	if err := os.WriteFile(filepath.Join(root, "lab.yaml"), declaration, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +48,10 @@ func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 	if err := lc.Validate(received.Source); err != nil {
 		t.Fatal("provider cannot validate retained declaration:", err)
 	}
-	if len(received.Source.Lab.Images["base"].Files) != 1 || len(received.Machine.Spec.HostnamePeers) != 1 || received.Machine.Spec.HostnamePeers[0] != "bank" {
+	if !received.Source.Lab.Machines["coach"].HostnamePeers.Explicit || len(received.Source.Lab.Machines["coach"].HostnamePeers.Names) != 0 {
+		t.Fatal("empty peer inventory was lost in transport")
+	}
+	if len(received.Source.Lab.Images["base"].BuildFiles()) != 1 || len(received.Machine.Spec.HostnamePeers.Names) != 1 || received.Machine.Spec.HostnamePeers.Names[0] != "bank" {
 		t.Fatal("source privacy selections were lost across provider protocol")
 	}
 }
@@ -339,6 +348,28 @@ func TestBuildDoesNotBlockOtherOwnerAndMachineRetriesStayFenced(t *testing.T) {
 	for n := 0; n < 3; n++ {
 		if err := <-done; err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestEmptyPlatformRestrictionSurvivesProtocol(t *testing.T) {
+	c := lc.Command{Source: lc.Source{Lab: lc.Lab{Platforms: &lc.PlatformList{}}}}
+	w := &wire.Command{}
+	if e := wireconvert.Encode(c, w); e != nil {
+		t.Fatal(e)
+	}
+	var got lc.Command
+	if e := wireconvert.Decode(w, &got); e != nil {
+		t.Fatal(e)
+	}
+	if got.Source.Lab.Platforms == nil || len(got.Source.Lab.Platforms.Names) != 0 {
+		t.Fatal("empty restriction was broadened to any platform")
+	}
+	for _, platform := range []string{"aws", "proxmox"} {
+		e := lc.CheckCapabilities(got.Source.Lab, platform)
+		var p *lc.Error
+		if !errors.As(e, &p) || p.Code != lc.Unsupported || p.Field != "platforms" {
+			t.Fatal(platform, e)
 		}
 	}
 }

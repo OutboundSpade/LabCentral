@@ -27,7 +27,7 @@ func TestLocalIncidentTemplatePrivacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bundle == nil || bundle.validate(src) != nil || bundle.Audience != "coaches" || !lc.Contains(bundle.HiddenMachines, "support") {
+	if bundle == nil || bundle.Validate(src) != nil || bundle.Visibility.Audience != "coaches" || !lc.Contains(bundle.Visibility.HiddenMachines, "support") {
 		t.Fatal("incident metadata is not private", bundle)
 	}
 	for name, machine := range src.Lab.Machines {
@@ -35,7 +35,7 @@ func TestLocalIncidentTemplatePrivacy(t *testing.T) {
 			continue
 		}
 		image := src.Lab.Images[machine.Image]
-		for _, path := range image.Files {
+		for _, path := range image.BuildFiles() {
 			if path == "lab.yaml" || path == "support.yml" || strings.HasPrefix(path, "instructor") {
 				t.Fatal("private build material selected for student image", name, path)
 			}
@@ -45,16 +45,16 @@ func TestLocalIncidentTemplatePrivacy(t *testing.T) {
 	for name, spec := range src.Lab.Machines {
 		machines = append(machines, lc.PlannedMachine{Name: name, Spec: spec, Address: "10.77.0.10", HostPublicKey: "fixture-public-key"})
 	}
-	inst := lc.Instance{Plan: lc.Plan{Machines: machines}}
+	inst := lc.Instance{Plan: lc.Plan{Source: src, Machines: machines}}
 	steps := append([]GuestPlaybook{}, bundle.Reset...)
-	for _, x := range bundle.Exercises {
+	for _, x := range bundle.Breaks {
 		steps = append(steps, x.Steps...)
 	}
 	for _, check := range bundle.Checks {
 		steps = append(steps, check.Steps...)
 	}
 	for _, step := range steps {
-		files, err := bundle.guestFiles(src, inst, step)
+		files, err := bundle.GuestFiles(src, inst, step, nil)
 		if err != nil {
 			t.Fatal(step, err)
 		}

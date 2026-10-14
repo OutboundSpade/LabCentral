@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,19 +19,19 @@ func scenarioFixture(t *testing.T) (*Service, Session, InstructorBundle) {
 	t.Helper()
 	s, v, b := stageFixture(t)
 	b.Library = &TemplateLibraryMetadata{Category: "CCDC preparation", Difficulty: "intermediate", EstimatedMinutes: 45, Tags: []string{"Linux", "recovery"}}
-	b.Exercises = append(b.Exercises, TemplateExercise{ID: "second-break", Name: "Second service", Steps: []GuestPlaybook{{Machine: "workstation", Playbook: "second.yml"}}})
+	b.Breaks = append(b.Breaks, TemplateBreak{ID: "second-break", Name: "Second service", Steps: []GuestPlaybook{{Machine: "workstation", Playbook: "second.yml"}}})
 	b.Files = append(b.Files, lc.File{Path: "second.yml", Content: []byte("- hosts: localhost\n  tasks: []\n")})
-	b.Stages = append(b.Stages, TemplateStage{ID: "second", Title: "Restore another service", Instructions: "Inspect and restore the second service.", Kind: "action", ExerciseID: "second-break", CheckID: "service", Solution: "PRIVATE-SECOND-SOLUTION"})
+	b.Stages = append(b.Stages, TemplateStage{Completion: instructor.Completion{Check: "service"}, ID: "second", Title: "Restore another service", Instructions: "Inspect and restore the second service.", Break: "second-break", Solution: "PRIVATE-SECOND-SOLUTION"})
 	b.Scenarios = []TemplateScenario{{ID: "ccdc", Title: "CCDC recovery", Description: "Investigate and restore branch services.", Difficulty: "intermediate", EstimatedMinutes: 45, Variants: []ScenarioVariant{
-		{ID: "first", Compatible: true, ExerciseIDs: []string{"service-break"}, StageIDs: []string{"break"}},
-		{ID: "second", Compatible: true, ExerciseIDs: []string{"second-break"}, StageIDs: []string{"second"}},
-		{ID: "both", Compatible: true, ExerciseIDs: []string{"service-break", "second-break"}, StageIDs: []string{"break", "second"}},
+		{ID: "first", Compatible: true, Breaks: []string{"service-break"}, Stages: []string{"break"}},
+		{ID: "second", Compatible: true, Breaks: []string{"second-break"}, Stages: []string{"second"}},
+		{ID: "both", Compatible: true, Breaks: []string{"service-break", "second-break"}, Stages: []string{"break", "second"}},
 	}}}
 	var src lc.Source
 	if err := s.Store.Get(context.Background(), "source", "pinned", &src); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.validate(src); err != nil {
+	if err := b.Validate(src); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Store.Put(context.Background(), "template-instructor", "pinned", b); err != nil {
@@ -46,19 +47,19 @@ func createAttemptFor(t *testing.T, s *Service, v Session, key, scenario string)
 	return decodeLearning[LearningLab](t, request(s, "POST", "/api/templates/pinned/attempt", attemptBody(key, scenario), s.Config.Origin, v.CSRF), 201)
 }
 func TestScenarioManifestRejectsIncompatibleAndUnverifiableCombinations(t *testing.T) {
-	_, _, valid := scenarioFixture(t)
+	fixtureService, _, valid := scenarioFixture(t)
 	for name, change := range map[string]func(*InstructorBundle){
 		"not certified": func(b *InstructorBundle) { b.Scenarios[0].Variants[0].Compatible = false },
-		"unknown break": func(b *InstructorBundle) { b.Scenarios[0].Variants[0].ExerciseIDs = []string{"missing"} },
+		"unknown break": func(b *InstructorBundle) { b.Scenarios[0].Variants[0].Breaks = []string{"missing"} },
 		"duplicate break": func(b *InstructorBundle) {
-			b.Scenarios[0].Variants[0].ExerciseIDs = []string{"service-break", "service-break"}
+			b.Scenarios[0].Variants[0].Breaks = []string{"service-break", "service-break"}
 		},
-		"missing check":         func(b *InstructorBundle) { b.Scenarios[0].Variants[0].StageIDs = []string{"inspect"} },
-		"unselected break":      func(b *InstructorBundle) { b.Scenarios[0].Variants[0].StageIDs = []string{"second"} },
-		"duplicate combination": func(b *InstructorBundle) { b.Scenarios[0].Variants[1].ExerciseIDs = []string{"service-break"} },
+		"missing check":         func(b *InstructorBundle) { b.Scenarios[0].Variants[0].Stages = []string{"inspect"} },
+		"unselected break":      func(b *InstructorBundle) { b.Scenarios[0].Variants[0].Stages = []string{"second"} },
+		"duplicate combination": func(b *InstructorBundle) { b.Scenarios[0].Variants[1].Breaks = []string{"service-break"} },
 		"single variant":        func(b *InstructorBundle) { b.Scenarios[0].Variants = b.Scenarios[0].Variants[:1] },
 		"version one":           func(b *InstructorBundle) { b.Version = 1 },
-		"coach only":            func(b *InstructorBundle) { b.Audience = "coaches" },
+		"coach only":            func(b *InstructorBundle) { b.Visibility.Audience = "coaches" },
 		"no reset":              func(b *InstructorBundle) { b.Reset = nil },
 		"invalid difficulty":    func(b *InstructorBundle) { b.Library.Difficulty = "impossible" },
 		"duplicate tags":        func(b *InstructorBundle) { b.Library.Tags = []string{"Linux", "Linux"} },
@@ -68,7 +69,7 @@ func TestScenarioManifestRejectsIncompatibleAndUnverifiableCombinations(t *testi
 			var b InstructorBundle
 			_ = json.Unmarshal(raw, &b)
 			change(&b)
-			if b.validateScenarios() == nil {
+			if b.Validate(mustSource(t, fixtureService)) == nil {
 				t.Fatal("invalid scenario accepted")
 			}
 		})
@@ -229,7 +230,7 @@ func TestScenarioCombinesBreaksAfterOneResetAndStopsOnFailure(t *testing.T) {
 	var src lc.Source
 	_ = s.Store.Get(ctx, "source", "pinned", &src)
 	calls := []string{}
-	runner := func(_ context.Context, _ Team, _ lc.Source, _ InstructorBundle, steps []GuestPlaybook) error {
+	runner := func(_ context.Context, _ Team, _ lc.Source, _ InstructorBundle, steps []GuestPlaybook, _ ...lc.Extensions) error {
 		calls = append(calls, steps[0].Playbook)
 		return nil
 	}
@@ -241,7 +242,7 @@ func TestScenarioCombinesBreaksAfterOneResetAndStopsOnFailure(t *testing.T) {
 	}
 	calls = nil
 	failure := errors.New("guest outcome unknown")
-	runner = func(_ context.Context, _ Team, _ lc.Source, _ InstructorBundle, steps []GuestPlaybook) error {
+	runner = func(_ context.Context, _ Team, _ lc.Source, _ InstructorBundle, steps []GuestPlaybook, _ ...lc.Extensions) error {
 		calls = append(calls, steps[0].Playbook)
 		if len(calls) == 2 {
 			return failure
@@ -307,7 +308,7 @@ func TestScenarioInvalidSavedIntentCannotProvision(t *testing.T) {
 	if err := s.Store.Get(ctx, "template-attempt", lab.ID, &a); err != nil {
 		t.Fatal(err)
 	}
-	a.ExerciseIDs = []string{"unknown"}
+	a.Breaks = []string{"unknown"}
 	if err := s.Store.Put(ctx, "template-attempt", lab.ID, a); err != nil {
 		t.Fatal(err)
 	}
@@ -376,10 +377,10 @@ func TestStandardLibraryTemplateStrictImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = bundle.validate(src); err != nil {
+	if err = bundle.Validate(src); err != nil {
 		t.Fatal(err)
 	}
-	if len(bundle.Scenarios) != 1 || bundle.Scenarios[0].summary().MaxBreaks != 2 {
+	if len(bundle.Scenarios) != 1 || scenarioSummary(bundle.Scenarios[0]).MaxBreaks != 2 {
 		t.Fatal(bundle.Scenarios)
 	}
 	for _, f := range src.Files {

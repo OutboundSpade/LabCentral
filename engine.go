@@ -386,10 +386,13 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 		}
 	}
 	p, _ := netip.ParsePrefix(prefix)
-	addr := p.Masked().Addr()
-	for n := 0; n < 10; n++ {
-		addr = addr.Next()
+	used := map[int]bool{}
+	for _, m := range i.Plan.Machines {
+		if len(m.Spec.NICs) > 0 && m.Spec.NICs[0].Address != nil {
+			used[*m.Spec.NICs[0].Address] = true
+		}
 	}
+	nextOffset := 11
 	keyDir := filepath.Join(e.state.Root, "credentials", i.ID)
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
 		return err
@@ -400,8 +403,22 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	}
 	for n := range i.Plan.Machines {
 		m := &i.Plan.Machines[n]
+		offset := 0
+		if len(m.Spec.NICs) > 0 && m.Spec.NICs[0].Address != nil {
+			offset = *m.Spec.NICs[0].Address
+		} else {
+			for used[nextOffset] {
+				nextOffset++
+			}
+			offset = nextOffset
+			used[offset] = true
+			nextOffset++
+		}
+		addr := p.Masked().Addr()
+		for j := 0; j < offset; j++ {
+			addr = addr.Next()
+		}
 		m.Address = addr.String()
-		addr = addr.Next()
 		m.PublicKey = pub
 		host, err := ensureKey(filepath.Join(keyDir, m.Name+".host"))
 		if err != nil {
@@ -417,7 +434,7 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 		m := &i.Plan.Machines[n]
 		m.Hosts = []HostEntry{}
 		for _, host := range hosts {
-			if len(m.Spec.HostnamePeers) == 0 || Contains(m.Spec.HostnamePeers, host.Name) {
+			if !m.Spec.HostnamePeers.Explicit || Contains(m.Spec.HostnamePeers.Names, host.Name) {
 				m.Hosts = append(m.Hosts, host)
 			}
 		}

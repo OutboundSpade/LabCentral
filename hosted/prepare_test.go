@@ -31,7 +31,7 @@ func prepareFixture(t *testing.T) (*Service, []Team) {
 	s, _, _ := serviceFor(t)
 	teams := setupMeeting(t, s.Store)
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte("version: 2\nname: recovery\nimages:\n  base:\n    base: ubuntu-24.04\nmachines:\n  server:\n    image: base\n    cpu: 2\n    memory: 2Gi\n    disk: 20Gi\n    access: [ssh]\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte("version: 3\nname: recovery\nimages:\n  base:\n    base: ubuntu-24.04\nmachines:\n  server:\n    image: base\n    cpu: 2\n    memory: 2Gi\n    disk: 20Gi\n    access: [ssh]\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	source, err := lc.Load(dir)

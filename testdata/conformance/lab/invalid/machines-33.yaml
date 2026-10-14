@@ -1,0 +1,42 @@
+# field: machines
+# schema: reject
+# code: invalid
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  machine-0: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-1: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-2: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-3: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-4: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-5: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-6: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-7: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-8: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-9: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-10: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-11: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-12: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-13: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-14: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-15: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-16: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-17: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-18: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-19: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-20: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-21: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-22: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-23: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-24: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-25: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-26: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-27: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-28: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-29: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-30: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-31: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}
+  machine-32: {image: base, cpu: 1, memory: 256Mi, disk: 1Gi}

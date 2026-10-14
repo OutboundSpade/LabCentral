@@ -1,0 +1,130 @@
+# field: checks[0].steps[0].timeoutSeconds
+# code: invalid
+# schema: reject
+version: 3
+visibility:
+  audience: students
+  hiddenMachines: []
+practice:
+  desktopMachine: workstation
+library:
+  category: CCDC preparation
+  difficulty: beginner
+  estimatedMinutes: 30
+  tags:
+  - Linux
+  - service recovery
+  - web
+  - scheduled tasks
+notes: 'Two independent service-stop breaks may coexist. Neither break resets, starts,
+
+  or edits the other service. The shared reset runs once before a selected set.
+
+  These guest programs require native guest acceptance before release use.
+
+  '
+reset:
+- machine: services
+  playbook: reset.yml
+checks:
+- id: web
+  name: Branch website
+  points: 50
+  steps:
+  - machine: services
+    playbook: check-web.yml
+    timeoutSeconds: 601
+- id: scheduler
+  name: Scheduled operations
+  points: 50
+  steps:
+  - machine: services
+    playbook: check-scheduler.yml
+stages:
+- id: map-services
+  title: Read the branch handover
+  instructions: Identify the services machine and inspect the website and scheduled
+    operations.
+  prompt: Which systemd service runs the scheduled operations?
+  solution: The cron service reads the job in /etc/cron.d/branch-operations.
+  completion:
+    answer:
+      accepted:
+      - cron
+      caseSensitive: true
+- id: verify-web
+  title: Verify the branch website
+  instructions: Check nginx and open http://services/ from your workstation.
+  solution: Inspect sudo systemctl status nginx, then curl http://services/.
+  completion:
+    check: web
+- id: verify-scheduler
+  title: Verify scheduled operations
+  instructions: Check cron and inspect /etc/cron.d/branch-operations and its heartbeat
+    destination.
+  solution: Inspect sudo systemctl status cron and the heartbeat job.
+  completion:
+    check: scheduler
+- id: restore-web
+  title: Recover the branch website
+  instructions: Diagnose the unavailable branch website, preserve useful journal evidence,
+    and restore it.
+  solution: Inspect sudo systemctl status nginx and sudo journalctl -u nginx. Start
+    nginx with sudo systemctl start nginx and verify curl http://services/.
+  completion:
+    check: web
+  break: stop-web
+- id: restore-scheduler
+  title: Recover scheduled operations
+  instructions: Diagnose the stopped scheduled operations, preserve useful journal
+    evidence, and restore the scheduler without deleting its jobs.
+  solution: Inspect sudo systemctl status cron and sudo journalctl -u cron. Start
+    cron with sudo systemctl start cron and check the job and heartbeat.
+  completion:
+    check: scheduler
+  break: stop-scheduler
+scenarios:
+- id: branch-outage
+  title: Branch outage drill
+  description: Keep the branch online. Diagnose an authored combination of service
+    failures, restore availability, and record your evidence.
+  difficulty: beginner
+  estimatedMinutes: 30
+  variants:
+  - id: website
+    compatible: true
+    breaks:
+    - stop-web
+    stages:
+    - restore-web
+  - id: operations
+    compatible: true
+    breaks:
+    - stop-scheduler
+    stages:
+    - restore-scheduler
+  - id: combined
+    compatible: true
+    breaks:
+    - stop-web
+    - stop-scheduler
+    stages:
+    - restore-web
+    - restore-scheduler
+breaks:
+- id: stop-web
+  name: Web service stopped
+  description: Stop nginx without altering configuration.
+  walkthrough: Inspect systemctl status nginx and journalctl -u nginx, start nginx
+    and verify the homepage.
+  steps:
+  - machine: services
+    playbook: stop-web.yml
+- id: stop-scheduler
+  name: Scheduled operations stopped
+  description: Stop cron without modifying the jobs.
+  walkthrough: Inspect systemctl status cron and journalctl -u cron, start cron and
+    watch the heartbeat file.
+  steps:
+  - machine: services
+    playbook: stop-scheduler.yml

@@ -41,11 +41,11 @@ func (p *boundedProvider) Execute(ctx context.Context, c Command, observer Obser
 func boundedPlan(t *testing.T, build bool) Plan {
 	t.Helper()
 	dir := t.TempDir()
-	yaml := "version: 2\nname: bounded\nimages:\n"
+	yaml := "version: 3\nname: bounded\nimages:\n"
 	for _, name := range []string{"one", "two", "three"} {
 		yaml += "  " + name + ":\n    base: ubuntu-24.04\n"
 		if build {
-			yaml += "    playbook: " + name + ".yml\n"
+			yaml += "    build:\n      playbook: " + name + ".yml\n"
 			if err := os.WriteFile(filepath.Join(dir, name+".yml"), []byte("- hosts: localhost\n  tasks: []\n"), 0600); err != nil {
 				t.Fatal(err)
 			}

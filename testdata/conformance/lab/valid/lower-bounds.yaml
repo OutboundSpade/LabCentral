@@ -1,0 +1,12 @@
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 1
+    memory: 256Mi
+    disk: 1Gi
+    access: [ssh]

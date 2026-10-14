@@ -77,7 +77,7 @@ try {
       instructor: {
         notes: "Instructor private sentinel",
         checks,
-        exercises: [exercise],
+        breaks: [exercise],
       },
     };
     const jobs = Array.from({ length: 26 }, (_, i) => ({
@@ -120,8 +120,8 @@ try {
         teamID: t.id,
         count: t.id === "t1" ? 1 : 0,
       })),
-      exercises: [exercise],
-      exerciseRuns: [],
+      breaks: [exercise],
+      breakRuns: [],
       checkRuns: [],
       checkSchedule: {
         meetingID: "m",

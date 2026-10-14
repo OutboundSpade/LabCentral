@@ -12,34 +12,9 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"strings"
 	"time"
 )
 
-// Instructional metadata belongs to hosted, never the portable lab contract.
-type TemplateLibraryMetadata struct {
-	Category         string   `json:"category" yaml:"category"`
-	Difficulty       string   `json:"difficulty" yaml:"difficulty"`
-	EstimatedMinutes int      `json:"estimatedMinutes" yaml:"estimatedMinutes"`
-	Tags             []string `json:"tags" yaml:"tags"`
-}
-type TemplateScenario struct {
-	ID               string            `json:"id" yaml:"id"`
-	Title            string            `json:"title" yaml:"title"`
-	Description      string            `json:"description" yaml:"description"`
-	Difficulty       string            `json:"difficulty" yaml:"difficulty"`
-	EstimatedMinutes int               `json:"estimatedMinutes" yaml:"estimatedMinutes"`
-	Variants         []ScenarioVariant `json:"variants" yaml:"variants"`
-}
-
-// Each variant is an author-certified compatible combination, in execution order.
-// It is not inferred from names or produced from unrestricted author programs.
-type ScenarioVariant struct {
-	ID          string   `json:"id" yaml:"id"`
-	Compatible  bool     `json:"compatible" yaml:"compatible"`
-	ExerciseIDs []string `json:"exerciseIDs" yaml:"exerciseIDs"`
-	StageIDs    []string `json:"stageIDs" yaml:"stageIDs"`
-}
 type TemplateScenarioSummary struct {
 	ID               string `json:"id"`
 	Title            string `json:"title"`
@@ -51,89 +26,15 @@ type TemplateScenarioSummary struct {
 	MaxBreaks        int    `json:"maxBreaks"`
 }
 
-func (s TemplateScenario) summary() TemplateScenarioSummary {
+func scenarioSummary(s TemplateScenario) TemplateScenarioSummary {
 	v := TemplateScenarioSummary{ID: s.ID, Title: s.Title, Description: s.Description, Difficulty: s.Difficulty, EstimatedMinutes: s.EstimatedMinutes, VariantCount: len(s.Variants)}
 	for i, variant := range s.Variants {
-		if i == 0 || len(variant.ExerciseIDs) < v.MinBreaks {
-			v.MinBreaks = len(variant.ExerciseIDs)
+		if i == 0 || len(variant.Breaks) < v.MinBreaks {
+			v.MinBreaks = len(variant.Breaks)
 		}
-		v.MaxBreaks = max(v.MaxBreaks, len(variant.ExerciseIDs))
+		v.MaxBreaks = max(v.MaxBreaks, len(variant.Breaks))
 	}
 	return v
-}
-func validDifficulty(s string) bool { return s == "beginner" || s == "intermediate" || s == "advanced" }
-func (b InstructorBundle) validateScenarios() error {
-	if b.Library != nil {
-		m := b.Library
-		if !cleanName(m.Category) || len(m.Category) > 80 || !validDifficulty(m.Difficulty) || m.EstimatedMinutes < 1 || m.EstimatedMinutes > 1440 || len(m.Tags) > 12 {
-			return fmt.Errorf("library metadata requires a category, difficulty, duration and at most 12 tags")
-		}
-		seen := map[string]bool{}
-		for _, tag := range m.Tags {
-			if strings.TrimSpace(tag) == "" || len(tag) > 48 || seen[tag] {
-				return fmt.Errorf("library tags must be unique and bounded")
-			}
-			seen[tag] = true
-		}
-	}
-	if len(b.Scenarios) > 12 || (len(b.Scenarios) > 0 && (b.Version != 2 || b.Audience == "coaches" || len(b.Reset) == 0)) {
-		return fmt.Errorf("student scenarios require version 2, a reset and at most 12 definitions")
-	}
-	exercises := map[string]bool{}
-	stages := map[string]TemplateStage{}
-	for _, x := range b.Exercises {
-		exercises[x.ID] = true
-	}
-	for _, st := range b.Stages {
-		stages[st.ID] = st
-	}
-	seen := map[string]bool{}
-	for _, scenario := range b.Scenarios {
-		if !stepIDPattern.MatchString(scenario.ID) || seen[scenario.ID] || !cleanName(scenario.Title) || strings.TrimSpace(scenario.Description) == "" || len(scenario.Description) > 2000 || !validDifficulty(scenario.Difficulty) || scenario.EstimatedMinutes < 1 || scenario.EstimatedMinutes > 1440 || len(scenario.Variants) < 2 || len(scenario.Variants) > 32 {
-			return fmt.Errorf("scenarios require unique IDs, bounded briefing, difficulty, duration and 2–32 variants")
-		}
-		seen[scenario.ID] = true
-		variants, combinations := map[string]bool{}, map[string]bool{}
-		for _, variant := range scenario.Variants {
-			if !stepIDPattern.MatchString(variant.ID) || variants[variant.ID] || !variant.Compatible || len(variant.ExerciseIDs) < 1 || len(variant.ExerciseIDs) > 8 || len(variant.StageIDs) < 1 || len(variant.StageIDs) > 20 {
-				return fmt.Errorf("scenario variants require unique IDs, explicit compatibility, 1–8 breaks and 1–20 stages")
-			}
-			variants[variant.ID] = true
-			breaks := map[string]bool{}
-			for _, id := range variant.ExerciseIDs {
-				if !exercises[id] || breaks[id] {
-					return fmt.Errorf("scenario references duplicate or unknown break %q", id)
-				}
-				breaks[id] = true
-			}
-			normalized := slices.Clone(variant.ExerciseIDs)
-			slices.Sort(normalized)
-			combination := strings.Join(normalized, "\x00")
-			if combinations[combination] {
-				return fmt.Errorf("scenario variants must select distinct break combinations")
-			}
-			combinations[combination] = true
-			selected, covered := map[string]bool{}, map[string]bool{}
-			for _, id := range variant.StageIDs {
-				st, ok := stages[id]
-				if !ok || selected[id] || st.Kind == "instructor" || (st.ExerciseID != "" && !breaks[st.ExerciseID]) {
-					return fmt.Errorf("scenario stages must be unique, self-paced and match selected breaks")
-				}
-				selected[id] = true
-				// Each selected break needs guest verification; a guessed answer cannot
-				// establish that its service has been restored.
-				if st.Kind == "action" && st.ExerciseID != "" {
-					covered[st.ExerciseID] = true
-				}
-			}
-			for id := range breaks {
-				if !covered[id] {
-					return fmt.Errorf("scenario break %q needs an action recovery stage", id)
-				}
-			}
-		}
-	}
-	return nil
 }
 
 type CreateTemplateAttemptRequest struct {
@@ -144,15 +45,15 @@ type CreateTemplateAttemptRequest struct {
 // Private attempt intent includes its answer key and exact programs before any
 // resource is reserved. Subsequent imports cannot change an existing attempt.
 type templateAttempt struct {
-	ID          string                   `json:"id"`
-	UserID      string                   `json:"userID"`
-	Template    string                   `json:"template"`
-	RequestID   string                   `json:"requestID"`
-	ScenarioID  string                   `json:"scenarioID"`
-	VariantID   string                   `json:"variantID"`
-	ExerciseIDs []string                 `json:"exerciseIDs"`
-	Scenario    *TemplateScenarioSummary `json:"scenario,omitempty"`
-	Bundle      InstructorBundle         `json:"bundle"`
+	ID         string                   `json:"id"`
+	UserID     string                   `json:"userID"`
+	Template   string                   `json:"template"`
+	RequestID  string                   `json:"requestID"`
+	ScenarioID string                   `json:"scenarioID"`
+	VariantID  string                   `json:"variantID"`
+	Breaks     []string                 `json:"breaks"`
+	Scenario   *TemplateScenarioSummary `json:"scenario,omitempty"`
+	Bundle     InstructorBundle         `json:"bundle"`
 }
 
 var attemptRequestPattern = regexp.MustCompile(`^[a-f0-9]{24}$`)
@@ -220,6 +121,10 @@ func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, 
 		writeError(w, 503, "Attempts are unavailable. Retry with the same request ID.")
 		return
 	}
+	if err = s.actionableRevision(r.Context(), templateID); err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
 	if run, e := s.Store.activePractice(r.Context(), v.User.ID); e != nil {
 		writeError(w, 503, "Cloud allocation information is unavailable.")
 		return
@@ -238,10 +143,6 @@ func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, 
 		writeError(w, 409, "This pinned source cannot be planned in the configured environment.")
 		return
 	}
-	if err = b.validate(src); err != nil {
-		writeError(w, 409, "This template's practice definitions are invalid.")
-		return
-	}
 	a := templateAttempt{ID: id, UserID: v.User.ID, Template: templateID, RequestID: req.RequestID, ScenarioID: req.ScenarioID, Bundle: b}
 	p := LearningPublication{ID: id, Template: templateID, OwnerID: v.User.ID, ScenarioID: req.ScenarioID, Title: t.Name + " · Baseline practice", Description: src.Lab.Description, Mode: "self-paced", EstimatedMinutes: 30, Published: true, PublishedAt: time.Now().UTC()}
 	if b.Library != nil {
@@ -250,7 +151,7 @@ func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, 
 	if req.ScenarioID == "" {
 		ids := []string{}
 		for _, st := range b.Stages {
-			if st.Kind != "instructor" && st.ExerciseID == "" {
+			if st.Kind() != "instructor" && st.Break == "" {
 				ids = append(ids, st.ID)
 			}
 		}
@@ -291,25 +192,21 @@ func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, 
 		}
 		variant := choices[n.Int64()]
 		a.VariantID = variant.ID
-		a.ExerciseIDs = slices.Clone(variant.ExerciseIDs)
-		summary := scenario.summary()
+		a.Breaks = slices.Clone(variant.Breaks)
+		summary := scenarioSummary(*scenario)
 		a.Scenario = &summary
 		p.Title = scenario.Title
 		p.Description = scenario.Description
 		p.EstimatedMinutes = scenario.EstimatedMinutes
-		for _, id := range variant.StageIDs {
+		for _, id := range variant.Stages {
 			for _, st := range b.Stages {
 				if st.ID == id {
-					p.Steps = append(p.Steps, LearningStepInput{st.ID, st.Title, st.Instructions, st.Kind, st.Prompt, st.Answer, st.CheckID, st.Solution})
+					p.Steps = append(p.Steps, learningStage(st))
 				}
 			}
 		}
 	}
 	if err != nil {
-		writeError(w, 409, err.Error())
-		return
-	}
-	if err = validateLearning(PublishLearningRequest{Title: p.Title, Description: p.Description, Mode: p.Mode, EstimatedMinutes: p.EstimatedMinutes, Steps: p.Steps}, b); err != nil {
 		writeError(w, 409, err.Error())
 		return
 	}
@@ -354,11 +251,8 @@ func (s *Service) scenarioIntent(ctx context.Context, run practiceRecord, p Lear
 	if err := s.Store.Get(ctx, "template-attempt", p.ID, &a); err != nil {
 		return a, err
 	}
-	if a.UserID != run.UserID || a.ID != run.LabID || a.Template != p.Template || a.ScenarioID != p.ScenarioID || a.Scenario == nil || len(a.ExerciseIDs) == 0 {
+	if a.UserID != run.UserID || a.ID != run.LabID || a.Template != p.Template || a.ScenarioID != p.ScenarioID || a.Scenario == nil || len(a.Breaks) == 0 {
 		return a, fmt.Errorf("scenario intent does not match allocation")
-	}
-	if err := a.Bundle.validate(src); err != nil {
-		return a, err
 	}
 	matched := false
 	for _, scenario := range a.Bundle.Scenarios {
@@ -366,7 +260,7 @@ func (s *Service) scenarioIntent(ctx context.Context, run practiceRecord, p Lear
 			continue
 		}
 		for _, variant := range scenario.Variants {
-			if variant.ID == a.VariantID && slices.Equal(variant.ExerciseIDs, a.ExerciseIDs) {
+			if variant.ID == a.VariantID && slices.Equal(variant.Breaks, a.Breaks) {
 				matched = true
 			}
 		}
@@ -404,7 +298,7 @@ func (s *Service) prepareScenario(ctx context.Context, run practiceRecord, p Lea
 	if err = s.Store.Put(ctx, "scenario-preparation", run.ID, state); err != nil {
 		return err
 	}
-	if err = s.applyScenario(ctx, Team{InstanceID: run.InstanceID}, src, a.Bundle, a.ExerciseIDs, s.runGuestPlaybooks); err != nil {
+	if err = s.applyScenario(ctx, Team{InstanceID: run.InstanceID}, src, a.Bundle, a.Breaks, s.runGuestPlaybooks); err != nil {
 		return err
 	}
 	state.Status = "applied"
@@ -412,16 +306,16 @@ func (s *Service) prepareScenario(ctx context.Context, run practiceRecord, p Lea
 }
 
 // Restore the shared baseline once; never run a reset between compatible breaks.
-func (s *Service) applyScenario(ctx context.Context, team Team, src lc.Source, b InstructorBundle, ids []string, runner func(context.Context, Team, lc.Source, InstructorBundle, []GuestPlaybook) error) error {
+func (s *Service) applyScenario(ctx context.Context, team Team, src lc.Source, b InstructorBundle, ids []string, runner func(context.Context, Team, lc.Source, InstructorBundle, []GuestPlaybook, ...lc.Extensions) error) error {
 	if err := runner(ctx, team, src, b, b.Reset); err != nil {
 		return err
 	}
 	for _, id := range ids {
 		found := false
-		for _, x := range b.Exercises {
+		for _, x := range b.Breaks {
 			if x.ID == id {
 				found = true
-				if err := runner(ctx, team, src, b, x.Steps); err != nil {
+				if err := runner(ctx, team, src, b, x.Steps, x.Extensions); err != nil {
 					return err
 				}
 				break

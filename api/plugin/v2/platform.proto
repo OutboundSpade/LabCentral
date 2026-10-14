@@ -110,7 +110,28 @@ message Machine {
   string memory = 3 [json_name = "memory"];
   string disk = 4 [json_name = "disk"];
   repeated string access = 5 [json_name = "access"];
-  repeated string hostname_peers = 6 [json_name = "hostnamePeers"];
+  repeated NIC nics = 7 [json_name = "nics"];
+  bool forwarding = 8 [json_name = "forwarding"];
+  HostnamePeers hostname_peers = 9 [json_name = "hostnamePeers"];
+  MachinePlatform platform = 10 [json_name = "platform"];
+  map<string, bytes> extensions = 11 [json_name = "extensions"];
+  reserved 6;
+}
+message NIC {
+  string network = 1 [json_name = "network"];
+  optional int32 address = 2 [json_name = "address"];
+}
+message HostnamePeers {
+  bool explicit = 1 [json_name = "explicit"];
+  repeated string names = 2 [json_name = "names"];
+}
+message MachinePlatform {
+  AWSMachineOptions aws = 1 [json_name = "aws"];
+  ProxmoxMachineOptions proxmox = 2 [json_name = "proxmox"];
+}
+message AWSMachineOptions {
+}
+message ProxmoxMachineOptions {
 }
 message PlannedImage {
   string name = 1 [json_name = "name"];
@@ -131,21 +152,48 @@ message Lab {
   string description = 3 [json_name = "description"];
   map<string, Image> images = 4 [json_name = "images"];
   map<string, Machine> machines = 5 [json_name = "machines"];
-  Network network = 6 [json_name = "network"];
   map<string, Input> inputs = 7 [json_name = "inputs"];
+  PlatformList platforms = 8 [json_name = "platforms"];
+  map<string, bytes> extensions = 9 [json_name = "extensions"];
+  map<string, Network> networks = 10 [json_name = "networks"];
+  reserved 6;
 }
 message Image {
   string base = 1 [json_name = "base"];
-  string playbook = 2 [json_name = "playbook"];
-  repeated string files = 3 [json_name = "files"];
+  string os = 4 [json_name = "os"];
+  ImageBuild build = 5 [json_name = "build"];
+  ImagePlatform platform = 6 [json_name = "platform"];
+  map<string, bytes> extensions = 7 [json_name = "extensions"];
+  reserved 2;
+  reserved 3;
 }
-message Network {
-  bool internet = 1 [json_name = "internet"];
+message ImageBuild {
+  string playbook = 1 [json_name = "playbook"];
+  repeated string files = 2 [json_name = "files"];
+}
+message ImagePlatform {
+  AWSImageOptions aws = 1 [json_name = "aws"];
+  ProxmoxImageOptions proxmox = 2 [json_name = "proxmox"];
+}
+message AWSImageOptions {
+}
+message ProxmoxImageOptions {
 }
 message Input {
   string type = 1 [json_name = "type"];
-  string default = 2 [json_name = "default"];
   bool required = 3 [json_name = "required"];
+  bytes default = 4 [json_name = "default"];
+  string description = 5 [json_name = "description"];
+  reserved 2;
+}
+message PlatformList {
+  repeated string names = 1 [json_name = "names"];
+}
+message Network {
+  string egress = 2 [json_name = "egress"];
+  string cidr = 3 [json_name = "cidr"];
+  map<string, bytes> extensions = 4 [json_name = "extensions"];
+  reserved 1;
 }
 message File {
   string path = 1 [json_name = "path"];

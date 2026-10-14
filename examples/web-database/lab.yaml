@@ -1,12 +1,12 @@
-version: 2
+version: 3
 name: web-database
 images:
   web:
     base: ubuntu-24.04
-    playbook: images/web.yml
+    build: {playbook: images/web.yml}
   database:
     base: ubuntu-24.04
-    playbook: images/database.yml
+    build: {playbook: images/database.yml}
 machines:
   web:
     image: web

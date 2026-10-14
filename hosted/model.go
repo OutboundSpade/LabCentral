@@ -125,18 +125,19 @@ type Overview struct {
 	Lab        LabView    `json:"lab"`
 }
 type AdminView struct {
-	JoinedStudents int                  `json:"joinedStudents"`
-	RepositoryURL  string               `json:"repositoryURL"`
-	TeamDesktops   []TeamDesktopCount   `json:"teamDesktops"`
-	CheckSchedule  *CheckSchedule       `json:"checkSchedule,omitempty"`
-	CheckRuns      []CheckRun           `json:"checkRuns"`
-	ActiveDesktops int                  `json:"activeDesktops"`
-	Meeting        *Meeting             `json:"meeting"`
-	Teams          []Team               `json:"teams"`
-	Jobs           []Job                `json:"jobs"`
-	Templates      []Template           `json:"templates"`
-	Exercises      []ExerciseDefinition `json:"exercises"`
-	ExerciseRuns   []ExerciseRun        `json:"exerciseRuns"`
+	ImportFailures []TemplateImportFailure `json:"importFailures"`
+	JoinedStudents int                     `json:"joinedStudents"`
+	RepositoryURL  string                  `json:"repositoryURL"`
+	TeamDesktops   []TeamDesktopCount      `json:"teamDesktops"`
+	CheckSchedule  *CheckSchedule          `json:"checkSchedule,omitempty"`
+	CheckRuns      []CheckRun              `json:"checkRuns"`
+	ActiveDesktops int                     `json:"activeDesktops"`
+	Meeting        *Meeting                `json:"meeting"`
+	Teams          []Team                  `json:"teams"`
+	Jobs           []Job                   `json:"jobs"`
+	Templates      []Template              `json:"templates"`
+	Breaks         []BreakDefinition       `json:"breaks"`
+	BreakRuns      []BreakRun              `json:"breakRuns"`
 }
 type TeamDesktopCount struct {
 	TeamID string `json:"teamID"`

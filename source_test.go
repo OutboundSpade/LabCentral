@@ -2,13 +2,14 @@ package labcentral
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-const sample = `version: 2
+const sample = `version: 3
 name: example
 images:
   base:
@@ -38,7 +39,7 @@ func testEnvironment() Environment {
 	return Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []InstanceType{{"t3.medium", 2, 4096}}}}
 }
 func TestStrictAuthoring(t *testing.T) {
-	for name, src := range map[string]string{"unknown": sample + "unexpected: value\n", "duplicate": sample + "name: other\n", "alias": strings.Replace(sample, "access: [ssh]", "access: &shared [ssh]", 1), "multiple": sample + "---\nname: second\n", "wrong-version": strings.Replace(sample, "version: 2", "version: 1", 1), "unknown-image": strings.Replace(sample, "image: base", "image: missing", 1)} {
+	for name, src := range map[string]string{"unknown": sample + "unexpected: value\n", "duplicate": sample + "name: other\n", "alias": strings.Replace(sample, "access: [ssh]", "access: &shared [ssh]", 1), "multiple": sample + "---\nname: second\n", "wrong-version": strings.Replace(sample, "version: 3", "version: 1", 1), "unknown-image": strings.Replace(sample, "image: base", "image: missing", 1)} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			os.WriteFile(filepath.Join(dir, "lab.yaml"), []byte(src), 0600)
@@ -173,7 +174,7 @@ func TestHostnamePeerSelectionValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(src.Lab.Machines["one"].HostnamePeers) != 1 {
+	if len(src.Lab.Machines["one"].HostnamePeers.Names) != 1 {
 		t.Fatal("hostname inventory not retained")
 	}
 }
@@ -182,7 +183,7 @@ func TestImageBuildFileSelectionValidation(t *testing.T) {
 	for name, files := range map[string]string{"unknown": "[build.yml, missing.txt]", "duplicate": "[build.yml, build.yml]", "missing playbook": "[data.txt]"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
-			declaration := strings.Replace(sample, "base: ubuntu-24.04", "base: ubuntu-24.04\n    playbook: build.yml\n    files: "+files, 1)
+			declaration := strings.Replace(sample, "base: ubuntu-24.04", "base: ubuntu-24.04\n    build:\n      playbook: build.yml\n      files: "+files, 1)
 			for path, data := range map[string]string{"lab.yaml": declaration, "build.yml": "- hosts: localhost\n  tasks: []\n", "data.txt": "training data"} {
 				if err := os.WriteFile(filepath.Join(dir, path), []byte(data), 0600); err != nil {
 					t.Fatal(err)
@@ -192,5 +193,25 @@ func TestImageBuildFileSelectionValidation(t *testing.T) {
 				t.Fatal("invalid build selection accepted")
 			}
 		})
+	}
+}
+
+func TestProxmoxExplicitAddressCannotUseGatewayHost(t *testing.T) {
+	raw := strings.Replace(sample, "    access: [ssh]", "    nics: [{network: lab, address: 10}]\n    access: [ssh]", 1)
+	src, err := sourceYAML(t, []byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := testEnvironment()
+	env.Platform = "proxmox"
+	env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid", TokenID: "lab@pve!token", TokenEnv: "TEST_TOKEN", Node: "pve", Storage: "local-lvm", Pool: "test", Bridge: "vmbr0", VMIDStart: 2000, VMIDEnd: 2999, VLANStart: 100, VLANEnd: 110, CIDR: "10.80.0.0/16", Gateway: "10.80.0.10", VerifiedIsolation: true}
+	_, err = PlanLab(src, env, nil)
+	var problem *Error
+	if !errors.As(err, &problem) || problem.Field != "machines.one.nics[0].address" {
+		t.Fatal("gateway collision accepted", err)
+	}
+	env.Proxmox.Gateway = "10.80.0.1"
+	if _, err = PlanLab(src, env, nil); err != nil {
+		t.Fatal("noncolliding address rejected", err)
 	}
 }
