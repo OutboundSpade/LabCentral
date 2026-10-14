@@ -488,6 +488,17 @@ allocation was stopped with confirmed native cleanup and the temporary identitie
 were removed. Example Branch v3 images, meetings, coach templates, Proxmox and larger
 cohorts were not qualified in this rollout.
 
+The concurrency and platform-option release was deployed on 2026-10-14 over the idle
+installation after a fresh backup. Existing service-recovery images were reused
+because their identities were unchanged. With real OIDC identities, a student's
+combined-outage scenario prepared, the rendered DCV desktop accepted keyboard repairs
+of both services, and both native stage checks passed through reused guest SSH
+connections. Cleanup was confirmed and the temporary identities were removed. AWS
+platform options passed a separate library deployment: an explicitly requested
+t3.small with a gp3 root volume at 4000 IOPS and 200 MiB/s and standard CPU credits,
+verified natively and destroyed. Proxmox options and cohort-scale load remain
+unqualified live; the cohort figures are local fake-engine measurements.
+
 ## Proposals after the foundation
 
 Registries, additional hosted platforms, classroom governance beyond published
