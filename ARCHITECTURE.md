@@ -574,6 +574,22 @@ t3.small with a gp3 root volume at 4000 IOPS and 200 MiB/s and standard CPU cred
 verified natively and destroyed. Proxmox options and cohort-scale load remain
 unqualified live; the cohort figures are local fake-engine measurements.
 
+Private lab gateways passed live library acceptance on 2026-10-14 in explicit AWS test
+environments: machines had no public addresses, one t3.micro gateway held the lab's
+only public address, jump SSH and host-name peers worked, an Internet-enabled network
+egressed through the gateway address while an isolated network and private forwarding
+were blocked, lab machines could not reach gateway SSH, and egress planning without
+operator enablement was rejected. A just-created route table was briefly invisible to
+reads; deployment stopped in recovery and `recover` completed it after a bounded
+retry was added. A DCV desktop rendered through the gateway tunnel in about three
+seconds and revocation closed its connections. All labs, the test image and its
+snapshot were removed. The hosted runtime IAM change was applied through a reviewed
+change set, and the hosted release was deployed after its first attempt failed because
+the control host's disk was full of superseded releases; deployments now prune them.
+A real OIDC student's scenario then prepared behind a gateway, the rendered desktop
+accepted a keyboard repair and the native check passed; cleanup removed the gateway,
+machines and network. Proxmox egress remains unqualified live.
+
 ## Proposals after the foundation
 
 Registries, additional hosted platforms, classroom governance beyond published
