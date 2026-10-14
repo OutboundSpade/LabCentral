@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	Aggregate          AggregateOptions `json:"aggregate,omitempty"`
 	Engine             lc.EngineOptions `json:"engine,omitempty"`
 	Worker             WorkerOptions    `json:"worker,omitempty"`
 	WeeklyCloudMinutes int              `json:"weeklyCloudMinutes,omitempty"`

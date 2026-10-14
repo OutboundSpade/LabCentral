@@ -63,6 +63,10 @@ func (s *Service) desktopLesson(w http.ResponseWriter, r *http.Request, d *deskt
 	}
 	r.SetPathValue("id", run.LabID)
 	if r.URL.Path == "/lesson" && r.Method == "GET" {
+		if err = s.touchLearning(r.Context(), v.User.ID, run.LabID); err != nil {
+			writeError(w, 503, "Lesson activity could not be saved.")
+			return
+		}
 		s.learningView(w, r, v)
 		return
 	}

@@ -179,3 +179,130 @@ func TestMachinesOverlapAfterNetworkAndRetainSuccessfulSibling(t *testing.T) {
 		t.Fatal("successful network/machine sibling lost", retained)
 	}
 }
+
+type cleanupFenceProvider struct {
+	*fakeProvider
+	action    string
+	entered   chan struct{}
+	release   chan struct{}
+	uncertain bool
+}
+
+func (p *cleanupFenceProvider) Execute(ctx context.Context, c Command, o Observer) (Result, error) {
+	if c.Action == p.action && (c.Prior.Kind == "image" || c.Action == "image.abandon") {
+		close(p.entered)
+		select {
+		case <-ctx.Done():
+			return Result{}, ctx.Err()
+		case <-p.release:
+		}
+		if p.uncertain {
+			return Result{}, errors.New("cleanup response lost")
+		}
+		if c.Action == "image.abandon" {
+			return Result{Absent: true}, nil
+		}
+	}
+	return p.fakeProvider.Execute(ctx, c, o)
+}
+func TestImageCleanupReleasesAllocationFenceAndRetainsUnknownIntent(t *testing.T) {
+	for _, abandon := range []bool{false, true} {
+		t.Run(map[bool]string{false: "remove", true: "abandon"}[abandon], func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			action := "resource.destroy"
+			if abandon {
+				action = "image.abandon"
+			}
+			p := &cleanupFenceProvider{fakeProvider: freshFake(), action: action, entered: make(chan struct{}), release: make(chan struct{}), uncertain: true}
+			engine, err := Open(t.TempDir(), p, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer engine.Close()
+			target, other := imagePlan(t, "target"), imagePlan(t, "other")
+			if _, err = engine.Build(ctx, other); err != nil {
+				t.Fatal(err)
+			}
+			if abandon {
+				p.loseOnce = true
+			}
+			_, err = engine.Build(ctx, target)
+			if !abandon && err != nil {
+				t.Fatal(err)
+			}
+			if abandon && err == nil {
+				t.Fatal("fixture did not retain unpublished build")
+			}
+			done := make(chan error, 1)
+			clean := func() error {
+				if abandon {
+					return engine.AbandonBuild(ctx, target.Images[0].CacheKey)
+				}
+				return engine.RemoveImage(ctx, target.Images[0].CacheKey)
+			}
+			go func() { done <- clean() }()
+			<-p.entered
+			inst, err := engine.Deploy(ctx, other)
+			if err != nil {
+				t.Fatal("native image cleanup held allocation fence", err)
+			}
+			if inst.Status != "ready" {
+				t.Fatal(inst.Status)
+			}
+			close(p.release)
+			if err = <-done; err == nil {
+				t.Fatal("lost cleanup response reported success")
+			}
+			var intent Command
+			if err = engine.state.Get(ctx, "image-cleanup", target.Images[0].CacheKey, &intent); err != nil {
+				t.Fatal("cleanup intent lost", err)
+			}
+			if _, err = engine.Build(ctx, target); err == nil {
+				t.Fatal("uncertain cleanup permitted image reuse")
+			}
+			// Retry the same recorded cleanup identity after provider confirmation.
+			p.entered = make(chan struct{})
+			p.release = make(chan struct{})
+			close(p.release)
+			p.uncertain = false
+			if err = clean(); err != nil {
+				t.Fatal(err)
+			}
+			if err = engine.state.Get(ctx, "image-cleanup", target.Images[0].CacheKey, &intent); err == nil {
+				t.Fatal("confirmed cleanup retained intent")
+			}
+		})
+	}
+}
+
+func TestDestroyWaitsForGuestLifecycleAndThenCompletes(t *testing.T) {
+	first, second, inst, _ := desktopFenceFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	guest := make(chan error, 1)
+	go func() {
+		guest <- first.WithSSHMaterial(ctx, inst.ID, "web", func(Instance, PlannedMachine, Resource, []byte) error { close(entered); <-release; return nil })
+	}()
+	<-entered
+	done := make(chan error, 1)
+	go func() { done <- second.Destroy(ctx, inst.ID) }()
+	select {
+	case err := <-done:
+		t.Fatalf("destroy did not wait for guest lifecycle: %v", err)
+	case <-time.After(40 * time.Millisecond):
+	}
+	close(release)
+	if err := <-guest; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	saved, err := first.Inspect(ctx, inst.ID)
+	if err != nil || saved.Status != "destroyed" {
+		t.Fatal(saved.Status, err)
+	}
+}

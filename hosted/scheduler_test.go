@@ -29,6 +29,7 @@ func (e *guestLaneEngine) WithSSHMaterial(ctx context.Context, instance, machine
 
 func TestGuestCapacitySurvivesBulkSaturationAndKeepsCleanupSlot(t *testing.T) {
 	s, teams := checkFixture(t)
+	s.Config.Worker.MaxGuestJobs = 2
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	e := &guestLaneEngine{started: make(chan string, 3)}

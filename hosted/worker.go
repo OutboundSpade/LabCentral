@@ -35,7 +35,7 @@ func (s *Service) Run(ctx context.Context) error {
 	var workers sync.WaitGroup
 	defer func() { cancel(); workers.Wait() }()
 	workers.Go(func() { s.policyLoop(ctx) })
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
 	limits := s.Config.Worker.Effective()
 	done := make(chan error, limits.MaxBulkJobs+limits.MaxGuestJobs+1)
@@ -50,6 +50,7 @@ func (s *Service) Run(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+		case <-s.Store.wake:
 		case <-tick.C:
 		}
 	}
@@ -65,26 +66,36 @@ func (s *Service) stopProvisioning() {
 	}
 }
 func (s *Service) enforceDeadline(ctx context.Context) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m, e := s.Store.Meeting(ctx)
-	if e == nil && m != nil && m.Status != "ended" && (m.Status == "ending" || !m.Expires.After(time.Now())) {
-		m.Status = "ending"
-		if s.Store.Put(ctx, "meeting", "current", m) == nil {
-			s.stopProvisioning()
-			_, _ = s.Store.Enqueue(ctx, "end", m.ID)
+	_ = s.Store.atomic(ctx, func(ctx context.Context) error {
+		m, err := s.Store.Meeting(ctx)
+		if err != nil {
+			return err
 		}
-	}
+		if m == nil || m.Status == "ended" || (m.Status != "ending" && m.Expires.After(time.Now())) {
+			return nil
+		}
+		m.Status = "ending"
+		if err = s.Store.Put(ctx, "meeting", "current", m); err != nil {
+			return err
+		}
+		s.stopProvisioning()
+		_, err = s.Store.Enqueue(ctx, "end", m.ID)
+		return err
+	})
 }
 func (s *Service) policyLoop(ctx context.Context) {
-	tick := time.NewTicker(20 * time.Second)
+	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
+	var desktopChecked time.Time
 	for {
 		s.enforceDeadline(ctx)
 		s.enforcePracticeDeadlines(ctx)
 		s.scheduleLearningChecks(ctx)
 		s.scheduleChecks(ctx)
-		s.revalidateDesktops(ctx)
+		if time.Since(desktopChecked) >= 20*time.Second {
+			s.revalidateDesktops(ctx)
+			desktopChecked = time.Now()
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -93,48 +104,21 @@ func (s *Service) policyLoop(ctx context.Context) {
 	}
 }
 func (s *Service) recoverAccess(ctx context.Context) error {
-	rows, e := s.Store.List(ctx, "desktop")
-	if e != nil {
-		return e
+	records, err := s.Store.List(ctx, "desktop")
+	if err != nil {
+		return err
 	}
-	var failures []error
-	for _, b := range rows {
-		if err := ctx.Err(); err != nil {
-			return errors.Join(append(failures, err)...)
-		}
+	return parallelResources(len(records), 8, func(n int) error {
 		var record accessRecord
-		if e = json.Unmarshal(b, &record); e != nil {
-			failures = append(failures, e)
-			continue
+		if err := json.Unmarshal(records[n], &record); err != nil {
+			return err
 		}
-		unlock := s.lockUser(record.UserID)
-		s.mu.Lock()
-		desktop := s.desktops[record.ID]
-		active := desktop != nil && desktop.ctx.Err() == nil
-		s.mu.Unlock()
-		if active {
-			unlock()
-			continue
-		}
-		e = s.Engine.CloseAccess(ctx, record.ID)
-		if e == nil {
-			e = s.Store.Delete(ctx, "desktop", record.ID)
-			if e == nil {
-				s.mu.Lock()
-				delete(s.desktops, record.ID)
-				s.mu.Unlock()
-			}
-		}
-		unlock()
-		if e != nil {
-			// Preserve uncertain ownership, but still recover other users. A
-			// single unreachable guest must not strand the rest of this batch.
-			failures = append(failures, e)
-		}
-	}
-	return errors.Join(failures...)
+		return s.cleanupDesktop(ctx, record.ID, true)
+	})
 }
 func (s *Service) runJob(ctx context.Context, j Job) error {
+	ctx, closeGuest := guestJobContext(ctx)
+	defer closeGuest()
 	switch j.Kind {
 	case "practice-prepare", "practice-end":
 		return s.runPractice(ctx, j)
@@ -172,53 +156,52 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 		return e
 	}
 	if j.Kind == "end" {
-		records, e := s.Store.List(ctx, "desktop")
-		if e != nil {
-			return e
+		// Intent precedes each team's native effects and survives uncertain outcomes.
+		_, err := s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ending' WHERE meeting_id=? AND status!='ended'`, m.ID)
+		if err != nil {
+			return err
 		}
-		var failures []error
-		for _, b := range records {
-			var a accessRecord
-			if e = json.Unmarshal(b, &a); e != nil {
-				failures = append(failures, e)
-				continue
-			}
-			if strings.HasPrefix(a.TeamID, "practice:") {
-				continue
-			}
-			unlock := s.lockUser(a.UserID)
-			e = s.revokeMatchingDesktop(ctx, a.UserID, a.InstanceID)
-			unlock()
-			// Engine destruction retains access cleanup intent until VM absence.
+		records, err := s.Store.List(ctx, "desktop")
+		if err != nil {
+			return err
 		}
-		// A failed team must not keep unrelated teams running and accruing charges.
-		for _, t := range teams {
-			_, e = s.Engine.Inspect(ctx, t.InstanceID)
-			if errors.Is(e, sql.ErrNoRows) {
-				e = nil
-			} else if e == nil {
-				e = s.Engine.Destroy(ctx, t.InstanceID)
+		accessErr := parallelResources(len(records), 8, func(n int) error {
+			var record accessRecord
+			if err := json.Unmarshal(records[n], &record); err != nil {
+				return err
 			}
-			if e != nil {
-				failures = append(failures, fmt.Errorf("%s: %w", t.Name, e))
-				continue
+			if strings.HasPrefix(record.TeamID, "practice:") {
+				return nil
 			}
-			if e = os.Remove(filepath.Join(s.Config.Root, "exercise-keys", digest(t.InstanceID)+".pem")); e != nil && !os.IsNotExist(e) {
-				failures = append(failures, fmt.Errorf("%s exercise credential cleanup: %w", t.Name, e))
-				continue
+			// Unreachable guest access does not block confirmed native destruction.
+			_ = s.cleanupDesktop(ctx, record.ID, false)
+			return nil
+		})
+		destroyErr := parallelResources(len(teams), 8, func(n int) error {
+			t := teams[n]
+			if t.Status == "ended" {
+				return nil
 			}
-			if _, e = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ended' WHERE id=?`, t.ID); e != nil {
-				failures = append(failures, e)
+			_, err := s.Engine.Inspect(ctx, t.InstanceID)
+			if errors.Is(err, sql.ErrNoRows) {
+				err = nil
+			} else if err == nil {
+				err = s.Engine.Destroy(ctx, t.InstanceID)
 			}
+			if err != nil {
+				return fmt.Errorf("%s: %w", t.Name, err)
+			}
+			if err = os.Remove(filepath.Join(s.Config.Root, "exercise-keys", digest(t.InstanceID)+".pem")); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("%s exercise credential cleanup: %w", t.Name, err)
+			}
+			_, err = s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ended' WHERE id=?`, t.ID)
+			return err
+		})
+		if err = errors.Join(accessErr, destroyErr); err != nil {
+			return err
 		}
-		if e = errors.Join(failures...); e != nil {
-			return e
-		}
-
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		m.Status = "ended"
-		return s.Store.Put(ctx, "meeting", "current", m)
+		_, err = s.Store.DB.ExecContext(ctx, `UPDATE objects SET body=json_set(body,'$.status','ended') WHERE kind='meeting' AND id='current' AND json_extract(body,'$.id')=?`, m.ID)
+		return err
 	}
 	if m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) {
 		return fmt.Errorf("meeting has ended")
@@ -253,30 +236,22 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 	close(work)
 	workers.Wait()
 	failure := errors.Join(failures...)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	current, e := s.Store.Meeting(ctx)
-	if e != nil {
-		return errors.Join(failure, e)
-	}
-	if current != nil && current.ID == m.ID && current.Status != "ending" && current.Status != "ended" && current.Expires.After(time.Now()) {
-		current.Status = "ready"
-		if failure != nil {
-			current.Status = "failed"
-			states, err := s.Store.Teams(ctx, m.ID)
-			if err != nil {
-				return errors.Join(failure, err)
-			}
-			for _, team := range states {
-				if team.Status == "ready" {
-					current.Status = "partial"
-					break
-				}
+	status := "ready"
+	if failure != nil {
+		status = "failed"
+		states, err := s.Store.Teams(ctx, m.ID)
+		if err != nil {
+			return errors.Join(failure, err)
+		}
+		for _, team := range states {
+			if team.Status == "ready" {
+				status = "partial"
+				break
 			}
 		}
-		return errors.Join(failure, s.Store.Put(ctx, "meeting", "current", current))
 	}
-	return failure
+	_, e = s.Store.DB.ExecContext(ctx, `UPDATE objects SET body=json_set(body,'$.status',?) WHERE kind='meeting' AND id='current' AND json_extract(body,'$.id')=? AND json_extract(body,'$.status') NOT IN ('ending','ended') AND json_extract(body,'$.expires')>?`, status, m.ID, time.Now().UTC().Format(time.RFC3339Nano))
+	return errors.Join(failure, e)
 }
 
 // Ready teams remain accessible while failed teams reconcile their original IDs.
@@ -327,4 +302,24 @@ func (s *Service) prepareTeam(ctx context.Context, meeting string, t Team, plan 
 	defer cancel()
 	_, save := s.Store.DB.ExecContext(saveCtx, `UPDATE teams SET status=? WHERE id=?`, status, t.ID)
 	return errors.Join(err, save)
+}
+
+// A fixed-size pool visits every resource, preserves successes and joins failures.
+func parallelResources(count, limit int, fn func(int) error) error {
+	failures := make([]error, count)
+	work := make(chan int)
+	var wg sync.WaitGroup
+	for n := 0; n < min(count, limit); n++ {
+		wg.Go(func() {
+			for index := range work {
+				failures[index] = fn(index)
+			}
+		})
+	}
+	for n := range count {
+		work <- n
+	}
+	close(work)
+	wg.Wait()
+	return errors.Join(failures...)
 }

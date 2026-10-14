@@ -41,18 +41,14 @@ func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
 	}
 	return fmt.Errorf("Cloud practice requires the template desktop machine.")
 }
-func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) startPracticeDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	// Coordinate with image-removal eligibility and publication updates. No
 	// infrastructure mutation occurs in this request.
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	p, err = s.ownedPublication(r.Context(), p.ID, v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
@@ -243,8 +239,6 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 	return err
 }
 func (s *Service) destroyPractice(ctx context.Context, run practiceRecord) error {
-	unlock := s.lockUser(run.UserID)
-	defer unlock()
 	// Guest cleanup can be unreachable; native destruction must still proceed.
 	// Transport cancellation occurs first and records survive until VM absence.
 	_ = s.revokePractice(ctx, run)
@@ -300,8 +294,6 @@ func (s *Service) revokePractice(ctx context.Context, run practiceRecord) error 
 	return s.revokeMatchingDesktop(ctx, run.UserID, run.InstanceID)
 }
 func (s *Service) launchPractice(w http.ResponseWriter, r *http.Request, v Session) {
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	run, err := s.readyPractice(r.Context(), v.User.ID, r.PathValue("id"))
 	if err != nil {
 		writeError(w, 409, err.Error())
@@ -318,4 +310,8 @@ func (s *Service) launchPractice(w http.ResponseWriter, r *http.Request, v Sessi
 		return
 	}
 	s.launchDesktop(w, r, v, Team{ID: "practice:" + run.ID, InstanceID: run.InstanceID}, run.Expires, machine)
+}
+
+func (s *Service) startPractice(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.startPracticeDecision)(w, r, v)
 }

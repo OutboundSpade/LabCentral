@@ -96,14 +96,7 @@ func (s *Service) syncSource(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		s.mu.Lock()
-		err = s.Store.Get(ctx, "template", old.ID, &old)
-		if err == nil {
-			old.CommittedAt = &at
-			old.CommitTitle = subject
-			err = s.Store.Put(ctx, "template", old.ID, old)
-		}
-		s.mu.Unlock()
+		_, err = s.Store.DB.ExecContext(ctx, `UPDATE objects SET body=json_set(body,'$.committedAt',json(?),'$.commitTitle',?) WHERE kind='template' AND id=?`, jsonValue(at), subject, old.ID)
 		if err != nil {
 			return err
 		}
@@ -236,9 +229,7 @@ func (s *Service) importSnapshot(ctx context.Context, root, commit string, commi
 			}
 		}
 		id := digest(commit + ":" + entry.Name())[:24]
-		s.mu.Lock()
 		err = s.Store.importRevision(ctx, id, src, b, string(handover), commit, committed, title)
-		s.mu.Unlock()
 		if err != nil {
 			return err
 		}

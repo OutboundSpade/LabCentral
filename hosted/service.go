@@ -21,23 +21,39 @@ type Service struct {
 	Engine         Engine
 	Identity       Identity
 	env            lc.Environment
-	mu             sync.Mutex // coordinates membership authorization and in-process desktop handles
+	desktopMu      sync.Mutex // protects only desktop handles and launch tickets
 	desktops       map[string]*desktopSession
 	tickets        map[string]launchTicket
+	accessFlights  map[string]string
 	authMu         sync.Mutex
 	authLocks      map[string]*sessionLock
 	loginMu        sync.Mutex
-	userLocks      sync.Map
+	userMu         sync.Mutex
+	userLocks      map[string]*sessionLock
+	sshOnce        sync.Once
+	sshSlots       chan struct{}
 	jobMu          sync.Mutex
 	activeJobs     map[string]runningJob
+	queuedClaims   map[string][]jobClaim
 	provisionOnce  sync.Once
 	provisionSlots chan struct{}
 	exerciseRunner func(context.Context, Team, BreakRun, lc.Source) (string, error)
 }
 
-func New(ctx context.Context, c Config, e Engine) (*Service, error) {
+// New shares SSH admission with the optional provider wrapper. The server
+// creates that wrapper before opening its engine and supplies it here.
+func New(ctx context.Context, c Config, e Engine, budgets ...*BudgetedProvider) (*Service, error) {
 	if err := ValidateConfig(c); err != nil {
 		return nil, err
+	}
+	if len(budgets) > 1 || (len(budgets) == 1 && budgets[0] == nil) {
+		return nil, fmt.Errorf("provide at most one non-nil aggregate provider budget")
+	}
+	if len(budgets) == 1 {
+		limits := c.Aggregate.Effective()
+		if cap(budgets[0].slots) != limits.MaxNativeOperations || cap(budgets[0].sshSlots) != limits.MaxSSHSessions {
+			return nil, fmt.Errorf("aggregate provider budget must match hosted configuration")
+		}
 	}
 	identity, err := NewOIDC(ctx, c)
 	if err != nil {
@@ -54,7 +70,11 @@ func New(ctx context.Context, c Config, e Engine) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{Config: c, Store: st, Engine: e, Identity: identity, env: env, desktops: map[string]*desktopSession{}, tickets: map[string]launchTicket{}}, nil
+	service := &Service{Config: c, Store: st, Engine: e, Identity: identity, env: env, desktops: map[string]*desktopSession{}, tickets: map[string]launchTicket{}}
+	if len(budgets) > 0 {
+		service.sshSlots = budgets[0].sshSlots
+	}
+	return service, nil
 }
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -265,9 +285,7 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request, v Session) {
 		writeError(w, 503, "Sign-out could not be saved. Please retry.")
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
 	err = s.revokeUser(r.Context(), v.User.ID)
-	unlock()
 	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral", Path: "/", Secure: true, HttpOnly: true, MaxAge: -1})
 	if err != nil {
 		writeError(w, 503, "Signed out; guest cleanup is pending recovery.")
@@ -306,13 +324,4 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 }
 func cleanName(v string) bool {
 	return len(strings.TrimSpace(v)) > 0 && len(v) <= 100 && !strings.ContainsAny(v, "\r\n\x00")
-}
-
-// Different users can launch on unrelated instances concurrently. Membership changes
-// and revocation serialize only with that user's launch; engine locks coordinate VMs.
-func (s *Service) lockUser(id string) func() {
-	value, _ := s.userLocks.LoadOrStore(id, &sync.Mutex{})
-	m := value.(*sync.Mutex)
-	m.Lock()
-	return m.Unlock
 }

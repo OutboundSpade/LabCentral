@@ -3,6 +3,7 @@ package hosted
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -50,7 +51,28 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 		if err := s.Store.Get(ctx, "learning-check", j.Target, &check); err != nil {
 			return nil, err
 		}
-		claims = append(claims, jobClaim{"practice:" + check.RunID, true})
+		claims = append(claims, jobClaim{"practice:" + check.RunID, false})
+		run, err := s.Store.practice(ctx, check.RunID)
+		if err != nil {
+			return nil, err
+		}
+		p, err := s.ownedPublication(ctx, check.LabID, check.UserID)
+		if err != nil {
+			return nil, err
+		}
+		b, err := s.learningBundle(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		for _, st := range p.Steps {
+			if st.ID == check.StepID {
+				for _, c := range b.Checks {
+					if c.ID == st.CheckID {
+						claims = appendMachineClaims(claims, run.InstanceID, c.Steps)
+					}
+				}
+			}
+		}
 	case "refresh":
 		claims = append(claims, jobClaim{"repository", true})
 	case "access-cleanup":
@@ -99,7 +121,28 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 		if err := s.Store.Get(ctx, "check", j.Target, &r); err != nil {
 			return nil, err
 		}
-		claims = append(claims, jobClaim{"meeting:" + r.MeetingID, false}, jobClaim{"team:" + r.TeamID, true})
+		claims = append(claims, jobClaim{"meeting:" + r.MeetingID, false}, jobClaim{"team:" + r.TeamID, false})
+		m, err := s.Store.Meeting(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if m != nil && m.ID == r.MeetingID {
+			teams, err := s.Store.Teams(ctx, m.ID)
+			if err != nil {
+				return nil, err
+			}
+			var b InstructorBundle
+			if err = s.Store.Get(ctx, "template-instructor", m.Template, &b); err != nil {
+				return nil, err
+			}
+			for _, t := range teams {
+				if t.ID == r.TeamID {
+					for _, c := range b.Checks {
+						claims = appendMachineClaims(claims, t.InstanceID, c.Steps)
+					}
+				}
+			}
+		}
 	}
 	return claims, nil
 }
@@ -156,8 +199,19 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 	if err != nil {
 		return err
 	}
+	queued := map[string]bool{}
 	for _, j := range jobs {
-		claims, err := s.jobClaims(ctx, j)
+		queued[j.ID] = true
+	}
+	s.jobMu.Lock()
+	for id := range s.queuedClaims {
+		if !queued[id] {
+			delete(s.queuedClaims, id)
+		}
+	}
+	s.jobMu.Unlock()
+	for _, j := range jobs {
+		claims, err := s.cachedJobClaims(ctx, j)
 		if err != nil {
 			// Invalid/stale work fails visibly without blocking the rest of the queue.
 			if _, save := s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='failed',error=? WHERE id=? AND status='queued'`, err.Error(), j.ID); save != nil {
@@ -193,31 +247,30 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 			s.jobMu.Unlock()
 			continue
 		}
+		s.jobMu.Unlock()
 		taskCtx, cancel := context.WithTimeout(ctx, time.Duration(limits.JobTimeoutMinutes)*time.Minute)
 		result, err := s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='running',error='' WHERE id=? AND status='queued'`, j.ID)
 		if err != nil {
 			cancel()
-			s.jobMu.Unlock()
 			return err
 		}
 		count, err := result.RowsAffected()
 		if err != nil {
 			cancel()
-			s.jobMu.Unlock()
 			return err
 		}
 		if count == 0 {
 			cancel()
-			s.jobMu.Unlock()
 			continue
 		}
 		timing := jobTiming{Started: time.Now().UTC()}
 		if err = s.Store.Put(ctx, "job-timing", j.ID, timing); err != nil {
 			cancel()
-			s.jobMu.Unlock()
 			return err
 		}
 		j.Status = "running"
+		s.jobMu.Lock()
+		delete(s.queuedClaims, j.ID)
 		s.activeJobs[j.ID] = runningJob{j, claims, cancel}
 		s.jobMu.Unlock()
 		workers.Go(func() {
@@ -252,6 +305,10 @@ func (s *Service) dispatchJobs(ctx context.Context, workers *sync.WaitGroup, don
 }
 
 func (s *Service) jobDetails(ctx context.Context, jobs []Job) error {
+	metadata, err := s.jobMetadata(ctx, jobs)
+	if err != nil {
+		return err
+	}
 	for n := range jobs {
 		j := &jobs[n]
 		if j.Status == "failed" {
@@ -262,25 +319,16 @@ func (s *Service) jobDetails(ctx context.Context, jobs []Job) error {
 			}
 			j.Retryable = j.RetryBlocked == ""
 		}
-		if j.Kind == "check" || j.Kind == "exercise" {
-			var run struct {
-				TeamID string `json:"teamID"`
-			}
-			if s.Store.Get(ctx, j.Kind, j.Target, &run) == nil {
-				_ = s.Store.DB.QueryRowContext(ctx, `SELECT name FROM teams WHERE id=?`, run.TeamID).Scan(&j.TargetLabel)
-			}
-		}
-		var timing jobTiming
-		if err := s.Store.Get(ctx, "job-timing", j.ID, &timing); err == nil {
-			j.Started = &timing.Started
-			j.Finished = timing.Finished
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
+		info := metadata[j.ID]
+		j.TargetLabel = info.label
+		if !info.timing.Started.IsZero() {
+			j.Started = &info.timing.Started
+			j.Finished = info.timing.Finished
 		}
 		if j.Status != "queued" {
 			continue
 		}
-		claims, err := s.jobClaims(ctx, *j)
+		claims, err := s.cachedJobClaims(ctx, *j)
 		if err != nil {
 			continue
 		}
@@ -293,4 +341,75 @@ func (s *Service) jobDetails(ctx context.Context, jobs []Job) error {
 		s.jobMu.Unlock()
 	}
 	return nil
+}
+
+func appendMachineClaims(claims []jobClaim, instance string, steps []GuestPlaybook) []jobClaim {
+	for _, st := range steps {
+		key := "machine:" + instance + ":" + st.Machine
+		found := false
+		for _, c := range claims {
+			if c.key == key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			claims = append(claims, jobClaim{key, true})
+		}
+	}
+	return claims
+}
+func (s *Service) cachedJobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
+	s.jobMu.Lock()
+	claims, ok := s.queuedClaims[j.ID]
+	s.jobMu.Unlock()
+	if ok {
+		return claims, nil
+	}
+	claims, err := s.jobClaims(ctx, j)
+	if err != nil {
+		return nil, err
+	}
+	s.jobMu.Lock()
+	if s.queuedClaims == nil {
+		s.queuedClaims = map[string][]jobClaim{}
+	}
+	s.queuedClaims[j.ID] = claims
+	s.jobMu.Unlock()
+	return claims, nil
+}
+
+type jobReadMetadata struct {
+	label  string
+	timing jobTiming
+}
+
+func (s *Service) jobMetadata(ctx context.Context, jobs []Job) (map[string]jobReadMetadata, error) {
+	ids := make([]string, len(jobs))
+	for n, j := range jobs {
+		ids[n] = j.ID
+	}
+	raw, _ := json.Marshal(ids)
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT j.id,t.name,timing.body FROM jobs j LEFT JOIN objects run ON run.kind=j.kind AND run.id=j.target AND j.kind IN ('check','exercise') LEFT JOIN teams t ON t.id=json_extract(run.body,'$.teamID') LEFT JOIN objects timing ON timing.kind='job-timing' AND timing.id=j.id WHERE j.id IN (SELECT value FROM json_each(?))`, raw)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]jobReadMetadata{}
+	for rows.Next() {
+		var id string
+		var label sql.NullString
+		var raw []byte
+		if err = rows.Scan(&id, &label, &raw); err != nil {
+			return nil, err
+		}
+		entry := jobReadMetadata{label: label.String}
+		if len(raw) > 0 {
+			if err = json.Unmarshal(raw, &entry.timing); err != nil {
+				return nil, err
+			}
+		}
+		out[id] = entry
+	}
+	return out, rows.Err()
 }

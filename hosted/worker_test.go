@@ -6,6 +6,7 @@ import (
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"golang.org/x/oauth2"
+	"sync"
 	"testing"
 	"time"
 )
@@ -160,6 +161,7 @@ func TestAllDesktopsFailClosedWithoutWaitingForGuestCleanup(t *testing.T) {
 }
 
 type cleanupEngine struct {
+	mu sync.Mutex
 	Engine
 	failed string
 	calls  []string
@@ -169,6 +171,8 @@ func (e *cleanupEngine) Inspect(context.Context, string) (lc.Instance, error) {
 	return lc.Instance{}, nil
 }
 func (e *cleanupEngine) Destroy(_ context.Context, id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.calls = append(e.calls, id)
 	if id == e.failed {
 		return errors.New("termination unknown")

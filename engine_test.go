@@ -231,7 +231,7 @@ func TestIndependentDeploymentsOverlapAndSameInstanceIsFenced(t *testing.T) {
 	if _, err := e2.DeployWithID(short, p, ids[0]); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("same-instance create not fenced: %v", err)
 	}
-	if err := e2.Destroy(ctx, ids[0]); err == nil {
+	if err := e2.Destroy(short, ids[0]); err == nil {
 		t.Fatal("destroy crossed active deployment")
 	}
 	close(f.block)
@@ -469,7 +469,10 @@ func TestSSHOperationCoordinatesWithDestruction(t *testing.T) {
 		})
 	}()
 	<-entered
-	if err = e.Destroy(ctx, inst.ID); err == nil {
+	wait, stop := context.WithTimeout(ctx, 30*time.Millisecond)
+	err = e.Destroy(wait, inst.ID)
+	stop()
+	if err == nil {
 		t.Fatal("destroy overlapped SSH operation")
 	}
 	close(release)

@@ -2,7 +2,6 @@ package hosted
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,17 +34,13 @@ type BreakRun struct {
 
 func (s *Service) exerciseRuns(ctx context.Context, teams []Team) ([]BreakRun, error) {
 	out := []BreakRun{}
-	for _, t := range teams {
-		var id string
-		err := s.Store.Get(ctx, "exercise-current", t.ID, &id)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
+	raw, err := s.Store.currentRuns(ctx, "exercise", teams)
+	if err != nil {
+		return nil, err
+	}
+	for _, body := range raw {
 		var run BreakRun
-		if err = s.Store.Get(ctx, "exercise", id, &run); err != nil {
+		if err = json.Unmarshal(body, &run); err != nil {
 			return nil, err
 		}
 		out = append(out, run)
@@ -66,12 +61,10 @@ func (s *Service) startExercises(w http.ResponseWriter, r *http.Request, v Sessi
 }
 
 // Selection, per-team exclusion, intent, and job creation commit together.
-func (s *Service) queueExercises(ctx context.Context, req BreakRequest, actor string) ([]BreakRun, error) {
+func (s *Service) queueExercisesDecision(ctx context.Context, req BreakRequest, actor string) ([]BreakRun, error) {
 	if len(req.TeamIDs) < 1 || len(req.TeamIDs) > 5 {
 		return nil, fmt.Errorf("Choose an exercise and one to five ready teams.")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	m, err := s.Store.Meeting(ctx)
 	if err != nil {
 		return nil, err
@@ -148,13 +141,8 @@ func (s *Service) queueExercises(ctx context.Context, req BreakRequest, actor st
 	return runs, tx.Commit()
 }
 func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
-	s.mu.Lock()
-	locked := true
-	defer func() {
-		if locked {
-			s.mu.Unlock()
-		}
-	}()
+	ctx, closeGuest := guestJobContext(ctx)
+	defer closeGuest()
 	var run BreakRun
 	if err = s.Store.Get(ctx, "exercise", j.Target, &run); err != nil {
 		return err
@@ -173,10 +161,11 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	if current != run.ID {
 		return fmt.Errorf("Exercise superseded by a newer operation.")
 	}
+	mutationAttempted := false
 	defer func() {
 		if err != nil {
 			run.Status = "failed"
-			if errors.Is(err, errGuestUnknown) {
+			if mutationAttempted || errors.Is(err, errGuestUnknown) {
 				run.Status = "unknown"
 			}
 			run.Report = err.Error()
@@ -186,6 +175,11 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 			err = errors.Join(err, s.Store.Put(saveCtx, "exercise", run.ID, run))
 		}
 	}()
+	// A restart cannot prove whether a guest accepted the last mutation. Never
+	// repeat reset/break programs from an interrupted mutation checkpoint.
+	if run.Status == "resetting" || run.Status == "applying" {
+		return fmt.Errorf("%w: interrupted exercise; run an explicit reset before applying another break", errGuestUnknown)
+	}
 	m, err := s.Store.Meeting(ctx)
 	if err != nil {
 		return err
@@ -224,8 +218,7 @@ func (s *Service) runExercise(ctx context.Context, j Job) (err error) {
 	if err = s.Store.Put(ctx, "exercise", run.ID, run); err != nil {
 		return err
 	}
-	s.mu.Unlock()
-	locked = false
+	mutationAttempted = run.Action != "check"
 	runner := s.exerciseRunner
 
 	var bundle InstructorBundle
@@ -277,4 +270,14 @@ func (s *Service) validateExercise(ctx context.Context, template, action string,
 		}
 	}
 	return fmt.Errorf("Choose an exercise from the pinned template.")
+}
+
+func (s *Service) queueExercises(ctx context.Context, req BreakRequest, actor string) ([]BreakRun, error) {
+	var result []BreakRun
+	err := s.Store.atomic(ctx, func(ctx context.Context) error {
+		var err error
+		result, err = s.queueExercisesDecision(ctx, req, actor)
+		return err
+	})
+	return result, err
 }

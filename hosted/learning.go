@@ -288,13 +288,11 @@ func currentLearningStep(p LearningPublication, progress LearningProgress, id st
 
 // An intentional reveal is scoped to this user's current or completed released
 // stage. It never accepts an answer or records successful practice.
-func (s *Service) solutionLearning(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) solutionLearningDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var req LearningSolutionRequest
 	if !decode(w, r, &req) {
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
@@ -313,7 +311,7 @@ func (s *Service) solutionLearning(w http.ResponseWriter, r *http.Request, v Ses
 	}
 	writeError(w, 409, "A solution is available only for your current or completed released stage.")
 }
-func (s *Service) answerLearning(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) answerLearningDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var req LearningAnswerRequest
 	if !decode(w, r, &req) {
 		return
@@ -322,11 +320,13 @@ func (s *Service) answerLearning(w http.ResponseWriter, r *http.Request, v Sessi
 		writeError(w, 400, "Answers must be at most 1000 bytes.")
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
+		return
+	}
+	if err = s.touchLearning(r.Context(), v.User.ID, p.ID); err != nil {
+		writeError(w, 503, "Progress could not be saved.")
 		return
 	}
 	progress, err := s.Store.learningProgress(r.Context(), v.User.ID, p.ID)
@@ -406,4 +406,12 @@ func learningStage(st TemplateStage) LearningStepInput {
 		answer = st.Completion.Answer.Accepted[0]
 	}
 	return LearningStepInput{ID: st.ID, Title: st.Title, Instructions: st.Instructions, Kind: st.Kind(), Prompt: st.Prompt, Answer: answer, CheckID: st.Completion.Check, Solution: st.Solution, AnswerRule: st.Completion.Answer}
+}
+
+func (s *Service) answerLearning(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.answerLearningDecision)(w, r, v)
+}
+
+func (s *Service) solutionLearning(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.solutionLearningDecision)(w, r, v)
 }

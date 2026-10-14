@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -93,17 +94,25 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 	if len(extensions) > 0 {
 		owner = extensions[0]
 	}
+	cache, owned := guestCacheFor(ctx)
+	if owned {
+		defer cache.close()
+	}
 	for _, step := range steps {
 		stepCtx, cancel := context.WithTimeout(ctx, step.Timeout()+15*time.Second)
+		release, admit := s.acquireSSH(stepCtx)
+		if admit != nil {
+			cancel()
+			return admit
+		}
 		err := engine.WithSSHMaterial(stepCtx, team.InstanceID, step.Machine, func(inst lc.Instance, m lc.PlannedMachine, r lc.Resource, key []byte) error {
 			if inst.Plan.Source.Digest != src.Digest {
 				return fmt.Errorf("guest source does not match pinned template")
 			}
-			client, err := remote.Dial(stepCtx, r.Address, "lab", key, m.HostPublicKey)
+			client, err := cache.client(stepCtx, team.InstanceID, step.Machine, r.Address, key, m.HostPublicKey)
 			if err != nil {
 				return fmt.Errorf("%s SSH unavailable", step.Machine)
 			}
-			defer client.Close()
 			files, err := b.GuestFiles(src, inst, step, owner)
 			if err != nil {
 				return err
@@ -126,10 +135,61 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 		if stepCtx.Err() != nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			err = fmt.Errorf("%s: %w", step.Machine, errGuestUnknown)
 		}
+		release()
 		cancel()
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+type guestCacheKey struct{}
+type guestConnection struct {
+	client           *ssh.Client
+	address, hostKey string
+}
+type guestCache struct {
+	dial        func(context.Context, string, string, []byte, string) (*ssh.Client, error)
+	mu          sync.Mutex
+	connections map[string]guestConnection
+}
+
+func guestCacheFor(ctx context.Context) (*guestCache, bool) {
+	if cache, ok := ctx.Value(guestCacheKey{}).(*guestCache); ok {
+		return cache, false
+	}
+	return &guestCache{connections: map[string]guestConnection{}, dial: remote.Dial}, true
+}
+func (c *guestCache) client(ctx context.Context, instance, machine, address string, key []byte, hostKey string) (*ssh.Client, error) {
+	name := instance + ":" + machine
+	c.mu.Lock()
+	previous, ok := c.connections[name]
+	c.mu.Unlock()
+	if ok {
+		if previous.address != address || previous.hostKey != hostKey {
+			return nil, fmt.Errorf("SSH identity changed within job")
+		}
+		return previous.client, nil
+	}
+	client, err := c.dial(ctx, address, "lab", key, hostKey)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	c.connections[name] = guestConnection{client, address, hostKey}
+	c.mu.Unlock()
+	return client, nil
+}
+func (c *guestCache) close() {
+	for _, conn := range c.connections {
+		conn.client.Close()
+	}
+}
+func guestJobContext(ctx context.Context) (context.Context, func()) {
+	if _, ok := ctx.Value(guestCacheKey{}).(*guestCache); ok {
+		return ctx, func() {}
+	}
+	cache, _ := guestCacheFor(ctx)
+	return context.WithValue(ctx, guestCacheKey{}, cache), cache.close
 }

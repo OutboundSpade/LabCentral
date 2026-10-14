@@ -129,13 +129,13 @@ func TestAdminDesktopCountsAndRepositoryURL(t *testing.T) {
 		for range 40 {
 			connection, cancel := context.WithCancel(ctx)
 			d := &desktopSession{record: accessRecord{TeamID: teams[0].ID, Expires: v.Expires}, ctx: connection, cancel: cancel, info: lc.AccessInfo{Expires: v.Expires}}
-			s.mu.Lock()
+			s.desktopMu.Lock()
 			s.desktops["changing"] = d
-			s.mu.Unlock()
+			s.desktopMu.Unlock()
 			cancel()
-			s.mu.Lock()
+			s.desktopMu.Lock()
 			delete(s.desktops, "changing")
-			s.mu.Unlock()
+			s.desktopMu.Unlock()
 		}
 	})
 	for range 40 {

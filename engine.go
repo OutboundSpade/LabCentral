@@ -212,6 +212,13 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 		return nil, err
 	}
 	defer unlock()
+	var cleanup Command
+	if err := e.state.Get(ctx, "image-cleanup", im.CacheKey, &cleanup); err == nil {
+		return nil, problem(RecoveryRequired, im.CacheKey, "image cleanup is pending; confirm removal before rebuilding")
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
 	var images []ImageRecord
 	var cached ImageRecord
 	err = e.state.Get(ctx, "image", im.CacheKey, &cached)
@@ -310,6 +317,9 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		return inst, err
 	}
 	defer func() { unpin() }()
+	if err := e.prepareCredentials(instanceID, p.Machines); err != nil {
+		return inst, err
+	}
 	err = e.withAllocationLock(ctx, func() error {
 		if err := e.state.Get(ctx, "instance", instanceID, &inst); err == nil {
 			return problem(RecoveryRequired, "instance", "instance already exists; recover its original operation")
@@ -591,6 +601,11 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 			return i, err
 		}
 	}
+	if i.Status != "destroyed" && i.Status != "destroying" {
+		if err := e.prepareCredentials(i.ID, i.Plan.Machines); err != nil {
+			return i, err
+		}
+	}
 	err = e.withAllocationLock(ctx, func() error {
 		var err error
 		i, err = e.Inspect(ctx, instance)
@@ -618,7 +633,7 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 	return i, err
 }
 func (e *Engine) Destroy(ctx context.Context, instance string) error {
-	unlock, err := e.state.LockKey("instance:" + instance)
+	unlock, err := e.state.LockKeyContext(ctx, "instance:"+instance)
 	if err != nil {
 		return problem(Busy, "instance", err.Error())
 	}
@@ -748,40 +763,36 @@ func (e *Engine) RemoveImage(ctx context.Context, key string) error {
 		return err
 	}
 	defer unlock()
-	return e.withAllocationLock(ctx, func() error {
-		var im ImageRecord
+	var im ImageRecord
+	var cmd Command
+	err = e.withAllocationLock(ctx, func() error {
 		if err := e.state.Get(ctx, "image", key, &im); err != nil {
 			return err
 		}
-		instances, err := e.List(ctx)
+		// Check exact native identities and target scope without decoding every
+		// retained source snapshot while holding the allocation fence.
+		var referenced bool
+		err := e.state.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM objects instance,json_each(instance.body,'$.plan.machines') machine WHERE instance.kind='instance' AND coalesce(json_extract(instance.body,'$.status'),'')!='destroyed' AND json_extract(machine.value,'$.nativeImage')=? AND json_extract(instance.body,'$.plan.environment.platform')=? AND CASE WHEN ?='aws' THEN json_extract(instance.body,'$.plan.environment.aws.account')=? AND json_extract(instance.body,'$.plan.environment.aws.region')=? ELSE json_extract(instance.body,'$.plan.environment.proxmox.url')=? END)`, im.Resource.ID, im.Environment.Platform, im.Environment.Platform, im.Environment.AWS.Account, im.Environment.AWS.Region, im.Environment.Proxmox.URL).Scan(&referenced)
 		if err != nil {
 			return err
 		}
-		for _, i := range instances {
-			if i.Status == "destroyed" {
-				continue
-			}
-			for _, m := range i.Plan.Machines {
-				if m.NativeImage == im.Resource.ID && sameTarget(i.Plan.Environment, im.Environment) {
-					return problem(Invalid, key, "image is referenced by a retained instance")
-				}
-			}
+		if referenced {
+			return problem(Invalid, key, "image is referenced by a retained instance")
 		}
-		r, err := e.invoke(ctx, Command{Action: "resource.destroy", Operation: im.ID + "/remove", Owner: im.Resource.Owner, Environment: im.Environment, Prior: im.Resource})
-		if err != nil {
-			return err
-		}
-		if !r.Absent {
-			return problem(RecoveryRequired, key, "image deletion unconfirmed")
-		}
-		if err = e.state.Release(ctx, im.ID); err != nil {
-			return err
-		}
-		if err = e.state.Delete(ctx, "build", key); err != nil {
-			return err
-		}
-		return e.state.Delete(ctx, "image", key)
+		cmd = Command{Action: "resource.destroy", Operation: im.ID + "/remove", Owner: im.Resource.Owner, Environment: im.Environment, Prior: im.Resource}
+		return e.state.Put(ctx, "image-cleanup", key, cmd)
 	})
+	if err != nil {
+		return err
+	}
+	r, err := e.invoke(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	if !r.Absent {
+		return problem(RecoveryRequired, key, "image deletion unconfirmed")
+	}
+	return e.withAllocationLock(ctx, func() error { return e.finishImageCleanup(ctx, key, im.ID, true) })
 }
 
 // WithSSHMaterial holds the machine lock and shared instance lifecycle guard for a
@@ -858,31 +869,32 @@ func (e *Engine) AbandonBuild(ctx context.Context, key string) error {
 		return err
 	}
 	defer unlock()
-	return e.withAllocationLock(ctx, func() error {
+	var c Command
+	err = e.withAllocationLock(ctx, func() error {
 		var im ImageRecord
 		if err := e.state.Get(ctx, "image", key, &im); err == nil {
 			return problem(Invalid, key, "published image: use image remove")
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		var c Command
 		if err := e.state.Get(ctx, "build", key, &c); err != nil {
 			return err
 		}
 		c.Action = "image.abandon"
 		c.Operation = c.Owner + "/abandon"
-		r, err := e.invoke(ctx, c)
-		if err != nil {
-			return err
-		}
-		if !r.Absent {
-			return problem(RecoveryRequired, key, "build cleanup unconfirmed")
-		}
-		if err = e.state.Release(ctx, c.Owner); err != nil {
-			return err
-		}
-		return e.state.Delete(ctx, "build", key)
+		return e.state.Put(ctx, "image-cleanup", key, c)
 	})
+	if err != nil {
+		return err
+	}
+	r, err := e.invoke(ctx, c)
+	if err != nil {
+		return err
+	}
+	if !r.Absent {
+		return problem(RecoveryRequired, key, "build cleanup unconfirmed")
+	}
+	return e.withAllocationLock(ctx, func() error { return e.finishImageCleanup(ctx, key, c.Owner, false) })
 }
 
 func sameTarget(a, b Environment) bool {
@@ -893,4 +905,42 @@ func sameTarget(a, b Environment) bool {
 		return a.AWS.Account == b.AWS.Account && a.AWS.Region == b.AWS.Region
 	}
 	return a.Proxmox.URL == b.Proxmox.URL
+}
+
+// Key generation is protected by the instance lifecycle guard, independent of
+// allocation namespaces and image reference decisions.
+func (e *Engine) prepareCredentials(instance string, machines []PlannedMachine) error {
+	dir := filepath.Join(e.state.Root, "credentials", instance)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	if _, err := ensureKey(filepath.Join(dir, "id_ed25519")); err != nil {
+		return err
+	}
+	for _, m := range machines {
+		if _, err := ensureKey(filepath.Join(dir, m.Name+".host")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Engine) finishImageCleanup(ctx context.Context, key, owner string, published bool) error {
+	tx, err := e.state.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM claims WHERE owner=?`, owner); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM objects WHERE id=? AND kind IN ('build','image-cleanup')`, key); err != nil {
+		return err
+	}
+	if published {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM objects WHERE kind='image' AND id=?`, key); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

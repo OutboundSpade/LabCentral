@@ -197,11 +197,12 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 	independentMachine := machineCreate || machineDelete || machineDiscover
 	value, _ := s.owners.LoadOrStore(c.Owner, &sync.RWMutex{})
 	ownerLock := value.(*sync.RWMutex)
+	if err := waitOwner(stream.Context(), ownerLock, independentMachine); err != nil {
+		return err
+	}
 	if independentMachine {
-		ownerLock.RLock()
 		defer ownerLock.RUnlock()
 	} else {
-		ownerLock.Lock()
 		defer ownerLock.Unlock()
 	}
 	// A response-lost create/discovery and its retry share one machine fence.
@@ -284,4 +285,25 @@ func Serve(ctx context.Context, socket string, p lc.Provider) error {
 		}
 	}()
 	return s.Serve(l)
+}
+
+func waitOwner(ctx context.Context, mu *sync.RWMutex, read bool) error {
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if read && mu.TryRLock() {
+			return nil
+		}
+		if !read && mu.TryLock() {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
 }

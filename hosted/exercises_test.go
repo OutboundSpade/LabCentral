@@ -134,7 +134,7 @@ func TestExerciseReplayFailureAndSupersession(t *testing.T) {
 	finishExerciseJob(t, s, run, err)
 	var saved BreakRun
 	s.Store.Get(ctx, "exercise", run.ID, &saved)
-	if saved.Status != "failed" {
+	if saved.Status != "unknown" {
 		t.Fatal(saved)
 	}
 	reset := queueExercise(t, s, teams[0].ID, "reset")
@@ -162,7 +162,7 @@ func TestExerciseReplayFailureAndSupersession(t *testing.T) {
 		}
 	}
 }
-func TestExerciseInterruptedRunResumesAndOtherTeamsProgress(t *testing.T) {
+func TestExerciseInterruptedRunStopsAndOtherTeamsProgress(t *testing.T) {
 	s, teams := exerciseFixture(t)
 	ctx := context.Background()
 	first := queueExercise(t, s, teams[0].ID, "stop-web")
@@ -215,5 +215,96 @@ func TestExerciseExpiryAndConcurrentReset(t *testing.T) {
 	}
 	if e := s.runExercise(ctx, Job{Target: next.ID}); e == nil {
 		t.Fatal("expired meeting accepted")
+	}
+}
+
+func TestExerciseInterruptedMutationRequiresExplicitReset(t *testing.T) {
+	for _, status := range []string{"resetting", "applying"} {
+		t.Run(status, func(t *testing.T) {
+			s, teams := exerciseFixture(t)
+			ctx := context.Background()
+			run := queueExercise(t, s, teams[0].ID, "ssh-intrusion")
+			run.Status = status
+			if err := s.Store.Put(ctx, "exercise", run.ID, run); err != nil {
+				t.Fatal(err)
+			}
+			// Reopen durable state just as a restarted worker would.
+			root := s.Store.Root
+			if err := s.Store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := OpenStore(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Store = reopened
+			t.Cleanup(func() { reopened.Close() })
+			var calls int
+			s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) { calls++; return "verified", nil }
+			err = s.runExercise(ctx, Job{Kind: "exercise", Target: run.ID})
+			if !errors.Is(err, errGuestUnknown) || calls != 0 {
+				t.Fatalf("replayed interrupted mutation: calls=%d err=%v", calls, err)
+			}
+			finishExerciseJob(t, s, run, err)
+			var saved BreakRun
+			if err = s.Store.Get(ctx, "exercise", run.ID, &saved); err != nil || saved.Status != "unknown" {
+				t.Fatalf("%+v %v", saved, err)
+			}
+			if _, err = s.queueExercises(ctx, BreakRequest{"ssh-intrusion", []string{teams[0].ID}}, "admin"); err == nil {
+				t.Fatal("break accepted without reset")
+			}
+			reset := queueExercise(t, s, teams[0].ID, "reset")
+			err = s.runExercise(ctx, Job{Kind: "exercise", Target: reset.ID})
+			if err != nil || calls != 1 {
+				t.Fatalf("explicit recovery failed: %d %v", calls, err)
+			}
+		})
+	}
+}
+
+func TestWorkerRestartDoesNotReplayInterruptedBreak(t *testing.T) {
+	s, teams := exerciseFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	run := queueExercise(t, s, teams[0].ID, "ssh-intrusion")
+	run.Status = "applying"
+	if err := s.Store.Put(ctx, "exercise", run.ID, run); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Store.DB.ExecContext(ctx, `UPDATE jobs SET status='running' WHERE kind='exercise' AND target=?`, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	s.exerciseRunner = func(context.Context, Team, BreakRun, lc.Source) (string, error) { calls.Add(1); return "", nil }
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for {
+		var status string
+		if err := s.Store.DB.QueryRowContext(ctx, `SELECT status FROM jobs WHERE kind='exercise' AND target=?`, run.ID).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status == "failed" {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("restart did not settle interrupted mutation")
+		case <-tick.C:
+		}
+	}
+	var saved BreakRun
+	if err := s.Store.Get(ctx, "exercise", run.ID, &saved); err != nil || saved.Status != "unknown" || calls.Load() != 0 {
+		t.Fatal(saved.Status, calls.Load(), err)
+	}
+	var j Job
+	if err := s.Store.DB.QueryRowContext(ctx, `SELECT id,kind,target,status FROM jobs WHERE kind='exercise' AND target=?`, run.ID).Scan(&j.ID, &j.Kind, &j.Target, &j.Status); err != nil {
+		t.Fatal(err)
+	}
+	blocked, attention, err := s.retryDisposition(ctx, j)
+	if err != nil || !attention || !strings.Contains(blocked, "explicit reset") {
+		t.Fatal(blocked, attention, err)
 	}
 }

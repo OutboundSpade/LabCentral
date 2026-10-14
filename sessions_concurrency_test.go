@@ -133,7 +133,10 @@ func TestWebCheckAllowsDesktopLaunchAndCloseAcrossClients(t *testing.T) {
 	if !errors.As(err, &busy) || busy.Code != Busy || !errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
 		t.Fatal("same-machine wait did not cancel", err)
 	}
-	if err = second.Destroy(ctx, inst.ID); err == nil {
+	destroyWait, stopDestroy := context.WithTimeout(ctx, 35*time.Millisecond)
+	err = second.Destroy(destroyWait, inst.ID)
+	stopDestroy()
+	if err == nil {
 		t.Fatal("destruction overlapped active web check")
 	}
 	if _, err = second.Recover(ctx, inst.ID); err == nil {
@@ -216,7 +219,10 @@ func TestDesktopLaunchFencesSameMachineAndLifecycleAcrossClients(t *testing.T) {
 	if err = second.WithSSHMaterial(ctx, inst.ID, "web", func(Instance, PlannedMachine, Resource, []byte) error { return nil }); err != nil {
 		t.Fatal("workstation launch blocked a different machine", err)
 	}
-	if err = second.Destroy(ctx, inst.ID); err == nil {
+	destroyWait, stopDestroy := context.WithTimeout(ctx, 35*time.Millisecond)
+	err = second.Destroy(destroyWait, inst.ID)
+	stopDestroy()
+	if err == nil {
 		t.Fatal("destruction overlapped native desktop startup")
 	}
 	if _, err = second.Recover(ctx, inst.ID); err == nil {

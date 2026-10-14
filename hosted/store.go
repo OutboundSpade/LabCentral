@@ -4,12 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/OutboundSpade/LabCentral/v2/internal/store"
+	"net/url"
+	"path/filepath"
 	"time"
 )
 
-type Store struct{ *store.Store }
+type Store struct {
+	*store.Store
+	DB   *hostedDatabase
+	wake chan struct{}
+}
 
 func OpenStore(root string) (*Store, error) {
 	s, e := store.Open(root)
@@ -28,7 +35,31 @@ func OpenStore(root string) (*Store, error) {
 		s.Close()
 		return nil, e
 	}
-	return &Store{s}, nil
+	// Open a fresh writer with immediate transaction admission after schema setup.
+	if e = s.DB.Close(); e != nil {
+		return nil, e
+	}
+	uri := (&url.URL{Scheme: "file", Path: filepath.Join(s.Root, "state.db")}).String()
+	writer, e := sql.Open("sqlite", uri+"?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(FULL)")
+	if e != nil {
+		return nil, e
+	}
+	writer.SetMaxOpenConns(1)
+	writer.SetMaxIdleConns(1)
+	readers, e := sql.Open("sqlite", uri+"?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	if e != nil {
+		writer.Close()
+		return nil, e
+	}
+	readers.SetMaxOpenConns(4)
+	readers.SetMaxIdleConns(4)
+	if e = errors.Join(writer.Ping(), readers.Ping()); e != nil {
+		writer.Close()
+		readers.Close()
+		return nil, e
+	}
+	s.DB = writer
+	return &Store{Store: s, DB: &hostedDatabase{writer, readers}, wake: make(chan struct{}, 1)}, nil
 }
 func (s *Store) Meeting(ctx context.Context) (*Meeting, error) {
 	var m Meeting
@@ -154,12 +185,33 @@ func (s *Store) CreateMeeting(ctx context.Context, m Meeting, count, capacity in
 }
 func (s *Store) Enqueue(ctx context.Context, kind, target string) (Job, error) {
 	j := Job{ID: randomID(12), Kind: kind, Target: target, Status: "queued", Created: time.Now().UTC()}
-	_, e := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO jobs(id,kind,target,status,created) VALUES(?,?,?,?,?)`, j.ID, j.Kind, j.Target, j.Status, j.Created.Format(time.RFC3339Nano))
-	if e != nil {
-		return j, e
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return j, err
 	}
-	e = s.DB.QueryRowContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE kind=? AND target=? AND status IN ('queued','running')`, kind, target).Scan(&j.ID, &j.Kind, &j.Target, &j.Status, &j.Error, newTime(&j.Created))
-	return j, e
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO jobs(id,kind,target,status,created) VALUES(?,?,?,?,?)`, j.ID, j.Kind, j.Target, j.Status, j.Created.Format(time.RFC3339Nano))
+	if err != nil {
+		return j, err
+	}
+	err = tx.QueryRowContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE kind=? AND target=? AND status IN ('queued','running')`, kind, target).Scan(&j.ID, &j.Kind, &j.Target, &j.Status, &j.Error, newTime(&j.Created))
+	if err != nil {
+		return j, err
+	}
+	if err = tx.Commit(); err != nil {
+		return j, err
+	}
+	if tx.owner {
+		s.signal()
+	}
+	return j, nil
+}
+
+func (s *Store) signal() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
 }
 
 type timeScanner struct{ p *time.Time }
@@ -235,4 +287,47 @@ func (s *Store) Teammates(ctx context.Context, team string) ([]Teammate, error) 
 		out = append(out, Teammate{u.Name})
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) currentRuns(ctx context.Context, kind string, teams []Team) ([][]byte, error) {
+	ids := make([]string, len(teams))
+	for n, t := range teams {
+		ids[n] = t.ID
+	}
+	raw, _ := json.Marshal(ids)
+	rows, err := s.DB.QueryContext(ctx, `SELECT run.body FROM objects current JOIN objects run ON run.kind=? AND run.id=json_extract(current.body,'$') WHERE current.kind=? AND current.id IN (SELECT value FROM json_each(?)) ORDER BY current.id`, kind, kind+"-current", raw)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		var b []byte
+		if err = rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) FinishSwitchTo(ctx context.Context, user, target string) error {
+	result, err := s.DB.ExecContext(ctx, `UPDATE memberships SET team_id=pending_team,pending_team='',switching=0 WHERE user_id=? AND switching=1 AND pending_team=?`, user, target)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		current, err := s.Membership(ctx, user)
+		if err != nil {
+			return err
+		}
+		if current.Switching || current.TeamID != target {
+			return fmt.Errorf("team change was superseded")
+		}
+	}
+	return nil
 }

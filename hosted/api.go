@@ -62,14 +62,14 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 		}
 	}
 	if out.Lab.Team != nil && out.Meeting != nil && !out.Membership.Switching && out.Meeting.Status != "ending" && out.Meeting.Status != "ended" && out.Meeting.Expires.After(time.Now()) {
-		s.mu.Lock()
+		s.desktopMu.Lock()
 		for _, d := range s.desktops {
 			if desktopAvailable(d, time.Now()) && d.record.UserID == v.User.ID && d.record.SessionID == v.ID && d.record.TeamID == out.Lab.Team.ID && d.record.InstanceID == out.Lab.Team.InstanceID {
 				out.Lab.DesktopActive = true
 				break
 			}
 		}
-		s.mu.Unlock()
+		s.desktopMu.Unlock()
 	}
 	writeJSON(w, 200, out)
 }
@@ -97,8 +97,6 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 	if !decode(w, r, &req) {
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	meeting, e := s.Store.Meeting(r.Context())
 	if e != nil || meeting == nil || meeting.Status == "ending" || meeting.Status == "ended" || !meeting.Expires.After(time.Now()) {
 		writeError(w, 409, "There is no open meeting to join.")
@@ -118,7 +116,7 @@ func (s *Service) join(w http.ResponseWriter, r *http.Request, v Session) {
 			writeError(w, 503, "Your previous desktop is closing. Retry your team change shortly.")
 			return
 		}
-		if e = s.Store.FinishSwitch(r.Context(), v.User.ID); e != nil {
+		if e = s.Store.FinishSwitchTo(r.Context(), v.User.ID, req.TeamID); e != nil {
 			writeError(w, 503, "Your team change is pending. Please retry.")
 			return
 		}
@@ -168,7 +166,7 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 			}
 		}
 	}
-	s.mu.Lock()
+	s.desktopMu.Lock()
 	counts := map[string]int{}
 	now := time.Now()
 	for _, d := range s.desktops {
@@ -177,7 +175,7 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 			counts[d.record.TeamID]++
 		}
 	}
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	for _, team := range out.Teams {
 		out.TeamDesktops = append(out.TeamDesktops, TeamDesktopCount{TeamID: team.ID, Count: counts[team.ID]})
 	}
@@ -203,7 +201,7 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	}
 	writeJSON(w, 200, out)
 }
-func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) createMeetingDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var q CreateMeeting
 	if !decode(w, r, &q) {
 		return
@@ -221,8 +219,6 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 400, "Use a name, one to eight hours, up to 100 teams, and up to 100 students per team.")
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var template Template
 	if e := s.Store.Get(r.Context(), "template", q.Template, &template); e != nil || !template.Built || template.Removing {
 		writeError(w, 409, "Build a template revision before creating the meeting.")
@@ -242,8 +238,6 @@ func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Sessio
 	writeJSON(w, 201, m)
 }
 func (s *Service) meetingJob(w http.ResponseWriter, r *http.Request, kind string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	m, e := s.Store.Meeting(r.Context())
 	if e != nil || m == nil || m.Status == "ended" {
 		writeError(w, 409, "No current meeting.")
@@ -275,19 +269,17 @@ func (s *Service) meetingJob(w http.ResponseWriter, r *http.Request, kind string
 	}
 	writeJSON(w, 202, j)
 }
-func (s *Service) prepareMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) prepareMeetingDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	s.meetingJob(w, r, "prepare")
 }
-func (s *Service) endMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) endMeetingDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	s.meetingJob(w, r, "end")
 }
-func (s *Service) extendMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) extendMeetingDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var q ExtendMeeting
 	if !decode(w, r, &q) {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	m, e := s.Store.Meeting(r.Context())
 	if e != nil || m == nil || m.Status == "ending" || m.Status == "ended" || !m.Expires.After(time.Now()) || q.Hours < 1 || q.Hours > 8 {
 		writeError(w, 409, "Only an active meeting can be extended, up to eight hours total.")
@@ -324,13 +316,11 @@ func (s *Service) buildTemplate(w http.ResponseWriter, r *http.Request, v Sessio
 func (s *Service) removeTemplateImages(w http.ResponseWriter, r *http.Request, v Session) {
 	s.templateOperation(w, r, "remove-images")
 }
-func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) retryJobDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var q TargetRequest
 	if !decode(w, r, &q) {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	var job Job
 	e := s.Store.DB.QueryRowContext(r.Context(), `SELECT id,kind,target,status FROM jobs WHERE id=?`, q.ID).Scan(&job.ID, &job.Kind, &job.Target, &job.Status)
 	if e != nil || job.Status != "failed" {
@@ -348,7 +338,7 @@ func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
 	}
 	var next Job
 	if job.Kind == "build" || job.Kind == "remove-images" {
-		next, e = s.queueTemplateOperationLocked(r.Context(), job.Kind, job.Target)
+		next, e = s.queueTemplateDecision(r.Context(), job.Kind, job.Target)
 		if e != nil {
 			writeError(w, 409, e.Error())
 			return
@@ -392,4 +382,24 @@ func (s *Service) readyTeam(ctx context.Context, user string) (Team, *Meeting, e
 		}
 	}
 	return Team{}, m, fmt.Errorf("your team lab is not ready")
+}
+
+func (s *Service) createMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.createMeetingDecision)(w, r, v)
+}
+
+func (s *Service) extendMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.extendMeetingDecision)(w, r, v)
+}
+
+func (s *Service) retryJob(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.retryJobDecision)(w, r, v)
+}
+
+func (s *Service) prepareMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.prepareMeetingDecision)(w, r, v)
+}
+
+func (s *Service) endMeeting(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.endMeetingDecision)(w, r, v)
 }

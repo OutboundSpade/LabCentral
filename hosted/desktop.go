@@ -3,6 +3,7 @@ package hosted
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"html"
@@ -34,8 +35,6 @@ type launchTicket struct {
 }
 
 func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	team, meeting, e := s.readyTeam(r.Context(), v.User.ID)
 	if e != nil {
 		writeError(w, 409, e.Error())
@@ -49,60 +48,56 @@ func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
 	s.launchDesktop(w, r, v, team, meeting.Expires, machine)
 }
 
-// Caller holds the user lock; the same transport is authorized against either
-// explicit meeting membership or an independently owned practice allocation.
+// Persist a generation before opening a native session. Membership and expiry
+// are revalidated after I/O; a concurrent revocation invalidates this generation.
 func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Session, team Team, expiry time.Time, machine string) {
-	id := digest(team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24]
-	s.mu.Lock()
-	d := s.desktops[id]
-	s.mu.Unlock()
-	if d != nil && (d.ctx.Err() != nil || !d.info.Expires.After(time.Now()) || d.record.SessionID != v.ID) {
-		if e := s.revokeMatchingDesktop(r.Context(), v.User.ID, team.InstanceID); e != nil {
-			writeError(w, 503, "Your previous desktop is closing. Please retry.")
-			return
-		}
-		d = nil
-	}
 	if v.Expires.Before(expiry) {
 		expiry = v.Expires
 	}
+	id := digest(team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24]
 	record := accessRecord{id, v.User.ID, v.ID, team.ID, team.InstanceID, expiry}
-	if e := s.Store.Put(r.Context(), "desktop", id, record); e != nil {
-		writeError(w, 503, "Could not reserve your desktop.")
+	generation, err := s.reserveDesktop(r.Context(), record)
+	if err != nil {
+		_, _ = s.Store.Enqueue(r.Context(), "access-cleanup", "pending")
+		writeError(w, 503, "Your desktop is opening or closing. Retry shortly.")
 		return
 	}
-	// Recheck the native session even when a local relay is cached. A guest
-	// session can exit independently while its retained workspace remains.
+	// Release the per-user intent lock before provider and relay HTTP work.
 	openCtx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	info, e := s.Engine.OpenDesktopWithOptions(openCtx, team.InstanceID, machine, lc.AccessOptions{Principal: v.User.ID, Expires: expiry.Format(time.RFC3339), RetainWorkspace: true})
-	if e != nil {
+	budgetCtx, release, err := s.sshContext(openCtx)
+	var info lc.AccessInfo
+	if err == nil {
+		info, err = s.Engine.OpenDesktopWithOptions(budgetCtx, team.InstanceID, machine, lc.AccessOptions{Principal: v.User.ID, Expires: expiry.Format(time.RFC3339), RetainWorkspace: true})
+		release()
+	}
+
+	var next *desktopSession
+	if err == nil && info.ID != id {
+		err = fmt.Errorf("desktop identity mismatch")
+	}
+	if err == nil {
+		s.desktopMu.Lock()
+		prior := s.desktops[id]
+		s.desktopMu.Unlock()
+		if prior != nil && prior.ctx.Err() == nil && prior.info.URL == info.URL {
+			ctx, stop := context.WithCancel(context.Background())
+			next = &desktopSession{record: record, info: info, proxy: prior.proxy, cookies: prior.cookies, cookie: prior.cookie, ctx: ctx, cancel: stop}
+		} else {
+			next, err = newDesktop(record, info)
+		}
+	}
+	saveCtx, stop := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
+	defer stop()
+	ticket, save := s.finishDesktop(saveCtx, record, generation, next, err)
+	if save != nil || err != nil {
+		if next != nil {
+			next.cancel()
+		}
+		_, _ = s.Store.Enqueue(saveCtx, "access-cleanup", "pending")
 		writeError(w, 503, "Your desktop could not start. Retry shortly; your files are retained.")
 		return
 	}
-	if info.ID != id {
-		writeError(w, 503, "Desktop identity mismatch.")
-		return
-	}
-	if d == nil || d.info.URL != info.URL {
-		next, err := newDesktop(record, info)
-		if err != nil {
-			_ = s.Engine.CloseAccess(context.Background(), id)
-			writeError(w, 503, "Desktop connection could not be established. Retry shortly.")
-			return
-		}
-		s.mu.Lock()
-		s.desktops[id] = next
-		s.mu.Unlock()
-		if d != nil {
-			d.cancel()
-		}
-		d = next
-	}
-	ticket := randomID(32)
-	s.mu.Lock()
-	s.tickets[digest(ticket)] = launchTicket{id, v.ID, time.Now().Add(time.Minute)}
-	s.mu.Unlock()
 	writeJSON(w, 200, Launch{s.Config.DesktopOrigin + "/launch", ticket})
 }
 func newDesktop(record accessRecord, info lc.AccessInfo) (*desktopSession, error) {
@@ -164,7 +159,7 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Open your desktop from LabCentral.", 401)
 		return
 	}
-	s.mu.Lock()
+	s.desktopMu.Lock()
 	var d *desktopSession
 	for _, candidate := range s.desktops {
 		if candidate.cookie == cookie.Value {
@@ -172,7 +167,7 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	if d == nil {
 		http.Error(w, "Desktop session ended. Return to your lab to reconnect.", 401)
 		return
@@ -246,12 +241,12 @@ func (s *Service) acceptLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid launch", 400)
 		return
 	}
-	s.mu.Lock()
+	s.desktopMu.Lock()
 	key := digest(r.PostForm.Get("ticket"))
 	t, ok := s.tickets[key]
 	delete(s.tickets, key)
 	d := s.desktops[t.AccessID]
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	if !ok || d == nil || !t.Expires.After(time.Now()) || d.record.SessionID != t.SessionID || !s.desktopAuthorized(r.Context(), d) {
 		http.Error(w, "Launch link expired. Open the desktop again from your lab.", 403)
 		return
@@ -276,42 +271,32 @@ func (s *Service) desktopAuthorized(ctx context.Context, d *desktopSession) bool
 	return e == nil && team.ID == d.record.TeamID && team.InstanceID == d.record.InstanceID
 }
 
-// Caller holds the user lock. Durable records are removed only after provider confirmation.
+// Each resource retains its own closing intent until provider confirmation.
 func (s *Service) revokeUser(ctx context.Context, user string) error {
 	return s.revokeMatchingDesktop(ctx, user, "")
 }
 func (s *Service) revokeMatchingDesktop(ctx context.Context, user, instance string) error {
-	records, e := s.Store.List(ctx, "desktop")
-	if e != nil {
-		return e
+	records, err := s.Store.List(ctx, "desktop")
+	if err != nil {
+		return err
 	}
-	for _, b := range records {
+	failures := make([]error, 0)
+	for _, raw := range records {
 		var record accessRecord
-		if e = json.Unmarshal(b, &record); e != nil {
-			return e
-		}
-		if record.UserID != user || (instance != "" && record.InstanceID != instance) {
+		if err = json.Unmarshal(raw, &record); err != nil {
+			failures = append(failures, err)
 			continue
 		}
-		s.mu.Lock()
-		if d := s.desktops[record.ID]; d != nil {
-			d.cancel()
-			delete(s.desktops, record.ID)
-		}
-		s.mu.Unlock()
-		if e = s.Engine.CloseAccess(ctx, record.ID); e != nil {
-			return e
-		}
-		if e = s.Store.Delete(ctx, "desktop", record.ID); e != nil {
-			return e
+		if record.UserID == user && (instance == "" || record.InstanceID == instance) {
+			if err = s.cleanupDesktop(ctx, record.ID, false); err != nil {
+				failures = append(failures, err)
+			}
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 func (s *Service) closeDesktop(w http.ResponseWriter, r *http.Request, v Session) {
-	unlock := s.lockUser(v.User.ID)
 	e := s.revokeUser(r.Context(), v.User.ID)
-	unlock()
 	if e != nil {
 		writeError(w, 503, "Desktop disconnected; guest cleanup is pending.")
 		return
@@ -321,12 +306,12 @@ func (s *Service) closeDesktop(w http.ResponseWriter, r *http.Request, v Session
 	}{true})
 }
 func (s *Service) revalidateDesktops(ctx context.Context) {
-	s.mu.Lock()
+	s.desktopMu.Lock()
 	list := make([]*desktopSession, 0, len(s.desktops))
 	for _, d := range s.desktops {
 		list = append(list, d)
 	}
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	// Authorize concurrently, independently of infrastructure and guest cleanup.
 	// Cancellation closes transports immediately; the durable worker retries cleanup.
 	var checks sync.WaitGroup
@@ -340,11 +325,11 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 		})
 	}
 	checks.Wait()
-	// The single store connection may be busy with a durable transaction. Relay
-	// and launch-ticket access must not wait behind that database work.
+	// Database admission may be busy. Relay and launch-ticket access must
+	// never retain their mutex while waiting for durable reads or enqueueing.
 	records, _ := s.Store.List(ctx, "desktop")
 	cleanup := false
-	s.mu.Lock()
+	s.desktopMu.Lock()
 	for _, b := range records {
 		var a accessRecord
 		if json.Unmarshal(b, &a) == nil && (s.desktops[a.ID] == nil || s.desktops[a.ID].ctx.Err() != nil) {
@@ -357,7 +342,7 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 			delete(s.tickets, k)
 		}
 	}
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	if cleanup {
 		// Recovery rechecks active relays while holding each user's lock, so a
 		// concurrent reconnect can safely make this cleanup signal obsolete.

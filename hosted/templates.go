@@ -86,20 +86,20 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 	if err != nil {
 		return nil, err
 	}
+	operations, heads, err := s.templateReadMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+	practiceKeys, err := s.practiceImageKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for n := range out {
 		t := &out[n]
-		var operation Job
-		err = s.Store.DB.QueryRowContext(ctx, `SELECT id,kind,target,status,error,created FROM jobs WHERE target=? AND kind IN ('build','remove-images') ORDER BY created DESC LIMIT 1`, t.ID).Scan(&operation.ID, &operation.Kind, &operation.Target, &operation.Status, &operation.Error, newTime(&operation.Created))
-		if err == nil {
+		if operation, ok := operations[t.ID]; ok {
 			t.Operation = &operation
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
 		}
-		var head string
-		if err = s.Store.Get(ctx, "template-head", t.Name, &head); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
-		t.Latest = head == t.ID
+		t.Latest = heads[t.Name] == t.ID
 		keys, e := s.templateKeys(ctx, t.ID)
 		if e != nil {
 			if errors.Is(e, errRetainedRevision) {
@@ -124,9 +124,11 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 		}
 		t.RemovalBlocked = removalBlock(*t, keys, meeting, instances)
 		if t.RemovalBlocked == "" {
-			t.RemovalBlocked, err = s.practiceImageBlock(ctx, keys)
-			if err != nil {
-				return nil, err
+			for _, key := range keys {
+				if practiceKeys[key] {
+					t.RemovalBlocked = "Used by a personal cloud run. Finish its cleanup before removing images."
+					break
+				}
 			}
 		}
 	}
@@ -184,14 +186,7 @@ func (s *Service) templateOperation(w http.ResponseWriter, r *http.Request, kind
 	}
 	writeJSON(w, 202, j)
 }
-func (s *Service) queueTemplateOperation(ctx context.Context, kind, id string) (Job, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.queueTemplateOperationLocked(ctx, kind, id)
-}
-
-// Caller holds s.mu so retry validation and reservation cannot be superseded.
-func (s *Service) queueTemplateOperationLocked(ctx context.Context, kind, id string) (Job, error) {
+func (s *Service) queueTemplateDecision(ctx context.Context, kind, id string) (Job, error) {
 	var t Template
 	if err := s.Store.Get(ctx, "template", id, &t); err != nil {
 		return Job{}, fmt.Errorf("Template revision not found.")
@@ -376,13 +371,57 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 		t.RemovedAt = &now
 	}
 	// Refresh can enrich revision metadata while native work runs. Merge only
-	// lifecycle fields into the current record under the shared short fence.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var current Template
-	if err := s.Store.Get(ctx, "template", t.ID, &current); err != nil {
+	// lifecycle fields conditionally into the current record in one SQL update.
+	_, err = s.Store.DB.ExecContext(ctx, `UPDATE objects SET body=json_set(body,'$.built',json(?),'$.builtAt',json(?),'$.removedAt',json(?),'$.removing',json(?)) WHERE kind='template' AND id=? AND NOT EXISTS (SELECT 1 FROM objects op WHERE op.kind='template-operation' AND op.id=? AND json_extract(op.body,'$')!=?)`, jsonValue(t.Built), jsonValue(t.BuiltAt), jsonValue(t.RemovedAt), jsonValue(t.Removing), t.ID, t.ID, j.ID)
+	return err
+}
+
+func (s *Service) queueTemplateOperation(ctx context.Context, kind, id string) (Job, error) {
+	var result Job
+	err := s.Store.atomic(ctx, func(ctx context.Context) error {
+		var err error
+		result, err = s.queueTemplateDecision(ctx, kind, id)
 		return err
+	})
+	return result, err
+}
+
+func (s *Service) templateReadMetadata(ctx context.Context) (map[string]Job, map[string]string, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT j.id,j.kind,j.target,j.status,j.error,j.created FROM jobs j WHERE j.kind IN ('build','remove-images') AND j.id=(SELECT newer.id FROM jobs newer WHERE newer.target=j.target AND newer.kind IN ('build','remove-images') ORDER BY newer.created DESC,newer.id DESC LIMIT 1)`)
+	if err != nil {
+		return nil, nil, err
 	}
-	current.Built, current.BuiltAt, current.RemovedAt, current.Removing = t.Built, t.BuiltAt, t.RemovedAt, t.Removing
-	return s.Store.Put(ctx, "template", t.ID, current)
+	operations := map[string]Job{}
+	for rows.Next() {
+		var j Job
+		if err = rows.Scan(&j.ID, &j.Kind, &j.Target, &j.Status, &j.Error, newTime(&j.Created)); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		operations[j.Target] = j
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+	rows, err = s.Store.DB.QueryContext(ctx, `SELECT id,body FROM objects WHERE kind='template-head'`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	heads := map[string]string{}
+	for rows.Next() {
+		var name string
+		var raw []byte
+		if err = rows.Scan(&name, &raw); err != nil {
+			return nil, nil, err
+		}
+		var id string
+		if err = json.Unmarshal(raw, &id); err != nil {
+			return nil, nil, err
+		}
+		heads[name] = id
+	}
+	return operations, heads, rows.Err()
 }

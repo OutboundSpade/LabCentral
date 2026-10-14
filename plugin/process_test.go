@@ -373,3 +373,25 @@ func TestEmptyPlatformRestrictionSurvivesProtocol(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnerWaitRespectsCancellation(t *testing.T) {
+	var owner sync.RWMutex
+	owner.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	if err := waitOwner(ctx, &owner, true); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	owner.Unlock()
+	owner.RLock()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel2()
+	if err := waitOwner(ctx2, &owner, false); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	owner.RUnlock()
+	if err := waitOwner(context.Background(), &owner, false); err != nil {
+		t.Fatal(err)
+	}
+	owner.Unlock()
+}

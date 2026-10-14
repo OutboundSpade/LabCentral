@@ -209,6 +209,11 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 			}
 		}
 	}()
+	release, admit := s.acquireSSH(ctx)
+	if admit != nil {
+		return
+	}
+	defer release()
 	err = engine.WithSSHMaterial(ctx, team.InstanceID, name, func(inst lc.Instance, m lc.PlannedMachine, res lc.Resource, key []byte) error {
 		if !s.coachAuthorized(ctx, v, team, meeting) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) {
 			cancel(errCoachRevoked)

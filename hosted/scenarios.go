@@ -78,7 +78,7 @@ func (s *Service) learningBundle(ctx context.Context, p LearningPublication) (In
 	err := s.Store.Get(ctx, "template-instructor", p.Template, &b)
 	return b, err
 }
-func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) createTemplateAttemptDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var req CreateTemplateAttemptRequest
 	if !decode(w, r, &req) {
 		return
@@ -87,10 +87,6 @@ func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, 
 		writeError(w, 400, "Supply a 24-character random request ID and reuse it when retrying.")
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	templateID := r.PathValue("id")
 	if s.studentTemplate(r.Context(), templateID) != nil {
 		writeError(w, 404, "This template revision is unavailable.")
@@ -272,6 +268,8 @@ func (s *Service) scenarioIntent(ctx context.Context, run practiceRecord, p Lear
 }
 
 func (s *Service) prepareScenario(ctx context.Context, run practiceRecord, p LearningPublication, src lc.Source) error {
+	ctx, closeGuest := guestJobContext(ctx)
+	defer closeGuest()
 	if p.ScenarioID == "" {
 		return nil
 	}
@@ -326,4 +324,8 @@ func (s *Service) applyScenario(ctx context.Context, team Team, src lc.Source, b
 		}
 	}
 	return nil
+}
+
+func (s *Service) createTemplateAttempt(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.createTemplateAttemptDecision)(w, r, v)
 }

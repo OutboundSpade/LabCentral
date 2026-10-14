@@ -270,6 +270,7 @@ func (i *testIdentity) Refresh(context.Context, *oauth2.Token) (User, *oauth2.To
 }
 
 type testEngine struct {
+	closeMu sync.Mutex
 	Engine
 	closeError error
 	closed     int
@@ -278,7 +279,12 @@ type testEngine struct {
 func (e *testEngine) Images(context.Context) ([]lc.ImageRecord, error) { return nil, nil }
 func (e *testEngine) List(context.Context) ([]lc.Instance, error)      { return nil, nil }
 func (e *testEngine) Builds(context.Context) ([]lc.Command, error)     { return nil, nil }
-func (e *testEngine) CloseAccess(context.Context, string) error        { e.closed++; return e.closeError }
+func (e *testEngine) CloseAccess(context.Context, string) error {
+	e.closeMu.Lock()
+	defer e.closeMu.Unlock()
+	e.closed++
+	return e.closeError
+}
 func serviceFor(t *testing.T) (*Service, Session, *testEngine) {
 	st := testStore(t)
 	engine := &testEngine{}

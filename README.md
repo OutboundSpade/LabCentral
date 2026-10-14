@@ -49,7 +49,7 @@ images shared by another built revision. Failed cleanup stays retryable.
 
 Independent image builds and old-template deployments can run together. The worker
 uses resource dependencies and bounded capacity: three bulk operations (at most
-two builds), two checks/exercises, and one reserved cleanup slot. **Live activity**
+two builds), twelve checks/exercises, and one reserved cleanup slot. **Live activity**
 shows running/queued work, waiting dependencies, progress counts and active desktops.
 Obsolete failures remain in Recent; Needs attention contains current failures.
 Retry feedback appears beside the activity controls. Activity shows readable operation
@@ -264,10 +264,14 @@ sections into the existing configuration and restart the service to apply them:
 ```json
 {
   "weeklyCloudMinutes": 180,
+  "aggregate": {
+    "maxNativeOperations": 8,
+    "maxSSHSessions": 24
+  },
   "worker": {
     "maxProvisioningConcurrency": 3,
     "maxBulkJobs": 3,
-    "maxGuestJobs": 2,
+    "maxGuestJobs": 12,
     "maxImageBuildJobs": 2,
     "jobTimeoutMinutes": 120
   },
@@ -283,21 +287,42 @@ sections into the existing configuration and restart the service to apply them:
 | --- | ---: | --- |
 | `worker.maxProvisioningConcurrency` | 3 | Total simultaneous team and personal lab preparations in this service |
 | `worker.maxBulkJobs` | 3 | Build, preparation, repository refresh and image removal jobs |
-| `worker.maxGuestJobs` | 2 | Checks and exercises, independent of bulk capacity |
+| `worker.maxGuestJobs` | 12 | Checks and exercises, independent of bulk capacity |
 | `worker.maxImageBuildJobs` | 2 | Image-build jobs within the bulk budget |
 | `worker.jobTimeoutMinutes` | 120 | Maximum job duration; allocation expiry can interrupt work sooner |
 | `engine.maxImageBuildConcurrency` | 3 | Parallel images within each build operation |
 | `engine.maxMachineConcurrency` | 4 | Parallel machine creates within each lab deployment |
 | `engine.maxCleanupConcurrency` | 4 | Parallel machine deletions within each lab cleanup |
+| `aggregate.maxNativeOperations` | 8 | Total simultaneous machine create/delete operations across jobs, including build/cleanup work |
+| `aggregate.maxSSHSessions` | 24 | Total simultaneous guest SSH steps, coach terminals and desktop open/close operations |
 | `weeklyCloudMinutes` | 180 | Each student's weekly personal cloud allowance |
 
-Concurrency values accept 1–32; job timeout accepts 1–1440 minutes. Omitted or
+Worker/engine concurrency values accept 1–32; aggregate budgets accept 1–64.
+Job timeout accepts 1–1440 minutes. Omitted or
 zero values select defaults. Image-build jobs cannot exceed bulk jobs; when
 omitted, their limit is the smaller of two and the bulk budget. A further worker
-slot remains reserved for cleanup. Engine limits apply to each operation, so
-three concurrent lab preparations with four machine creates each can issue up
-to twelve machine creates. Raising limits does not increase provider quotas.
+slot remains reserved for cleanup. Engine limits apply within each operation;
+the aggregate native budget also bounds independent preparations and cleanup
+jobs together. Raising limits does not increase provider quotas.
 Waiting preparations remain cancellable and keep their original allocation IDs.
+Guest action checks use a 20-second base cadence while the student is active,
+back off to 60 seconds after five minutes without answers, check requests or
+an authenticated desktop lesson read, and include per-allocation jitter.
+**Check now** queues immediately while deduplicating pending work.
+
+For a local cohort experiment with fake native/SSH latency and no network:
+
+```sh
+LABCENTRAL_LOAD_TEST=1 go test ./hosted -run '^TestConcurrencyLoad$' -count=1 -v
+```
+
+The 65-second fixture uses 100 personal allocations, five administrators polling
+at two seconds, 100 lesson panels polling at five seconds, and a 20-team meeting
+prepared and destroyed through the worker. It reports endpoint and queue-delay
+percentiles, admitted/pending checks, peak operations and destruction duration.
+`LABCENTRAL_LOAD_NATIVE`, `LABCENTRAL_LOAD_SSH`, and `LABCENTRAL_LOAD_DURATION`
+accept Go durations (defaults: 250 ms, 100 ms, 65 s). These are local responsiveness
+measurements; they do not qualify provider capacity or real desktop sessions.
 
 ```sh
 labcentral-server --config /path/to/protected-service.json --check-config

@@ -63,11 +63,12 @@ func run() error {
 	}
 	if *checkConfig {
 		return json.NewEncoder(os.Stdout).Encode(struct {
-			Engine             lc.EngineOptions     `json:"engine"`
-			Worker             hosted.WorkerOptions `json:"worker"`
-			WeeklyCloudMinutes int                  `json:"weeklyCloudMinutes"`
-			Note               string               `json:"note"`
-		}{c.Engine.Effective(), c.Worker.Effective(), func() int {
+			Aggregate          hosted.AggregateOptions `json:"aggregate"`
+			Engine             lc.EngineOptions        `json:"engine"`
+			Worker             hosted.WorkerOptions    `json:"worker"`
+			WeeklyCloudMinutes int                     `json:"weeklyCloudMinutes"`
+			Note               string                  `json:"note"`
+		}{c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), func() int {
 			if c.WeeklyCloudMinutes == 0 {
 				return 180
 			}
@@ -89,12 +90,16 @@ func run() error {
 		return e
 	}
 	defer p.Close()
-	engine, e := lc.OpenWithOptions(filepath.Join(c.Root, "engine"), p, nil, c.Engine)
+	budgeted, e := hosted.NewBudgetedProvider(p, c.Aggregate)
+	if e != nil {
+		return e
+	}
+	engine, e := lc.OpenWithOptions(filepath.Join(c.Root, "engine"), budgeted, nil, c.Engine)
 	if e != nil {
 		return e
 	}
 	defer engine.Close()
-	service, e := hosted.New(ctx, c, engine)
+	service, e := hosted.New(ctx, c, engine, budgeted)
 	if e != nil {
 		return e
 	}

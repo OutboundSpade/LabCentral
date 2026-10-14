@@ -49,17 +49,13 @@ func (s *Service) checkView(ctx context.Context, m Meeting, teams []Team) (*Chec
 		current = &schedule
 	}
 	runs := []CheckRun{}
-	for _, team := range teams {
-		var id string
-		err = s.Store.Get(ctx, "check-current", team.ID, &id)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, err
-		}
+	raw, err := s.Store.currentRuns(ctx, "check", teams)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, body := range raw {
 		var run CheckRun
-		if err = s.Store.Get(ctx, "check", id, &run); err != nil {
+		if err = json.Unmarshal(body, &run); err != nil {
 			return nil, nil, err
 		}
 		runs = append(runs, run)
@@ -83,7 +79,7 @@ func (s *Service) checkMeeting(ctx context.Context) (*Meeting, error) {
 	}
 	return m, nil
 }
-func (s *Service) setCheckSchedule(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) setCheckScheduleDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var req CheckScheduleRequest
 	if !decode(w, r, &req) {
 		return
@@ -92,8 +88,6 @@ func (s *Service) setCheckSchedule(w http.ResponseWriter, r *http.Request, v Ses
 		writeError(w, 400, "Choose 60 to 3600 seconds, or zero to pause.")
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	m, err := s.checkMeeting(r.Context())
 	if err != nil {
 		writeError(w, 409, err.Error())
@@ -106,9 +100,7 @@ func (s *Service) setCheckSchedule(w http.ResponseWriter, r *http.Request, v Ses
 	}
 	writeJSON(w, 200, schedule)
 }
-func (s *Service) startChecks(w http.ResponseWriter, r *http.Request, v Session) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *Service) startChecksDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	m, err := s.checkMeeting(r.Context())
 	if err != nil {
 		writeError(w, 409, err.Error())
@@ -123,67 +115,74 @@ func (s *Service) startChecks(w http.ResponseWriter, r *http.Request, v Session)
 	}{true})
 }
 
-// Called with s.mu held; check intent, current result and next due time commit
-// with jobs. Restart never catches up missed ticks or duplicates active checks.
+// Check intents, current pointers, schedule and jobs share one short immediate
+// transaction. Batched statements avoid one query/three writes per team.
 func (s *Service) queueChecks(ctx context.Context, m Meeting, schedule *CheckSchedule) error {
-	teams, err := s.Store.Teams(ctx, m.ID)
-	if err != nil {
-		return err
-	}
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	now := time.Now().UTC()
-	for _, team := range teams {
-		if team.Status != "ready" {
-			continue
-		}
-		var count int
-		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs j JOIN objects o ON o.kind IN ('check','exercise') AND o.id=j.target WHERE j.status IN ('queued','running') AND json_extract(o.body,'$.teamID')=?`, team.ID).Scan(&count); err != nil {
+	rows, err := tx.QueryContext(ctx, `WITH candidates AS MATERIALIZED (SELECT t.*,lower(hex(randomblob(12))) AS run_id FROM teams t WHERE meeting_id=? AND status='ready'
+ AND NOT EXISTS(SELECT 1 FROM jobs j JOIN objects o ON o.kind IN ('check','exercise') AND o.id=j.target WHERE j.status IN ('queued','running') AND json_extract(o.body,'$.teamID')=t.id))
+ INSERT INTO objects(kind,id,body)
+ SELECT 'check',run_id,json_object('id',run_id,'meetingID',meeting_id,'teamID',id,'status','queued','started',?,'updated',?,'results',json('[]')) FROM candidates RETURNING id`, m.ID, now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	if err != nil {
+		return err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
 			return err
 		}
-		if count > 0 {
-			continue
-		}
-		run := CheckRun{ID: randomID(12), MeetingID: m.ID, TeamID: team.ID, Status: "queued", Started: now, Updated: now, Results: []CheckResult{}}
-		for _, obj := range []struct {
-			kind, id string
-			value    any
-		}{{"check", run.ID, run}, {"check-current", team.ID, run.ID}} {
-			b, _ := json.Marshal(obj.value)
-			if _, err = tx.ExecContext(ctx, `INSERT INTO objects VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body`, obj.kind, obj.id, b); err != nil {
-				return err
-			}
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO jobs(id,kind,target,status,created) VALUES(?,'check',?,'queued',?)`, randomID(12), run.ID, now.Format(time.RFC3339Nano)); err != nil {
-			return err
-		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(ids)
+	_, err = tx.ExecContext(ctx, `INSERT INTO objects(kind,id,body) SELECT 'check-current',json_extract(body,'$.teamID'),json_quote(id) FROM objects WHERE kind='check' AND id IN (SELECT value FROM json_each(?)) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body`, raw)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO jobs(id,kind,target,status,created) SELECT lower(hex(randomblob(12))),'check',value,'queued',? FROM json_each(?)`, now.Format(time.RFC3339Nano), raw)
+	if err != nil {
+		return err
 	}
 	if schedule != nil {
 		schedule.Next = now.Add(time.Duration(schedule.IntervalSeconds) * time.Second)
-		b, _ := json.Marshal(schedule)
-		if _, err = tx.ExecContext(ctx, `UPDATE objects SET body=? WHERE kind='check-schedule' AND id=?`, b, m.ID); err != nil {
+		raw, _ = json.Marshal(schedule)
+		if _, err = tx.ExecContext(ctx, `UPDATE objects SET body=? WHERE kind='check-schedule' AND id=?`, raw, m.ID); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	s.Store.signal()
+	return nil
 }
 func (s *Service) scheduleChecks(ctx context.Context) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m, err := s.checkMeeting(ctx)
-	if err != nil {
-		return
-	}
-	var schedule CheckSchedule
-	if s.Store.Get(ctx, "check-schedule", m.ID, &schedule) != nil || schedule.IntervalSeconds == 0 || schedule.Next.After(time.Now()) {
-		return
-	}
-	_ = s.queueChecks(ctx, *m, &schedule)
+	_ = s.Store.atomic(ctx, func(ctx context.Context) error {
+		m, err := s.checkMeeting(ctx)
+		if err != nil {
+			return nil
+		}
+		var schedule CheckSchedule
+		if s.Store.Get(ctx, "check-schedule", m.ID, &schedule) != nil || schedule.IntervalSeconds == 0 || schedule.Next.After(time.Now()) {
+			return nil
+		}
+		return s.queueChecks(ctx, *m, &schedule)
+	})
 }
 func (s *Service) runCheck(ctx context.Context, j Job) (err error) {
+	ctx, closeGuest := guestJobContext(ctx)
+	defer closeGuest()
 	var run CheckRun
 	if err = s.Store.Get(ctx, "check", j.Target, &run); err != nil {
 		return err
@@ -266,4 +265,12 @@ func (s *Service) runCheck(ctx context.Context, j Job) (err error) {
 	run.Status = "complete"
 	run.Updated = time.Now().UTC()
 	return s.Store.Put(ctx, "check", run.ID, run)
+}
+
+func (s *Service) setCheckSchedule(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.setCheckScheduleDecision)(w, r, v)
+}
+
+func (s *Service) startChecks(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.startChecksDecision)(w, r, v)
 }

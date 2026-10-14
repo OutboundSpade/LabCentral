@@ -11,13 +11,11 @@ import (
 	"time"
 )
 
-func (s *Service) checkLearning(w http.ResponseWriter, r *http.Request, v Session) {
+func (s *Service) checkLearningDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var req LearningCheckRequest
 	if !decode(w, r, &req) {
 		return
 	}
-	unlock := s.lockUser(v.User.ID)
-	defer unlock()
 	p, err := s.ownedPublication(r.Context(), r.PathValue("id"), v.User.ID)
 	if err != nil {
 		writeError(w, 404, err.Error())
@@ -63,6 +61,8 @@ func (s *Service) checkLearning(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 503, "Action verification could not be queued.")
 		return
 	}
+	_ = s.touchLearning(r.Context(), v.User.ID, p.ID)
+	_ = s.nextLearningCheck(r.Context(), v.User.ID, p.ID, run.ID, run.Created, time.Now().UTC())
 	writeJSON(w, 202, check)
 }
 
@@ -70,19 +70,10 @@ func (s *Service) checkLearning(w http.ResponseWriter, r *http.Request, v Sessio
 // press a button. A failing observation preserves the stage; only a confirmed
 // pass commits advancement. No missed observations are replayed after restart.
 func (s *Service) scheduleLearningChecks(ctx context.Context) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT id,user_id,lab_id FROM practice_runs WHERE status='ready' AND expires>?`, time.Now().UTC().Format(time.RFC3339Nano))
+	list, err := s.learningCandidates(ctx)
 	if err != nil {
 		return
 	}
-	type candidate struct{ run, user, lab string }
-	list := []candidate{}
-	for rows.Next() {
-		var c candidate
-		if rows.Scan(&c.run, &c.user, &c.lab) == nil {
-			list = append(list, c)
-		}
-	}
-	rows.Close()
 	for _, c := range list {
 		p, err := s.ownedPublication(ctx, c.lab, c.user)
 		if err != nil {
@@ -102,11 +93,14 @@ func (s *Service) scheduleLearningChecks(ctx context.Context) {
 		if step.Kind != "action" {
 			continue
 		}
-		var previous learningCheckRecord
-		if s.Store.Get(ctx, "learning-check-current", progressKey(c.user, c.lab), &previous) == nil && previous.StepID == step.ID && time.Since(previous.Updated) < 20*time.Second {
+		now := time.Now().UTC()
+		due, err := s.learningDue(ctx, c.user, c.lab, c.run, c.created, now)
+		if err != nil || !due {
 			continue
 		}
-		_, _ = s.queueLearningCheck(ctx, c.user, c.lab, step.ID, c.run, progress.CompletedSteps)
+		if _, err = s.queueLearningCheck(ctx, c.user, c.lab, step.ID, c.run, progress.CompletedSteps); err == nil {
+			_ = s.nextLearningCheck(ctx, c.user, c.lab, c.run, c.created, now)
+		}
 	}
 }
 func (s *Service) queueLearningCheck(ctx context.Context, user, lab, step, run string, completed int) (LearningCheck, error) {
@@ -147,11 +141,13 @@ func (s *Service) queueLearningCheck(ctx context.Context, user, lab, step, run s
 	if err != nil {
 		return check.LearningCheck, err
 	}
-	return check.LearningCheck, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return check.LearningCheck, err
+	}
+	s.Store.signal()
+	return check.LearningCheck, nil
 }
 func (s *Service) saveLearningCheck(ctx context.Context, check learningCheckRecord, advance bool) error {
-	unlock := s.lockUser(check.UserID)
-	defer unlock()
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -287,4 +283,8 @@ func (s *Service) runLearningCheck(ctx context.Context, j Job) (err error) {
 	check.Status = "passed"
 	check.Report = "Action verified. Your progress is saved."
 	return s.saveLearningCheck(ctx, check, true)
+}
+
+func (s *Service) checkLearning(w http.ResponseWriter, r *http.Request, v Session) {
+	s.coordinate(s.checkLearningDecision)(w, r, v)
 }

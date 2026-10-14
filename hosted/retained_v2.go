@@ -184,5 +184,5 @@ func (s *Store) Get(ctx context.Context, kind, id string, value any) error {
 		}
 		return decodeRetainedBundle(raw, bundle)
 	}
-	return s.Store.Get(ctx, kind, id, value)
+	return s.getObject(ctx, kind, id, value)
 }

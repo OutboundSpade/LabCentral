@@ -24,7 +24,7 @@ func (o WorkerOptions) Effective() WorkerOptions {
 		o.MaxBulkJobs = 3
 	}
 	if o.MaxGuestJobs == 0 {
-		o.MaxGuestJobs = 2
+		o.MaxGuestJobs = 12
 	}
 	if o.MaxImageBuildJobs == 0 {
 		o.MaxImageBuildJobs = min(2, o.MaxBulkJobs)
@@ -60,6 +60,9 @@ func (o WorkerOptions) Validate() error {
 // ValidateConfig checks static service policy without contacting identity or
 // infrastructure. Credential validity and native capacity require live checks.
 func ValidateConfig(c Config) error {
+	if err := c.Aggregate.Validate(); err != nil {
+		return err
+	}
 	if err := c.Engine.Validate(); err != nil {
 		return fmt.Errorf("engine: %w", err)
 	}

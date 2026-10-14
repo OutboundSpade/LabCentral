@@ -237,11 +237,11 @@ func TestDesktopRevalidationDoesNotHoldRelayMutexWhileWaitingForStore(t *testing
 			t.Fatal("revalidation did not reach the blocked SQL read")
 		}
 	}
-	if !s.mu.TryLock() {
+	if !s.desktopMu.TryLock() {
 		t.Fatal("blocked SQL read held unrelated desktop/ticket mutex")
 	}
 	s.tickets["unrelated-launch"] = launchTicket{Expires: time.Now().Add(time.Hour)}
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	if err = conn.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -250,11 +250,11 @@ func TestDesktopRevalidationDoesNotHoldRelayMutexWhileWaitingForStore(t *testing
 	case <-ctx.Done():
 		t.Fatal("revalidation did not resume after SQL connection release")
 	}
-	s.mu.Lock()
+	s.desktopMu.Lock()
 	_, expired := s.tickets["expired"]
 	_, valid := s.tickets["valid"]
 	_, unrelated := s.tickets["unrelated-launch"]
-	s.mu.Unlock()
+	s.desktopMu.Unlock()
 	if expired || !valid || !unrelated {
 		t.Fatal("ticket expiry lost concurrent valid tickets")
 	}

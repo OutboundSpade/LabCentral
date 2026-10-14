@@ -209,10 +209,15 @@ build, reuse, abandonment and removal across library clients. Up to three indepe
 images build concurrently. Native builds never hold the allocation lock. Deployment
 builds/reuses its images first, then acquires sorted image locks and the short
 allocation fence to persist image references and reservations. Removal uses the same
-image fence before checking retained references. Deployment releases those fences
+image fence before checking retained references. Removal and abandonment persist
+cleanup intent under the allocation fence, release it for native I/O, and briefly
+retake it to atomically release reservations and records after confirmed absence.
+Unknown cleanup blocks cache reuse until reconciled. Credential generation uses
+the instance guard outside the global allocation fence. Deployment releases those fences
 before native provisioning; after the network is ready, up to four machines provision
 concurrently. Each successful sibling is persisted, even when another fails.
 Deployment, recovery and destruction require an exclusive instance lifecycle lock.
+Destruction waits cancellably for busy guests instead of requiring a busy retry.
 Desktop open/close and bounded SSH operations share that lock and take an exclusive
 machine lock, permitting a workstation launch during checks on another machine in
 the same lab. File locks coordinate independent clients/processes; cancelled waits
@@ -704,8 +709,13 @@ changes are not part of the preceding deployed release's live qualification.
 Unpaginated catalogs, per-poll lesson planning and administrator/native inventory
 reads remain scaling limits; these local fixtures do not qualify a larger cohort.
 
-Released action stages in ready personal labs are observed approximately every
-20 seconds through the existing bounded guest-local Ansible launcher. Only a
+Released action stages in ready personal labs are observed with a 20-second base
+cadence through the bounded guest-local Ansible launcher. After five minutes
+without an answer, check-now request or authenticated desktop lesson read, the
+base interval becomes 60 seconds. Persisted activity and next-due records are
+separate from automatic progress updates; per-allocation jitter spreads checks.
+Check now bypasses the periodic due time and deduplicates active work. Policy
+iteration only queues guest work; it never executes slow observations inline. Only a
 confirmed successful check advances progress; failures preserve the stage and
 unavailable results never count as passes. The worker rechecks allocation, pinned
 source and current stage before execution and rechecks allocation expiry when
@@ -817,13 +827,33 @@ teams are not inspected, recovered or rewritten by preparation retries. Team cla
 serialize provisioning, exercises and checks for the same team; checks on a ready
 team can run while other teams are preparing. Unrelated queued work can bypass a blocked
 job. Bulk work (build, preparation, refresh and image removal) defaults to three slots, with
-at most two image-build jobs. Guest work (checks and exercises) defaults to two separate
+at most two image-build jobs. Guest work (checks and exercises) defaults to twelve separate
 slots, so bulk saturation cannot consume its capacity. An additional slot is reserved
 for meeting destruction or authorization cleanup. Resource claims still apply
-across all lanes; same-team checks and exercises remain exclusive.
-Desktop revalidation performs durable reads and cleanup enqueueing outside the
-shared relay/ticket mutex. Authorization cleanup continues across independent
-record failures, retains uncertain intents and returns their combined error;
+across all lanes. Observational jobs share a team/allocation claim and exclusively
+claim known target machines; reset/break and lifecycle work retain whole-team
+exclusion. Steps within a job stay sequential and use the guest flock. Verified
+SSH clients are reused per instance/machine for the job, with pinned identity
+checks on every use. Enqueue and completion wake the dispatcher; a five-second
+tick provides fallback. Immutable queued claims are cached, transferred on
+admission, and discarded when jobs leave the queue.
+Hosted SQLite has one write connection with BEGIN IMMEDIATE transactions and
+four read-only, query-only WAL readers; WAL and FULL synchronization remain.
+Compound quota, seat, import, template and enqueue decisions use the writer.
+Bounded request bodies are read before transaction admission and mutation
+responses are buffered until commit, so clients never retain that connection.
+Meeting check enqueue uses batched statements; administrator run pointers,
+job timing/labels, revision heads/operations and personal image references are
+batched rather than read once per student or team.
+Desktop/ticket maps have their own mutex used only for short memory operations.
+Desktop revalidation performs durable reads and cleanup enqueueing outside it.
+User intent locks are cancellable and reference counted; desktop generations
+persist opening/closing intent before native calls, release the user lock during
+I/O and revalidate authorization before publishing a relay. Cleanup rechecks the
+current generation, so stale expiry snapshots cannot close a new open.
+Personal destruction relies on persisted ending intent and scheduler claims,
+without retaining a user lock through native calls. Authorization cleanup
+continues across independent record failures, retains uncertain intents and returns their combined error;
 one unreachable guest cannot prevent later records from being visited.
 Queued dependencies, start/finish times,
 per-template image counts, team readiness and active desktops are visible in the
@@ -848,7 +878,16 @@ one failure does not cancel peers. Meetings with both ready and failed teams rep
 retry reconciles their reserved instance IDs while keeping ready teams accessible.
 The protected service config exposes startup-only `worker` limits for provisioning,
 bulk, guest and image-build jobs and job timeout, plus portable `engine` limits for
-native work within each operation. Defaults remain three/two/two jobs and 120
+native work within each operation. Service-wide `aggregate` budgets supplement
+those limits: eight native machine create/delete operations and 24 active guest
+SSH steps/terminal sessions/desktop operations, shared across jobs. Image build
+and abandonment reserve native capacity conservatively for their internal guests.
+Adapter creates/builds also reserve SSH admission for guest readiness/validation;
+desktop operations acquire it before library machine guards to avoid lock order
+inversion with checks. The server wraps its provider before opening the engine
+and shares that budget with hosted SSH work; portable engine types carry no hosted policy. Aggregate
+limits accept 1–64 and are reported by --check-config alongside worker/engine
+policy. Defaults are three bulk/twelve guest/two build jobs and 120
 minutes; concurrency accepts 1–32 and timeout 1–1440 minutes. Image-build jobs cannot
 exceed bulk capacity; an omitted image limit adapts to the smaller bulk budget.
 The total worker ceiling is bulk plus guest capacity plus one reserved cleanup slot.
@@ -857,9 +896,11 @@ limits before starting the provider, and `--check-config` reports effective poli
 without OIDC, provider startup or secrets. Config changes require restart and are
 not exposed in public DTOs. Local tests cover configured limits, shared admission,
 cancelled waiters, cleanup admission, reopened readiness and private CLI defaults.
-The service deployed with these options on 2026-10-13 and completed native AWS
-meeting/personal preparation and cleanup under the existing defaults. Configured
-capacity ceilings and larger concurrent cohorts remain unqualified live.
+The earlier worker/engine settings deployed on 2026-10-13 and completed native
+AWS meeting/personal preparation and cleanup with two guest slots. The twelve
+slots, aggregate budgets and concurrency changes have local failure/race/load
+coverage only. Configured capacity ceilings and larger concurrent cohorts remain
+unqualified live.
 The provider permits unrelated image builds, networking and machine operations
 concurrently. Owner fences serialize networking, image and access lifecycle work;
 distinct machines share the owner fence and have their own name fences. Create,
@@ -868,9 +909,12 @@ Networking deletion waits for all machine operations in that owner. Cancellation
 meeting operations before deadline cleanup proceeds; unrelated image builds continue. It preserves the reserved
 engine instance ID across retries, reconciles incomplete work, and prioritizes
 meeting destruction over ordinary queued work. Ending a meeting interrupts active
-meeting provisioning, exercises and checks; failed cleanup remains reported and retryable. Ending visits every
-team even if an earlier team fails, retaining only unresolved cleanup for retries. Page reads and
-unrelated desktop launches do not share that worker's infrastructure lock.
+meeting provisioning, exercises and checks; failed cleanup remains reported and
+retryable. Ending uses a bounded pool of eight teams; authorization cleanup uses eight
+independent access records concurrently. Each resource retains ending/closing
+intent and commits its own confirmed outcome; errors are joined and uncertain
+outcomes remain retryable. Ending visits every team even when a peer fails.
+Page reads and unrelated desktop launches do not share its resource claims.
 Provider journals distinguish explicit AWS authorization rejection from uncertain
 transport outcomes. A rejected create can be retried; a timeout still requires
 discovery. AWS creation permissions cover tagged outputs and separately authorize
@@ -884,7 +928,10 @@ can inspect authored effects and evidence inside their own VMs.
 A transaction reserves selected ready teams and persists each exercise intent
 with its durable job. The worker rechecks the meeting, deadline and latest team
 operation on every replay. Superseded jobs cannot reapply a break after a reset;
-completed jobs do not repeat mutations. A failed team does not prevent other
+completed jobs do not repeat mutations. Interrupted resetting/applying states
+become unknown after restart and cannot replay author mutations; explicit reset
+is required. An error after entering mutation also retains unknown outcome.
+Interrupted observational checks can run again. A failed team does not prevent other
 selected teams from running. End-of-meeting cleanup cancels exercises and retains
 priority. The library's caller-owned SSH callback holds the selected machine fence
 and a shared lifecycle guard; destruction waits for all guests without serializing

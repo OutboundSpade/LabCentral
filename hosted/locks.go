@@ -37,3 +37,40 @@ func (s *Service) lockSession(ctx context.Context, id string) (func(), error) {
 		return nil, ctx.Err()
 	}
 }
+
+func (s *Service) lockUser(ctx context.Context, id string) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.userMu.Lock()
+	if s.userLocks == nil {
+		s.userLocks = make(map[string]*sessionLock)
+	}
+	lock := s.userLocks[id]
+	if lock == nil {
+		lock = &sessionLock{busy: make(chan struct{}, 1)}
+		s.userLocks[id] = lock
+	}
+	lock.users++
+	s.userMu.Unlock()
+	release := func() {
+		s.userMu.Lock()
+		defer s.userMu.Unlock()
+		lock.users--
+		if lock.users == 0 {
+			delete(s.userLocks, id)
+		}
+	}
+	select {
+	case lock.busy <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-lock.busy
+			release()
+			return nil, err
+		}
+		return func() { <-lock.busy; release() }, nil
+	case <-ctx.Done():
+		release()
+		return nil, ctx.Err()
+	}
+}

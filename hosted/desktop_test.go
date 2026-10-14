@@ -44,19 +44,23 @@ func TestReconnectRechecksNativeSessionAndReplacesOnlyChangedRelay(t *testing.T)
 	defer cancel()
 	original := &desktopSession{record: accessRecord{id, v.User.ID, v.ID, teams[0].ID, "instance", v.Expires}, info: lc.AccessInfo{ID: id, URL: "http://127.0.0.1:1/launch?token=old", Expires: v.Expires}, ctx: dc, cancel: cancel}
 	s.desktops[id] = original
-	engine := &reconnectEngine{info: original.info}
+	engine := &reconnectEngine{Engine: s.Engine, info: original.info}
 	s.Engine = engine
 	launch := func() int {
 		w := httptest.NewRecorder()
 		s.launch(w, httptest.NewRequest("POST", "/api/access", nil), v)
 		return w.Code
 	}
-	if status := launch(); status != 200 || engine.opens != 1 || s.desktops[id] != original {
+	if status := launch(); status != 200 || engine.opens != 1 || s.desktops[id].cookie != original.cookie {
 		t.Fatalf("cached reconnect: %d opens=%d", status, engine.opens)
 	}
+	original = s.desktops[id]
 	engine.err = errors.New("unknown native status")
 	if status := launch(); status != 503 || original.ctx.Err() != nil || s.desktops[id] != original {
 		t.Fatal("unknown outcome replaced or revoked existing relay")
+	}
+	if err := s.recoverAccess(ctx); err != nil {
+		t.Fatal(err)
 	}
 	engine.err = nil
 	redeemed := 0

@@ -82,6 +82,9 @@ func (s *Service) retryDisposition(ctx context.Context, j Job) (blocked string, 
 		if run.Status == "complete" {
 			return "This run already completed.", false, nil
 		}
+		if j.Kind == "exercise" && (run.Status == "unknown" || run.Status == "resetting" || run.Status == "applying") {
+			return "Guest mutation outcome is unknown. Run an explicit reset.", true, nil
+		}
 		var state string
 		if err = s.Store.DB.QueryRowContext(ctx, `SELECT status FROM teams WHERE id=? AND meeting_id=?`, run.TeamID, run.MeetingID).Scan(&state); err != nil {
 			return "", true, err

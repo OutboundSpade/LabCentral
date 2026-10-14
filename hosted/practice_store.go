@@ -144,7 +144,11 @@ func (s *Store) reservePractice(ctx context.Context, user, lab string, minutes i
 	if err != nil {
 		return p, err
 	}
-	return p, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return p, err
+	}
+	s.signal()
+	return p, nil
 }
 func (s *Store) endPractice(ctx context.Context, id, user string) (PracticeRun, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -168,5 +172,9 @@ func (s *Store) endPractice(ctx context.Context, id, user string) (PracticeRun, 
 		return p.PracticeRun, err
 	}
 	p.Status = "ending"
-	return p.PracticeRun, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return p.PracticeRun, err
+	}
+	s.signal()
+	return p.PracticeRun, nil
 }
