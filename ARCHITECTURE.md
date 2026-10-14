@@ -648,7 +648,9 @@ still requires an administrator; runtime cannot pass its own management role to 
 Hosted deployment, recovery, cleanup and backup use `Hosted maintenance` workflow
 dispatches. Installation identifiers belong in protected operator records and
 GitHub repository variables, not source. Application rollout consumes an exact,
-checksum-verified release archive. The trusted `main` maintenance workflow has
+checksum-verified release archive. After a healthy rollout the host keeps only the running and
+immediately previous release directories and prunes unused container images; every
+release remains in the encrypted artifact bucket for verified redeployment. The trusted `main` maintenance workflow has
 GitHub Contents write permission because draft releases require push access; it
 uses that access to download staged artifacts, without publishing them
 ([GitHub release visibility](https://docs.github.com/en/rest/releases/releases#list-releases),
