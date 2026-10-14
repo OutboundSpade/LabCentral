@@ -479,9 +479,9 @@ func initEnvironment(path, platform string) error {
 	common := "version: 2\nname: example\nplatform: " + platform + "\noperatorCIDRs: [203.0.113.10/32]\nbases:\n  ubuntu-24.04:\n    id: REPLACE\n    identity: REPLACE\n    user: ubuntu\n    diskGiB: 8\nbuild:\n  packer: /absolute/path/to/packer\n  packerSHA256: REPLACE\n  pluginDirectory: /absolute/path/to/packer-plugins\n  toolchainID: REPLACE\n  ansibleVersion: 2.19.3\n  timeoutSeconds: 3600\n"
 	switch platform {
 	case "aws":
-		common += "  subnetID: subnet-REPLACE\n  securityGroupID: sg-REPLACE\n  instanceType: t3.medium\naws:\n  account: '000000000000'\n  region: us-east-1\n  zone: us-east-1a\n  types:\n    - {name: t3.medium, cpu: 2, memoryMiB: 4096}\n"
+		common += "  subnetID: subnet-REPLACE\n  securityGroupID: sg-REPLACE\n  instanceType: t3.medium\naws:\n  account: '000000000000'\n  region: us-east-1\n  zone: us-east-1a\n  allowEgress: false\n  gateway: {base: ubuntu-24.04, instanceType: t3.micro}\n  types:\n    - {name: t3.medium, cpu: 2, memoryMiB: 4096}\n"
 	case "proxmox":
-		common += "  bridge: vmbr-build\nproxmox:\n  url: https://pve.example.invalid:8006\n  tokenID: labcentral@pve!v2\n  tokenEnv: LABCENTRAL_PROXMOX_TOKEN\n  node: pve\n  storage: local-lvm\n  pool: labcentral-v2\n  bridge: vmbr-labs\n  vmidStart: 2000\n  vmidEnd: 2999\n  vlanStart: 100\n  vlanEnd: 199\n  cidr: 10.80.0.0/16\n  gateway: 10.80.0.1\n  verifiedIsolation: false\n"
+		common += "  bridge: vmbr-build\nproxmox:\n  url: https://pve.example.invalid:8006\n  tokenID: labcentral@pve!v2\n  tokenEnv: LABCENTRAL_PROXMOX_TOKEN\n  node: pve\n  storage: local-lvm\n  pool: labcentral-v2\n  bridge: vmbr-labs\n  vmidStart: 2000\n  vmidEnd: 2999\n  vlanStart: 100\n  vlanEnd: 199\n  cidr: 10.80.0.0/16\n  gateway: 10.80.0.1\n  verifiedIsolation: false\n  allowEgress: false\n"
 	default:
 		return fmt.Errorf("expected aws or proxmox")
 	}

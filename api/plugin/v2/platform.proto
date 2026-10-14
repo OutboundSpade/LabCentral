@@ -21,6 +21,7 @@ message Command {
   int32 vlan = 13 [json_name = "vlan"];
   bool recovery = 14 [json_name = "recovery"];
   AccessOptions access = 15 [json_name = "access"];
+  Resource gateway = 16 [json_name = "gateway"];
 }
 message Environment {
   int32 version = 1 [json_name = "version"];
@@ -45,11 +46,17 @@ message AWSConfig {
   string profile = 4 [json_name = "profile"];
   repeated InstanceType types = 5 [json_name = "types"];
   string desktop_profile = 6 [json_name = "desktopProfile"];
+  bool allow_egress = 7 [json_name = "allowEgress"];
+  AWSGatewayConfig gateway = 8 [json_name = "gateway"];
 }
 message InstanceType {
   string name = 1 [json_name = "name"];
   int32 cpu = 2 [json_name = "cpu"];
   int32 memory_mi_b = 3 [json_name = "memoryMiB"];
+}
+message AWSGatewayConfig {
+  string base = 1 [json_name = "base"];
+  string instance_type = 2 [json_name = "instanceType"];
 }
 message ProxmoxConfig {
   bool insecure_skip_tlsverify = 1 [json_name = "insecureSkipTLSVerify"];
@@ -69,6 +76,7 @@ message ProxmoxConfig {
   string gateway = 15 [json_name = "gateway"];
   bool verified_isolation = 16 [json_name = "verifiedIsolation"];
   repeated string cputypes = 17 [json_name = "cpuTypes"];
+  bool allow_egress = 18 [json_name = "allowEgress"];
 }
 message BuildConfig {
   string dcvurl = 1 [json_name = "dcvURL"];

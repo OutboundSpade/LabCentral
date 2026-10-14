@@ -152,6 +152,7 @@ type Command struct {
 	Vlan             int32                  `protobuf:"varint,13,opt,name=vlan,proto3" json:"vlan,omitempty"`
 	Recovery         bool                   `protobuf:"varint,14,opt,name=recovery,proto3" json:"recovery,omitempty"`
 	Access           *AccessOptions         `protobuf:"bytes,15,opt,name=access,proto3" json:"access,omitempty"`
+	Gateway          *Resource              `protobuf:"bytes,16,opt,name=gateway,proto3" json:"gateway,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -287,6 +288,13 @@ func (x *Command) GetRecovery() bool {
 func (x *Command) GetAccess() *AccessOptions {
 	if x != nil {
 		return x.Access
+	}
+	return nil
+}
+
+func (x *Command) GetGateway() *Resource {
+	if x != nil {
+		return x.Gateway
 	}
 	return nil
 }
@@ -467,6 +475,8 @@ type AWSConfig struct {
 	Profile        string                 `protobuf:"bytes,4,opt,name=profile,proto3" json:"profile,omitempty"`
 	Types          []*InstanceType        `protobuf:"bytes,5,rep,name=types,proto3" json:"types,omitempty"`
 	DesktopProfile string                 `protobuf:"bytes,6,opt,name=desktop_profile,json=desktopProfile,proto3" json:"desktop_profile,omitempty"`
+	AllowEgress    bool                   `protobuf:"varint,7,opt,name=allow_egress,json=allowEgress,proto3" json:"allow_egress,omitempty"`
+	Gateway        *AWSGatewayConfig      `protobuf:"bytes,8,opt,name=gateway,proto3" json:"gateway,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -543,6 +553,20 @@ func (x *AWSConfig) GetDesktopProfile() string {
 	return ""
 }
 
+func (x *AWSConfig) GetAllowEgress() bool {
+	if x != nil {
+		return x.AllowEgress
+	}
+	return false
+}
+
+func (x *AWSConfig) GetGateway() *AWSGatewayConfig {
+	if x != nil {
+		return x.Gateway
+	}
+	return nil
+}
+
 type InstanceType struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -603,6 +627,58 @@ func (x *InstanceType) GetMemoryMiB() int32 {
 	return 0
 }
 
+type AWSGatewayConfig struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          string                 `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	InstanceType  string                 `protobuf:"bytes,2,opt,name=instance_type,json=instanceType,proto3" json:"instance_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AWSGatewayConfig) Reset() {
+	*x = AWSGatewayConfig{}
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AWSGatewayConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AWSGatewayConfig) ProtoMessage() {}
+
+func (x *AWSGatewayConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AWSGatewayConfig.ProtoReflect.Descriptor instead.
+func (*AWSGatewayConfig) Descriptor() ([]byte, []int) {
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AWSGatewayConfig) GetBase() string {
+	if x != nil {
+		return x.Base
+	}
+	return ""
+}
+
+func (x *AWSGatewayConfig) GetInstanceType() string {
+	if x != nil {
+		return x.InstanceType
+	}
+	return ""
+}
+
 type ProxmoxConfig struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	InsecureSkipTlsverify bool                   `protobuf:"varint,1,opt,name=insecure_skip_tlsverify,json=insecureSkipTLSVerify,proto3" json:"insecure_skip_tlsverify,omitempty"`
@@ -622,13 +698,14 @@ type ProxmoxConfig struct {
 	Gateway               string                 `protobuf:"bytes,15,opt,name=gateway,proto3" json:"gateway,omitempty"`
 	VerifiedIsolation     bool                   `protobuf:"varint,16,opt,name=verified_isolation,json=verifiedIsolation,proto3" json:"verified_isolation,omitempty"`
 	Cputypes              []string               `protobuf:"bytes,17,rep,name=cputypes,json=cpuTypes,proto3" json:"cputypes,omitempty"`
+	AllowEgress           bool                   `protobuf:"varint,18,opt,name=allow_egress,json=allowEgress,proto3" json:"allow_egress,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ProxmoxConfig) Reset() {
 	*x = ProxmoxConfig{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[7]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -640,7 +717,7 @@ func (x *ProxmoxConfig) String() string {
 func (*ProxmoxConfig) ProtoMessage() {}
 
 func (x *ProxmoxConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[7]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -653,7 +730,7 @@ func (x *ProxmoxConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxmoxConfig.ProtoReflect.Descriptor instead.
 func (*ProxmoxConfig) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{7}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ProxmoxConfig) GetInsecureSkipTlsverify() bool {
@@ -775,6 +852,13 @@ func (x *ProxmoxConfig) GetCputypes() []string {
 	return nil
 }
 
+func (x *ProxmoxConfig) GetAllowEgress() bool {
+	if x != nil {
+		return x.AllowEgress
+	}
+	return false
+}
+
 type BuildConfig struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Dcvurl          string                 `protobuf:"bytes,1,opt,name=dcvurl,json=dcvURL,proto3" json:"dcvurl,omitempty"`
@@ -797,7 +881,7 @@ type BuildConfig struct {
 
 func (x *BuildConfig) Reset() {
 	*x = BuildConfig{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[8]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -809,7 +893,7 @@ func (x *BuildConfig) String() string {
 func (*BuildConfig) ProtoMessage() {}
 
 func (x *BuildConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[8]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -822,7 +906,7 @@ func (x *BuildConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildConfig.ProtoReflect.Descriptor instead.
 func (*BuildConfig) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{8}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BuildConfig) GetDcvurl() string {
@@ -944,7 +1028,7 @@ type PlannedMachine struct {
 
 func (x *PlannedMachine) Reset() {
 	*x = PlannedMachine{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[9]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -956,7 +1040,7 @@ func (x *PlannedMachine) String() string {
 func (*PlannedMachine) ProtoMessage() {}
 
 func (x *PlannedMachine) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[9]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -969,7 +1053,7 @@ func (x *PlannedMachine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlannedMachine.ProtoReflect.Descriptor instead.
 func (*PlannedMachine) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{9}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PlannedMachine) GetHosts() []*HostEntry {
@@ -1073,7 +1157,7 @@ type HostEntry struct {
 
 func (x *HostEntry) Reset() {
 	*x = HostEntry{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[10]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1085,7 +1169,7 @@ func (x *HostEntry) String() string {
 func (*HostEntry) ProtoMessage() {}
 
 func (x *HostEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[10]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1098,7 +1182,7 @@ func (x *HostEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostEntry.ProtoReflect.Descriptor instead.
 func (*HostEntry) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{10}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *HostEntry) GetName() string {
@@ -1133,7 +1217,7 @@ type Machine struct {
 
 func (x *Machine) Reset() {
 	*x = Machine{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[11]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1145,7 +1229,7 @@ func (x *Machine) String() string {
 func (*Machine) ProtoMessage() {}
 
 func (x *Machine) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[11]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1158,7 +1242,7 @@ func (x *Machine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Machine.ProtoReflect.Descriptor instead.
 func (*Machine) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{11}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Machine) GetImage() string {
@@ -1241,7 +1325,7 @@ type NIC struct {
 
 func (x *NIC) Reset() {
 	*x = NIC{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[12]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1253,7 +1337,7 @@ func (x *NIC) String() string {
 func (*NIC) ProtoMessage() {}
 
 func (x *NIC) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[12]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1266,7 +1350,7 @@ func (x *NIC) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NIC.ProtoReflect.Descriptor instead.
 func (*NIC) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{12}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *NIC) GetNetwork() string {
@@ -1293,7 +1377,7 @@ type HostnamePeers struct {
 
 func (x *HostnamePeers) Reset() {
 	*x = HostnamePeers{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[13]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1305,7 +1389,7 @@ func (x *HostnamePeers) String() string {
 func (*HostnamePeers) ProtoMessage() {}
 
 func (x *HostnamePeers) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[13]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1318,7 +1402,7 @@ func (x *HostnamePeers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostnamePeers.ProtoReflect.Descriptor instead.
 func (*HostnamePeers) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{13}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *HostnamePeers) GetExplicit() bool {
@@ -1345,7 +1429,7 @@ type MachinePlatform struct {
 
 func (x *MachinePlatform) Reset() {
 	*x = MachinePlatform{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[14]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1357,7 +1441,7 @@ func (x *MachinePlatform) String() string {
 func (*MachinePlatform) ProtoMessage() {}
 
 func (x *MachinePlatform) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[14]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1370,7 +1454,7 @@ func (x *MachinePlatform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MachinePlatform.ProtoReflect.Descriptor instead.
 func (*MachinePlatform) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{14}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MachinePlatform) GetAws() *AWSMachineOptions {
@@ -1398,7 +1482,7 @@ type AWSMachineOptions struct {
 
 func (x *AWSMachineOptions) Reset() {
 	*x = AWSMachineOptions{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[15]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1410,7 +1494,7 @@ func (x *AWSMachineOptions) String() string {
 func (*AWSMachineOptions) ProtoMessage() {}
 
 func (x *AWSMachineOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[15]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1423,7 +1507,7 @@ func (x *AWSMachineOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AWSMachineOptions.ProtoReflect.Descriptor instead.
 func (*AWSMachineOptions) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{15}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AWSMachineOptions) GetInstanceType() string {
@@ -1458,7 +1542,7 @@ type AWSVolumeOptions struct {
 
 func (x *AWSVolumeOptions) Reset() {
 	*x = AWSVolumeOptions{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[16]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1470,7 +1554,7 @@ func (x *AWSVolumeOptions) String() string {
 func (*AWSVolumeOptions) ProtoMessage() {}
 
 func (x *AWSVolumeOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[16]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1483,7 +1567,7 @@ func (x *AWSVolumeOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AWSVolumeOptions.ProtoReflect.Descriptor instead.
 func (*AWSVolumeOptions) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{16}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AWSVolumeOptions) GetType() string {
@@ -1518,7 +1602,7 @@ type ProxmoxMachineOptions struct {
 
 func (x *ProxmoxMachineOptions) Reset() {
 	*x = ProxmoxMachineOptions{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[17]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1530,7 +1614,7 @@ func (x *ProxmoxMachineOptions) String() string {
 func (*ProxmoxMachineOptions) ProtoMessage() {}
 
 func (x *ProxmoxMachineOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[17]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1543,7 +1627,7 @@ func (x *ProxmoxMachineOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxmoxMachineOptions.ProtoReflect.Descriptor instead.
 func (*ProxmoxMachineOptions) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{17}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ProxmoxMachineOptions) GetCputype() string {
@@ -1582,7 +1666,7 @@ type PlannedImage struct {
 
 func (x *PlannedImage) Reset() {
 	*x = PlannedImage{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[18]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1594,7 +1678,7 @@ func (x *PlannedImage) String() string {
 func (*PlannedImage) ProtoMessage() {}
 
 func (x *PlannedImage) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[18]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1607,7 +1691,7 @@ func (x *PlannedImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlannedImage.ProtoReflect.Descriptor instead.
 func (*PlannedImage) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{18}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PlannedImage) GetName() string {
@@ -1670,7 +1754,7 @@ type Source struct {
 
 func (x *Source) Reset() {
 	*x = Source{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[19]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1682,7 +1766,7 @@ func (x *Source) String() string {
 func (*Source) ProtoMessage() {}
 
 func (x *Source) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[19]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1695,7 +1779,7 @@ func (x *Source) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Source.ProtoReflect.Descriptor instead.
 func (*Source) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{19}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Source) GetLab() *Lab {
@@ -1736,7 +1820,7 @@ type Lab struct {
 
 func (x *Lab) Reset() {
 	*x = Lab{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[20]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1748,7 +1832,7 @@ func (x *Lab) String() string {
 func (*Lab) ProtoMessage() {}
 
 func (x *Lab) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[20]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1761,7 +1845,7 @@ func (x *Lab) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Lab.ProtoReflect.Descriptor instead.
 func (*Lab) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{20}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Lab) GetVersion() int32 {
@@ -1840,7 +1924,7 @@ type Image struct {
 
 func (x *Image) Reset() {
 	*x = Image{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[21]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1852,7 +1936,7 @@ func (x *Image) String() string {
 func (*Image) ProtoMessage() {}
 
 func (x *Image) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[21]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1865,7 +1949,7 @@ func (x *Image) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Image.ProtoReflect.Descriptor instead.
 func (*Image) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{21}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Image) GetBase() string {
@@ -1913,7 +1997,7 @@ type ImageBuild struct {
 
 func (x *ImageBuild) Reset() {
 	*x = ImageBuild{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[22]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1925,7 +2009,7 @@ func (x *ImageBuild) String() string {
 func (*ImageBuild) ProtoMessage() {}
 
 func (x *ImageBuild) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[22]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1938,7 +2022,7 @@ func (x *ImageBuild) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageBuild.ProtoReflect.Descriptor instead.
 func (*ImageBuild) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{22}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ImageBuild) GetPlaybook() string {
@@ -1965,7 +2049,7 @@ type ImagePlatform struct {
 
 func (x *ImagePlatform) Reset() {
 	*x = ImagePlatform{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[23]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1977,7 +2061,7 @@ func (x *ImagePlatform) String() string {
 func (*ImagePlatform) ProtoMessage() {}
 
 func (x *ImagePlatform) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[23]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1990,7 +2074,7 @@ func (x *ImagePlatform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImagePlatform.ProtoReflect.Descriptor instead.
 func (*ImagePlatform) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{23}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ImagePlatform) GetAws() *AWSImageOptions {
@@ -2016,7 +2100,7 @@ type AWSImageOptions struct {
 
 func (x *AWSImageOptions) Reset() {
 	*x = AWSImageOptions{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[24]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2028,7 +2112,7 @@ func (x *AWSImageOptions) String() string {
 func (*AWSImageOptions) ProtoMessage() {}
 
 func (x *AWSImageOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[24]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2041,7 +2125,7 @@ func (x *AWSImageOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AWSImageOptions.ProtoReflect.Descriptor instead.
 func (*AWSImageOptions) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{24}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AWSImageOptions) GetBuildInstanceType() string {
@@ -2059,7 +2143,7 @@ type ProxmoxImageOptions struct {
 
 func (x *ProxmoxImageOptions) Reset() {
 	*x = ProxmoxImageOptions{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[25]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2071,7 +2155,7 @@ func (x *ProxmoxImageOptions) String() string {
 func (*ProxmoxImageOptions) ProtoMessage() {}
 
 func (x *ProxmoxImageOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[25]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2084,7 +2168,7 @@ func (x *ProxmoxImageOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxmoxImageOptions.ProtoReflect.Descriptor instead.
 func (*ProxmoxImageOptions) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{25}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{26}
 }
 
 type Input struct {
@@ -2099,7 +2183,7 @@ type Input struct {
 
 func (x *Input) Reset() {
 	*x = Input{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[26]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2111,7 +2195,7 @@ func (x *Input) String() string {
 func (*Input) ProtoMessage() {}
 
 func (x *Input) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[26]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2124,7 +2208,7 @@ func (x *Input) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Input.ProtoReflect.Descriptor instead.
 func (*Input) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{26}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Input) GetType() string {
@@ -2164,7 +2248,7 @@ type PlatformList struct {
 
 func (x *PlatformList) Reset() {
 	*x = PlatformList{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[27]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2176,7 +2260,7 @@ func (x *PlatformList) String() string {
 func (*PlatformList) ProtoMessage() {}
 
 func (x *PlatformList) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[27]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2189,7 +2273,7 @@ func (x *PlatformList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlatformList.ProtoReflect.Descriptor instead.
 func (*PlatformList) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{27}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *PlatformList) GetNames() []string {
@@ -2210,7 +2294,7 @@ type Network struct {
 
 func (x *Network) Reset() {
 	*x = Network{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[28]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2222,7 +2306,7 @@ func (x *Network) String() string {
 func (*Network) ProtoMessage() {}
 
 func (x *Network) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[28]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2235,7 +2319,7 @@ func (x *Network) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Network.ProtoReflect.Descriptor instead.
 func (*Network) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{28}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *Network) GetEgress() string {
@@ -2269,7 +2353,7 @@ type File struct {
 
 func (x *File) Reset() {
 	*x = File{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[29]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2281,7 +2365,7 @@ func (x *File) String() string {
 func (*File) ProtoMessage() {}
 
 func (x *File) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[29]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2294,7 +2378,7 @@ func (x *File) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use File.ProtoReflect.Descriptor instead.
 func (*File) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{29}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *File) GetPath() string {
@@ -2322,7 +2406,7 @@ type InputValue struct {
 
 func (x *InputValue) Reset() {
 	*x = InputValue{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[30]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2334,7 +2418,7 @@ func (x *InputValue) String() string {
 func (*InputValue) ProtoMessage() {}
 
 func (x *InputValue) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[30]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2347,7 +2431,7 @@ func (x *InputValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InputValue.ProtoReflect.Descriptor instead.
 func (*InputValue) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{30}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *InputValue) GetName() string {
@@ -2388,7 +2472,7 @@ type Resource struct {
 
 func (x *Resource) Reset() {
 	*x = Resource{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[31]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2400,7 +2484,7 @@ func (x *Resource) String() string {
 func (*Resource) ProtoMessage() {}
 
 func (x *Resource) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[31]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2413,7 +2497,7 @@ func (x *Resource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Resource.ProtoReflect.Descriptor instead.
 func (*Resource) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{31}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Resource) GetKind() string {
@@ -2489,7 +2573,7 @@ type NativeResource struct {
 
 func (x *NativeResource) Reset() {
 	*x = NativeResource{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[32]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2501,7 +2585,7 @@ func (x *NativeResource) String() string {
 func (*NativeResource) ProtoMessage() {}
 
 func (x *NativeResource) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[32]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2514,7 +2598,7 @@ func (x *NativeResource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeResource.ProtoReflect.Descriptor instead.
 func (*NativeResource) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{32}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *NativeResource) GetKind() string {
@@ -2542,7 +2626,7 @@ type AccessOptions struct {
 
 func (x *AccessOptions) Reset() {
 	*x = AccessOptions{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[33]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2554,7 +2638,7 @@ func (x *AccessOptions) String() string {
 func (*AccessOptions) ProtoMessage() {}
 
 func (x *AccessOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[33]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2567,7 +2651,7 @@ func (x *AccessOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccessOptions.ProtoReflect.Descriptor instead.
 func (*AccessOptions) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{33}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *AccessOptions) GetPrincipal() string {
@@ -2602,7 +2686,7 @@ type Result struct {
 
 func (x *Result) Reset() {
 	*x = Result{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[34]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2614,7 +2698,7 @@ func (x *Result) String() string {
 func (*Result) ProtoMessage() {}
 
 func (x *Result) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[34]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2627,7 +2711,7 @@ func (x *Result) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Result.ProtoReflect.Descriptor instead.
 func (*Result) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{34}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Result) GetResource() *Resource {
@@ -2664,7 +2748,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[35]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2676,7 +2760,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[35]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2689,7 +2773,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{35}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *Event) GetVersion() int32 {
@@ -2738,7 +2822,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[36]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2750,7 +2834,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_api_plugin_v2_platform_proto_msgTypes[36]
+	mi := &file_api_plugin_v2_platform_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2763,7 +2847,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{36}
+	return file_api_plugin_v2_platform_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Error) GetCode() string {
@@ -2798,7 +2882,7 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\x05Reply\x121\n" +
 	"\x05event\x18\x01 \x01(\v2\x1b.labcentral.plugin.v2.EventR\x05event\x124\n" +
 	"\x06result\x18\x02 \x01(\v2\x1c.labcentral.plugin.v2.ResultR\x06result\x121\n" +
-	"\x05error\x18\x03 \x01(\v2\x1b.labcentral.plugin.v2.ErrorR\x05error\"\xb8\x05\n" +
+	"\x05error\x18\x03 \x01(\v2\x1b.labcentral.plugin.v2.ErrorR\x05error\"\xf2\x05\n" +
 	"\aCommand\x12,\n" +
 	"\x12client_private_key\x18\x01 \x01(\fR\x10clientPrivateKey\x12'\n" +
 	"\x0fvalidation_vmid\x18\x02 \x01(\x05R\x0evalidationVMID\x12\x16\n" +
@@ -2815,7 +2899,8 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\anetwork\x18\f \x01(\v2\x1e.labcentral.plugin.v2.ResourceR\anetwork\x12\x12\n" +
 	"\x04vlan\x18\r \x01(\x05R\x04vlan\x12\x1a\n" +
 	"\brecovery\x18\x0e \x01(\bR\brecovery\x12;\n" +
-	"\x06access\x18\x0f \x01(\v2#.labcentral.plugin.v2.AccessOptionsR\x06access\"\xc3\x03\n" +
+	"\x06access\x18\x0f \x01(\v2#.labcentral.plugin.v2.AccessOptionsR\x06access\x128\n" +
+	"\agateway\x18\x10 \x01(\v2\x1e.labcentral.plugin.v2.ResourceR\agateway\"\xc3\x03\n" +
 	"\vEnvironment\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x05R\aversion\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -2833,18 +2918,23 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\tR\x04user\x12\x1a\n" +
 	"\tdisk_gi_b\x18\x03 \x01(\x05R\adiskGiB\x12\x1a\n" +
-	"\bidentity\x18\x04 \x01(\tR\bidentity\"\xce\x01\n" +
+	"\bidentity\x18\x04 \x01(\tR\bidentity\"\xb3\x02\n" +
 	"\tAWSConfig\x12\x16\n" +
 	"\x06region\x18\x01 \x01(\tR\x06region\x12\x12\n" +
 	"\x04zone\x18\x02 \x01(\tR\x04zone\x12\x18\n" +
 	"\aaccount\x18\x03 \x01(\tR\aaccount\x12\x18\n" +
 	"\aprofile\x18\x04 \x01(\tR\aprofile\x128\n" +
 	"\x05types\x18\x05 \x03(\v2\".labcentral.plugin.v2.InstanceTypeR\x05types\x12'\n" +
-	"\x0fdesktop_profile\x18\x06 \x01(\tR\x0edesktopProfile\"T\n" +
+	"\x0fdesktop_profile\x18\x06 \x01(\tR\x0edesktopProfile\x12!\n" +
+	"\fallow_egress\x18\a \x01(\bR\vallowEgress\x12@\n" +
+	"\agateway\x18\b \x01(\v2&.labcentral.plugin.v2.AWSGatewayConfigR\agateway\"T\n" +
 	"\fInstanceType\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03cpu\x18\x02 \x01(\x05R\x03cpu\x12\x1e\n" +
-	"\vmemory_mi_b\x18\x03 \x01(\x05R\tmemoryMiB\"\xec\x03\n" +
+	"\vmemory_mi_b\x18\x03 \x01(\x05R\tmemoryMiB\"K\n" +
+	"\x10AWSGatewayConfig\x12\x12\n" +
+	"\x04base\x18\x01 \x01(\tR\x04base\x12#\n" +
+	"\rinstance_type\x18\x02 \x01(\tR\finstanceType\"\x8f\x04\n" +
 	"\rProxmoxConfig\x126\n" +
 	"\x17insecure_skip_tlsverify\x18\x01 \x01(\bR\x15insecureSkipTLSVerify\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x19\n" +
@@ -2863,7 +2953,8 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\x04cidr\x18\x0e \x01(\tR\x04cidr\x12\x18\n" +
 	"\agateway\x18\x0f \x01(\tR\agateway\x12-\n" +
 	"\x12verified_isolation\x18\x10 \x01(\bR\x11verifiedIsolation\x12\x1a\n" +
-	"\bcputypes\x18\x11 \x03(\tR\bcpuTypes\"\xd4\x03\n" +
+	"\bcputypes\x18\x11 \x03(\tR\bcpuTypes\x12!\n" +
+	"\fallow_egress\x18\x12 \x01(\bR\vallowEgress\"\xd4\x03\n" +
 	"\vBuildConfig\x12\x16\n" +
 	"\x06dcvurl\x18\x01 \x01(\tR\x06dcvURL\x12\x1c\n" +
 	"\tdcvsha256\x18\x02 \x01(\tR\tdcvSHA256\x12\x16\n" +
@@ -3079,7 +3170,7 @@ func file_api_plugin_v2_platform_proto_rawDescGZIP() []byte {
 	return file_api_plugin_v2_platform_proto_rawDescData
 }
 
-var file_api_plugin_v2_platform_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
+var file_api_plugin_v2_platform_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
 var file_api_plugin_v2_platform_proto_goTypes = []any{
 	(*Request)(nil),               // 0: labcentral.plugin.v2.Request
 	(*Reply)(nil),                 // 1: labcentral.plugin.v2.Reply
@@ -3088,102 +3179,105 @@ var file_api_plugin_v2_platform_proto_goTypes = []any{
 	(*Base)(nil),                  // 4: labcentral.plugin.v2.Base
 	(*AWSConfig)(nil),             // 5: labcentral.plugin.v2.AWSConfig
 	(*InstanceType)(nil),          // 6: labcentral.plugin.v2.InstanceType
-	(*ProxmoxConfig)(nil),         // 7: labcentral.plugin.v2.ProxmoxConfig
-	(*BuildConfig)(nil),           // 8: labcentral.plugin.v2.BuildConfig
-	(*PlannedMachine)(nil),        // 9: labcentral.plugin.v2.PlannedMachine
-	(*HostEntry)(nil),             // 10: labcentral.plugin.v2.HostEntry
-	(*Machine)(nil),               // 11: labcentral.plugin.v2.Machine
-	(*NIC)(nil),                   // 12: labcentral.plugin.v2.NIC
-	(*HostnamePeers)(nil),         // 13: labcentral.plugin.v2.HostnamePeers
-	(*MachinePlatform)(nil),       // 14: labcentral.plugin.v2.MachinePlatform
-	(*AWSMachineOptions)(nil),     // 15: labcentral.plugin.v2.AWSMachineOptions
-	(*AWSVolumeOptions)(nil),      // 16: labcentral.plugin.v2.AWSVolumeOptions
-	(*ProxmoxMachineOptions)(nil), // 17: labcentral.plugin.v2.ProxmoxMachineOptions
-	(*PlannedImage)(nil),          // 18: labcentral.plugin.v2.PlannedImage
-	(*Source)(nil),                // 19: labcentral.plugin.v2.Source
-	(*Lab)(nil),                   // 20: labcentral.plugin.v2.Lab
-	(*Image)(nil),                 // 21: labcentral.plugin.v2.Image
-	(*ImageBuild)(nil),            // 22: labcentral.plugin.v2.ImageBuild
-	(*ImagePlatform)(nil),         // 23: labcentral.plugin.v2.ImagePlatform
-	(*AWSImageOptions)(nil),       // 24: labcentral.plugin.v2.AWSImageOptions
-	(*ProxmoxImageOptions)(nil),   // 25: labcentral.plugin.v2.ProxmoxImageOptions
-	(*Input)(nil),                 // 26: labcentral.plugin.v2.Input
-	(*PlatformList)(nil),          // 27: labcentral.plugin.v2.PlatformList
-	(*Network)(nil),               // 28: labcentral.plugin.v2.Network
-	(*File)(nil),                  // 29: labcentral.plugin.v2.File
-	(*InputValue)(nil),            // 30: labcentral.plugin.v2.InputValue
-	(*Resource)(nil),              // 31: labcentral.plugin.v2.Resource
-	(*NativeResource)(nil),        // 32: labcentral.plugin.v2.NativeResource
-	(*AccessOptions)(nil),         // 33: labcentral.plugin.v2.AccessOptions
-	(*Result)(nil),                // 34: labcentral.plugin.v2.Result
-	(*Event)(nil),                 // 35: labcentral.plugin.v2.Event
-	(*Error)(nil),                 // 36: labcentral.plugin.v2.Error
-	nil,                           // 37: labcentral.plugin.v2.Environment.BasesEntry
-	nil,                           // 38: labcentral.plugin.v2.Machine.ExtensionsEntry
-	nil,                           // 39: labcentral.plugin.v2.Lab.ImagesEntry
-	nil,                           // 40: labcentral.plugin.v2.Lab.MachinesEntry
-	nil,                           // 41: labcentral.plugin.v2.Lab.InputsEntry
-	nil,                           // 42: labcentral.plugin.v2.Lab.ExtensionsEntry
-	nil,                           // 43: labcentral.plugin.v2.Lab.NetworksEntry
-	nil,                           // 44: labcentral.plugin.v2.Image.ExtensionsEntry
-	nil,                           // 45: labcentral.plugin.v2.Network.ExtensionsEntry
+	(*AWSGatewayConfig)(nil),      // 7: labcentral.plugin.v2.AWSGatewayConfig
+	(*ProxmoxConfig)(nil),         // 8: labcentral.plugin.v2.ProxmoxConfig
+	(*BuildConfig)(nil),           // 9: labcentral.plugin.v2.BuildConfig
+	(*PlannedMachine)(nil),        // 10: labcentral.plugin.v2.PlannedMachine
+	(*HostEntry)(nil),             // 11: labcentral.plugin.v2.HostEntry
+	(*Machine)(nil),               // 12: labcentral.plugin.v2.Machine
+	(*NIC)(nil),                   // 13: labcentral.plugin.v2.NIC
+	(*HostnamePeers)(nil),         // 14: labcentral.plugin.v2.HostnamePeers
+	(*MachinePlatform)(nil),       // 15: labcentral.plugin.v2.MachinePlatform
+	(*AWSMachineOptions)(nil),     // 16: labcentral.plugin.v2.AWSMachineOptions
+	(*AWSVolumeOptions)(nil),      // 17: labcentral.plugin.v2.AWSVolumeOptions
+	(*ProxmoxMachineOptions)(nil), // 18: labcentral.plugin.v2.ProxmoxMachineOptions
+	(*PlannedImage)(nil),          // 19: labcentral.plugin.v2.PlannedImage
+	(*Source)(nil),                // 20: labcentral.plugin.v2.Source
+	(*Lab)(nil),                   // 21: labcentral.plugin.v2.Lab
+	(*Image)(nil),                 // 22: labcentral.plugin.v2.Image
+	(*ImageBuild)(nil),            // 23: labcentral.plugin.v2.ImageBuild
+	(*ImagePlatform)(nil),         // 24: labcentral.plugin.v2.ImagePlatform
+	(*AWSImageOptions)(nil),       // 25: labcentral.plugin.v2.AWSImageOptions
+	(*ProxmoxImageOptions)(nil),   // 26: labcentral.plugin.v2.ProxmoxImageOptions
+	(*Input)(nil),                 // 27: labcentral.plugin.v2.Input
+	(*PlatformList)(nil),          // 28: labcentral.plugin.v2.PlatformList
+	(*Network)(nil),               // 29: labcentral.plugin.v2.Network
+	(*File)(nil),                  // 30: labcentral.plugin.v2.File
+	(*InputValue)(nil),            // 31: labcentral.plugin.v2.InputValue
+	(*Resource)(nil),              // 32: labcentral.plugin.v2.Resource
+	(*NativeResource)(nil),        // 33: labcentral.plugin.v2.NativeResource
+	(*AccessOptions)(nil),         // 34: labcentral.plugin.v2.AccessOptions
+	(*Result)(nil),                // 35: labcentral.plugin.v2.Result
+	(*Event)(nil),                 // 36: labcentral.plugin.v2.Event
+	(*Error)(nil),                 // 37: labcentral.plugin.v2.Error
+	nil,                           // 38: labcentral.plugin.v2.Environment.BasesEntry
+	nil,                           // 39: labcentral.plugin.v2.Machine.ExtensionsEntry
+	nil,                           // 40: labcentral.plugin.v2.Lab.ImagesEntry
+	nil,                           // 41: labcentral.plugin.v2.Lab.MachinesEntry
+	nil,                           // 42: labcentral.plugin.v2.Lab.InputsEntry
+	nil,                           // 43: labcentral.plugin.v2.Lab.ExtensionsEntry
+	nil,                           // 44: labcentral.plugin.v2.Lab.NetworksEntry
+	nil,                           // 45: labcentral.plugin.v2.Image.ExtensionsEntry
+	nil,                           // 46: labcentral.plugin.v2.Network.ExtensionsEntry
 }
 var file_api_plugin_v2_platform_proto_depIdxs = []int32{
 	2,  // 0: labcentral.plugin.v2.Request.command:type_name -> labcentral.plugin.v2.Command
-	35, // 1: labcentral.plugin.v2.Reply.event:type_name -> labcentral.plugin.v2.Event
-	34, // 2: labcentral.plugin.v2.Reply.result:type_name -> labcentral.plugin.v2.Result
-	36, // 3: labcentral.plugin.v2.Reply.error:type_name -> labcentral.plugin.v2.Error
+	36, // 1: labcentral.plugin.v2.Reply.event:type_name -> labcentral.plugin.v2.Event
+	35, // 2: labcentral.plugin.v2.Reply.result:type_name -> labcentral.plugin.v2.Result
+	37, // 3: labcentral.plugin.v2.Reply.error:type_name -> labcentral.plugin.v2.Error
 	3,  // 4: labcentral.plugin.v2.Command.environment:type_name -> labcentral.plugin.v2.Environment
-	9,  // 5: labcentral.plugin.v2.Command.machine:type_name -> labcentral.plugin.v2.PlannedMachine
-	18, // 6: labcentral.plugin.v2.Command.image:type_name -> labcentral.plugin.v2.PlannedImage
-	19, // 7: labcentral.plugin.v2.Command.source:type_name -> labcentral.plugin.v2.Source
-	30, // 8: labcentral.plugin.v2.Command.inputs:type_name -> labcentral.plugin.v2.InputValue
-	31, // 9: labcentral.plugin.v2.Command.prior:type_name -> labcentral.plugin.v2.Resource
-	31, // 10: labcentral.plugin.v2.Command.network:type_name -> labcentral.plugin.v2.Resource
-	33, // 11: labcentral.plugin.v2.Command.access:type_name -> labcentral.plugin.v2.AccessOptions
-	37, // 12: labcentral.plugin.v2.Environment.bases:type_name -> labcentral.plugin.v2.Environment.BasesEntry
-	5,  // 13: labcentral.plugin.v2.Environment.aws:type_name -> labcentral.plugin.v2.AWSConfig
-	7,  // 14: labcentral.plugin.v2.Environment.proxmox:type_name -> labcentral.plugin.v2.ProxmoxConfig
-	8,  // 15: labcentral.plugin.v2.Environment.build:type_name -> labcentral.plugin.v2.BuildConfig
-	6,  // 16: labcentral.plugin.v2.AWSConfig.types:type_name -> labcentral.plugin.v2.InstanceType
-	10, // 17: labcentral.plugin.v2.PlannedMachine.hosts:type_name -> labcentral.plugin.v2.HostEntry
-	11, // 18: labcentral.plugin.v2.PlannedMachine.spec:type_name -> labcentral.plugin.v2.Machine
-	12, // 19: labcentral.plugin.v2.Machine.nics:type_name -> labcentral.plugin.v2.NIC
-	13, // 20: labcentral.plugin.v2.Machine.hostname_peers:type_name -> labcentral.plugin.v2.HostnamePeers
-	14, // 21: labcentral.plugin.v2.Machine.platform:type_name -> labcentral.plugin.v2.MachinePlatform
-	38, // 22: labcentral.plugin.v2.Machine.extensions:type_name -> labcentral.plugin.v2.Machine.ExtensionsEntry
-	15, // 23: labcentral.plugin.v2.MachinePlatform.aws:type_name -> labcentral.plugin.v2.AWSMachineOptions
-	17, // 24: labcentral.plugin.v2.MachinePlatform.proxmox:type_name -> labcentral.plugin.v2.ProxmoxMachineOptions
-	16, // 25: labcentral.plugin.v2.AWSMachineOptions.volume:type_name -> labcentral.plugin.v2.AWSVolumeOptions
-	4,  // 26: labcentral.plugin.v2.PlannedImage.base:type_name -> labcentral.plugin.v2.Base
-	20, // 27: labcentral.plugin.v2.Source.lab:type_name -> labcentral.plugin.v2.Lab
-	29, // 28: labcentral.plugin.v2.Source.files:type_name -> labcentral.plugin.v2.File
-	39, // 29: labcentral.plugin.v2.Lab.images:type_name -> labcentral.plugin.v2.Lab.ImagesEntry
-	40, // 30: labcentral.plugin.v2.Lab.machines:type_name -> labcentral.plugin.v2.Lab.MachinesEntry
-	41, // 31: labcentral.plugin.v2.Lab.inputs:type_name -> labcentral.plugin.v2.Lab.InputsEntry
-	27, // 32: labcentral.plugin.v2.Lab.platforms:type_name -> labcentral.plugin.v2.PlatformList
-	42, // 33: labcentral.plugin.v2.Lab.extensions:type_name -> labcentral.plugin.v2.Lab.ExtensionsEntry
-	43, // 34: labcentral.plugin.v2.Lab.networks:type_name -> labcentral.plugin.v2.Lab.NetworksEntry
-	22, // 35: labcentral.plugin.v2.Image.build:type_name -> labcentral.plugin.v2.ImageBuild
-	23, // 36: labcentral.plugin.v2.Image.platform:type_name -> labcentral.plugin.v2.ImagePlatform
-	44, // 37: labcentral.plugin.v2.Image.extensions:type_name -> labcentral.plugin.v2.Image.ExtensionsEntry
-	24, // 38: labcentral.plugin.v2.ImagePlatform.aws:type_name -> labcentral.plugin.v2.AWSImageOptions
-	25, // 39: labcentral.plugin.v2.ImagePlatform.proxmox:type_name -> labcentral.plugin.v2.ProxmoxImageOptions
-	45, // 40: labcentral.plugin.v2.Network.extensions:type_name -> labcentral.plugin.v2.Network.ExtensionsEntry
-	32, // 41: labcentral.plugin.v2.Resource.children:type_name -> labcentral.plugin.v2.NativeResource
-	31, // 42: labcentral.plugin.v2.Result.resource:type_name -> labcentral.plugin.v2.Resource
-	4,  // 43: labcentral.plugin.v2.Environment.BasesEntry.value:type_name -> labcentral.plugin.v2.Base
-	21, // 44: labcentral.plugin.v2.Lab.ImagesEntry.value:type_name -> labcentral.plugin.v2.Image
-	11, // 45: labcentral.plugin.v2.Lab.MachinesEntry.value:type_name -> labcentral.plugin.v2.Machine
-	26, // 46: labcentral.plugin.v2.Lab.InputsEntry.value:type_name -> labcentral.plugin.v2.Input
-	28, // 47: labcentral.plugin.v2.Lab.NetworksEntry.value:type_name -> labcentral.plugin.v2.Network
-	0,  // 48: labcentral.plugin.v2.Platform.Execute:input_type -> labcentral.plugin.v2.Request
-	1,  // 49: labcentral.plugin.v2.Platform.Execute:output_type -> labcentral.plugin.v2.Reply
-	49, // [49:50] is the sub-list for method output_type
-	48, // [48:49] is the sub-list for method input_type
-	48, // [48:48] is the sub-list for extension type_name
-	48, // [48:48] is the sub-list for extension extendee
-	0,  // [0:48] is the sub-list for field type_name
+	10, // 5: labcentral.plugin.v2.Command.machine:type_name -> labcentral.plugin.v2.PlannedMachine
+	19, // 6: labcentral.plugin.v2.Command.image:type_name -> labcentral.plugin.v2.PlannedImage
+	20, // 7: labcentral.plugin.v2.Command.source:type_name -> labcentral.plugin.v2.Source
+	31, // 8: labcentral.plugin.v2.Command.inputs:type_name -> labcentral.plugin.v2.InputValue
+	32, // 9: labcentral.plugin.v2.Command.prior:type_name -> labcentral.plugin.v2.Resource
+	32, // 10: labcentral.plugin.v2.Command.network:type_name -> labcentral.plugin.v2.Resource
+	34, // 11: labcentral.plugin.v2.Command.access:type_name -> labcentral.plugin.v2.AccessOptions
+	32, // 12: labcentral.plugin.v2.Command.gateway:type_name -> labcentral.plugin.v2.Resource
+	38, // 13: labcentral.plugin.v2.Environment.bases:type_name -> labcentral.plugin.v2.Environment.BasesEntry
+	5,  // 14: labcentral.plugin.v2.Environment.aws:type_name -> labcentral.plugin.v2.AWSConfig
+	8,  // 15: labcentral.plugin.v2.Environment.proxmox:type_name -> labcentral.plugin.v2.ProxmoxConfig
+	9,  // 16: labcentral.plugin.v2.Environment.build:type_name -> labcentral.plugin.v2.BuildConfig
+	6,  // 17: labcentral.plugin.v2.AWSConfig.types:type_name -> labcentral.plugin.v2.InstanceType
+	7,  // 18: labcentral.plugin.v2.AWSConfig.gateway:type_name -> labcentral.plugin.v2.AWSGatewayConfig
+	11, // 19: labcentral.plugin.v2.PlannedMachine.hosts:type_name -> labcentral.plugin.v2.HostEntry
+	12, // 20: labcentral.plugin.v2.PlannedMachine.spec:type_name -> labcentral.plugin.v2.Machine
+	13, // 21: labcentral.plugin.v2.Machine.nics:type_name -> labcentral.plugin.v2.NIC
+	14, // 22: labcentral.plugin.v2.Machine.hostname_peers:type_name -> labcentral.plugin.v2.HostnamePeers
+	15, // 23: labcentral.plugin.v2.Machine.platform:type_name -> labcentral.plugin.v2.MachinePlatform
+	39, // 24: labcentral.plugin.v2.Machine.extensions:type_name -> labcentral.plugin.v2.Machine.ExtensionsEntry
+	16, // 25: labcentral.plugin.v2.MachinePlatform.aws:type_name -> labcentral.plugin.v2.AWSMachineOptions
+	18, // 26: labcentral.plugin.v2.MachinePlatform.proxmox:type_name -> labcentral.plugin.v2.ProxmoxMachineOptions
+	17, // 27: labcentral.plugin.v2.AWSMachineOptions.volume:type_name -> labcentral.plugin.v2.AWSVolumeOptions
+	4,  // 28: labcentral.plugin.v2.PlannedImage.base:type_name -> labcentral.plugin.v2.Base
+	21, // 29: labcentral.plugin.v2.Source.lab:type_name -> labcentral.plugin.v2.Lab
+	30, // 30: labcentral.plugin.v2.Source.files:type_name -> labcentral.plugin.v2.File
+	40, // 31: labcentral.plugin.v2.Lab.images:type_name -> labcentral.plugin.v2.Lab.ImagesEntry
+	41, // 32: labcentral.plugin.v2.Lab.machines:type_name -> labcentral.plugin.v2.Lab.MachinesEntry
+	42, // 33: labcentral.plugin.v2.Lab.inputs:type_name -> labcentral.plugin.v2.Lab.InputsEntry
+	28, // 34: labcentral.plugin.v2.Lab.platforms:type_name -> labcentral.plugin.v2.PlatformList
+	43, // 35: labcentral.plugin.v2.Lab.extensions:type_name -> labcentral.plugin.v2.Lab.ExtensionsEntry
+	44, // 36: labcentral.plugin.v2.Lab.networks:type_name -> labcentral.plugin.v2.Lab.NetworksEntry
+	23, // 37: labcentral.plugin.v2.Image.build:type_name -> labcentral.plugin.v2.ImageBuild
+	24, // 38: labcentral.plugin.v2.Image.platform:type_name -> labcentral.plugin.v2.ImagePlatform
+	45, // 39: labcentral.plugin.v2.Image.extensions:type_name -> labcentral.plugin.v2.Image.ExtensionsEntry
+	25, // 40: labcentral.plugin.v2.ImagePlatform.aws:type_name -> labcentral.plugin.v2.AWSImageOptions
+	26, // 41: labcentral.plugin.v2.ImagePlatform.proxmox:type_name -> labcentral.plugin.v2.ProxmoxImageOptions
+	46, // 42: labcentral.plugin.v2.Network.extensions:type_name -> labcentral.plugin.v2.Network.ExtensionsEntry
+	33, // 43: labcentral.plugin.v2.Resource.children:type_name -> labcentral.plugin.v2.NativeResource
+	32, // 44: labcentral.plugin.v2.Result.resource:type_name -> labcentral.plugin.v2.Resource
+	4,  // 45: labcentral.plugin.v2.Environment.BasesEntry.value:type_name -> labcentral.plugin.v2.Base
+	22, // 46: labcentral.plugin.v2.Lab.ImagesEntry.value:type_name -> labcentral.plugin.v2.Image
+	12, // 47: labcentral.plugin.v2.Lab.MachinesEntry.value:type_name -> labcentral.plugin.v2.Machine
+	27, // 48: labcentral.plugin.v2.Lab.InputsEntry.value:type_name -> labcentral.plugin.v2.Input
+	29, // 49: labcentral.plugin.v2.Lab.NetworksEntry.value:type_name -> labcentral.plugin.v2.Network
+	0,  // 50: labcentral.plugin.v2.Platform.Execute:input_type -> labcentral.plugin.v2.Request
+	1,  // 51: labcentral.plugin.v2.Platform.Execute:output_type -> labcentral.plugin.v2.Reply
+	51, // [51:52] is the sub-list for method output_type
+	50, // [50:51] is the sub-list for method input_type
+	50, // [50:50] is the sub-list for extension type_name
+	50, // [50:50] is the sub-list for extension extendee
+	0,  // [0:50] is the sub-list for field type_name
 }
 
 func init() { file_api_plugin_v2_platform_proto_init() }
@@ -3191,16 +3285,16 @@ func file_api_plugin_v2_platform_proto_init() {
 	if File_api_plugin_v2_platform_proto != nil {
 		return
 	}
-	file_api_plugin_v2_platform_proto_msgTypes[12].OneofWrappers = []any{}
-	file_api_plugin_v2_platform_proto_msgTypes[16].OneofWrappers = []any{}
+	file_api_plugin_v2_platform_proto_msgTypes[13].OneofWrappers = []any{}
 	file_api_plugin_v2_platform_proto_msgTypes[17].OneofWrappers = []any{}
+	file_api_plugin_v2_platform_proto_msgTypes[18].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_plugin_v2_platform_proto_rawDesc), len(file_api_plugin_v2_platform_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   46,
+			NumMessages:   47,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

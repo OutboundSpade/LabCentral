@@ -62,6 +62,10 @@ func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 
 func TestTypedProtocolRoundTrip(t *testing.T) {
 	c := lc.Command{ClientPrivateKey: []byte("transient"), Operation: "op", Environment: lc.Environment{Version: 2, Platform: "aws", Bases: map[string]lc.Base{"ubuntu": {ID: "ami", DiskGiB: 8}}}, Source: lc.Source{Files: []lc.File{{Path: "lab.yaml", Content: []byte("version: 2")}}}, Prior: lc.Resource{Data: json.RawMessage(`{"native":"state"}`)}}
+	c.Environment.AWS.Gateway = lc.AWSGatewayConfig{Base: "ubuntu-24.04", InstanceType: "t3.micro"}
+	c.Environment.AWS.AllowEgress = true
+	c.Environment.Proxmox.AllowEgress = true
+	c.Gateway = lc.Resource{Kind: "gateway", Owner: "owner", ID: "i-gateway", Address: "192.0.2.1", Complete: true, Data: json.RawMessage(`{"hostPublicKey":"pinned","eni":"eni-owned"}`)}
 	w := &wire.Command{}
 	if e := wireconvert.Encode(c, w); e != nil {
 		t.Fatal(e)
@@ -70,7 +74,7 @@ func TestTypedProtocolRoundTrip(t *testing.T) {
 	if e := wireconvert.Decode(w, &got); e != nil {
 		t.Fatal(e)
 	}
-	if got.Environment.Bases["ubuntu"].ID != "ami" || string(got.Prior.Data) != string(c.Prior.Data) || string(got.ClientPrivateKey) != "transient" {
+	if !reflect.DeepEqual(c.Gateway, got.Gateway) || !reflect.DeepEqual(c.Environment.AWS, got.Environment.AWS) || !got.Environment.Proxmox.AllowEgress || got.Environment.Bases["ubuntu"].ID != "ami" || string(got.Prior.Data) != string(c.Prior.Data) || string(got.ClientPrivateKey) != "transient" {
 		t.Fatalf("lossy protocol %+v", got)
 	}
 }

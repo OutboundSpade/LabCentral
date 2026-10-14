@@ -3,6 +3,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"net"
@@ -10,32 +11,125 @@ import (
 	"time"
 )
 
-func Dial(ctx context.Context, address, user string, private []byte, host string) (*ssh.Client, error) {
-	key, e := ssh.ParsePrivateKey(private)
-	if e != nil {
-		return nil, e
+// Dialer owns one pinned gateway connection for a bounded operation. Close it
+// after its machine clients and TCP channels. Reconnecting a failed transport
+// opens new channels only; it never replays guest commands or existing sessions.
+type Dialer struct {
+	GatewayAddress, GatewayHostKey string
+	PrivateKey                     []byte
+	mu                             sync.Mutex
+	gateway                        *ssh.Client
+	closed                         bool
+}
+
+func sshAddress(address string) string {
+	if _, _, err := net.SplitHostPort(address); err == nil {
+		return address
 	}
-	pub, _, _, _, e := ssh.ParseAuthorizedKey([]byte(host))
-	if e != nil {
-		return nil, e
+	return net.JoinHostPort(address, "22")
+}
+func (d *Dialer) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closed = true
+	if d.gateway != nil {
+		return d.gateway.Close()
 	}
-	config := &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(key)}, HostKeyCallback: ssh.FixedHostKey(pub), Timeout: 15 * time.Second}
-	conn, e := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(address, "22"))
-	if e != nil {
-		return nil, e
+	return nil
+}
+func (d *Dialer) DialTCP(ctx context.Context, network, address string) (net.Conn, error) {
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return nil, fmt.Errorf("SSH dialer closed")
 	}
-	deadline := time.Now().Add(15 * time.Second)
-	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
-		deadline = d
+	if d.GatewayAddress == "" {
+		d.mu.Unlock()
+		return (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, network, address)
 	}
-	conn.SetDeadline(deadline)
-	cc, ch, r, e := ssh.NewClientConn(conn, address, config)
-	if e != nil {
+	if d.gateway == nil {
+		client, err := Dial(ctx, d.GatewayAddress, "lab", d.PrivateKey, d.GatewayHostKey)
+		if err != nil {
+			d.mu.Unlock()
+			return nil, fmt.Errorf("gateway SSH: %w", err)
+		}
+		d.gateway = client
+	}
+	gateway := d.gateway
+	d.mu.Unlock()
+	conn, err := gateway.DialContext(ctx, network, address)
+	if err == nil {
+		return conn, nil
+	}
+	var denied *ssh.OpenChannelError
+	if errors.As(err, &denied) || ctx.Err() != nil {
+		return nil, err
+	}
+	// A new read/access operation may outlive a gateway reboot. Re-establish
+	// its transport with the same pin; channel rejection never triggers this.
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return nil, fmt.Errorf("SSH dialer closed")
+	}
+	if d.gateway == gateway {
+		gateway.Close()
+		d.gateway = nil
+		replacement, e := Dial(ctx, d.GatewayAddress, "lab", d.PrivateKey, d.GatewayHostKey)
+		if e != nil {
+			d.mu.Unlock()
+			return nil, fmt.Errorf("gateway SSH: %w", e)
+		}
+		d.gateway = replacement
+	}
+	gateway = d.gateway
+	d.mu.Unlock()
+	return gateway.DialContext(ctx, network, address)
+}
+func (d *Dialer) Dial(ctx context.Context, address, user string, private []byte, host string) (*ssh.Client, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	config, err := clientConfig(user, private, host)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := d.DialTCP(ctx, "tcp", sshAddress(address))
+	if err != nil {
+		return nil, err
+	}
+	return handshake(ctx, conn, address, config)
+}
+func clientConfig(user string, private []byte, host string) (*ssh.ClientConfig, error) {
+	key, err := ssh.ParsePrivateKey(private)
+	if err != nil {
+		return nil, err
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(host))
+	if err != nil {
+		return nil, err
+	}
+	return &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(key)}, HostKeyCallback: ssh.FixedHostKey(pub), HostKeyAlgorithms: []string{pub.Type()}}, nil
+}
+func handshake(ctx context.Context, conn net.Conn, address string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	// SSH channels do not implement deadlines. Cancellation closes this channel,
+	// never the reused gateway connection or an unrelated machine's channel.
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	cc, ch, r, err := ssh.NewClientConn(conn, address, config)
+	if !stop() {
 		conn.Close()
-		return nil, e
+		if cc != nil {
+			cc.Close()
+		}
+		return nil, ctx.Err()
 	}
-	conn.SetDeadline(time.Time{})
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
 	return ssh.NewClient(cc, ch, r), nil
+}
+func Dial(ctx context.Context, address, user string, private []byte, host string) (*ssh.Client, error) {
+	return (&Dialer{}).Dial(ctx, address, user, private, host)
 }
 func Run(ctx context.Context, c *ssh.Client, command string) ([]byte, error) {
 	s, e := c.NewSession()
@@ -63,12 +157,15 @@ func Run(ctx context.Context, c *ssh.Client, command string) ([]byte, error) {
 	return b, e
 }
 func Wait(ctx context.Context, address, user string, private []byte, host string) error {
+	return WaitWithDialer(ctx, &Dialer{}, address, user, private, host)
+}
+func WaitWithDialer(ctx context.Context, d *Dialer, address, user string, private []byte, host string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 	for {
-		c, e := Dial(ctx, address, user, private, host)
+		c, e := d.Dial(ctx, address, user, private, host)
 		if e == nil {
 			_, e = Run(ctx, c, "cloud-init status --wait >/dev/null && test -d /home/lab")
 			c.Close()

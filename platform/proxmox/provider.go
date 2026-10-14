@@ -158,6 +158,9 @@ func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (
 		if err := lc.CheckCapabilities(cmd.Source.Lab, cmd.Environment.Platform); err != nil {
 			return lc.Result{}, err
 		}
+		if err := lc.CheckEgress(cmd.Source.Lab, cmd.Environment); err != nil {
+			return lc.Result{}, err
+		}
 		if cmd.Machine.Name != "" {
 			if err := lc.CheckCapabilities(lc.Lab{Machines: map[string]lc.Machine{cmd.Machine.Name: cmd.Machine.Spec}}, cmd.Environment.Platform); err != nil {
 				return lc.Result{}, err
@@ -303,6 +306,14 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	if err := lc.CheckCommandPlatformOptions(cmd); err != nil {
 		return lc.Result{}, err
 	}
+	management := []string{}
+	if lc.InternetAccess(cmd.Source.Lab) {
+		var err error
+		management, err = managementCIDRs(ctx, cmd.Environment)
+		if err != nil {
+			return lc.Result{}, err
+		}
+	}
 	m := cmd.Machine
 	var net network
 	if e := json.Unmarshal(cmd.Network.Data, &net); e != nil {
@@ -366,6 +377,14 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 		return lc.Result{}, e
 	}
 	// Reconcile only rules belonging to the exact owned VM. Rule ordering is fixed.
+	opts := struct {
+		Enable int    `json:"enable"`
+		In     string `json:"policy_in"`
+		Out    string `json:"policy_out"`
+	}{1, "DROP", "DROP"}
+	if e = c.Call(ctx, "PUT", c.VM(m.VMID, "/firewall/options"), opts, nil); e != nil {
+		return lc.Result{}, e
+	}
 	var rules []struct {
 		Pos int `json:"pos"`
 	}
@@ -377,32 +396,12 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 			return lc.Result{}, e
 		}
 	}
-	type rule struct {
-		Type   string `json:"type"`
-		Action string `json:"action"`
-		Enable int    `json:"enable"`
-		Source string `json:"source,omitempty"`
-		Dest   string `json:"dest,omitempty"`
-		Proto  string `json:"proto,omitempty"`
-		Dport  string `json:"dport,omitempty"`
-	}
-	desired := []rule{{Type: "in", Action: "ACCEPT", Enable: 1, Source: net.CIDR}, {Type: "out", Action: "ACCEPT", Enable: 1, Dest: net.CIDR}}
-	for _, cidr := range cmd.Environment.OperatorCIDRs {
-		desired = append(desired, rule{Type: "in", Action: "ACCEPT", Enable: 1, Source: cidr, Proto: "tcp", Dport: "22"})
-	}
-	for _, r := range desired {
-		if e = c.Call(ctx, "POST", c.VM(m.VMID, "/firewall/rules"), r, nil); e != nil {
-			return lc.Result{}, e
-		}
-	}
-	opts := struct {
-		Enable int    `json:"enable"`
-		In     string `json:"policy_in"`
-		Out    string `json:"policy_out"`
-	}{1, "DROP", "DROP"}
-	if e = c.Call(ctx, "PUT", c.VM(m.VMID, "/firewall/options"), opts, nil); e != nil {
+
+	desired := firewallRules(cmd.Environment, net.CIDR, lc.InternetAccess(cmd.Source.Lab), management...)
+	if e = installFirewallRules(ctx, c, m.VMID, desired); e != nil {
 		return lc.Result{}, e
 	}
+
 	var state struct {
 		Status string `json:"status"`
 	}

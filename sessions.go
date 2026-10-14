@@ -78,7 +78,7 @@ func (e *Engine) OpenDesktopWithOptions(ctx context.Context, instance, machine s
 		if opts.Principal != "" {
 			operation = fmt.Sprintf("%x", sha256.Sum256([]byte(instance+"\x00"+machine+"\x00"+opts.Principal)))[:24]
 		}
-		cmd := Command{Action: "access.open", Operation: operation, Owner: instance, Environment: i.Plan.Environment, Machine: m, Prior: r, Access: opts}
+		cmd := Command{Action: "access.open", Operation: operation, Owner: instance, Environment: i.Plan.Environment, Machine: m, Prior: r, Access: opts, Gateway: InstanceGateway(i)}
 		if err = e.state.Put(ctx, "access", cmd.Operation, cmd); err != nil {
 			return err
 		}

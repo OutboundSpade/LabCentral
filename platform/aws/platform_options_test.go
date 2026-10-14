@@ -67,7 +67,7 @@ func TestRuntimeOptionsInNativeRunInstances(t *testing.T) {
 					t.Errorf("%s: got %q want %q", key, captured.Get(key), tc.want[key])
 				}
 			}
-			for key, want := range map[string]string{"InstanceType": "t3.large", "BlockDeviceMapping.1.Ebs.VolumeType": "gp3", "BlockDeviceMapping.1.Ebs.VolumeSize": "32", "BlockDeviceMapping.1.Ebs.Encrypted": "true", "BlockDeviceMapping.1.Ebs.DeleteOnTermination": "true", "MetadataOptions.HttpTokens": "required"} {
+			for key, want := range map[string]string{"InstanceType": "t3.large", "BlockDeviceMapping.1.Ebs.VolumeType": "gp3", "BlockDeviceMapping.1.Ebs.VolumeSize": "32", "BlockDeviceMapping.1.Ebs.Encrypted": "true", "BlockDeviceMapping.1.Ebs.DeleteOnTermination": "true", "MetadataOptions.HttpTokens": "required", "MetadataOptions.HttpPutResponseHopLimit": "1", "NetworkInterface.1.AssociatePublicIpAddress": "false", "NetworkInterface.1.PrivateIpAddress": "10.77.0.11"} {
 				if captured.Get(key) != want {
 					t.Errorf("%s: got %q want %q", key, captured.Get(key), want)
 				}

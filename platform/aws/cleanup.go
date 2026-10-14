@@ -60,7 +60,19 @@ func cleanupSnapshots(ctx context.Context, a *ec2.Client, c lc.Command) error {
 }
 func cleanupVolumes(ctx context.Context, a *ec2.Client, c lc.Command) error {
 	volumes := map[string]t.Volume{}
-	r, err := a.DescribeVolumes(ctx, &ec2.DescribeVolumesInput{Filters: filters(c.Owner, c.Prior.Name)})
+	role := c.Prior.Name
+	var data struct {
+		Role string `json:"role"`
+	}
+	if len(c.Prior.Data) > 0 {
+		if err := json.Unmarshal(c.Prior.Data, &data); err != nil {
+			return err
+		}
+		if data.Role != "" {
+			role = data.Role
+		}
+	}
+	r, err := a.DescribeVolumes(ctx, &ec2.DescribeVolumesInput{Filters: filters(c.Owner, role)})
 	if err != nil {
 		return err
 	}
@@ -118,41 +130,47 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 		}
 		return nil
 	}
-	if n.Subnet != "" {
-		r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{SubnetIds: []string{n.Subnet}})
-		if e != nil && !apiCode(e, "InvalidSubnetID.NotFound") {
-			return e
-		}
-		if e == nil {
-			for _, v := range r.Subnets {
-				if e = check(v.Tags, n.Subnet); e != nil {
-					return e
+	for _, subnet := range []string{n.Subnet, n.EdgeSubnet} {
+		if subnet != "" {
+			r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{SubnetIds: []string{subnet}})
+			if e != nil && !apiCode(e, "InvalidSubnetID.NotFound") {
+				return e
+			}
+			if e == nil {
+				for _, v := range r.Subnets {
+					if e = check(v.Tags, subnet); e != nil {
+						return e
+					}
 				}
 			}
 		}
 	}
-	if n.SG != "" {
-		r, e := a.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{n.SG}})
-		if e != nil && !apiCode(e, "InvalidGroup.NotFound") {
-			return e
-		}
-		if e == nil {
-			for _, v := range r.SecurityGroups {
-				if e = check(v.Tags, n.SG); e != nil {
-					return e
+	for _, sg := range []string{n.SG, n.GatewaySG} {
+		if sg != "" {
+			r, e := a.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{sg}})
+			if e != nil && !apiCode(e, "InvalidGroup.NotFound") {
+				return e
+			}
+			if e == nil {
+				for _, v := range r.SecurityGroups {
+					if e = check(v.Tags, sg); e != nil {
+						return e
+					}
 				}
 			}
 		}
 	}
-	if n.Route != "" {
-		r, e := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{n.Route}})
-		if e != nil && !apiCode(e, "InvalidRouteTableID.NotFound") {
-			return e
-		}
-		if e == nil {
-			for _, v := range r.RouteTables {
-				if e = check(v.Tags, n.Route); e != nil {
-					return e
+	for _, route := range []string{n.Route, n.EdgeRoute} {
+		if route != "" {
+			r, e := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{route}})
+			if e != nil && !apiCode(e, "InvalidRouteTableID.NotFound") {
+				return e
+			}
+			if e == nil {
+				for _, v := range r.RouteTables {
+					if e = check(v.Tags, route); e != nil {
+						return e
+					}
 				}
 			}
 		}

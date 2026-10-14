@@ -1,0 +1,14 @@
+# allowEgress: true
+version: 3
+name: example
+images:
+  base:
+    base: ubuntu-24.04
+machines:
+  one:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]
+networks: {lab: {egress: internet}}

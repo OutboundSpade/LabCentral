@@ -14,6 +14,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
 	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
 	"github.com/coder/websocket"
+	"golang.org/x/crypto/ssh"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -149,7 +150,17 @@ func dcvName(c lc.Command) string {
 }
 func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	var info Info
-	sshClient, e := remote.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+	dialer, e := lc.MachineDialer(c.Gateway, c.ClientPrivateKey)
+	if e != nil {
+		return nil, info, e
+	}
+	retained := false
+	defer func() {
+		if !retained {
+			dialer.Close()
+		}
+	}()
+	sshClient, e := dialer.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
 	if e != nil {
 		return nil, info, e
 	}
@@ -181,6 +192,9 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	pin := sha256.Sum256(parsed.Raw)
 	target, _ := url.Parse("https://" + net.JoinHostPort(c.Prior.Address, "8443"))
 	proxy, transport := dcvProxy(target, pin)
+	if c.Gateway.Kind != "" {
+		transport.DialContext = dialer.DialTCP
+	}
 	relay, e := NewRelayUntil(context.Background(), proxy, accessExpiry(c))
 	if e != nil {
 		_ = closeDCV(context.Background(), c)
@@ -194,17 +208,24 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		transport.CloseIdleConnections()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		return closeDCV(ctx, c)
+		defer dialer.Close()
+		client, err := dialer.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		return closeDCVClient(ctx, c, client)
 	}
 	info = Info{URL: relay.URL, Username: username, Password: password}
 	ready := func(ctx context.Context) (bool, error) {
-		client, err := remote.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+		client, err := dialer.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
 		if err != nil {
 			return false, err
 		}
 		defer client.Close()
 		return dcv.Ready(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, username)
 	}
+	retained = true
 	return &desktop{relay: relay, close: closer, ready: ready}, info, nil
 }
 func dcvProxy(target *url.URL, pin [sha256.Size]byte) (*httputil.ReverseProxy, *http.Transport) {
@@ -242,11 +263,15 @@ func dcvProxy(target *url.URL, pin [sha256.Size]byte) (*httputil.ReverseProxy, *
 func closeDCV(ctx context.Context, c lc.Command) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	sshClient, e := remote.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+	sshClient, closeClient, e := dialMachine(ctx, c)
 	if e != nil {
 		return e
 	}
-	defer sshClient.Close()
+	defer closeClient()
+	return closeDCVClient(ctx, c, sshClient)
+}
+func closeDCVClient(ctx context.Context, c lc.Command, sshClient *ssh.Client) error {
+	var e error
 	name := dcvName(c)
 	remove := "sudo userdel --remove " + name
 	if c.Access.RetainWorkspace {
@@ -298,12 +323,12 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 		return nil, info, fmt.Errorf("ownership_mismatch: console")
 	}
 	username, password := dcvName(cmd), random()
-	sshClient, err := remote.Dial(ctx, cmd.Prior.Address, "lab", cmd.ClientPrivateKey, cmd.Machine.HostPublicKey)
+	sshClient, closeClient, err := dialMachine(ctx, cmd)
 	if err != nil {
 		return nil, info, err
 	}
 	_, err = remote.Run(ctx, sshClient, "sudo useradd --create-home --shell /bin/bash "+username+" && printf '%s\\n' '"+username+":"+password+"' | sudo chpasswd")
-	sshClient.Close()
+	closeClient()
 	if err != nil {
 		return nil, info, err
 	}
@@ -405,12 +430,25 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 func closeGuestUser(ctx context.Context, c lc.Command) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	client, err := remote.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+	client, closeClient, err := dialMachine(ctx, c)
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer closeClient()
 	name := dcvName(c)
 	_, err = remote.Run(ctx, client, "if id "+name+" >/dev/null 2>&1; then sudo loginctl terminate-user "+name+" || true; sudo userdel --force --remove "+name+"; fi")
 	return err
+}
+
+func dialMachine(ctx context.Context, c lc.Command) (*ssh.Client, func(), error) {
+	d, err := lc.MachineDialer(c.Gateway, c.ClientPrivateKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	client, err := d.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+	if err != nil {
+		d.Close()
+		return nil, nil, err
+	}
+	return client, func() { client.Close(); d.Close() }, nil
 }

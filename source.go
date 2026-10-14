@@ -375,6 +375,9 @@ func ValidateEnvironment(e Environment) error {
 	}
 	if e.Platform == "aws" {
 		a := e.AWS
+		if err := ValidateAWSGateway(e); err != nil {
+			return err
+		}
 		if !regexp.MustCompile(`^(us|eu|ap|ca|sa|me|af|il|mx)-[a-z]+-[0-9]+$`).MatchString(a.Region) || !strings.HasPrefix(a.Zone, a.Region) || !regexp.MustCompile(`^[0-9]{12}$`).MatchString(a.Account) || len(a.Types) == 0 {
 			return bad("aws", "account, region, zone and instance type allowlist are required")
 		}
@@ -427,6 +430,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		return p, err
 	}
 	if err := ValidateEnvironment(e); err != nil {
+		return p, err
+	}
+	if err := CheckEgress(s.Lab, e); err != nil {
 		return p, err
 	}
 	if err := CheckPlatformOptions(s.Lab, e); err != nil {
@@ -548,7 +554,12 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			return p, problem(Unsupported, "environment.proxmox.vmidEnd", "VMID range is too small for images, validation and deployment")
 		}
 	}
-	p.Notices = []string{"Instances and native images remain billable until removed; no background cleanup service is installed.", "Builds may access package repositories; runtime general Internet egress is denied."}
+	p.Notices = []string{"Instances and native images remain billable until removed; no background cleanup service is installed.", "Builds may access package repositories; runtime Internet egress defaults to none."}
+	for _, name := range sortedKeys(s.Lab.Networks) {
+		if s.Lab.Networks[name].Egress == "internet" {
+			p.Notices = append(p.Notices, "Network "+name+": Internet egress is enabled and is not filtered beyond private-range blocking.")
+		}
+	}
 	if e.Platform == "aws" {
 		p.Notices = append(p.Notices, "Public IPv4 is billed. AWS DNS and metadata are not filtered by security groups; this is not an air gap.")
 		if e.AWS.DesktopProfile != "" {
@@ -603,4 +614,17 @@ func declarationError(err error) error {
 		return err
 	}
 	return problem(Invalid, "lab.yaml", err.Error())
+}
+
+// ValidateAWSGateway validates the platform-owned guest independently of the
+// author machine allowlist. Defaults still require a pinned base binding.
+func ValidateAWSGateway(e Environment) error {
+	g := e.AWS.Gateway.Effective()
+	if b, ok := e.Bases[g.Base]; !ok || b.ID == "" || b.Identity == "" || b.DiskGiB < 1 {
+		return problem(Invalid, "environment.aws.gateway.base", "no valid environment base binding for "+g.Base)
+	}
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]*\.[a-z0-9]+$`).MatchString(g.InstanceType) {
+		return problem(Invalid, "environment.aws.gateway.instanceType", "expected an EC2 instance type name")
+	}
+	return nil
 }

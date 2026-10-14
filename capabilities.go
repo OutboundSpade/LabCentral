@@ -12,7 +12,7 @@ func PlatformCapabilities(platform string) (Capabilities, bool) {
 	if platform != "aws" && platform != "proxmox" {
 		return Capabilities{}, false
 	}
-	c := Capabilities{MaxNetworks: 1, MaxNICs: 1, Egress: []string{"none"}, OS: []string{"linux"}}
+	c := Capabilities{MaxNetworks: 1, MaxNICs: 1, Egress: []string{"none", "internet"}, OS: []string{"linux"}}
 	if platform == "aws" {
 		c.ImageOptions = []string{"buildInstanceType"}
 		c.MachineOptions = []string{"instanceType", "volume", "volume.type", "volume.iops", "volume.throughput", "cpuCredits"}
@@ -70,6 +70,36 @@ func CheckCapabilities(l Lab, platform string) error {
 		}
 		if v.Forwarding && !c.Forwarding {
 			return problem(Unsupported, f+".forwarding", "forwarding is not implemented")
+		}
+	}
+	return nil
+}
+
+// InternetAccess reports the author request, independently of operator permission.
+func InternetAccess(l Lab) bool {
+	for _, n := range l.Networks {
+		if n.Egress == "internet" {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckEgress repeats environment policy before any native work.
+func CheckEgress(l Lab, e Environment) error {
+	for _, name := range sortedKeys(l.Networks) {
+		if l.Networks[name].Egress != "internet" {
+			continue
+		}
+		enabled := e.AWS.AllowEgress
+		if e.Platform == "proxmox" {
+			enabled = e.Proxmox.AllowEgress
+		}
+		if !enabled {
+			return problem(Unsupported, "networks."+name+".egress", "internet requires environment."+e.Platform+".allowEgress=true")
+		}
+		if e.Platform == "proxmox" && e.Proxmox.Gateway == "" {
+			return problem(Invalid, "environment.proxmox.gateway", "internet egress requires an operator VLAN gateway with NAT")
 		}
 	}
 	return nil

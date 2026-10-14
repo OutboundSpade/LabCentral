@@ -98,3 +98,29 @@ func TestRouteRetryRechecksOwnershipAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type invisibleRouteTables struct {
+	routeAPI
+	misses, calls int
+}
+
+func (f *invisibleRouteTables) DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+	f.calls++
+	if f.calls <= f.misses {
+		return nil, &smithy.GenericAPIError{Code: "InvalidRouteTableID.NotFound"}
+	}
+	return &ec2.DescribeRouteTablesOutput{RouteTables: []types.RouteTable{{RouteTableId: aw.String("rtb-new")}}}, nil
+}
+
+// A just-created route table may be briefly invisible; only that case is retried.
+func TestDescribeRouteTableRetriesEventualVisibility(t *testing.T) {
+	f := &invisibleRouteTables{misses: 3}
+	out, err := describeRouteTable(context.Background(), f, "rtb-new", noRouteWait)
+	if err != nil || f.calls != 4 || len(out.RouteTables) != 1 {
+		t.Fatalf("visible table not returned: %d %v", f.calls, err)
+	}
+	f = &invisibleRouteTables{misses: 100}
+	if _, err = describeRouteTable(context.Background(), f, "rtb-new", noRouteWait); err == nil || f.calls != 10 {
+		t.Fatalf("missing table retried without bound: %d %v", f.calls, err)
+	}
+}

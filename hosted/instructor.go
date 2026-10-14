@@ -109,7 +109,7 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 			if inst.Plan.Source.Digest != src.Digest {
 				return fmt.Errorf("guest source does not match pinned template")
 			}
-			client, err := cache.client(stepCtx, team.InstanceID, step.Machine, r.Address, key, m.HostPublicKey)
+			client, err := cache.clientFor(stepCtx, inst, step.Machine, r.Address, key, m.HostPublicKey)
 			if err != nil {
 				return fmt.Errorf("%s SSH unavailable", step.Machine)
 			}
@@ -153,6 +153,8 @@ type guestCache struct {
 	dial        func(context.Context, string, string, []byte, string) (*ssh.Client, error)
 	mu          sync.Mutex
 	connections map[string]guestConnection
+	dialers     map[string]*remote.Dialer
+	gateways    map[string]string
 }
 
 func guestCacheFor(ctx context.Context) (*guestCache, bool) {
@@ -182,6 +184,13 @@ func (c *guestCache) client(ctx context.Context, instance, machine, address stri
 	return client, nil
 }
 func (c *guestCache) close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	defer func() {
+		for _, d := range c.dialers {
+			d.Close()
+		}
+	}()
 	for _, conn := range c.connections {
 		conn.client.Close()
 	}
@@ -192,4 +201,54 @@ func guestJobContext(ctx context.Context) (context.Context, func()) {
 	}
 	cache, _ := guestCacheFor(ctx)
 	return context.WithValue(ctx, guestCacheKey{}, cache), cache.close
+}
+
+// A job reuses both its gateway transport and each machine handshake. Identity
+// changes within the job are rejected before opening another channel.
+func (c *guestCache) clientFor(ctx context.Context, inst lc.Instance, machine, address string, key []byte, hostKey string) (*ssh.Client, error) {
+	gateway := lc.InstanceGateway(inst)
+	encoded, _ := json.Marshal(gateway)
+	c.mu.Lock()
+	if c.gateways == nil {
+		c.gateways = map[string]string{}
+	}
+	previous, known := c.gateways[inst.ID]
+	if known && previous != string(encoded) {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("gateway identity changed within job")
+	}
+	c.gateways[inst.ID] = string(encoded)
+	c.mu.Unlock()
+	if gateway.Kind == "" {
+		return c.client(ctx, inst.ID, machine, address, key, hostKey)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.dialers == nil {
+		c.dialers = map[string]*remote.Dialer{}
+	}
+	d := c.dialers[inst.ID]
+	if d == nil {
+		var err error
+		d, err = lc.MachineDialer(gateway, key)
+		if err != nil {
+			return nil, err
+		}
+		c.dialers[inst.ID], c.gateways[inst.ID] = d, string(encoded)
+	} else if c.gateways[inst.ID] != string(encoded) {
+		return nil, fmt.Errorf("gateway identity changed within job")
+	}
+	name := inst.ID + ":" + machine
+	if previous, ok := c.connections[name]; ok {
+		if previous.address != address || previous.hostKey != hostKey {
+			return nil, fmt.Errorf("SSH identity changed within job")
+		}
+		return previous.client, nil
+	}
+	client, err := d.Dial(ctx, address, "lab", key, hostKey)
+	if err != nil {
+		return nil, err
+	}
+	c.connections[name] = guestConnection{client, address, hostKey}
+	return client, nil
 }

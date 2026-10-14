@@ -10,7 +10,6 @@ import (
 	"time"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
-	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
 	"github.com/coder/websocket"
 	"golang.org/x/crypto/ssh"
 )
@@ -219,7 +218,12 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 			cancel(errCoachRevoked)
 			return errCoachRevoked
 		}
-		client, err := remote.Dial(ctx, res.Address, "lab", key, m.HostPublicKey)
+		dialer, err := lc.MachineDialer(lc.InstanceGateway(inst), key)
+		if err != nil {
+			return err
+		}
+		defer dialer.Close()
+		client, err := dialer.Dial(ctx, res.Address, "lab", key, m.HostPublicKey)
 		if err != nil {
 			return err
 		}

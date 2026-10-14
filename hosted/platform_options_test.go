@@ -21,6 +21,7 @@ func TestTemplateMachineProjectionWithPlatformOptions(t *testing.T) {
 		machine.Platform = lc.MachinePlatform{AWS: &lc.AWSMachineOptions{InstanceType: "t3.large", CPUCredits: "standard"}, Proxmox: &lc.ProxmoxMachineOptions{CPUType: "host", NICModel: "e1000e", MemoryBalloon: &disabled}}
 		source.Lab.Machines[name] = machine
 	}
+	source.Lab.Networks = map[string]lc.Network{"lab": {Egress: "internet"}}
 	raw, err := yaml.Marshal(source.Lab)
 	if err != nil {
 		t.Fatal(err)
@@ -46,6 +47,7 @@ func TestTemplateMachineProjectionWithPlatformOptions(t *testing.T) {
 	if err := s.Store.Put(ctx, "source", "pinned", source); err != nil {
 		t.Fatal(err)
 	}
+	s.env.AWS.Gateway = lc.AWSGatewayConfig{Base: "PRIVATE-OPERATOR-BASE", InstanceType: "PRIVATE-OPERATOR-GATEWAY"}
 	s.env.Proxmox.CPUTypes = []string{"PRIVATE-OPERATOR-CPU-MODEL"}
 	s.env.AWS.Types = append(s.env.AWS.Types, lc.InstanceType{Name: "PRIVATE-OPERATOR-INSTANCE-TYPE", CPU: 2, MemoryMiB: 8192})
 	// Reopen the durable snapshot before exercising student projections.
@@ -66,7 +68,7 @@ func TestTemplateMachineProjectionWithPlatformOptions(t *testing.T) {
 	}
 	for _, route := range []string{"/api/templates", "/api/templates/pinned"} {
 		response := request(s, "GET", route, "", "", "")
-		if response.Code != 200 || !strings.Contains(response.Body.String(), `"name":"workstation"`) || !strings.Contains(response.Body.String(), `"memory":`) {
+		if response.Code != 200 || !strings.Contains(response.Body.String(), `"internetAccess":true`) || !strings.Contains(response.Body.String(), `"name":"workstation"`) || !strings.Contains(response.Body.String(), `"memory":`) {
 			t.Fatal("machine explorer failed", response.Code, response.Body.String())
 		}
 		for _, forbidden := range []string{"PRIVATE-OPERATOR", "cpuTypes", "instanceType", "cpuCredits", "memoryBalloon", "cpuType", "nicModel"} {

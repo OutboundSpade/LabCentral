@@ -27,12 +27,15 @@ type Provider struct {
 	Build   func(context.Context, lc.Command, lc.Observer) (lc.Result, error)
 }
 type networkState struct {
-	VPC      string `json:"vpc"`
-	Subnet   string `json:"subnet"`
-	SG       string `json:"sg"`
-	Route    string `json:"route"`
-	Gateway  string `json:"gateway"`
-	Endpoint string `json:"endpoint,omitempty"`
+	VPC        string `json:"vpc"`
+	Subnet     string `json:"subnet"`
+	SG         string `json:"sg"`
+	Route      string `json:"route"`
+	Gateway    string `json:"gateway"`
+	Endpoint   string `json:"endpoint,omitempty"`
+	EdgeSubnet string `json:"edgeSubnet,omitempty"`
+	EdgeRoute  string `json:"edgeRoute,omitempty"`
+	GatewaySG  string `json:"gatewaySG,omitempty"`
 }
 
 func client(ctx context.Context, e lc.Environment) (*ec2.Client, *sts.Client, error) {
@@ -76,8 +79,11 @@ func apiCode(err error, code string) bool {
 	return errors.As(err, &a) && a.ErrorCode() == code
 }
 func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
-	if c.Action == "check" || c.Action == "image.build" || c.Action == "network.create" || c.Action == "machine.create" {
+	if c.Action == "check" || c.Action == "image.build" || c.Action == "network.create" || c.Action == "machine.create" || c.Action == "gateway.create" {
 		if err := lc.CheckCapabilities(c.Source.Lab, c.Environment.Platform); err != nil {
+			return lc.Result{}, err
+		}
+		if err := lc.CheckEgress(c.Source.Lab, c.Environment); err != nil {
 			return lc.Result{}, err
 		}
 		if c.Machine.Name != "" {
@@ -92,6 +98,11 @@ func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc
 
 	if c.Environment.Platform != "aws" {
 		return lc.Result{}, fmt.Errorf("wrong platform")
+	}
+	if c.Action == "gateway.create" {
+		if err := lc.ValidateAWSGateway(c.Environment); err != nil {
+			return lc.Result{}, err
+		}
 	}
 	api, identity, err := client(ctx, c.Environment)
 	if err != nil {
@@ -109,9 +120,14 @@ func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc
 		return p.check(ctx, api, c)
 	case "network.create":
 		return p.network(ctx, api, c)
+	case "gateway.create":
+		return p.gateway(ctx, api, c)
 	case "machine.create":
 		return p.machine(ctx, api, c)
 	case "discover":
+		if c.Prior.Kind == "gateway" {
+			return p.findGateway(ctx, api, c)
+		}
 		if c.Machine.Name != "" {
 			return p.findMachine(ctx, api, c)
 		}
@@ -161,7 +177,8 @@ func (p *Provider) check(ctx context.Context, a *ec2.Client, c lc.Command) (lc.R
 			return lc.Result{}, fmt.Errorf("base AMI must be available x86_64")
 		}
 	}
-	names := []t.InstanceType{}
+	gatewayType := e.AWS.Gateway.Effective().InstanceType
+	names := []t.InstanceType{t.InstanceType(gatewayType)}
 	for _, x := range e.AWS.Types {
 		names = append(names, t.InstanceType(x.Name))
 	}
@@ -172,6 +189,9 @@ func (p *Provider) check(ctx context.Context, a *ec2.Client, c lc.Command) (lc.R
 	actual := map[string]t.InstanceTypeInfo{}
 	for _, v := range r.InstanceTypes {
 		actual[string(v.InstanceType)] = v
+	}
+	if v, ok := actual[gatewayType]; !ok || v.ProcessorInfo == nil || !containsArchitecture(v.ProcessorInfo.SupportedArchitectures, t.ArchitectureTypeX8664) {
+		return lc.Result{}, fmt.Errorf("gateway instance type %s must support x86_64", gatewayType)
 	}
 	for _, want := range e.AWS.Types {
 		v, ok := actual[want.Name]
@@ -186,7 +206,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	key := c.Operation
 	ns := networkState{}
 	vpc, err := doEC2(ctx, p.Journal, key+"/vpc", func() (string, error) {
-		r, e := a.CreateVpc(ctx, &ec2.CreateVpcInput{CidrBlock: aw.String("10.77.0.0/24"), TagSpecifications: specs(t.ResourceTypeVpc, owner, "network")})
+		r, e := a.CreateVpc(ctx, &ec2.CreateVpcInput{CidrBlock: aw.String("10.77.0.0/16"), TagSpecifications: specs(t.ResourceTypeVpc, owner, "network")})
 		if e != nil {
 			return "", e
 		}
@@ -218,7 +238,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		}
 		return aw.ToString(r.Subnet.SubnetId), nil
 	}, func() (string, bool, error) {
-		r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{Filters: filters(owner, "network")})
+		r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{Filters: append(filters(owner, "network"), t.Filter{Name: aw.String("cidr-block"), Values: []string{"10.77.0.0/24"}})})
 		if e != nil {
 			return "", false, e
 		}
@@ -256,13 +276,13 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	route, err := doEC2(ctx, p.Journal, key+"/route", func() (string, error) {
-		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: specs(t.ResourceTypeRouteTable, owner, "network")})
+		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, owner, "lab-route")})
 		if e != nil {
 			return "", e
 		}
 		return aw.ToString(r.RouteTable.RouteTableId), nil
 	}, func() (string, bool, error) {
-		r, e := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{Filters: filters(owner, "network")})
+		r, e := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{Filters: componentFilters(owner, "lab-route")})
 		if e != nil {
 			return "", false, e
 		}
@@ -275,10 +295,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	ns.Route = route
-	if err = ensureInternetRoute(ctx, a, owner, vpc, route, igw, waitRouteRetry); err != nil {
-		return lc.Result{}, err
-	}
-	rt, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{route}})
+	rt, err := describeRouteTable(ctx, a, route, waitRouteRetry)
 	if err != nil {
 		return lc.Result{}, err
 	}
@@ -295,13 +312,13 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		}
 	}
 	sg, err := doEC2(ctx, p.Journal, key+"/sg", func() (string, error) {
-		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner), Description: aw.String("LabCentral v2 owned lab"), TagSpecifications: specs(t.ResourceTypeSecurityGroup, owner, "network")})
+		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner), Description: aw.String("LabCentral v2 owned lab"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, owner, "lab-sg")})
 		if e != nil {
 			return "", e
 		}
 		return aw.ToString(r.GroupId), nil
 	}, func() (string, bool, error) {
-		r, e := a.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{Filters: filters(owner, "network")})
+		r, e := a.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{Filters: componentFilters(owner, "lab-sg")})
 		if e != nil {
 			return "", false, e
 		}
@@ -342,12 +359,17 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err != nil && !apiCode(err, "InvalidPermission.Duplicate") {
 		return lc.Result{}, err
 	}
+	if err = p.edgeNetwork(ctx, a, c, &ns); err != nil {
+		return lc.Result{}, err
+	}
 	for _, port := range []int32{22, 8443} {
-		ranges := []t.IpRange{}
-		for _, cidr := range c.Environment.OperatorCIDRs {
-			ranges = append(ranges, t.IpRange{CidrIp: aw.String(cidr)})
+		_, err = a.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{GroupId: &sg, IpPermissions: []t.IpPermission{{IpProtocol: aw.String("tcp"), FromPort: &port, ToPort: &port, UserIdGroupPairs: []t.UserIdGroupPair{{GroupId: &ns.GatewaySG}}}}})
+		if err != nil && !apiCode(err, "InvalidPermission.Duplicate") {
+			return lc.Result{}, err
 		}
-		_, err = a.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{GroupId: &sg, IpPermissions: []t.IpPermission{{IpProtocol: aw.String("tcp"), FromPort: &port, ToPort: &port, IpRanges: ranges}}})
+	}
+	if lc.InternetAccess(c.Source.Lab) {
+		_, err = a.AuthorizeSecurityGroupEgress(ctx, &ec2.AuthorizeSecurityGroupEgressInput{GroupId: &sg, IpPermissions: []t.IpPermission{{IpProtocol: aw.String("-1"), IpRanges: []t.IpRange{{CidrIp: aw.String("0.0.0.0/0")}}}}})
 		if err != nil && !apiCode(err, "InvalidPermission.Duplicate") {
 			return lc.Result{}, err
 		}
@@ -411,13 +433,22 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err := json.Unmarshal(c.Network.Data, &ns); err != nil {
 		return lc.Result{}, err
 	}
+	dialer, err := lc.MachineDialer(c.Gateway, c.ClientPrivateKey)
+	if err != nil {
+		return lc.Result{}, err
+	}
+	defer dialer.Close()
 	m := c.Machine
+	role := m.Name
+	if c.Gateway.Kind != "" {
+		role = "machine:" + m.Name
+	}
 	if c.Recovery {
 		r, err := p.findMachine(ctx, a, c)
 		if err != nil {
 			return r, err
 		}
-		if err = remote.Wait(ctx, r.Resource.Address, "lab", c.ClientPrivateKey, m.HostPublicKey); err != nil {
+		if err = remote.WaitWithDialer(ctx, dialer, r.Resource.Address, "lab", c.ClientPrivateKey, m.HostPublicKey); err != nil {
 			return r, err
 		}
 		return r, nil
@@ -433,7 +464,7 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err != nil {
 		return lc.Result{}, err
 	}
-	in := &ec2.RunInstancesInput{ImageId: &m.NativeImage, InstanceType: t.InstanceType(m.InstanceType), MinCount: aw.Int32(1), MaxCount: aw.Int32(1), ClientToken: aw.String(c.Owner + "-" + m.Name), UserData: aw.String(base64.StdEncoding.EncodeToString([]byte(ud))), MetadataOptions: &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)}, NetworkInterfaces: []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), SubnetId: &ns.Subnet, Groups: []string{ns.SG}, AssociatePublicIpAddress: aw.Bool(true), PrivateIpAddress: &m.Address}}, BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: im.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(m.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}}, TagSpecifications: append(specs(t.ResourceTypeInstance, c.Owner, m.Name), specs(t.ResourceTypeVolume, c.Owner, m.Name)...)}
+	in := &ec2.RunInstancesInput{ImageId: &m.NativeImage, InstanceType: t.InstanceType(m.InstanceType), MinCount: aw.Int32(1), MaxCount: aw.Int32(1), ClientToken: aw.String(c.Owner + "-" + m.Name), UserData: aw.String(base64.StdEncoding.EncodeToString([]byte(ud))), MetadataOptions: &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)}, NetworkInterfaces: []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), DeleteOnTermination: aw.Bool(true), SubnetId: &ns.Subnet, Groups: []string{ns.SG}, AssociatePublicIpAddress: aw.Bool(false), PrivateIpAddress: &m.Address}}, BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: im.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(m.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}}, TagSpecifications: append(specs(t.ResourceTypeInstance, c.Owner, role), specs(t.ResourceTypeVolume, c.Owner, role)...)}
 	if o := m.Spec.Platform.AWS; o != nil {
 		if o.Volume != nil {
 			ebs := in.BlockDeviceMappings[0].Ebs
@@ -467,13 +498,17 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err != nil {
 		return r, err
 	}
-	if err = remote.Wait(ctx, r.Resource.Address, "lab", c.ClientPrivateKey, m.HostPublicKey); err != nil {
+	if err = remote.WaitWithDialer(ctx, dialer, r.Resource.Address, "lab", c.ClientPrivateKey, m.HostPublicKey); err != nil {
 		return r, err
 	}
 	return r, nil
 }
 func (p *Provider) findMachine(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
-	f := filters(c.Owner, c.Machine.Name)
+	role := c.Machine.Name
+	if c.Gateway.Kind != "" {
+		role = "machine:" + role
+	}
+	f := filters(c.Owner, role)
 	f = append(f, t.Filter{Name: aw.String("instance-state-name"), Values: []string{"pending", "running", "stopping", "stopped"}})
 	r, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: f})
 	if err != nil {
@@ -487,10 +522,14 @@ func (p *Provider) findMachine(ctx context.Context, a *ec2.Client, c lc.Command)
 		return lc.Result{}, fmt.Errorf("recovery_required: expected one owned instance, found %d", len(instances))
 	}
 	i := instances[0]
-	if i.State == nil || i.State.Name != t.InstanceStateNameRunning {
-		return lc.Result{}, fmt.Errorf("recovery_required: instance has not reached running")
+	if !owned(i.Tags, c.Owner) {
+		return lc.Result{}, fmt.Errorf("ownership_mismatch: machine")
 	}
 	resource := lc.Resource{Kind: "machine", Name: c.Machine.Name, ID: aw.ToString(i.InstanceId), Owner: c.Owner, Address: aw.ToString(i.PublicIpAddress), PrivateAddress: aw.ToString(i.PrivateIpAddress), Complete: true}
+	if c.Gateway.Kind != "" {
+		resource.Address = resource.PrivateAddress
+		resource.Data, _ = json.Marshal(map[string]string{"role": role})
+	}
 	for _, mapping := range i.BlockDeviceMappings {
 		if mapping.Ebs != nil {
 			resource.Children = append(resource.Children, lc.NativeResource{Kind: "volume", ID: aw.ToString(mapping.Ebs.VolumeId)})
@@ -510,9 +549,14 @@ func (p *Provider) findNetwork(ctx context.Context, a *ec2.Client, c lc.Command)
 	for _, entry := range []struct {
 		key    string
 		target *string
-	}{{"subnet", &n.Subnet}, {"gateway", &n.Gateway}, {"route", &n.Route}, {"sg", &n.SG}, {"endpoint", &n.Endpoint}} {
-		if err := p.Journal.Load(c.Operation+"/"+entry.key, entry.target); err != nil && !os.IsNotExist(err) {
-			return lc.Result{}, fmt.Errorf("network child intent %s unresolved: %w", entry.key, err)
+	}{{"subnet", &n.Subnet}, {"gateway", &n.Gateway}, {"route", &n.Route}, {"sg", &n.SG}, {"endpoint", &n.Endpoint}, {"edge-subnet", &n.EdgeSubnet}, {"edge-route", &n.EdgeRoute}, {"gateway-sg", &n.GatewaySG}} {
+		key := c.Operation + "/" + entry.key
+		if err := p.Journal.Load(key, entry.target); err != nil && !os.IsNotExist(err) {
+			value, err := doEC2(ctx, p.Journal, key, func() (string, error) { return "", fmt.Errorf("cannot replay interrupted discovery") }, func() (string, bool, error) { return findNetworkChild(ctx, a, c.Owner, entry.key) })
+			if err != nil {
+				return lc.Result{}, fmt.Errorf("network child intent %s unresolved: %w", entry.key, err)
+			}
+			*entry.target = value
 		}
 	}
 	data, _ := json.Marshal(n)
@@ -542,7 +586,7 @@ func (p *Provider) destroy(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, fmt.Errorf("ownership_mismatch")
 	}
 	switch r.Kind {
-	case "machine":
+	case "machine", "gateway":
 		v, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.ID}})
 		if apiCode(err, "InvalidInstanceID.NotFound") {
 			err = cleanupVolumes(ctx, a, c)
@@ -662,10 +706,26 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 	if err != nil {
 		return lc.Result{}, err
 	}
+	// Validate every group before removing cross-group references. The default
+	// VPC group is unowned and is never touched.
 	for _, x := range groups.SecurityGroups {
-		if aw.ToString(x.VpcId) != c.Prior.ID {
-			return lc.Result{}, fmt.Errorf("security group target mismatch")
+		if aw.ToString(x.VpcId) != c.Prior.ID || !owned(x.Tags, c.Owner) {
+			return lc.Result{}, fmt.Errorf("security group ownership/target mismatch")
 		}
+	}
+	for _, x := range groups.SecurityGroups {
+		if len(x.IpPermissions) > 0 {
+			if _, err = a.RevokeSecurityGroupIngress(ctx, &ec2.RevokeSecurityGroupIngressInput{GroupId: x.GroupId, IpPermissions: x.IpPermissions}); err != nil && !apiCode(err, "InvalidPermission.NotFound") {
+				return lc.Result{}, err
+			}
+		}
+		if len(x.IpPermissionsEgress) > 0 {
+			if _, err = a.RevokeSecurityGroupEgress(ctx, &ec2.RevokeSecurityGroupEgressInput{GroupId: x.GroupId, IpPermissions: x.IpPermissionsEgress}); err != nil && !apiCode(err, "InvalidPermission.NotFound") {
+				return lc.Result{}, err
+			}
+		}
+	}
+	for _, x := range groups.SecurityGroups {
 		if _, err = a.DeleteSecurityGroup(ctx, &ec2.DeleteSecurityGroupInput{GroupId: x.GroupId}); err != nil {
 			return lc.Result{}, err
 		}
@@ -822,4 +882,13 @@ func (p *Provider) CleanupBuild(ctx context.Context, c lc.Command) error {
 		}
 	}
 	return nil
+}
+
+func containsArchitecture(values []t.ArchitectureType, want t.ArchitectureType) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	lc "github.com/OutboundSpade/LabCentral/v2"
-	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 	"io"
@@ -14,14 +13,19 @@ import (
 )
 
 func Shell(ctx context.Context, e *lc.Engine, instance, machine string, in *os.File, out, errOut io.Writer) (int, error) {
-	_, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
+	inst, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
 	if err != nil {
 		return 0, err
 	}
 	if !lc.Contains(m.Spec.Access, "ssh") {
 		return 0, &lc.Error{Code: lc.Unsupported, Field: machine, Message: "SSH access is not declared"}
 	}
-	client, err := remote.Dial(ctx, r.Address, "lab", key, m.HostPublicKey)
+	dialer, err := lc.MachineDialer(lc.InstanceGateway(inst), key)
+	if err != nil {
+		return 0, err
+	}
+	defer dialer.Close()
+	client, err := dialer.Dial(ctx, r.Address, "lab", key, m.HostPublicKey)
 	if err != nil {
 		return 0, err
 	}
