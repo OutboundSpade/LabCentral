@@ -99,7 +99,7 @@
     href="/brand.svg?v=core"
   /><meta
     name="description"
-    content="Guided practice labs and CDC team meetings, in the cloud or on your own infrastructure."
+    content="Guided practice labs and team meetings, in the cloud or on your own infrastructure."
   /></svelte:head
 >
 <a

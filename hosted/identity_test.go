@@ -32,7 +32,7 @@ func TestOIDCValidatesSignedClaimsAndPKCE(t *testing.T) {
 	var audience = "client"
 	var nonce = "nonce"
 	var subject = "student"
-	groups := []string{"labcentral-users"}
+	groups := []string{"lab_members"}
 	expiry := time.Now().Add(time.Hour).Unix()
 	var pkce string
 	mux := http.NewServeMux()
@@ -63,7 +63,7 @@ func TestOIDCValidatesSignedClaimsAndPKCE(t *testing.T) {
 	oldTransport := http.DefaultTransport
 	http.DefaultTransport = server.Client().Transport
 	defer func() { http.DefaultTransport = oldTransport }()
-	o, e := NewOIDC(context.Background(), Config{Issuer: issuer, BackchannelOrigin: server.URL, ClientID: "client", ClientSecret: "secret", Origin: "https://labs.invalid"})
+	o, e := NewOIDC(context.Background(), Config{MemberGroup: "lab_members", AdminGroup: "lab_admins", Issuer: issuer, BackchannelOrigin: server.URL, ClientID: "client", ClientSecret: "secret", Origin: "https://labs.invalid"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -88,7 +88,9 @@ func TestOIDCValidatesSignedClaimsAndPKCE(t *testing.T) {
 		{"audience", func() { audience = "other-client" }, func() { audience = "client" }},
 		{"nonce", func() { nonce = "other-nonce" }, func() { nonce = "nonce" }},
 		{"expiry", func() { expiry = time.Now().Add(-time.Hour).Unix() }, func() { expiry = time.Now().Add(time.Hour).Unix() }},
-		{"groups", func() { groups = []string{"other"} }, func() { groups = []string{"labcentral-users"} }},
+		{"groups", func() { groups = []string{"other"} }, func() { groups = []string{"lab_members"} }},
+		{"near-match", func() { groups = []string{"lab_members-extra"} }, func() { groups = []string{"lab_members"} }},
+		{"subject", func() { subject = "" }, func() { subject = "student" }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			test.modify()
@@ -102,9 +104,44 @@ func TestOIDCValidatesSignedClaimsAndPKCE(t *testing.T) {
 	if _, _, e = o.Refresh(context.Background(), token); e == nil {
 		t.Fatal("revoked group accepted by userinfo refresh")
 	}
-	groups = []string{"labcentral-admins"}
+	groups = []string{"lab_admins"}
+	if u, _, e := o.Exchange(context.Background(), "code", "verifier", "nonce"); e != nil || !u.Admin {
+		t.Fatal("administrator group alone must admit administrators", u, e)
+	}
 	if u, _, e := o.Refresh(context.Background(), token); e != nil || !u.Admin {
 		t.Fatal(u, e)
+	}
+	groups = []string{"lab_members"}
+	if u, _, e := o.Refresh(context.Background(), token); e != nil || u.Admin {
+		t.Fatal("removed administrator group retained privilege", u, e)
+	}
+}
+
+func TestIdentityGroupsAreRequiredBeforeDiscovery(t *testing.T) {
+	base := Config{MemberGroup: "team_members", AdminGroup: "team_admins", Origin: "https://labs.invalid", DesktopOrigin: "https://desktop.invalid", Issuer: "https://issuer.invalid"}
+	if err := ValidateConfig(base); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"memberGroup", "adminGroup"} {
+		for _, value := range []string{"", " ", " members", "members ", "two groups", "members\t", "members\n", "members\r", "members\u00a0", "members\u2003"} {
+			t.Run(field+"/"+fmt.Sprintf("%q", value), func(t *testing.T) {
+				c := base
+				if field == "memberGroup" {
+					c.MemberGroup = value
+				} else {
+					c.AdminGroup = value
+				}
+				for name, validate := range map[string]func() error{
+					"config":    func() error { return ValidateConfig(c) },
+					"startup":   func() error { _, err := New(context.Background(), c, nil); return err },
+					"discovery": func() error { _, err := NewOIDC(context.Background(), c); return err },
+				} {
+					if err := validate(); err == nil || !strings.Contains(err.Error(), field) {
+						t.Fatal(name, "invalid group reached identity or state initialization", err)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -142,14 +179,14 @@ func TestOIDCRefreshBoundsConcurrentUpstreamWorkAndCancelsWaiters(t *testing.T) 
 		case <-r.Context().Done():
 			return
 		}
-		writeJSON(w, 200, claims{Sub: "student", Groups: []string{"labcentral-users"}})
+		writeJSON(w, 200, claims{Sub: "student", Groups: []string{"lab_members"}})
 	})
 	server := httptest.NewTLSServer(mux)
 	defer server.Close()
 	old := http.DefaultTransport
 	http.DefaultTransport = server.Client().Transport
 	defer func() { http.DefaultTransport = old }()
-	o, err := NewOIDC(context.Background(), Config{Issuer: issuer, BackchannelOrigin: server.URL, ClientID: "client", Origin: "https://labs.invalid"})
+	o, err := NewOIDC(context.Background(), Config{MemberGroup: "lab_members", AdminGroup: "lab_admins", Issuer: issuer, BackchannelOrigin: server.URL, ClientID: "client", Origin: "https://labs.invalid"})
 	if err != nil {
 		t.Fatal(err)
 	}

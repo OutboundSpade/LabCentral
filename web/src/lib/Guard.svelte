@@ -20,13 +20,13 @@
     onclick={refresh}><RotateCw size={15} />Retry</button
   >
 {:else if !$session}<EmptyState icon={LogIn} title="Sign in to continue">
-    Use your CDC account to open practice labs, join a team and access your
+    Sign in to open practice labs, join a team and access your
     desktop.
     {#snippet actions()}<a
         href="/auth/login"
         data-sveltekit-reload
         class="btn btn-sm min-h-11 btn-primary"
-        >Continue with CDC ID <LogIn size={16} /></a
+        >Sign in <LogIn size={16} /></a
       >{/snippet}
   </EmptyState>
 {:else if admin && !$session.user.admin}<EmptyState

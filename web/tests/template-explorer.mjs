@@ -292,7 +292,7 @@ try {
     // The next session read fails transiently, so only the explicit logout clear applies.
     meFailure=true;
     await page.getByRole("button",{name:"Sign out"}).click();
-    await page.getByRole("heading",{name:"Hands-on labs for CDC practice."}).waitFor();
+    await page.getByRole("heading",{name:"Hands-on labs for team practice."}).waitFor();
     assert.equal(logouts,1);
     assert.equal(await page.evaluate(()=>sessionStorage.getItem("labcentral.attemptRequests")),null,"confirmed logout clears pending request IDs");
     meFailure=false; signedIn=true;
@@ -325,7 +325,7 @@ try {
     assert.deepEqual(visited.filter(u=>u.includes("/learn/")),[],"late response after logout does not navigate");
     assert.deepEqual(learnReads,[],"late response after logout loads no attempt");
     releaseHome(); await signingOut;
-    await page.getByRole("heading",{name:"Hands-on labs for CDC practice."}).waitFor();
+    await page.getByRole("heading",{name:"Hands-on labs for team practice."}).waitFor();
     page.off("framenavigated",onNav); page.off("request",onRequest);
     assert.equal(logouts,2);
     assert.equal(await page.evaluate(()=>sessionStorage.getItem("labcentral.attemptRequests")),null);

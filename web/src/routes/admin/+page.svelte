@@ -19,7 +19,7 @@
   let data = $derived($adminView);
   let error = $state("");
   let busy = $state(false);
-  let name = $state("Example Branch practice");
+  let name = $state("Team practice");
   let template = $state("");
   let hours = $state(4);
   let teamCount = $state(5);

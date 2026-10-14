@@ -24,6 +24,8 @@ type OIDC struct {
 	verifier     *oidc.IDTokenVerifier
 	http         *http.Client
 	refreshSlots chan struct{}
+	memberGroup  string
+	adminGroup   string
 }
 type claims struct {
 	Sub    string   `json:"sub"`
@@ -33,24 +35,27 @@ type claims struct {
 	Nonce  string   `json:"nonce"`
 }
 
-func (c claims) user() (User, error) {
+func (c claims) user(memberGroup, adminGroup string) (User, error) {
 	u := User{ID: c.Sub, Name: c.Name, Email: c.Email}
 	allowed := false
 	for _, g := range c.Groups {
-		if g == "labcentral-users" {
+		if g == memberGroup && memberGroup != "" {
 			allowed = true
 		}
-		if g == "labcentral-admins" {
+		if g == adminGroup && adminGroup != "" {
 			allowed = true
 			u.Admin = true
 		}
 	}
 	if !allowed || u.ID == "" {
-		return u, fmt.Errorf("CDC competition membership is required")
+		return u, fmt.Errorf("Your account is not a member of this LabCentral installation.")
 	}
 	return u, nil
 }
 func NewOIDC(ctx context.Context, c Config) (*OIDC, error) {
+	if err := validateIdentityGroups(c); err != nil {
+		return nil, err
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// Keep OIDC connection health independent of provider and desktop traffic.
 	transport.IdleConnTimeout = 30 * time.Second
@@ -70,7 +75,7 @@ func NewOIDC(ctx context.Context, c Config) (*OIDC, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &OIDC{p, oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: p.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{"openid", "profile", "email", "groups", "offline_access"}}, p.Verifier(&oidc.Config{ClientID: c.ClientID}), client, make(chan struct{}, 4)}, nil
+	return &OIDC{p, oauth2.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, Endpoint: p.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{"openid", "profile", "email", "groups", "offline_access"}}, p.Verifier(&oidc.Config{ClientID: c.ClientID}), client, make(chan struct{}, 4), c.MemberGroup, c.AdminGroup}, nil
 }
 func (o *OIDC) LoginURL(state, nonce, verifier string) string {
 	return o.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
@@ -96,7 +101,7 @@ func (o *OIDC) Exchange(ctx context.Context, code, verifier, nonce string) (User
 	if c.Nonce != nonce {
 		return User{}, nil, fmt.Errorf("login nonce mismatch")
 	}
-	u, e := c.user()
+	u, e := c.user(o.memberGroup, o.adminGroup)
 	return u, t, e
 }
 func (o *OIDC) Refresh(ctx context.Context, t *oauth2.Token) (User, *oauth2.Token, error) {
@@ -127,7 +132,7 @@ func (o *OIDC) Refresh(ctx context.Context, t *oauth2.Token) (User, *oauth2.Toke
 	if e = info.Claims(&c); e != nil {
 		return User{}, next, identityFailure("claims", status.code, e)
 	}
-	u, e := c.user()
+	u, e := c.user(o.memberGroup, o.adminGroup)
 	return u, next, e
 }
 func randomID(n int) string {

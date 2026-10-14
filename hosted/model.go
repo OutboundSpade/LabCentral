@@ -10,6 +10,8 @@ import (
 )
 
 type Config struct {
+	MemberGroup        string           `json:"memberGroup"`
+	AdminGroup         string           `json:"adminGroup"`
 	Aggregate          AggregateOptions `json:"aggregate,omitempty"`
 	Engine             lc.EngineOptions `json:"engine,omitempty"`
 	Worker             WorkerOptions    `json:"worker,omitempty"`

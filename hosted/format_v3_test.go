@@ -144,34 +144,23 @@ func TestTemplateImportRollbackAndIdempotentRevision(t *testing.T) {
 		t.Fatal("cancelled import committed")
 	}
 }
-func TestLocalRealTemplateRepositoryImport(t *testing.T) {
-	checkout := os.Getenv("LABCENTRAL_TEMPLATE_REPOSITORY_CHECKOUT")
-	if checkout == "" {
-		t.Skip("set LABCENTRAL_TEMPLATE_REPOSITORY_CHECKOUT for local production template import; no network or guest execution")
-	}
+func TestPublicTemplateRepositoryImport(t *testing.T) {
 	s, _, _ := learningFixture(t)
-	s.env.AWS.Types = append(s.env.AWS.Types, lc.InstanceType{Name: "large", CPU: 8, MemoryMiB: 32768})
 	root := t.TempDir()
-	for _, name := range []string{"branch-services", "branch-services-ir", "ccdc-service-recovery"} {
-		if e := os.CopyFS(filepath.Join(root, name), os.DirFS(filepath.Join(checkout, "templates", name))); e != nil {
-			t.Fatal(e)
-		}
+	if err := os.CopyFS(root, os.DirFS("../templates")); err != nil {
+		t.Fatal(err)
 	}
 	commit := strings.Repeat("c", 40)
-	if e := s.importSnapshot(context.Background(), root, commit, time.Now().UTC(), "local real template fixture"); e != nil {
-		t.Fatal(e)
+	if err := s.importSnapshot(context.Background(), root, commit, time.Now().UTC(), "public template fixture"); err != nil {
+		t.Fatal(err)
 	}
 	var report TemplateImportReport
-	_ = s.Store.Get(context.Background(), "template-import-report", "current", &report)
-	if len(report.Failures) != 0 {
-		t.Fatal(report.Failures)
+	if err := s.Store.Get(context.Background(), "template-import-report", "current", &report); err != nil || len(report.Failures) != 0 {
+		t.Fatal(report, err)
 	}
-	for _, name := range []string{"branch-services", "branch-services-ir", "ccdc-service-recovery"} {
-		var b InstructorBundle
-		id := digest(commit + ":" + name)[:24]
-		if e := s.Store.Get(context.Background(), "template-instructor", id, &b); e != nil || b.Version != 3 {
-			t.Fatal(name, b.Version, e)
-		}
+	var b InstructorBundle
+	if err := s.Store.Get(context.Background(), "template-instructor", digest(commit + ":ccdc-service-recovery")[:24], &b); err != nil || b.Version != 3 {
+		t.Fatal(b.Version, err)
 	}
 }
 

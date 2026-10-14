@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
+	"unicode"
 )
 
 // WorkerOptions are operator policy, read once at startup. Zero selects the
@@ -60,6 +62,9 @@ func (o WorkerOptions) Validate() error {
 // ValidateConfig checks static service policy without contacting identity or
 // infrastructure. Credential validity and native capacity require live checks.
 func ValidateConfig(c Config) error {
+	if err := validateIdentityGroups(c); err != nil {
+		return err
+	}
 	if err := c.Aggregate.Validate(); err != nil {
 		return err
 	}
@@ -107,4 +112,13 @@ func (s *Service) acquireProvisioning(ctx context.Context) (func(), error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func validateIdentityGroups(c Config) error {
+	for _, group := range []struct{ name, value string }{{"memberGroup", c.MemberGroup}, {"adminGroup", c.AdminGroup}} {
+		if group.value == "" || strings.ContainsFunc(group.value, unicode.IsSpace) {
+			return fmt.Errorf("%s must be a non-empty string without whitespace", group.name)
+		}
+	}
+	return nil
 }

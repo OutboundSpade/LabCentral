@@ -128,11 +128,9 @@ func v2UpgradeFixture(t *testing.T) (*Service, Session, *v2UpgradeEngine) {
 	return &Service{Store: st, Engine: e, env: env, Config: Config{Root: root, Origin: "https://labs.invalid", DesktopOrigin: "https://desktop.invalid", WebRoot: t.TempDir()}, Identity: &testIdentity{user: v.User}, desktops: map[string]*desktopSession{}, tickets: map[string]launchTicket{}}, v, e
 }
 
-// Main 3d398bd wrote these rows through its real importer/store APIs using the
-// three production templates at lab-templates 773d88f. The small, fixed JSON excerpt
-// preserves their wire shapes and identities, omitting only Files payloads.
-// LABCENTRAL_V2_STATE_FIXTURE instead opens a copy of the complete original DB
-// and any accompanying files; no external checkout is needed for regression CI.
+// The retained fixture derives its legacy stored shapes from the public
+// service-recovery template plus synthetic history and resource identities.
+// LABCENTRAL_V2_STATE_FIXTURE optionally reads an operator-owned state copy.
 func seedV2UpgradeState(t *testing.T, st *Store) {
 	t.Helper()
 	f, err := os.Open("testdata/retained-v2.json.gz")
@@ -440,18 +438,14 @@ func TestV2StateRefreshKeepsPinnedRevisions(t *testing.T) {
 	if err = os.Mkdir(templateRoot, 0700); err != nil {
 		t.Fatal(err)
 	}
-	checkout := os.Getenv("LABCENTRAL_TEMPLATE_REPOSITORY_CHECKOUT")
 	names := []string{"branch-services", "branch-services-ir", "ccdc-service-recovery"}
 	for _, name := range names {
 		from := "../templates/ccdc-service-recovery"
-		if checkout != "" {
-			from = filepath.Join(checkout, "templates", name)
-		}
 		dest := filepath.Join(templateRoot, name)
 		if err = os.CopyFS(dest, os.DirFS(from)); err != nil {
 			t.Fatal(err)
 		}
-		if checkout == "" && name != "ccdc-service-recovery" {
+		if name != "ccdc-service-recovery" {
 			path := filepath.Join(dest, "lab.yaml")
 			raw, err := os.ReadFile(path)
 			if err != nil {

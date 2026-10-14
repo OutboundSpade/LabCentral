@@ -56,7 +56,7 @@ try {
  await page.getByRole('heading',{name:'Lab templates',exact:true}).waitFor();
  await page.getByText('Ready to use',{exact:true}).waitFor();
  const nav=page.getByRole('navigation',{name:'Main navigation'});
- for(const [label,url,heading] of [['Admin','/admin/','Example Branch practice'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Lab library'],['Admin','/admin/','Example Branch practice']]){
+ for(const [label,url,heading] of [['Admin','/admin/','Team practice'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Lab library'],['Admin','/admin/','Team practice']]){
   await nav.getByRole('link',{name:label,exact:true}).click();await page.waitForURL(app+url);
   await page.getByRole('heading',{name:heading,exact:true}).first().waitFor();
   assert.equal(await page.evaluate(()=>window.__navigationMarker),'same-document');
@@ -74,7 +74,7 @@ try {
  await page.route(app+'/api/me',route=>route.fulfill({status:401,contentType:'application/json',body:'{"error":"Signed out"}'}));
  await page.getByRole('heading',{name:'Sign in to continue',exact:true}).waitFor();
  releaseRead();
- await page.getByRole('link',{name:'Continue with CDC ID',exact:false}).waitFor();
+ await page.getByRole('main').getByRole('link',{name:'Sign in',exact:true}).waitFor();
  await page.unroute(app+'/api/me');
  // A new student session must receive neither the old private view nor late results.
  await page.route(app+'/api/me',async route=>{const response=await route.fetch();const overview=await response.json();overview.user.admin=false;overview.csrf='different-session';await route.fulfill({response,json:overview})});
@@ -84,9 +84,9 @@ try {
  // Login is still an HTTP navigation to the server-owned OIDC endpoint.
  await page.unroute(app+'/api/me');
  await page.route(app+'/api/me',route=>route.fulfill({status:401,contentType:'application/json',body:'{"error":"Signed out"}'}));
- await page.getByRole('link',{name:'Continue with CDC ID',exact:false}).waitFor();
+ await page.getByRole('main').getByRole('link',{name:'Sign in',exact:true}).waitFor();
  const idp=process.argv[3];assert(idp,'Local identity redirect fixture required');
- await Promise.all([page.waitForURL(idp+'/authorize',{waitUntil:'domcontentloaded'}),page.getByRole('link',{name:'Continue with CDC ID',exact:false}).click()]);
+ await Promise.all([page.waitForURL(idp+'/authorize',{waitUntil:'domcontentloaded'}),page.getByRole('main').getByRole('link',{name:'Sign in',exact:true}).click()]);
  assert.equal(await page.title(),'OIDC redirect fixture');
  assert(documents>1);
  console.log('Expanded meeting settings, exact eight-hour extension, numeric team order, destructive confirmation, same-document navigation/history, session expiry with a late response, student privacy, and server-owned login passed at desktop/mobile widths. OIDC provider is a fixture.');

@@ -29,7 +29,7 @@ func run() error {
 	listen := flag.String("listen", "127.0.0.1:8080", "HTTP address behind the TLS proxy")
 	provider := flag.String("provider", "", "provider executable")
 	maintenance := flag.String("maintenance", "", "local status, recover, or cleanup operation")
-	checkConfig := flag.Bool("check-config", false, "validate static configuration and print effective worker limits without starting providers or OIDC")
+	checkConfig := flag.Bool("check-config", false, "validate static configuration and print identity groups and effective worker limits without starting providers or OIDC")
 	flag.Parse()
 	if *checkConfig && *maintenance != "" {
 		return fmt.Errorf("--check-config cannot be combined with --maintenance")
@@ -67,6 +67,8 @@ func run() error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(struct {
+			MemberGroup        string                  `json:"memberGroup"`
+			AdminGroup         string                  `json:"adminGroup"`
 			Aggregate          hosted.AggregateOptions `json:"aggregate"`
 			Engine             lc.EngineOptions        `json:"engine"`
 			Worker             hosted.WorkerOptions    `json:"worker"`
@@ -74,7 +76,7 @@ func run() error {
 			Note               string                  `json:"note"`
 			Gateway            lc.AWSGatewayConfig     `json:"awsGateway"`
 			AllowEgress        bool                    `json:"allowEgress"`
-		}{c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), func() int {
+		}{c.MemberGroup, c.AdminGroup, c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), func() int {
 			if c.WeeklyCloudMinutes == 0 {
 				return 180
 			}

@@ -31,7 +31,7 @@
   <section class="mx-auto flex max-w-xl flex-col items-center pt-10 text-center sm:pt-20">
     <Logo size={52} />
     <h1 class="mt-8 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-      Hands-on labs for CDC practice.
+      Hands-on labs for team practice.
     </h1>
     <p class="mt-4 max-w-md text-base leading-relaxed text-base-content/70">
       Work through guided labs at your own pace, and join your team's desktop
@@ -41,7 +41,7 @@
       href="/auth/login"
       data-sveltekit-reload
       class="btn btn-primary mt-8 min-h-11 px-6"
-      >Sign in with CDC ID<LogIn size={16} /></a
+      >Sign in<LogIn size={16} /></a
     >
   </section>
 {/if}

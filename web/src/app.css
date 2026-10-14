@@ -5,7 +5,7 @@
   themes: false;
 }
 @plugin 'daisyui/theme' {
-  name: "cdc";
+  name: "labcentral";
   default: true;
   prefersdark: false;
   color-scheme: dark;

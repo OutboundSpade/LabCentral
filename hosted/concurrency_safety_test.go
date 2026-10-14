@@ -414,7 +414,7 @@ func TestDesktopSSHLeaseIsSharedWithoutDoubleAdmission(t *testing.T) {
 		t.Fatal("SSH lease leaked")
 	}
 	bad := AggregateOptions{MaxNativeOperations: 2, MaxSSHSessions: 2}
-	c := Config{Origin: "https://labs.invalid", DesktopOrigin: "https://desktop.invalid", Issuer: "https://oidc.invalid", Aggregate: bad}
+	c := Config{MemberGroup: "lab_members", AdminGroup: "lab_admins", Origin: "https://labs.invalid", DesktopOrigin: "https://desktop.invalid", Issuer: "https://oidc.invalid", Aggregate: bad}
 	if _, err = New(ctx, c, nil, provider); err == nil {
 		t.Fatal("mismatched aggregate provider budget accepted")
 	}

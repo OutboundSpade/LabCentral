@@ -15,7 +15,7 @@ func TestWorkerOptionsRejectInvalidBeforeIdentityOrState(t *testing.T) {
 		{MaxProvisioningConcurrency: -1}, {MaxProvisioningConcurrency: 33}, {MaxBulkJobs: -1}, {MaxGuestJobs: 33},
 		{MaxImageBuildJobs: 4, MaxBulkJobs: 3}, {JobTimeoutMinutes: -1}, {JobTimeoutMinutes: 1441},
 	} {
-		if _, err := New(context.Background(), Config{Worker: options}, nil); err == nil {
+		if _, err := New(context.Background(), Config{MemberGroup: "members", AdminGroup: "admins", Worker: options}, nil); err == nil {
 			t.Fatal("invalid startup accepted", options)
 		}
 	}

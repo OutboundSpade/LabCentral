@@ -17,7 +17,7 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 const meeting = {
   id: "m-41",
   name: "Example Branch regional",
-  template: "rev-ce17e489",
+  template: "rev-fixture",
   status: "ready",
   created: new Date().toISOString(),
   expires: new Date(Date.now() + 4 * 3600000).toISOString(),

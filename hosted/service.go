@@ -145,7 +145,7 @@ func (s *Service) authorized(admin bool, next endpoint) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := s.session(r.Context(), r)
 		if err != nil {
-			writeError(w, 401, "Please sign in with your CDC account.")
+			writeError(w, 401, "Please sign in.")
 			return
 		}
 		if admin && !session.User.Admin {
@@ -256,7 +256,7 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	u, t, e := s.Identity.Exchange(r.Context(), r.URL.Query().Get("code"), a.Verifier, a.Nonce)
 	if e != nil {
-		writeError(w, 403, "CDC sign-in could not be completed. Check your competition membership and try again.")
+		writeError(w, 403, "Sign-in could not be completed. Check your access and try again.")
 		return
 	}
 	if e = s.Store.Put(r.Context(), "user", u.ID, u); e != nil {
