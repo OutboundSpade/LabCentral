@@ -10,7 +10,9 @@
     Clock,
     Dices,
     Gauge,
+    Globe,
     ListChecks,
+    LockKeyhole,
     Monitor,
     Play,
     RotateCw,
@@ -332,6 +334,13 @@
                 >
               </li>{/each}
           </ul>
+          <p class="mt-3 flex items-center gap-2 border-t border-base-content/9 pt-3 text-xs text-base-content/70">
+            {#if template.internetAccess}<Globe size={14} class="shrink-0" aria-hidden="true" />Internet access from the lab{:else}<LockKeyhole
+                size={14}
+                class="shrink-0"
+                aria-hidden="true"
+              />Isolated network, no Internet access{/if}
+          </p>
         </section>
       </aside>
       <div class="order-3 min-w-0 space-y-10 lg:order-none">
