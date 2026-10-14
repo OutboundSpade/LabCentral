@@ -130,7 +130,15 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 		}
 		return nil
 	}
-	for _, subnet := range []string{n.Subnet, n.EdgeSubnet} {
+	subnets := []string{n.Subnet, n.EdgeSubnet}
+	groups := []string{n.SG, n.GatewaySG, n.ManagementSG}
+	tables := []string{n.Route, n.EdgeRoute}
+	for _, seg := range n.Segments {
+		subnets = append(subnets, seg.Subnet)
+		groups = append(groups, seg.SG)
+		tables = append(tables, seg.Route)
+	}
+	for _, subnet := range subnets {
 		if subnet != "" {
 			r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{SubnetIds: []string{subnet}})
 			if e != nil && !apiCode(e, "InvalidSubnetID.NotFound") {
@@ -145,7 +153,7 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 			}
 		}
 	}
-	for _, sg := range []string{n.SG, n.GatewaySG} {
+	for _, sg := range groups {
 		if sg != "" {
 			r, e := a.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{GroupIds: []string{sg}})
 			if e != nil && !apiCode(e, "InvalidGroup.NotFound") {
@@ -160,7 +168,7 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 			}
 		}
 	}
-	for _, route := range []string{n.Route, n.EdgeRoute} {
+	for _, route := range tables {
 		if route != "" {
 			r, e := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{route}})
 			if e != nil && !apiCode(e, "InvalidRouteTableID.NotFound") {

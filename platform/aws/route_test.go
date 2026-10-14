@@ -124,3 +124,43 @@ func TestDescribeRouteTableRetriesEventualVisibility(t *testing.T) {
 		t.Fatalf("missing table retried without bound: %d %v", f.calls, err)
 	}
 }
+
+type remoteRouteFixture struct {
+	table types.RouteTable
+	calls int
+	lose  bool
+}
+
+func (f *remoteRouteFixture) DescribeRouteTables(context.Context, *ec2.DescribeRouteTablesInput, ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
+	return &ec2.DescribeRouteTablesOutput{RouteTables: []types.RouteTable{f.table}}, nil
+}
+func (f *remoteRouteFixture) CreateRoute(_ context.Context, in *ec2.CreateRouteInput, _ ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
+	if aw.ToString(in.DestinationCidrBlock) != "10.77.1.0/24" || aw.ToString(in.NetworkInterfaceId) != "eni-router" || in.GatewayId != nil {
+		return nil, errors.New("incorrect more-specific ENI route")
+	}
+	f.calls++
+	f.table.Routes = append(f.table.Routes, types.Route{DestinationCidrBlock: in.DestinationCidrBlock, NetworkInterfaceId: in.NetworkInterfaceId})
+	if f.lose {
+		return nil, context.DeadlineExceeded
+	}
+	return &ec2.CreateRouteOutput{}, nil
+}
+func TestRemoteENIRouteRetainsVPCLocalAndRecoversResponseLoss(t *testing.T) {
+	f := &remoteRouteFixture{lose: true, table: types.RouteTable{RouteTableId: aw.String("rtb-owned"), VpcId: aw.String("vpc-owned"), Tags: tags("owner", "network"), Routes: []types.Route{{DestinationCidrBlock: aw.String("10.77.0.0/16"), GatewayId: aw.String("local")}}}}
+	reconcile := func() error {
+		return ensureDestinationRoute(context.Background(), f, "owner", "vpc-owned", "rtb-owned", "10.77.1.0/24", "eni-router", true, noRouteWait)
+	}
+	if err := reconcile(); !errors.Is(err, context.DeadlineExceeded) || f.calls != 1 {
+		t.Fatal("unknown route outcome retried", err, f.calls)
+	}
+	if err := reconcile(); err != nil || f.calls != 1 {
+		t.Fatal("route duplicated after loss", err, f.calls)
+	}
+	if len(f.table.Routes) != 2 || aw.ToString(f.table.Routes[0].GatewayId) != "local" {
+		t.Fatal("VPC local route replaced", f.table.Routes)
+	}
+	f.table.Routes[1].NetworkInterfaceId = aw.String("eni-other")
+	if err := reconcile(); err == nil || f.calls != 1 {
+		t.Fatal("conflicting remote ENI route overwritten", err)
+	}
+}

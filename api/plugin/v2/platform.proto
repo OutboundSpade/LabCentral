@@ -22,6 +22,7 @@ message Command {
   bool recovery = 14 [json_name = "recovery"];
   AccessOptions access = 15 [json_name = "access"];
   Resource gateway = 16 [json_name = "gateway"];
+  repeated PlannedNetwork networks = 17 [json_name = "networks"];
 }
 message Environment {
   int32 version = 1 [json_name = "version"];
@@ -53,6 +54,7 @@ message InstanceType {
   string name = 1 [json_name = "name"];
   int32 cpu = 2 [json_name = "cpu"];
   int32 memory_mi_b = 3 [json_name = "memoryMiB"];
+  int32 max_nics = 4 [json_name = "maxNICs"];
 }
 message AWSGatewayConfig {
   string base = 1 [json_name = "base"];
@@ -108,6 +110,8 @@ message PlannedMachine {
   string public_key = 11 [json_name = "publicKey"];
   string host_private_key = 12 [json_name = "hostPrivateKey"];
   string host_public_key = 13 [json_name = "hostPublicKey"];
+  repeated PlannedNIC nics = 14 [json_name = "nics"];
+  string resolver = 15 [json_name = "resolver"];
 }
 message HostEntry {
   string name = 1 [json_name = "name"];
@@ -152,6 +156,22 @@ message ProxmoxMachineOptions {
   string cputype = 1 [json_name = "cpuType"];
   string nicmodel = 2 [json_name = "nicModel"];
   optional bool memory_balloon = 3 [json_name = "memoryBalloon"];
+}
+message PlannedNIC {
+  string network = 1 [json_name = "network"];
+  string cidr = 2 [json_name = "cidr"];
+  string address = 3 [json_name = "address"];
+  int32 vlan = 4 [json_name = "vlan"];
+  string gateway = 5 [json_name = "gateway"];
+  bool default = 6 [json_name = "default"];
+  repeated PlannedRoute routes = 7 [json_name = "routes"];
+}
+message PlannedRoute {
+  string network = 1 [json_name = "network"];
+  string cidr = 2 [json_name = "cidr"];
+  string via = 3 [json_name = "via"];
+  string router = 4 [json_name = "router"];
+  int32 router_nic = 5 [json_name = "routerNIC"];
 }
 message PlannedImage {
   string name = 1 [json_name = "name"];
@@ -245,6 +265,14 @@ message AccessOptions {
   string principal = 1 [json_name = "principal"];
   string expires = 2 [json_name = "expires"];
   bool retain_workspace = 3 [json_name = "retainWorkspace"];
+}
+message PlannedNetwork {
+  string name = 1 [json_name = "name"];
+  string cidr = 2 [json_name = "cidr"];
+  string gateway = 3 [json_name = "gateway"];
+  string egress = 4 [json_name = "egress"];
+  int32 vlan = 5 [json_name = "vlan"];
+  repeated PlannedRoute routes = 6 [json_name = "routes"];
 }
 message Result {
   Resource resource = 1 [json_name = "resource"];

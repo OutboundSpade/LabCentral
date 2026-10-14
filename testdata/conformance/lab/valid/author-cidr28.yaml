@@ -1,6 +1,3 @@
-# field: networks.lab.cidr
-# schema: accept
-# code: unsupported
 version: 3
 name: example
 images:

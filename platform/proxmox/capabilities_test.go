@@ -17,10 +17,10 @@ func TestUnsupportedRequestsFailBeforeNativeConfiguration(t *testing.T) {
 			t.Fatalf("%s reached native configuration: %v", action, err)
 		}
 	}
-	c := lc.Command{Action: "machine.create", Environment: lc.Environment{Platform: "proxmox"}, Machine: lc.PlannedMachine{Name: "web", Spec: lc.Machine{NICs: []lc.NIC{{Network: "lab"}, {Network: "lab"}}}}}
+	c := lc.Command{Action: "machine.create", Environment: lc.Environment{Platform: "proxmox"}, Machine: lc.PlannedMachine{Name: "web", Spec: lc.Machine{NICs: make([]lc.NIC, 5)}}}
 	_, err := p.Execute(context.Background(), c, nil)
 	var typed *lc.Error
-	if !errors.As(err, &typed) || typed.Code != lc.Unsupported || typed.Field != "machines.web.nics[1]" {
+	if !errors.As(err, &typed) || typed.Code != lc.Unsupported || typed.Field != "machines.web.nics[4]" {
 		t.Fatal("machine request bypassed capabilities", err)
 	}
 }

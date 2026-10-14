@@ -427,6 +427,51 @@ attaches a machine to the only network. NIC `address` selects a host offset from
 4–250. Other machines receive addresses from offset 11, skipping reserved offsets,
 in name order. `hostnamePeers` defaults to `all`; a list selects peers and `[]`
 leaves only localhost entries.
+Networks are isolated L3 segments. Use a forwarding guest to join them:
+
+```yaml
+version: 3
+name: routed-investigation
+networks:
+  clients: {egress: internet}
+  servers: {}
+images:
+  ubuntu: {base: ubuntu-24.04}
+machines:
+  client:
+    image: ubuntu
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    nics: [{network: clients}]
+    access: [ssh]
+  router:
+    image: ubuntu
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    forwarding: true
+    nics: [{network: clients, address: 10}, {network: servers, address: 10}]
+    access: [ssh]
+  server:
+    image: ubuntu
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    nics: [{network: servers}]
+    access: [ssh]
+```
+
+The first NIC is the management address for SSH, desktops and checks. Each peer
+hostname resolves to its address on the first network shared with the requesting
+machine (in that machine's NIC order), or its first-NIC address when none is shared.
+Same-network machines communicate directly. A forwarding guest joins its attached
+networks; the planner computes static routes along deterministic router chains.
+Two routers joining the same network pair and cycles are rejected. A router with
+three or more NICs is supported. A machine uses its first Internet-enabled NIC for
+its single default route. Other NICs have connected and planned static routes;
+platform management/DNS/metadata routes remain available without Internet egress.
+
 Runtime Internet egress defaults to `none`. A network may request
 `networks: {lab: {egress: internet}}`; planning also requires the operator's
 `aws.allowEgress: true` or `proxmox.allowEgress: true`. The exception permits
@@ -501,9 +546,20 @@ as `labcentral_extensions: {lab: ..., image: ...}`. Explicit `build.files` selec
 include the playbook and limit both staged files and the source bytes in the cache
 key; omission uses the whole source with runtime platform options excluded.
 
-Windows, author CIDRs, forwarding and multiple networks/NICs remain unsupported
-and are rejected during planning with field-path errors. Both platforms implement
-Linux, one network/NIC and per-network egress `none` or operator-enabled `internet`.
+AWS supports up to eight networks and eight NICs per machine, subject to the
+selected instance type's ENI limit. Optional `aws.types[].maxNICs` enables offline
+limit checks; the adapter checks the actual limit with `DescribeInstanceTypes`.
+Proxmox supports four networks and four NICs per machine. Both support Linux
+routers and per-network egress. Windows remains unsupported. AWS accepts private,
+nonoverlapping author `cidr` values when every network fits one primary /16 with
+space for an edge /28. Proxmox rejects author CIDRs because operator routing needs
+its allocated, disjoint per-lab ranges.
+
+Image keys now bind only the build target, toolchain, selected base and build
+networking from the environment. Runtime network declarations, NICs, routers,
+operator CIDRs, egress permission, gateway settings, machine allowlists and desktop
+profile do not rebuild images. This is a one-time key change; older images retain
+their saved removal keys.
 The generated contract is [schemas/lab-v3.json](schemas/lab-v3.json).
 
 For a template in the hosted repository, place reusable teaching material in
@@ -651,12 +707,20 @@ of the author machine allowlist. `aws.allowEgress` defaults to false.
 
 New AWS labs have one public IPv4 address, on the gateway. Author machines have
 private management addresses and no public IPv4. The VPC is `10.77.0.0/16`;
-guests keep `10.77.0.0/24`, and the gateway stays in `10.77.255.0/28` in the same
-AZ. `10.77.1.0/24`–`10.77.254.0/24` are reserved for future networks. SSH,
+networks receive `10.77.<n>.0/24` in sorted name order, beginning at zero, and
+without author CIDRs the gateway keeps `10.77.255.0/28` in the same AZ. An author
+CIDR selects its containing /16; every other author CIDR and the unchanged default
+allocations must fit that block. The edge uses the highest free /28 in that block.
+Overlap and insufficient edge space are rejected before provisioning. SSH,
 desktops and checks traverse pinned gateway SSH; machine host keys and DCV TLS
 certificates remain pinned end to end. There is no agent forwarding. Only the
 gateway admits operator SSH; guests admit management from its security group.
-The private lab route table keeps the DCV S3 endpoint, and gains a default route
+Each subnet has its own SG and route table. A separate management SG attaches
+only to first NICs in multi-network labs. Routed sources are admitted only for
+reachable networks. Router ENIs disable source/destination checking. Subnet route
+tables target the local router ENI for remote CIDRs, including routes more specific
+than VPC local routing; guests also have explicit routes if AWS rejects those
+native routes. Each lab table retains the scoped DCV S3 endpoint and gets a default
 to the gateway ENI only for an Internet-enabled network. The gateway permits NAT
 forwarding only from enabled sources and blocks RFC1918, link-local and CGNAT
 destinations. Egress is general Internet access beyond those blocks, not a URL
@@ -665,8 +729,9 @@ or service allowlist. Image qualification uses a disposable gateway too.
 Retained AWS instances created before gateways keep their public management path
 and remain recoverable and destroyable. Recovery never retrofits a gateway.
 The source hosted IAM template permits the default gateway, component ownership
-tags and security-group ingress revocation. An operator must review the needed
-permissions in their configured test environment before native acceptance; no
+tags and security-group ingress revocation. Router ENIs are tagged on launch; the
+source template also permits tag-scoped `ModifyNetworkInterfaceAttribute`. An
+operator must review the needed permissions in their configured test environment before native acceptance; no
 existing installation is changed by this source update.
 
 For desktop builds, set `build.dcvURL` to the official Ubuntu 24.04 DCV archive
@@ -698,7 +763,18 @@ all management ranges during acceptance. Other networks retain default DROP.
 The cluster firewall must be enabled. Verify VLAN separation, operator-only SSH,
 denied general egress and management-network separation before setting
 `verifiedIsolation: true`. This flag is an operator assertion, not a substitute
-for live network probes. The adapter checks cluster firewall enablement and bridge
+for live network probes.
+
+All networks reserve separate VLANs atomically in the allocation journal and
+receive separate /24s from the operator pool. Machines configure `net0..netN` and
+`ipconfig0..ipconfigN`; only the first egress NIC gets a gateway. Generated netplan
+is installed and verified through the guest agent after boot, without host snippets.
+Firewall rules restrict traffic by NIC, same-network and routed-source CIDRs;
+operator SSH is limited to the first NIC. The operator must drop inter-VLAN traffic
+between lab segments through its own router: routing between those segments must
+use the declared guest routers. Physical isolation remains an operator verification.
+
+The adapter checks cluster firewall enablement and bridge
 VLAN awareness before provisioning.
 
 Use a fresh Ubuntu 24.04 amd64 cloud-init template with a `scsi0` root disk,
@@ -827,6 +903,21 @@ In an explicitly configured, disposable AWS test environment:
   instance/volume/ENI/subnet/route/SG/endpoint/IGW/VPC IDs and the single public IP's
   release; retain cleanup intent until provider-confirmed absence. Remove test
   image artifacts and operator-owned build infrastructure separately when intended.
+
+Phase 3 live acceptance is pending. In a separately configured test environment:
+
+- AWS: deploy the two-network example with a router, and egress enabled on clients
+  only. Verify fixed NIC addresses, shared-network hostnames, first-NIC SSH/desktop,
+  same-segment traffic, routed traffic and Internet egress only on the enabled side.
+- AWS: disable guest forwarding and prove inter-segment traffic stops; verify ENI
+  source/destination settings and remote subnet routes, then qualify guest-route
+  fallback if the native route is rejected. Reboot and repeat. Exercise an author
+  CIDR layout, an interrupted multi-ENI create, recovery and complete cleanup.
+- Proxmox: first qualify the environment's physical VLAN isolation, firewall and
+  operator router drops. Deploy the two-network example, verify NIC firewall paths,
+  netplan/default/static routes, reboot, interruption/recovery and complete release
+  of every reserved VLAN. Until qualification, treat its live acceptance as incomplete.
+- For hosted release acceptance, also verify real OIDC and rendered desktop sessions.
 
 ## Library and development
 

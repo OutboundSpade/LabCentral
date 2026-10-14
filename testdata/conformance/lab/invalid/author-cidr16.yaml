@@ -1,4 +1,4 @@
-# field: networks.lab.cidr
+# field: networks
 # schema: accept
 # code: unsupported
 version: 3

@@ -1,6 +1,3 @@
-# field: networks.second
-# schema: accept
-# code: unsupported
 version: 3
 name: example
 images:
@@ -13,5 +10,4 @@ machines:
     memory: 2Gi
     disk: 20Gi
     access: [ssh]
-    nics: [{network: first}]
-networks: {first: {}, second: {}}
+    forwarding: true

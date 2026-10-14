@@ -6,15 +6,30 @@ import (
 	aw "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	t "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"strings"
 )
 
 // Reconcile an interrupted child intent without replaying the mutation. A
 // temporarily empty tag query never proves an uncertain create did not happen.
-func findNetworkChild(ctx context.Context, a *ec2.Client, owner, kind string) (string, bool, error) {
+func findNetworkChild(ctx context.Context, a *ec2.Client, owner, kind string, cidrs ...string) (string, bool, error) {
 	f := filters(owner, "network")
+	if strings.HasPrefix(kind, "segment-") || kind == "management-sg" {
+		f = componentFilters(owner, kind)
+		if strings.HasSuffix(kind, "-subnet") {
+			kind = "subnet-component"
+		} else if strings.HasSuffix(kind, "-route") {
+			kind = "route-component"
+		} else {
+			kind = "sg-component"
+		}
+	}
 	switch kind {
 	case "subnet":
-		f = append(f, t.Filter{Name: aw.String("cidr-block"), Values: []string{"10.77.0.0/24"}})
+		cidr := "10.77.0.0/24"
+		if len(cidrs) > 0 {
+			cidr = cidrs[0]
+		}
+		f = append(f, t.Filter{Name: aw.String("cidr-block"), Values: []string{cidr}})
 	case "edge-subnet":
 		f = componentFilters(owner, "edge-subnet")
 	case "route":
@@ -28,7 +43,7 @@ func findNetworkChild(ctx context.Context, a *ec2.Client, owner, kind string) (s
 	}
 	ids := []string{}
 	switch kind {
-	case "subnet", "edge-subnet":
+	case "subnet", "edge-subnet", "subnet-component":
 		out, err := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{Filters: f})
 		if err != nil {
 			return "", false, err
@@ -39,7 +54,7 @@ func findNetworkChild(ctx context.Context, a *ec2.Client, owner, kind string) (s
 			}
 			ids = append(ids, aw.ToString(v.SubnetId))
 		}
-	case "route", "edge-route":
+	case "route", "edge-route", "route-component":
 		out, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{Filters: f})
 		if err != nil {
 			return "", false, err
@@ -50,7 +65,7 @@ func findNetworkChild(ctx context.Context, a *ec2.Client, owner, kind string) (s
 			}
 			ids = append(ids, aw.ToString(v.RouteTableId))
 		}
-	case "sg", "gateway-sg":
+	case "sg", "gateway-sg", "sg-component":
 		out, err := a.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{Filters: f})
 		if err != nil {
 			return "", false, err

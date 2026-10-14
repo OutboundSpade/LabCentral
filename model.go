@@ -188,6 +188,7 @@ type InstanceType struct {
 	Name      string `yaml:"name" json:"name"`
 	CPU       int    `yaml:"cpu" json:"cpu"`
 	MemoryMiB int    `yaml:"memoryMiB" json:"memoryMiB"`
+	MaxNICs   int    `yaml:"maxNICs,omitempty" json:"maxNICs,omitempty"`
 }
 type ProxmoxConfig struct {
 	InsecureSkipTLSVerify bool     `yaml:"insecureSkipTLSVerify,omitempty" json:"insecureSkipTLSVerify,omitempty"`
@@ -230,20 +231,48 @@ type HostEntry struct {
 	Name    string `json:"name"`
 	Address string `json:"address"`
 }
+
+// PlannedNetwork describes one isolated segment; Routes use a router NIC on it.
+type PlannedNetwork struct {
+	Name    string         `json:"name"`
+	CIDR    string         `json:"cidr"`
+	Gateway string         `json:"gateway,omitempty"`
+	Egress  string         `json:"egress"`
+	VLAN    int            `json:"vlan,omitempty"`
+	Routes  []PlannedRoute `json:"routes,omitempty"`
+}
+type PlannedRoute struct {
+	Network   string `json:"network"`
+	CIDR      string `json:"cidr"`
+	Via       string `json:"via"`
+	Router    string `json:"router"`
+	RouterNIC int    `json:"routerNIC"`
+}
+type PlannedNIC struct {
+	Network string         `json:"network"`
+	CIDR    string         `json:"cidr"`
+	Address string         `json:"address"`
+	VLAN    int            `json:"vlan,omitempty"`
+	Gateway string         `json:"gateway,omitempty"`
+	Default bool           `json:"default,omitempty"`
+	Routes  []PlannedRoute `json:"routes,omitempty"`
+}
 type PlannedMachine struct {
-	Hosts          []HostEntry `json:"hosts,omitempty"`
-	Name           string      `json:"name"`
-	Spec           Machine     `json:"spec"`
-	NativeImage    string      `json:"nativeImage,omitempty"`
-	InstanceType   string      `json:"instanceType,omitempty"`
-	CPU            int         `json:"allocatedCPU"`
-	MemoryMiB      int         `json:"allocatedMemoryMiB"`
-	DiskGiB        int         `json:"diskGiB"`
-	Address        string      `json:"address,omitempty"`
-	VMID           int         `json:"vmid,omitempty"`
-	PublicKey      string      `json:"publicKey,omitempty"`
-	HostPrivateKey string      `json:"hostPrivateKey,omitempty"`
-	HostPublicKey  string      `json:"hostPublicKey,omitempty"`
+	Hosts          []HostEntry  `json:"hosts,omitempty"`
+	Name           string       `json:"name"`
+	Spec           Machine      `json:"spec"`
+	NativeImage    string       `json:"nativeImage,omitempty"`
+	InstanceType   string       `json:"instanceType,omitempty"`
+	CPU            int          `json:"allocatedCPU"`
+	MemoryMiB      int          `json:"allocatedMemoryMiB"`
+	DiskGiB        int          `json:"diskGiB"`
+	Address        string       `json:"address,omitempty"`
+	VMID           int          `json:"vmid,omitempty"`
+	PublicKey      string       `json:"publicKey,omitempty"`
+	HostPrivateKey string       `json:"hostPrivateKey,omitempty"`
+	HostPublicKey  string       `json:"hostPublicKey,omitempty"`
+	NICs           []PlannedNIC `json:"nics,omitempty"`
+	Resolver       string       `json:"resolver,omitempty"`
 }
 type PlannedImage struct {
 	Name              string `json:"name"`
@@ -263,6 +292,9 @@ type Plan struct {
 	Machines          []PlannedMachine `json:"machines"`
 	Inputs            []InputValue     `json:"inputs,omitempty"`
 	Notices           []string         `json:"notices,omitempty"`
+	Networks          []PlannedNetwork `json:"networks,omitempty"`
+	VPCCIDR           string           `json:"vpcCIDR,omitempty"`
+	EdgeCIDR          string           `json:"edgeCIDR,omitempty"`
 }
 type Resource struct {
 	Kind           string           `json:"kind"`
@@ -312,22 +344,23 @@ type Observer func(Event)
 // Command is a closed union selected by Action. Platform state is opaque bytes,
 // never a portable resource map. Credentials are resolved only by the adapter.
 type Command struct {
-	ClientPrivateKey []byte         `json:"clientPrivateKey,omitempty"`
-	ValidationVMID   int            `json:"validationVMID,omitempty"`
-	Action           string         `json:"action"`
-	Operation        string         `json:"operation"`
-	Owner            string         `json:"owner"`
-	Environment      Environment    `json:"environment"`
-	Machine          PlannedMachine `json:"machine"`
-	Image            PlannedImage   `json:"image"`
-	Source           Source         `json:"source"`
-	Inputs           []InputValue   `json:"inputs,omitempty"`
-	Prior            Resource       `json:"prior"`
-	Network          Resource       `json:"network"`
-	VLAN             int            `json:"vlan"`
-	Recovery         bool           `json:"recovery"`
-	Access           AccessOptions  `json:"access"`
-	Gateway          Resource       `json:"gateway,omitempty"`
+	ClientPrivateKey []byte           `json:"clientPrivateKey,omitempty"`
+	ValidationVMID   int              `json:"validationVMID,omitempty"`
+	Action           string           `json:"action"`
+	Operation        string           `json:"operation"`
+	Owner            string           `json:"owner"`
+	Environment      Environment      `json:"environment"`
+	Machine          PlannedMachine   `json:"machine"`
+	Image            PlannedImage     `json:"image"`
+	Source           Source           `json:"source"`
+	Inputs           []InputValue     `json:"inputs,omitempty"`
+	Prior            Resource         `json:"prior"`
+	Network          Resource         `json:"network"`
+	VLAN             int              `json:"vlan"`
+	Recovery         bool             `json:"recovery"`
+	Access           AccessOptions    `json:"access"`
+	Gateway          Resource         `json:"gateway,omitempty"`
+	Networks         []PlannedNetwork `json:"networks,omitempty"`
 }
 type Result struct {
 	Resource Resource `json:"resource"`

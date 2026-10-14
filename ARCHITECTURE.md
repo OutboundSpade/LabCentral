@@ -77,18 +77,27 @@ combined across the manifest. Builds receive lab/image extensions in generated
 500-byte descriptions; required inputs have no defaults. Optional unsupplied values
 without defaults are omitted. CLI strings are checked against their declared types.
 
-Static platform capabilities reject Windows, author CIDRs, forwarding and multiple
-networks/NICs before environment bindings or allocation. Per-network Internet
+Static capabilities reject Windows. AWS supports eight networks and up to eight
+NICs subject to instance-type limits; Proxmox supports four networks and four NICs.
+Both implement forwarding. AWS supports author CIDRs within one primary /16;
+Proxmox rejects them because operator routing requires disjoint allocated ranges.
+Optional `aws.types[].maxNICs` validates offline; `DescribeInstanceTypes` supplies
+and verifies native limits in the adapter's check action with machine NIC field paths.
+Per-network Internet
 egress additionally requires `environment.aws.allowEgress` or
 `environment.proxmox.allowEgress` (both false by default); rejection names both the
 network field and operator setting. Plans disclose enabled networks and that
 filtering stops at private-range blocking.
 Adapters repeat these checks before native calls. Format validation still checks
 private IPv4 /16–/28 CIDRs, NIC references and unique usable offsets (4–250).
-Explicit addresses reserve offsets first; remaining machines use offsets from 11,
-skipping reservations in name order. `hostnamePeers` is `all` by default, a named
-list for selected peers, or `[]` for localhost only, including after persistence
-and plugin transport. This controls initial name resolution, not firewall policy.
+Explicit addresses reserve offsets first per network; remaining NICs use offsets
+from 11, skipping reservations in machine name/NIC order. Small author subnets
+reject address exhaustion before mutation. Duplicate networks on one machine
+are rejected. `hostnamePeers` is `all` by default, a named list for selected peers, or `[]` for localhost only, including after persistence
+and plugin transport. Each selected peer resolves to its address on the first
+shared network in the requesting machine's NIC order, or its first-NIC address
+when none is shared.
+This controls initial name resolution, not firewall policy.
 
 Go YAML tags and a structural annotation table generate `schemas/lab-v3.json`
 through `go run ./tools/schema`; a synchronization test rejects stale output. The
@@ -100,8 +109,8 @@ conversion because JSON cannot retain aliases or duplicate keys.
 Plans bind source, effective inputs, environment, base identities and build policy.
 An explicit `build.files` selection binds only those file bytes, the image definition
 and lab extensions; omission binds the whole source with its declaration normalized
-to exclude machine runtime options and foreign platform image blocks. Modified plans are revalidated
-before mutation. Deployment copies machine entries before adding native image
+to exclude runtime machines/networks and foreign platform image blocks. Modified
+plans are revalidated before mutation. Deployment copies machine entries before adding native image
 references, addresses and keys, so independent instances preserve the caller's plan.
 AWS instance selection uses an operator allowlist and reports allocated capacity;
 an explicit machine type replaces smallest-fit selection but must satisfy CPU/memory.
@@ -171,6 +180,15 @@ installation omits optional recommended packages to keep build and guest overhea
 bounded. Desktop build-policy revisions participate in the cache key without
 invalidating unchanged server images.
 
+Image environment keys bind platform target identity (AWS account/region or
+Proxmox URL/node/storage), pinned build toolchain and build networking. The selected
+base and image disk/desktop requirements remain bound separately. They exclude
+runtime egress permission, gateways, operator CIDRs, allowlists, desktop profiles,
+credential references, local tool paths/timeouts and unrelated base bindings.
+Desktop archive pins affect desktop images only. Runtime networks, NICs and
+routers are removed from normalized whole-source image declarations. This is a
+one-time cache-key revision; retained images remain removable by their saved keys.
+
 Each build reserves an owner identity and native identifiers before mutation.
 Native tags, descriptions, explicit VMIDs, image names, and keypair identities
 support discovery after interruption. A captured image is unpublished until a
@@ -196,13 +214,42 @@ Primary sources, retrieved 2026-09-27:
 
 ## Native networking and access
 
-New AWS labs own a `10.77.0.0/16` VPC, the unchanged `10.77.0.0/24` lab
-subnet and a dedicated `10.77.255.0/28` edge subnet in the same AZ. Reserve
-`10.77.1.0/24`–`10.77.254.0/24` for Phase 3 networks; adding them will not move
-the gateway. The edge route table has `0.0.0.0/0 → IGW`. The lab route table is
-local-only unless its network requests `egress: internet` and the environment
-allows it, in which case its default targets the gateway ENI. Desktop labs keep
-the narrowly scoped DCV-license S3 gateway endpoint on the lab table.
+Networks are isolated L3 segments. Same-network traffic is direct; distinct
+networks communicate only through declared forwarding machines. The first NIC
+is management and inventory identity. Router/network connections form a bipartite
+forest: a multi-NIC router is a star, two routers joining the same pair are
+ambiguous, and cycles are rejected. Plans compute every reachable remote network
+and its first router hop along the unique chain. Routers never install a route
+via themselves or for a directly attached destination. The first NIC whose
+network enables egress carries the sole default route. No-egress machines retain
+only platform-required management/DNS/metadata routes and planned static routes.
+Plans show networks, NICs, addresses, routes and machine platform options. Proxmox
+addresses/VLANs are previews until the atomic deployment reservation recomputes
+and persists the layout.
+
+New AWS labs default to `10.77.0.0/16`, with one subnet per network allocated
+`10.77.<n>.0/24` in sorted name order. Existing single-network addressing remains
+`10.77.0.0/24`; without author CIDRs the edge remains `10.77.255.0/28`. Author CIDRs
+choose their containing /16. All author ranges and default allocations must fit
+that primary block without overlap; the edge occupies its highest free /28. No
+free edge or a second /16 yields a capability error before provisioning. All
+subnets share the lab AZ. Every segment has its own route table, local route,
+and optional `0.0.0.0/0 → gateway ENI` for operator-enabled egress. Remote CIDRs
+target the first router ENI on the originating network; these more-specific-than-
+local routes are reconciled by destination, ownership and target. Confirmed AWS
+parameter rejection falls back to guest routes already installed; authorization
+or transport failure keeps recovery intent. The edge defaults to the IGW. Desktop
+labs keep the scoped DCV-license S3 gateway endpoint on all segment tables.
+
+Instances launch with all inline ENIs in NIC/DeviceIndex order, fixed private
+addresses, public IP disabled and delete-on-termination. Discovery validates the
+owned instance's complete NIC inventory. All router ENIs explicitly disable
+source/destination checks, including on recovery. Ubuntu bootstrap writes explicit
+netplan with static addresses and routes; a platform-only IMDSv2 script substitutes
+MACs by device index, avoiding assumptions about Linux interface names. It sets
+IPv4 forwarding only on routers. First-NIC management has an edge-subnet route,
+VPC DNS and metadata routes even when the machine has no default route. Guest
+bootstrap contains no author programs.
 
 One platform-owned gateway, outside author inventory, holds the lab's only public
 IPv4. `aws.gateway` defaults to base `ubuntu-24.04` and instance type `t3.micro`;
@@ -220,10 +267,13 @@ established return traffic is admitted. Input permits established traffic, opera
 SSH, ICMP echo and DHCP renewal, while rejecting other new lab-subnet connections.
 Readiness requires pinned gateway SSH and successful cloud-init completion.
 
-The gateway SG admits SSH only from operator CIDRs, forwarding traffic from the
-lab SG, and all egress. The lab SG retains intra-lab traffic and the S3 licensing
-exception, admits 22/8443 from the gateway SG, and admits general IPv4 egress only
-for Internet networks. No operator CIDR is added to guest management ingress.
+The gateway SG admits SSH only from operator CIDRs, traffic from lab segments,
+and all egress. Each network SG admits its own members and reachable routed source
+CIDRs, with mirrored destination egress plus Internet only for enabled networks.
+A separate management SG admits 22/8443 from the gateway SG only on first NICs in
+multi-network labs; the existing single-network SG shape is retained. No operator
+CIDR enters guest AWS management ingress. Gateway nftables input blocks every lab
+CIDR, and its forwarding/NAT rules cover only the enabled egress CIDRs.
 Machines explicitly disable public IP assignment and record their private address
 as management address. Non-desktop machines have no instance profile. Desktop
 profiles retain the single inline regional DCV-license permission and no managed
@@ -233,9 +283,9 @@ captured-image qualification now uses an owned disposable gateway as well.
 Retained pre-gateway AWS records keep their original public management path.
 An optional deployment gateway plan distinguishes new deployments durably; recovery
 never adds a gateway to older records. Both shapes remain discoverable and removable.
-The hosted IAM source template permits the gateway's default type and the component
-ownership tag and ingress-rule revocation needed for its two SGs; it is not applied
-by this change. Custom gateway types require corresponding operator IAM permission.
+The hosted IAM source template permits the default gateway, component tags,
+SG revocation and tag-scoped `ModifyNetworkInterfaceAttribute` for router ENIs
+tagged at launch. It is not applied by this change. Custom gateway types require corresponding operator IAM permission.
 Source consulted 2026-10-14:
 [AWS NAT instances](https://docs.aws.amazon.com/vpc/latest/userguide/work-with-nat-instances.html).
 
@@ -251,7 +301,20 @@ credential-process profile. Source retrieved 2026-09-28:
 [AWS console login and process credentials](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html).
 
 Proxmox uses one configured node/storage/pool, an exclusive VMID range, and existing
-isolated VLANs. VM rules default to DROP with intra-lab and operator SSH allowances.
+isolated VLANs. It atomically reserves one VLAN per network from its environment
+range, each with a disjoint /24 from the pool. Every NIC configures `netN` with its
+VLAN tag/firewall and `ipconfigN` with a fixed address; only the default/egress NIC
+gets a gateway. After boot the existing guest-agent exec path writes and applies
+netplan and verifies NIC addresses, static/default routes and router forwarding.
+Operator/base DNS survives replacement and recovery and follows the default NIC.
+A failed command/verification leaves the VM not ready. No host snippets or host
+network changes are used. Ubuntu Proxmox NIC PCI names (`ens18`, `ens19`, …) are
+verified by the guest assertions; incompatible base naming fails readiness.
+Per-VM rules scope same-network/routed CIDRs to each NIC, admit operator SSH to
+first-NIC addresses only, and enable Internet only on egress networks. Router
+NICs admit routed sources only from chains entering on that side. The operator
+router must drop inter-VLAN traffic between lab networks, including on egress
+VLANs; physical isolation remains operator-owned acceptance. VM rules default to DROP with intra-lab and operator SSH allowances.
 No gateway VM is provisioned: operator routing already reaches each VLAN.
 `proxmox.allowEgress` defaults to false; opted-in networks require a configured
 VLAN gateway providing operator NAT. Outbound rules preserve intra-lab traffic,
@@ -368,6 +431,16 @@ credentials. Uncertain mutations that cannot be authoritatively reconciled requi
 operator investigation instead of releasing possibly live resource identities.
 
 ## Acceptance
+
+Phase 3 multiple-network planning and adapter code have local address/chain,
+ambiguity/cycle/CIDR, EC2 request-capture, router ENI route/rejection,
+interrupted multi-ENI/subnet/SG recovery, multi-VLAN retention, guest-agent
+failure, netplan/firewall and race coverage. No AWS/Proxmox API or installation
+was contacted or deployed for this phase. Live two-network routing/isolation,
+reboots and provider route fallback remain unqualified. Proxmox additionally
+requires a qualified physical/operator-routing environment. The README has the
+live acceptance checklist; real OIDC and rendered desktop sessions are still
+required for hosted release acceptance.
 
 Phase 2 private AWS gateways and per-network egress have local request-capture,
 response-loss/recovery, legacy-cleanup, loopback SSH/TLS and race coverage. No
@@ -597,25 +670,7 @@ stages and meeting/team membership, and EC2 Image Builder are deferred. They sho
 use the public library without putting product policy into portable lab declarations.
 This section describes proposals, not implemented contracts.
 
-### Networks, gateway and guests
-
-Phase 2 gateway and per-network egress are implemented above; live AWS/Proxmox
-acceptance remains pending. Multiple networks/NICs, author CIDRs and forwarding
-remain unsupported until Phase 3. Future networks will be isolated except through
-declared forwarding machines; egress will continue to require operator enablement
-per network.
-
-Lab machines receive no public addresses. Each lab has one platform-owned gateway,
-outside the author inventory, that reaches each machine's first NIC for SSH, desktop
-tunnels and checks. Its host key is pinned like a machine's. On AWS the gateway sits
-in an edge subnet with the lab's only public IPv4 address; lab subnets reach it by VPC
-routing, security groups admit management only from the gateway, and egress networks
-route their default traffic to the gateway, which source-NATs only egress-network
-sources. Machines need no management NIC. Proxmox needs no gateway VM: existing operator
-routing reaches lab VLANs, and opted-in VLAN egress requires operator-provided NAT.
-At AWS us-east-1 on-demand prices, a t3.micro gateway plus one address costs about
-as much as three per-machine public addresses and less than a NAT gateway. One
-management path is preferred over separate public-address and gateway modes.
+### Windows guests
 
 Windows guests use an OS family bound to environment bases, PowerShell build
 scripts executed inside the build guest, EC2Launch or cloudbase-init bootstrap, and
@@ -623,9 +678,8 @@ an SSH/PowerShell check launcher. Ansible for Windows may later run from a dispo
 Linux controller guest; author code never runs on the operator host.
 
 Delivered after the portable v3 foundation: instructor migration, platform options,
-and gateway/egress source implementation. Next: multiple networks, NICs and routing;
-then Windows. Each step
-requires live AWS and Proxmox acceptance in a configured test environment.
+gateway/egress, and multiple networks/NICs, author CIDRs and router chains.
+Next: Windows. Each step requires live AWS and Proxmox acceptance in a configured test environment.
 
 ## Hosted team service
 

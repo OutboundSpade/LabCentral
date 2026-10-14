@@ -68,17 +68,17 @@ func TestAWSOptionPlanningRejections(t *testing.T) {
 		{"", "{aws: {buildInstanceType: forbidden}}", "images.base.platform.aws.buildInstanceType", Unsupported},
 	} {
 		e := conformanceEnvironment()
-		e.AWS.Types = append(e.AWS.Types, InstanceType{"tiny", 1, 1024}, InstanceType{"m5.large", 2, 8192})
+		e.AWS.Types = append(e.AWS.Types, InstanceType{"tiny", 1, 1024, 0}, InstanceType{"m5.large", 2, 8192, 0})
 		_, err := PlanLab(optionSource(t, tc.machine, tc.image, false), e, nil)
 		requireField(t, err, tc.code, tc.field)
 	}
 	// The automatically selected type must also support an explicit credit policy.
 	e := conformanceEnvironment()
-	e.AWS.Types = []InstanceType{{"m5.large", 2, 8192}}
+	e.AWS.Types = []InstanceType{{"m5.large", 2, 8192, 0}}
 	_, err := PlanLab(optionSource(t, "{aws: {cpuCredits: standard}}", "", false), e, nil)
 	requireField(t, err, Invalid, "machines.one.platform.aws.cpuCredits")
 	for _, family := range []string{"t2", "t3", "t3a", "t4g"} {
-		e.AWS.Types = []InstanceType{{family + ".large", 2, 8192}}
+		e.AWS.Types = []InstanceType{{family + ".large", 2, 8192, 0}}
 		if _, err := PlanLab(optionSource(t, "{aws: {cpuCredits: unlimited}}", "", false), e, nil); err != nil {
 			t.Fatal(family, err)
 		}
