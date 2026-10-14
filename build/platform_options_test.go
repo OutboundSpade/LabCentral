@@ -51,6 +51,9 @@ func (p *captureValidationProvider) Execute(_ context.Context, c lc.Command, _ l
 	if c.Action == "network.create" {
 		return lc.Result{Resource: lc.Resource{Kind: "network", ID: "native-fake", Data: []byte(`{}`)}}, nil
 	}
+	if c.Action == "gateway.create" {
+		return lc.Result{Resource: lc.Resource{Kind: "gateway", ID: "fake-gateway"}}, nil
+	}
 	p.machine = c.Machine
 	return lc.Result{}, capturedValidation
 }

@@ -159,13 +159,30 @@ type Base struct {
 	DiskGiB  int    `yaml:"diskGiB" json:"diskGiB"`
 	Identity string `yaml:"identity" json:"identity"`
 }
+type AWSGatewayConfig struct {
+	Base         string `yaml:"base,omitempty" json:"base,omitempty"`
+	InstanceType string `yaml:"instanceType,omitempty" json:"instanceType,omitempty"`
+}
+
+func (g AWSGatewayConfig) Effective() AWSGatewayConfig {
+	if g.Base == "" {
+		g.Base = "ubuntu-24.04"
+	}
+	if g.InstanceType == "" {
+		g.InstanceType = "t3.micro"
+	}
+	return g
+}
+
 type AWSConfig struct {
-	Region         string         `yaml:"region" json:"region"`
-	Zone           string         `yaml:"zone" json:"zone"`
-	Account        string         `yaml:"account" json:"account"`
-	Profile        string         `yaml:"profile,omitempty" json:"profile,omitempty"`
-	Types          []InstanceType `yaml:"types" json:"types"`
-	DesktopProfile string         `yaml:"desktopProfile,omitempty" json:"desktopProfile,omitempty"`
+	Region         string           `yaml:"region" json:"region"`
+	Zone           string           `yaml:"zone" json:"zone"`
+	Account        string           `yaml:"account" json:"account"`
+	Profile        string           `yaml:"profile,omitempty" json:"profile,omitempty"`
+	Types          []InstanceType   `yaml:"types" json:"types"`
+	DesktopProfile string           `yaml:"desktopProfile,omitempty" json:"desktopProfile,omitempty"`
+	AllowEgress    bool             `yaml:"allowEgress,omitempty" json:"allowEgress,omitempty"`
+	Gateway        AWSGatewayConfig `yaml:"gateway,omitempty" json:"gateway,omitempty,omitzero"`
 }
 type InstanceType struct {
 	Name      string `yaml:"name" json:"name"`
@@ -190,6 +207,7 @@ type ProxmoxConfig struct {
 	Gateway               string   `yaml:"gateway,omitempty" json:"gateway,omitempty"`
 	VerifiedIsolation     bool     `yaml:"verifiedIsolation" json:"verifiedIsolation"`
 	CPUTypes              []string `yaml:"cpuTypes,omitempty" json:"cpuTypes,omitempty"`
+	AllowEgress           bool     `yaml:"allowEgress,omitempty" json:"allowEgress,omitempty"`
 }
 type BuildConfig struct {
 	DCVURL          string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
@@ -262,14 +280,16 @@ type NativeResource struct {
 	ID   string `json:"id"`
 }
 type Instance struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Status    string     `json:"status"`
-	Created   time.Time  `json:"created"`
-	Plan      Plan       `json:"plan"`
-	Resources []Resource `json:"resources"`
-	Error     string     `json:"error,omitempty"`
-	VLAN      int        `json:"vlan,omitempty"`
+	// Gateway is absent on retained pre-gateway deployments and all Proxmox labs.
+	Gateway   *PlannedMachine `json:"gateway,omitempty"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Status    string          `json:"status"`
+	Created   time.Time       `json:"created"`
+	Plan      Plan            `json:"plan"`
+	Resources []Resource      `json:"resources"`
+	Error     string          `json:"error,omitempty"`
+	VLAN      int             `json:"vlan,omitempty"`
 }
 type ImageRecord struct {
 	ID                string      `json:"id"`
@@ -307,6 +327,7 @@ type Command struct {
 	VLAN             int            `json:"vlan"`
 	Recovery         bool           `json:"recovery"`
 	Access           AccessOptions  `json:"access"`
+	Gateway          Resource       `json:"gateway,omitempty"`
 }
 type Result struct {
 	Resource Resource `json:"resource"`

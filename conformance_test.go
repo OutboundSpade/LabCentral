@@ -117,6 +117,12 @@ func TestLabConformance(t *testing.T) {
 					env = platformOptionsProxmoxEnvironment()
 					env.Bases["ubuntu-24.04"] = Base{ID: "2000", Identity: "immutable", User: "ubuntu", DiskGiB: 1}
 				}
+				if metadata["allowEgress"] == "true" {
+					env.AWS.AllowEgress, env.Proxmox.AllowEgress = true, true
+					if env.Platform == "proxmox" {
+						env.Proxmox.Gateway = "10.90.0.1"
+					}
+				}
 				s, goErr := sourceYAML(t, b)
 				if goErr == nil {
 					_, goErr = PlanLab(s, env, nil)

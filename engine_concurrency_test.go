@@ -175,7 +175,7 @@ func TestMachinesOverlapAfterNetworkAndRetainSuccessfulSibling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retained.Status != "recovery_required" || len(retained.Resources) != 2 {
+	if retained.Status != "recovery_required" || len(retained.Resources) != 3 {
 		t.Fatal("successful network/machine sibling lost", retained)
 	}
 }

@@ -62,18 +62,24 @@ func run() error {
 		return e
 	}
 	if *checkConfig {
+		env, err := lc.LoadEnvironment(c.Environment)
+		if err != nil {
+			return err
+		}
 		return json.NewEncoder(os.Stdout).Encode(struct {
 			Aggregate          hosted.AggregateOptions `json:"aggregate"`
 			Engine             lc.EngineOptions        `json:"engine"`
 			Worker             hosted.WorkerOptions    `json:"worker"`
 			WeeklyCloudMinutes int                     `json:"weeklyCloudMinutes"`
 			Note               string                  `json:"note"`
+			Gateway            lc.AWSGatewayConfig     `json:"awsGateway"`
+			AllowEgress        bool                    `json:"allowEgress"`
 		}{c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), func() int {
 			if c.WeeklyCloudMinutes == 0 {
 				return 180
 			}
 			return c.WeeklyCloudMinutes
-		}(), "Static policy validated; identity, files and native capacity were not checked."})
+		}(), "Static policy and environment validated; identity and native capacity were not checked.", env.AWS.Gateway.Effective(), env.AWS.AllowEgress})
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

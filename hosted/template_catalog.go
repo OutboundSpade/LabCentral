@@ -16,6 +16,7 @@ import (
 // PublicTemplate is an explicit instructional projection of a pinned revision.
 // Never marshal Template or InstructorBundle through a student-facing route.
 type PublicTemplate struct {
+	InternetAccess   bool                      `json:"internetAccess"`
 	DesktopMachine   string                    `json:"desktopMachine,omitempty"`
 	CoachOnly        bool                      `json:"coachOnly,omitempty"`
 	ID               string                    `json:"id"`
@@ -105,7 +106,7 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 				return nil, err
 			}
 		}
-		public := PublicTemplate{CoachOnly: policy.Visibility.Audience == "coaches", ID: t.ID, Name: t.Name, Commit: t.Commit, CommitTitle: t.CommitTitle, CommittedAt: t.CommittedAt, Handover: t.Handover, ImagesBuilt: t.Built && !t.Removing, Description: lab.Description, Machines: []PublicTemplateMachine{}, Stages: []LearningStep{}, PracticeStageIDs: []string{}}
+		public := PublicTemplate{InternetAccess: lc.InternetAccess(lab), CoachOnly: policy.Visibility.Audience == "coaches", ID: t.ID, Name: t.Name, Commit: t.Commit, CommitTitle: t.CommitTitle, CommittedAt: t.CommittedAt, Handover: t.Handover, ImagesBuilt: t.Built && !t.Removing, Description: lab.Description, Machines: []PublicTemplateMachine{}, Stages: []LearningStep{}, PracticeStageIDs: []string{}}
 		if policy.Practice != nil {
 			public.DesktopMachine = policy.Practice.DesktopMachine
 		}

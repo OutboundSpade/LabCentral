@@ -29,6 +29,12 @@ func waitRouteRetry(ctx context.Context, delay time.Duration) error {
 // explicit denials, within a bounded window, after checking its recorded owner.
 // Transport failures remain uncertain and are reconciled by the next recovery.
 func ensureInternetRoute(ctx context.Context, a routeAPI, owner, vpc, table, gateway string, wait func(context.Context, time.Duration) error) error {
+	return ensureDefaultRoute(ctx, a, owner, vpc, table, gateway, false, wait)
+}
+func ensureENIRoute(ctx context.Context, a routeAPI, owner, vpc, table, eni string, wait func(context.Context, time.Duration) error) error {
+	return ensureDefaultRoute(ctx, a, owner, vpc, table, eni, true, wait)
+}
+func ensureDefaultRoute(ctx context.Context, a routeAPI, owner, vpc, table, gateway string, eni bool, wait func(context.Context, time.Duration) error) error {
 	if owner == "" || vpc == "" || table == "" || gateway == "" {
 		return fmt.Errorf("incomplete recorded route identity")
 	}
@@ -45,13 +51,19 @@ func ensureInternetRoute(ctx context.Context, a routeAPI, owner, vpc, table, gat
 		}
 		for _, route := range out.RouteTables[0].Routes {
 			if aw.ToString(route.DestinationCidrBlock) == "0.0.0.0/0" {
-				if aw.ToString(route.GatewayId) != gateway {
+				if (!eni && aw.ToString(route.GatewayId) != gateway) || (eni && aw.ToString(route.NetworkInterfaceId) != gateway) {
 					return fmt.Errorf("route table %s has a conflicting default route", table)
 				}
 				return nil
 			}
 		}
-		_, err = a.CreateRoute(ctx, &ec2.CreateRouteInput{RouteTableId: &table, DestinationCidrBlock: aw.String("0.0.0.0/0"), GatewayId: &gateway})
+		in := &ec2.CreateRouteInput{RouteTableId: &table, DestinationCidrBlock: aw.String("0.0.0.0/0")}
+		if eni {
+			in.NetworkInterfaceId = &gateway
+		} else {
+			in.GatewayId = &gateway
+		}
+		_, err = a.CreateRoute(ctx, in)
 		if err == nil {
 			return nil
 		}

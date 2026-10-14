@@ -320,6 +320,11 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 	if err := e.prepareCredentials(instanceID, p.Machines); err != nil {
 		return inst, err
 	}
+	if p.Environment.Platform == "aws" {
+		if _, err := ensureKey(filepath.Join(e.state.Root, "credentials", instanceID, ".gateway.host")); err != nil {
+			return inst, err
+		}
+	}
 	err = e.withAllocationLock(ctx, func() error {
 		if err := e.state.Get(ctx, "instance", instanceID, &inst); err == nil {
 			return problem(RecoveryRequired, "instance", "instance already exists; recover its original operation")
@@ -359,6 +364,11 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		// A caller can reuse the validated plan for other independent instances.
 		p.Machines = slices.Clone(p.Machines)
 		inst = Instance{ID: instanceID, Name: p.Source.Lab.Name, Status: "preparing", Created: time.Now().UTC(), Plan: p}
+		if p.Environment.Platform == "aws" {
+			g := p.Environment.AWS.Gateway.Effective()
+			b := p.Environment.Bases[g.Base]
+			inst.Gateway = &PlannedMachine{Name: "gateway", NativeImage: b.ID, InstanceType: g.InstanceType, DiskGiB: b.DiskGiB}
+		}
 		for n := range inst.Plan.Machines {
 			inst.Plan.Machines[n].NativeImage = native[inst.Plan.Machines[n].Spec.Image]
 		}
@@ -404,6 +414,10 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	}
 	p, _ := netip.ParsePrefix(prefix)
 	used := map[int]bool{}
+	if env.Platform == "proxmox" && env.Proxmox.Gateway != "" {
+		gateway, _ := netip.ParseAddr(env.Proxmox.Gateway)
+		used[int(gateway.As4()[3])] = true
+	}
 	for _, m := range i.Plan.Machines {
 		if len(m.Spec.NICs) > 0 && m.Spec.NICs[0].Address != nil {
 			used[*m.Spec.NICs[0].Address] = true
@@ -417,6 +431,13 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	pub, err := ensureKey(filepath.Join(keyDir, "id_ed25519"))
 	if err != nil {
 		return err
+	}
+	if i.Gateway != nil {
+		host, err := ensureKey(filepath.Join(keyDir, ".gateway.host"))
+		if err != nil {
+			return err
+		}
+		i.Gateway.PublicKey, i.Gateway.HostPublicKey = pub, host
 	}
 	for n := range i.Plan.Machines {
 		m := &i.Plan.Machines[n]
@@ -498,8 +519,12 @@ func (e *Engine) invoke(ctx context.Context, c Command) (Result, error) {
 	if err = e.state.Started(ctx, c.Operation); err != nil {
 		return Result{}, err
 	}
-	if c.Action == "machine.create" {
-		b, er := os.ReadFile(filepath.Join(e.state.Root, "credentials", c.Owner, c.Machine.Name+".host"))
+	if c.Action == "machine.create" || c.Action == "gateway.create" {
+		hostFile := c.Machine.Name + ".host"
+		if c.Action == "gateway.create" {
+			hostFile = ".gateway.host"
+		}
+		b, er := os.ReadFile(filepath.Join(e.state.Root, "credentials", c.Owner, hostFile))
 		if er != nil {
 			return Result{}, er
 		}
@@ -514,7 +539,7 @@ func (e *Engine) invoke(ctx context.Context, c Command) (Result, error) {
 	if err != nil {
 		return r, err
 	}
-	if (c.Action == "machine.create" || c.Action == "network.create") && !r.Resource.Complete {
+	if (c.Action == "machine.create" || c.Action == "gateway.create" || c.Action == "network.create") && !r.Resource.Complete {
 		return r, problem(RecoveryRequired, c.Operation, "resource has not reached ready")
 	}
 	if (c.Action == "resource.destroy" || c.Action == "image.abandon") && !r.Absent {
@@ -527,7 +552,7 @@ func (e *Engine) invoke(ctx context.Context, c Command) (Result, error) {
 }
 func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 	env := i.Plan.Environment
-	net, err := e.invoke(ctx, Command{Action: "network.create", Operation: i.ID + "/network", Owner: i.ID, Environment: env, VLAN: i.VLAN})
+	net, err := e.invoke(ctx, Command{Action: "network.create", Operation: i.ID + "/network", Owner: i.ID, Environment: env, Source: i.Plan.Source, VLAN: i.VLAN})
 	if err != nil {
 		return e.failed(*i, err)
 	}
@@ -535,7 +560,19 @@ func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 	if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
 		return err
 	}
-	// The network is the only machine dependency. Persist each completed sibling
+	gateway := Resource{}
+	if i.Gateway != nil {
+		result, err := e.invoke(ctx, Command{Action: "gateway.create", Operation: i.ID + "/gateway", Owner: i.ID, Environment: env, Source: i.Plan.Source, Machine: *i.Gateway, Prior: Resource{Kind: "gateway"}, Network: net.Resource})
+		if err != nil {
+			return e.failed(*i, err)
+		}
+		gateway = result.Resource
+		i.Resources = upsert(i.Resources, gateway)
+		if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
+			return err
+		}
+	}
+	// Networking and the optional gateway precede machines. Persist each sibling
 	// independently and drain all work before recording a partial failure.
 	var mu sync.Mutex
 	var workers sync.WaitGroup
@@ -554,7 +591,7 @@ func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 				failures[n] = ctx.Err()
 				return
 			}
-			r, err := e.invoke(ctx, Command{Action: "machine.create", Operation: i.ID + "/machine/" + m.Name, Owner: i.ID, Environment: env, Machine: m, Network: net.Resource, VLAN: i.VLAN})
+			r, err := e.invoke(ctx, Command{Action: "machine.create", Operation: i.ID + "/machine/" + m.Name, Owner: i.ID, Environment: env, Machine: m, Network: net.Resource, Gateway: gateway, Source: i.Plan.Source, VLAN: i.VLAN})
 			if err != nil {
 				failures[n] = fmt.Errorf("%s: %w", m.Name, err)
 				return
@@ -611,6 +648,11 @@ func (e *Engine) Recover(ctx context.Context, instance string) (Instance, error)
 	if i.Status != "destroyed" && i.Status != "destroying" {
 		if err := e.prepareCredentials(i.ID, i.Plan.Machines); err != nil {
 			return i, err
+		}
+		if i.Gateway != nil {
+			if _, err := ensureKey(filepath.Join(e.state.Root, "credentials", i.ID, ".gateway.host")); err != nil {
+				return i, err
+			}
 		}
 	}
 	err = e.withAllocationLock(ctx, func() error {
@@ -694,6 +736,26 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
 		return err
 	}
+	completed, err := e.state.CompletedSteps(ctx, i.ID)
+	if err != nil {
+		return err
+	}
+	for _, step := range completed {
+		var result Result
+		if err = json.Unmarshal(step.Result, &result); err != nil {
+			return err
+		}
+		r := result.Resource
+		if r.Kind == "machine" || r.Kind == "gateway" || r.Kind == "network" {
+			if r.Owner != i.ID {
+				return problem(OwnershipMismatch, step.ID, "completed resource owner changed")
+			}
+			i.Resources = upsert(i.Resources, r)
+		}
+	}
+	if err = e.state.Put(ctx, "instance", i.ID, i); err != nil {
+		return err
+	}
 	// Machines share only their network. Finish every machine deletion before
 	// touching dependencies; keep successful steps durable when a sibling fails.
 	destroy := func(r Resource) error {
@@ -735,10 +797,12 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 	if err := errors.Join(failures...); err != nil {
 		return err
 	}
-	for n := len(i.Resources) - 1; n >= 0; n-- {
-		if r := i.Resources[n]; r.Kind != "machine" {
-			if err := destroy(r); err != nil {
-				return err
+	for _, kind := range []string{"gateway", "network"} {
+		for _, r := range i.Resources {
+			if r.Kind == kind {
+				if err := destroy(r); err != nil {
+					return err
+				}
 			}
 		}
 	}

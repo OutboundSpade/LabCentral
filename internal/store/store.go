@@ -248,3 +248,22 @@ func (s *Store) lockKeyContext(ctx context.Context, key string, mode int) (func(
 		}
 	}
 }
+
+// CompletedSteps also cover a crash between committing a native result and
+// materializing that resource into its instance. Cleanup must retain both.
+func (s *Store) CompletedSteps(ctx context.Context, owner string) ([]Step, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,owner,command,result,status FROM steps WHERE owner=? AND status='complete' ORDER BY id`, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Step{}
+	for rows.Next() {
+		var st Step
+		if err := rows.Scan(&st.ID, &st.Owner, &st.Command, &st.Result, &st.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}

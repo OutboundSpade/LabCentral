@@ -341,6 +341,7 @@ export interface TemplateImportFailure {
   error: string;
 }
 export interface PublicTemplate {
+  internetAccess: boolean;
   desktopMachine?: string;
   coachOnly?: boolean;
   id: string;

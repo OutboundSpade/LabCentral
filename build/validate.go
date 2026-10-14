@@ -47,6 +47,7 @@ type validationRecord struct {
 	Attempt    int
 	ImageID    string
 	Network    lc.Resource
+	Gateway    lc.Resource
 	Machine    lc.Resource
 	ChecksDone bool
 	CheckError string
@@ -96,13 +97,39 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 	}
 	owner := validationOwner(c, receipt)
 	vlan := c.VLAN
-	net, err := p.Execute(ctx, lc.Command{Action: "network.create", Operation: owner + "/network", Owner: owner, Environment: c.Environment, VLAN: vlan}, nil)
+	networkCommand := lc.Command{Action: "network.create", Operation: owner + "/network", Owner: owner, Environment: c.Environment, VLAN: vlan}
+	if err := j.Save("network-command-"+owner, networkCommand); err != nil {
+		return image, err
+	}
+	net, err := p.Execute(ctx, networkCommand, nil)
 	if err != nil {
 		return image, err
 	}
 	receipt.Network = net.Resource
 	if e = j.Save("receipt", receipt); e != nil {
 		return image, e
+	}
+	if c.Environment.Platform == "aws" {
+		gp, gpub, err := key(filepath.Join(dir, "gateway-host"))
+		if err != nil {
+			return image, err
+		}
+		g := c.Environment.AWS.Gateway.Effective()
+		base := c.Environment.Bases[g.Base]
+		gatewayCommand := lc.Command{Action: "gateway.create", Operation: owner + "/gateway", Owner: owner, Environment: c.Environment, Network: net.Resource, Prior: lc.Resource{Kind: "gateway"}, Machine: lc.PlannedMachine{Name: "gateway", NativeImage: base.ID, InstanceType: g.InstanceType, DiskGiB: base.DiskGiB, PublicKey: pub, HostPublicKey: gpub}}
+		if err = j.Save("gateway-command-"+owner, gatewayCommand); err != nil {
+			return image, err
+		}
+		gatewayCommand.Machine.HostPrivateKey = string(gp)
+		gatewayCommand.ClientPrivateKey = priv
+		result, err := p.Execute(ctx, gatewayCommand, nil)
+		if err != nil {
+			return image, err
+		}
+		receipt.Gateway = result.Resource
+		if err = j.Save("receipt", receipt); err != nil {
+			return image, err
+		}
 	}
 	m := lc.PlannedMachine{Name: "validation", NativeImage: image.ID, CPU: 2, MemoryMiB: 4096, DiskGiB: c.Image.DiskGiB, InstanceType: c.Environment.Build.InstanceType, VMID: c.ValidationVMID, Address: "10.77.0.10", PublicKey: pub, HostPrivateKey: string(hp), HostPublicKey: hpub, Spec: lc.Machine{Image: c.Image.Name, CPU: 2, Memory: "4Gi", Disk: fmt.Sprintf("%dGi", c.Image.DiskGiB), Access: []string{"ssh"}}}
 	if c.Environment.Platform == "aws" && c.Image.BuildInstanceType != "" {
@@ -126,7 +153,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		}
 		m.Address = validationAddress(cidr)
 	}
-	cmd := lc.Command{Action: "machine.create", Operation: owner + "/machine", Owner: owner, Environment: c.Environment, Machine: m, Network: net.Resource, VLAN: vlan, ClientPrivateKey: priv}
+	cmd := lc.Command{Action: "machine.create", Operation: owner + "/machine", Owner: owner, Environment: c.Environment, Machine: m, Network: net.Resource, Gateway: receipt.Gateway, VLAN: vlan, ClientPrivateKey: priv}
 	checkpoint := cmd
 	checkpoint.ClientPrivateKey = nil
 	checkpoint.Machine.HostPrivateKey = ""
@@ -141,7 +168,12 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 	if e = j.Save("receipt", receipt); e != nil {
 		return image, e
 	}
-	client, err := remote.Dial(ctx, machine.Resource.Address, "lab", priv, hpub)
+	dialer, err := lc.MachineDialer(receipt.Gateway, priv)
+	if err != nil {
+		return image, err
+	}
+	defer dialer.Close()
+	client, err := dialer.Dial(ctx, machine.Resource.Address, "lab", priv, hpub)
 	if err == nil {
 		command := "test -d /home/lab"
 		if c.Image.Desktop {
@@ -175,7 +207,7 @@ func finishValidation(ctx context.Context, p lc.Provider, c lc.Command, image lc
 	if !receipt.Cleaned {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
 		defer cancel()
-		for _, resource := range []lc.Resource{receipt.Machine, receipt.Network} {
+		for _, resource := range []lc.Resource{receipt.Machine, receipt.Gateway, receipt.Network} {
 			if resource.ID == "" {
 				continue
 			}

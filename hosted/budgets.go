@@ -66,7 +66,7 @@ type BudgetedProvider struct {
 }
 
 func (p *BudgetedProvider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
-	if c.Action == "image.build" || c.Action == "image.abandon" || c.Action == "machine.create" || (c.Action == "resource.destroy" && c.Prior.Kind == "machine") {
+	if c.Action == "image.build" || c.Action == "image.abandon" || (c.Action == "machine.create" || c.Action == "gateway.create") || (c.Action == "resource.destroy" && (c.Prior.Kind == "machine" || c.Prior.Kind == "gateway")) {
 		release, err := acquireSlot(ctx, p.slots)
 		if err != nil {
 			return lc.Result{}, err
@@ -76,7 +76,7 @@ func (p *BudgetedProvider) Execute(ctx context.Context, c lc.Command, o lc.Obser
 	// Creates and builds include guest readiness/validation SSH in adapters.
 	// Reserve conservatively for the whole call; access obtains its lease before
 	// library machine guards, avoiding a guard/budget inversion with guest checks.
-	if c.Action == "image.build" || c.Action == "machine.create" || c.Action == "access.open" || c.Action == "access.close" || (c.Action == "discover" && c.Machine.Name != "") {
+	if c.Action == "image.build" || (c.Action == "machine.create" || c.Action == "gateway.create") || c.Action == "access.open" || c.Action == "access.close" || (c.Action == "discover" && c.Machine.Name != "") {
 		if lease, ok := ctx.Value(sshBudgetKey{}).(chan struct{}); ok && lease == p.sshSlots {
 			return p.Provider.Execute(ctx, c, o)
 		}

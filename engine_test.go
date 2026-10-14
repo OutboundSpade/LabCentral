@@ -40,7 +40,7 @@ func (f *fakeProvider) Execute(ctx context.Context, c Command, o Observer) (Resu
 	switch c.Action {
 	case "check":
 		return Result{}, nil
-	case "network.create", "machine.create":
+	case "network.create", "gateway.create", "machine.create":
 		key := c.Owner + "/network"
 		kind, name := "network", "private"
 		if c.Action == "machine.create" {
@@ -49,6 +49,10 @@ func (f *fakeProvider) Execute(ctx context.Context, c Command, o Observer) (Resu
 			if len(c.ClientPrivateKey) == 0 || c.Machine.HostPrivateKey == "" {
 				return Result{}, fmt.Errorf("missing injected ephemeral credentials")
 			}
+		}
+		if c.Action == "gateway.create" {
+			key = c.Owner + "/gateway"
+			kind, name = "gateway", "gateway"
 		}
 		r, exists := f.resources[key]
 		if !exists {
@@ -81,6 +85,9 @@ func (f *fakeProvider) Execute(ctx context.Context, c Command, o Observer) (Resu
 		key := c.Owner + "/network"
 		if c.Machine.Name != "" {
 			key = c.Owner + "/machine/" + c.Machine.Name
+		}
+		if c.Prior.Kind == "gateway" {
+			key = c.Owner + "/gateway"
 		}
 		r, ok := f.resources[key]
 		return Result{Resource: r, Absent: !ok}, nil
@@ -135,8 +142,8 @@ func TestValidatedPlanCanDeployIndependentInstances(t *testing.T) {
 		}
 		hosts[machine.HostPublicKey], clients[machine.PublicKey] = true, true
 	}
-	if f.creates != 10 {
-		t.Fatalf("expected five independent networks and machines, got %d resources", f.creates)
+	if f.creates != 15 {
+		t.Fatalf("expected five independent networks, gateways and machines, got %d resources", f.creates)
 	}
 }
 func TestLostCreateResponseRecoversWithoutDuplicate(t *testing.T) {
@@ -163,7 +170,7 @@ func TestLostCreateResponseRecoversWithoutDuplicate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ready.Status != "ready" || f.creates != 2 {
+	if ready.Status != "ready" || f.creates != 3 {
 		t.Fatalf("duplicate resources or failed recovery: %s, creates=%d", ready.Status, f.creates)
 	}
 	if err = e2.Destroy(ctx, i.ID); err != nil {

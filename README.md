@@ -328,9 +328,10 @@ measurements; they do not qualify provider capacity or real desktop sessions.
 labcentral-server --config /path/to/protected-service.json --check-config
 ```
 
-This checks static policy and prints effective limits without disclosing
-credentials, starting providers or contacting OIDC. Files, identity and native
-capacity still require their separate checks. These settings are local operator
+This checks static policy and the environment file, then prints effective limits,
+`awsGateway` (effective base and instance type) and `allowEgress`, without disclosing
+credentials, starting providers or contacting OIDC. Identity and native capacity
+still require their separate checks. These settings are local operator
 configuration; they are not served through student APIs.
 
 ```sh
@@ -426,7 +427,11 @@ attaches a machine to the only network. NIC `address` selects a host offset from
 4–250. Other machines receive addresses from offset 11, skipping reserved offsets,
 in name order. `hostnamePeers` defaults to `all`; a list selects peers and `[]`
 leaves only localhost entries.
-General Internet egress is denied at runtime. Build networking is separate.
+Runtime Internet egress defaults to `none`. A network may request
+`networks: {lab: {egress: internet}}`; planning also requires the operator's
+`aws.allowEgress: true` or `proxmox.allowEgress: true`. The exception permits
+Internet traffic without filtering beyond private-range blocking. Build networking
+is separate.
 `desktop` selects DCV on AWS and the VM's graphical console on Proxmox; these
 have different session behavior. Images without `build` use the bound base
 unchanged for SSH labs. Desktop images require a playbook so the build installs
@@ -496,9 +501,9 @@ as `labcentral_extensions: {lab: ..., image: ...}`. Explicit `build.files` selec
 include the playbook and limit both staged files and the source bytes in the cache
 key; omission uses the whole source with runtime platform options excluded.
 
-The v3 format accepts Windows, author CIDRs, Internet egress, forwarding and
-multiple networks/NICs. Both platforms currently reject these during planning with
-field-path errors. Only Linux, one network/NIC and egress `none` are implemented.
+Windows, author CIDRs, forwarding and multiple networks/NICs remain unsupported
+and are rejected during planning with field-path errors. Both platforms implement
+Linux, one network/NIC and per-network egress `none` or operator-enabled `internet`.
 The generated contract is [schemas/lab-v3.json](schemas/lab-v3.json).
 
 For a template in the hosted repository, place reusable teaching material in
@@ -638,6 +643,32 @@ Ubuntu 24.04 amd64 AMI in the selected region. Set `aws.account`, `region`, `zon
 `profile: labcentral-v2`, and an allowlist such as
 `types: [{name: t3.medium, cpu: 2, memoryMiB: 4096}]`.
 
+`aws.gateway: {base: ubuntu-24.04, instanceType: t3.micro}` configures the
+platform-owned gateway; those are also the defaults. The base must exist in
+`bases` and bind a pinned Ubuntu amd64 cloud-init AMI. The type must be an EC2
+type name and support x86_64. It has its own instance type setting, independent
+of the author machine allowlist. `aws.allowEgress` defaults to false.
+
+New AWS labs have one public IPv4 address, on the gateway. Author machines have
+private management addresses and no public IPv4. The VPC is `10.77.0.0/16`;
+guests keep `10.77.0.0/24`, and the gateway stays in `10.77.255.0/28` in the same
+AZ. `10.77.1.0/24`–`10.77.254.0/24` are reserved for future networks. SSH,
+desktops and checks traverse pinned gateway SSH; machine host keys and DCV TLS
+certificates remain pinned end to end. There is no agent forwarding. Only the
+gateway admits operator SSH; guests admit management from its security group.
+The private lab route table keeps the DCV S3 endpoint, and gains a default route
+to the gateway ENI only for an Internet-enabled network. The gateway permits NAT
+forwarding only from enabled sources and blocks RFC1918, link-local and CGNAT
+destinations. Egress is general Internet access beyond those blocks, not a URL
+or service allowlist. Image qualification uses a disposable gateway too.
+
+Retained AWS instances created before gateways keep their public management path
+and remain recoverable and destroyable. Recovery never retrofits a gateway.
+The source hosted IAM template permits the default gateway, component ownership
+tags and security-group ingress revocation. An operator must review the needed
+permissions in their configured test environment before native acceptance; no
+existing installation is changed by this source update.
+
 For desktop builds, set `build.dcvURL` to the official Ubuntu 24.04 DCV archive
 and `build.dcvSHA256` to its verified SHA-256. The instance profile accepts exactly
 one inline `s3:GetObject` allowance on `arn:aws:s3:::dcv-license.REGION/*`, with
@@ -654,7 +685,15 @@ Supply a node, storage, dedicated resource pool, exclusive VMID/VLAN ranges, and
 an existing VLAN-aware isolated lab bridge. The configured IPv4 range provides a
 separate /24 for each VLAN. A gateway, when supplied, uses the same host offset
 in each /24. The operator must already reach guest SSH addresses and the management
-API. The library does not change host bridges, routing, or cluster firewall settings.
+API. Proxmox creates no gateway VM: operator routing already reaches the lab
+VLANs. The library does not change host bridges, routing, or cluster firewall settings.
+
+`proxmox.allowEgress` defaults to false. Internet-enabled networks additionally
+require `proxmox.gateway`; the operator's VLAN gateway must provide NAT. VM outbound
+rules retain intra-lab access, drop RFC1918/link-local/CGNAT, operator ranges and
+management addresses derived from the environment (including resolved API host
+addresses), then permit other IPv4 traffic. Keep management DNS stable and verify
+all management ranges during acceptance. Other networks retain default DROP.
 
 The cluster firewall must be enabled. Verify VLAN separation, operator-only SSH,
 denied general egress and management-network separation before setting
@@ -766,6 +805,28 @@ that unpublished attempt before retrying. Unknown outcomes retain allocations.
 Destroy preserves image artifacts; image removal refuses references from retained
 instances. There is no background cleanup: resources can remain after the operator
 stops. Inspect recovery errors and clean only resources whose ownership is verified.
+
+Gateway and egress live AWS/Proxmox acceptance is **pending**. Local fake-provider,
+loopback SSH/TLS and race tests do not qualify platform behavior or desktop latency.
+In an explicitly configured, disposable AWS test environment:
+
+- Create a two-machine SSH/DCV lab with egress `none`, then a separate lab with
+  egress `internet` and operator enablement; confirm rejection without enablement.
+- Observe one public gateway address per lab, private-only guest addresses, exact
+  VPC/subnet CIDRs, separate route tables, SG rules, IMDSv2/hop limit, encrypted
+  roots, gateway source/destination checks disabled and no gateway instance profile.
+- Verify pinned SSH on both hops, guest checks/playbooks and coach access, and real
+  OIDC/rendered DCV with keyboard input, reconnect and retained files. Compare cold
+  and warm desktop launch latency and inspect gateway channel reuse.
+- Probe intra-lab communication, cross-lab isolation, denied default Internet,
+  allowed opt-in Internet, blocked private/link-local/metadata/CGNAT destinations
+  and DCV licensing via the private S3 endpoint. Reboot the gateway and recheck policy.
+- Interrupt creation and deletion, resume from journals without duplicates, and
+  destroy a retained pre-gateway record through its original management path.
+- Destroy machines, gateway and networking in that order. Reconcile exact owned
+  instance/volume/ENI/subnet/route/SG/endpoint/IGW/VPC IDs and the single public IP's
+  release; retain cleanup intent until provider-confirmed absence. Remove test
+  image artifacts and operator-owned build infrastructure separately when intended.
 
 ## Library and development
 

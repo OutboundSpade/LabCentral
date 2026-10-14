@@ -34,7 +34,26 @@ func (r *Runner) Abandon(ctx context.Context, c lc.Command, _ lc.Observer) (lc.R
 	} else if err != nil && !os.IsNotExist(err) {
 		return lc.Result{}, err
 	}
-	if receipt.Network.ID != "" || receipt.Machine.ID != "" {
+	for _, entry := range []struct {
+		key      string
+		resource *lc.Resource
+	}{{"gateway-command-" + validationOwner(c, receipt), &receipt.Gateway}, {"network-command-" + validationOwner(c, receipt), &receipt.Network}} {
+		var cmd lc.Command
+		if err := j.Load(entry.key, &cmd); err == nil && entry.resource.ID == "" {
+			cmd.Action = "discover"
+			result, err := r.Provider.Execute(ctx, cmd, nil)
+			if err != nil {
+				return lc.Result{}, err
+			}
+			if result.Absent {
+				return lc.Result{}, fmt.Errorf("validation create outcome unresolved; allocation retained")
+			}
+			*entry.resource = result.Resource
+		} else if err != nil && !os.IsNotExist(err) {
+			return lc.Result{}, err
+		}
+	}
+	if receipt.Network.ID != "" || receipt.Machine.ID != "" || receipt.Gateway.ID != "" {
 		receipt.ChecksDone = true
 		receipt.CheckError = ""
 		if err = j.Save("receipt", receipt); err != nil {
