@@ -14,6 +14,20 @@ type routeAPI interface {
 	CreateRoute(context.Context, *ec2.CreateRouteInput, ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error)
 }
 
+// A route table can be briefly invisible to reads after CreateRouteTable returns.
+// Retry only that not-found case for a bounded period; other errors return at once.
+func describeRouteTable(ctx context.Context, a routeAPI, table string, wait func(context.Context, time.Duration) error) (*ec2.DescribeRouteTablesOutput, error) {
+	for attempt := 0; ; attempt++ {
+		out, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{table}})
+		if err == nil || !apiCode(err, "InvalidRouteTableID.NotFound") || attempt >= 9 {
+			return out, err
+		}
+		if err = wait(ctx, time.Duration(attempt+1)*time.Second); err != nil {
+			return nil, err
+		}
+	}
+}
+
 func waitRouteRetry(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -42,7 +56,7 @@ func ensureDefaultRoute(ctx context.Context, a routeAPI, owner, vpc, table, gate
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		out, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{table}})
+		out, err := describeRouteTable(ctx, a, table, wait)
 		if err != nil {
 			return err
 		}

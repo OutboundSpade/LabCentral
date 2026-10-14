@@ -66,7 +66,7 @@ func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command,
 	if err = ensureInternetRoute(ctx, a, c.Owner, n.VPC, n.EdgeRoute, n.Gateway, waitRouteRetry); err != nil {
 		return err
 	}
-	rt, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{n.EdgeRoute}})
+	rt, err := describeRouteTable(ctx, a, n.EdgeRoute, waitRouteRetry)
 	if err != nil {
 		return err
 	}

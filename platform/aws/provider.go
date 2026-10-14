@@ -295,7 +295,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	ns.Route = route
-	rt, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{RouteTableIds: []string{route}})
+	rt, err := describeRouteTable(ctx, a, route, waitRouteRetry)
 	if err != nil {
 		return lc.Result{}, err
 	}

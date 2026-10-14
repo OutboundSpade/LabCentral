@@ -67,8 +67,6 @@ sysctl -w net.ipv4.ip_forward=1
 		files = append(files, map[string]any{"path": f.Path, "content": f.Content, "permissions": f.Permissions})
 	}
 	c["write_files"] = files
-	c["packages"] = []string{"nftables"}
-	c["package_update"] = true
 	c["runcmd"] = []string{"systemctl daemon-reload", "systemctl enable --now labcentral-gateway.service", "sshd -t && systemctl restart ssh"}
 	out, err := yaml.Marshal(c)
 	return "#cloud-config\n" + string(out), err
