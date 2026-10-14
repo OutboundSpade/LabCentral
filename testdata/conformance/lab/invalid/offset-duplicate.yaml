@@ -1,4 +1,4 @@
-# field: machines.one.nics[1].address
+# field: machines.two.nics[0].address
 # schema: accept
 # code: invalid
 version: 3
@@ -13,4 +13,10 @@ machines:
     memory: 2Gi
     disk: 20Gi
     access: [ssh]
-    nics: [{network: lab, address: 10}, {network: lab, address: 10}]
+    nics: [{network: lab, address: 10}]
+  two:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    nics: [{network: lab, address: 10}]

@@ -84,10 +84,12 @@ Provider credentials stay in the operator's environment and the provider process
 | Per-network Internet egress (opt-in) | Yes, NAT on the lab gateway | Yes, via the operator's VLAN gateway |
 | Platform options | Instance type, gp3 volume, CPU credits, build instance type | CPU model, NIC model, memory ballooning |
 | Hosted service | Yes | Library and CLI only |
-| Multiple networks, NICs and routers | In progress | In progress |
+| Multiple networks, NICs and routers | Up to 8 networks and 8 NICs per machine; author CIDRs | Up to 4 networks and 4 NICs per machine |
 | Windows guests | Planned | Planned |
 
-Guests are Ubuntu 24.04 amd64. The operator machine is Linux amd64. See
+Guests are Ubuntu 24.04 amd64. The operator machine is Linux amd64. Multiple networks
+and routers are implemented on both platforms but have not yet been verified on real
+accounts. See
 [ARCHITECTURE.md](ARCHITECTURE.md#qualification-status) for what has been verified on
 real platforms and what is only covered by local tests.
 
@@ -165,6 +167,9 @@ More complete examples are in [examples/](examples/README.md) and
 - `build.files` limits which source files are copied into the build. It also limits
   which files affect the image's cache identity, so editing unrelated files (such as a
   README) does not trigger a rebuild. When omitted, the whole source is used.
+- Runtime settings (networks, NICs, platform machine options) and operator settings that
+  don't affect builds (egress permission, gateway, allowlists, operator ranges) never
+  cause a rebuild.
 - Ansible expressions run inside the build guest; LabCentral passes inputs and
   extensions as Ansible variables.
 
@@ -182,6 +187,52 @@ Without a `networks` section, a lab has one private IPv4 network named `lab` and
 machine has one NIC on it. Machines can pin a host address with
 `nics: [{network: lab, address: 20}]` (offsets 4–250); the others are numbered from
 11 in name order.
+
+Networks are isolated from each other. To connect two networks, add a machine with a
+NIC on each and `forwarding: true`:
+
+```yaml
+version: 3
+name: routed-investigation
+networks:
+  clients: {egress: internet}
+  servers: {}
+images:
+  ubuntu: {base: ubuntu-24.04}
+machines:
+  client:
+    image: ubuntu
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    nics: [{network: clients}]
+    access: [ssh]
+  router:
+    image: ubuntu
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    forwarding: true
+    nics: [{network: clients, address: 10}, {network: servers, address: 10}]
+    access: [ssh]
+  server:
+    image: ubuntu
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    nics: [{network: servers}]
+    access: [ssh]
+```
+
+- A machine's first NIC is its management address for SSH, desktops and checks.
+- A peer's hostname resolves to its address on the first network the two machines
+  share, or to its first-NIC address if they share none.
+- The planner computes static routes through routers, including chains of routers.
+  Two routers joining the same pair of networks, or a cycle, is rejected.
+- A machine's single default route uses its first NIC on an Internet-enabled network.
+- On AWS, a network can set its own `cidr` (private and non-overlapping). All networks
+  must fit in one /16 with room for the gateway's /28. Proxmox assigns network ranges
+  itself and rejects author CIDRs.
 
 Internet access is off by default. A network can request it:
 
@@ -323,16 +374,19 @@ assumed role, or IAM Roles Anywhere). Never put access keys in lab source or cha
 2. Copy the outputs into `build.subnetID`, `build.securityGroupID` and
    `aws.desktopProfile`.
 3. Set `aws.account`, `aws.region`, `aws.zone`, `aws.profile` and an instance type
-   allowlist, for example `types: [{name: t3.medium, cpu: 2, memoryMiB: 4096}]`.
+   allowlist, for example `types: [{name: t3.medium, cpu: 2, memoryMiB: 4096}]`. Add
+   `maxNICs` to a type to check multi-NIC machines offline; otherwise the provider asks
+   AWS for the type's network interface limit.
 4. For desktops, set `build.dcvURL` and `build.dcvSHA256` to the official Amazon DCV
    server archive for Ubuntu 24.04 and its published checksum.
 
-Each lab gets its own VPC (`10.77.0.0/16`). Machines use `10.77.0.0/24` and have no
-public addresses. A `t3.micro` gateway in `10.77.255.0/28` holds the lab's only public
-address; all SSH, desktop and check traffic is tunneled through it, with host keys
-pinned on both hops. Configure it with `aws.gateway: {base: ubuntu-24.04, instanceType:
-t3.micro}` (these are the defaults). Set `aws.allowEgress: true` to let labs request
-Internet access.
+Each lab gets its own VPC (`10.77.0.0/16` by default). Networks get `10.77.0.0/24`,
+`10.77.1.0/24` and so on, in name order, each with its own subnet, security group and
+route table. Machines have no public addresses. A `t3.micro` gateway in its own /28
+holds the lab's only public address; all SSH, desktop and check traffic is tunneled
+through it, with host keys pinned on both hops. Configure it with `aws.gateway: {base:
+ubuntu-24.04, instanceType: t3.micro}` (these are the defaults). Set `aws.allowEgress:
+true` to let labs request Internet access.
 
 The operator identity needs EC2 lifecycle permissions and `iam:PassRole` for the DCV
 licensing role (restricted to `ec2.amazonaws.com`). Lab machines never receive EC2 or
@@ -356,6 +410,8 @@ configured IPv4 range, and the operator's routing must already reach those addre
   management isolation yourself, then set `verifiedIsolation: true`. This is your
   assertion; LabCentral checks firewall and bridge settings but cannot probe your
   physical network.
+- Each lab network gets its own VLAN and /24. Your router must drop traffic between lab
+  VLANs, so that labs can only connect networks through their own router machines.
 - `proxmox.cpuTypes` lists CPU models authors may request. `proxmox.allowEgress: true`
   plus a `proxmox.gateway` that provides NAT lets labs request Internet access.
 
@@ -433,9 +489,9 @@ repository you configure. Each template is a directory containing:
 | `instructor.yaml` | Private teaching material: stages, checks, breaks, scenarios and catalog metadata |
 | `instructor/` | Private guest playbooks for checks, breaks and resets |
 
-Private material is removed before images are built and never reaches student
-responses or downloads. `labcentral validate --template DIR` checks a template exactly
-as the importer will; the contract is [schemas/instructor-v3.json](schemas/instructor-v3.json)
+Private material is removed before images are built and never reaches student responses
+or downloads. `labcentral validate --template DIR` checks a template exactly as the
+importer will; the contract is [schemas/instructor-v3.json](schemas/instructor-v3.json)
 and [templates/README.md](templates/README.md) walks through a complete example.
 
 A minimal `instructor.yaml`:

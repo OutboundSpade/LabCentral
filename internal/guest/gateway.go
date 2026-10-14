@@ -11,7 +11,7 @@ import (
 
 // GatewayCloudInit contains no author programs. Forwarding is enabled only after
 // the firewall loads successfully, on first boot and subsequent boots.
-func GatewayCloudInit(m lc.PlannedMachine, egressCIDRs []string) (string, error) {
+func GatewayCloudInit(m lc.PlannedMachine, egressCIDRs []string, labCIDRs ...string) (string, error) {
 	raw, err := CloudInit(m)
 	if err != nil {
 		return "", err
@@ -20,7 +20,7 @@ func GatewayCloudInit(m lc.PlannedMachine, egressCIDRs []string) (string, error)
 	if err = yaml.Unmarshal([]byte(strings.TrimPrefix(raw, "#cloud-config\n")), &c); err != nil {
 		return "", err
 	}
-	for _, cidr := range egressCIDRs {
+	for _, cidr := range append(append([]string{}, egressCIDRs...), labCIDRs...) {
 		p, err := netip.ParsePrefix(cidr)
 		if err != nil || !p.Addr().Is4() || p != p.Masked() || !p.Addr().IsPrivate() {
 			return "", fmt.Errorf("invalid gateway egress CIDR")
@@ -34,7 +34,7 @@ func GatewayCloudInit(m lc.PlannedMachine, egressCIDRs []string) (string, error)
    ct state established,related accept
    udp sport 67 udp dport 68 accept
    icmp type echo-request accept
-   ip saddr 10.77.0.0/24 drop
+__LAB_INPUT__
    tcp dport 22 accept
   }
   chain forward { type filter hook forward priority filter; policy drop;
@@ -42,6 +42,14 @@ func GatewayCloudInit(m lc.PlannedMachine, egressCIDRs []string) (string, error)
    ct state established,related accept
    ip daddr @private4 drop
 `
+	if len(labCIDRs) == 0 {
+		labCIDRs = []string{"10.77.0.0/24"}
+	}
+	drops := ""
+	for _, cidr := range labCIDRs {
+		drops += "   ip saddr " + cidr + " drop\n"
+	}
+	rules = strings.Replace(rules, "__LAB_INPUT__", strings.TrimSuffix(drops, "\n"), 1)
 	for _, cidr := range egressCIDRs {
 		rules += "   ip saddr " + cidr + " oifname \"__WAN__\" accept\n"
 	}

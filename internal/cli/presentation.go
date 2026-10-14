@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"io"
@@ -10,7 +11,7 @@ import (
 func readable(out io.Writer, value any) bool {
 	switch v := value.(type) {
 	case lc.Plan:
-		fmt.Fprintf(out, "%s on %s (%s)\nPrivate IPv4 network; general Internet egress denied.\n", v.Source.Lab.Name, v.Environment.Name, v.Environment.Platform)
+		fmt.Fprintf(out, "%s on %s (%s)\nIsolated IPv4 networks; Internet egress is configured per network.\n", v.Source.Lab.Name, v.Environment.Name, v.Environment.Platform)
 		for _, im := range v.Images {
 			if im.Playbook != "" {
 				fmt.Fprintf(out, "Image %s: build %s from %s; reuse only after cache verification\n", im.Name, im.Playbook, im.Base.ID)
@@ -18,8 +19,44 @@ func readable(out io.Writer, value any) bool {
 				fmt.Fprintf(out, "Image %s: use native base %s\n", im.Name, im.Base.ID)
 			}
 		}
+		if v.VPCCIDR != "" {
+			fmt.Fprintf(out, "VPC %s; edge %s; AZ %s\n", v.VPCCIDR, v.EdgeCIDR, v.Environment.AWS.Zone)
+		}
+		for _, n := range v.Networks {
+			fmt.Fprintf(out, "Network %s: %s, egress %s", n.Name, n.CIDR, n.Egress)
+			if n.VLAN > 0 {
+				fmt.Fprintf(out, ", VLAN %d", n.VLAN)
+			}
+			fmt.Fprintln(out)
+		}
 		for _, m := range v.Machines {
 			fmt.Fprintf(out, "Machine %s: %s, %d CPU / %d MiB / %d GiB, access %v\n", m.Name, m.InstanceType, m.CPU, m.MemoryMiB, m.DiskGiB, m.Spec.Access)
+			options := any(m.Spec.Platform.AWS)
+			if v.Environment.Platform == "proxmox" {
+				options = m.Spec.Platform.Proxmox
+			}
+			if raw, _ := json.Marshal(options); string(raw) != "null" {
+				fmt.Fprintf(out, "  Platform options: %s\n", raw)
+			} else {
+				fmt.Fprintln(out, "  Platform options: defaults")
+			}
+			for j, nic := range m.NICs {
+				fmt.Fprintf(out, "  NIC %d: %s %s", j, nic.Network, nic.Address)
+				if j == 0 {
+					fmt.Fprint(out, " (management)")
+				}
+				if nic.Default {
+					fmt.Fprintf(out, " default via %s", nic.Gateway)
+				}
+				fmt.Fprintln(out)
+				for _, route := range nic.Routes {
+					if route.Router != "" {
+						fmt.Fprintf(out, "    Route %s via %s (%s)\n", route.CIDR, route.Via, route.Router)
+					} else {
+						fmt.Fprintf(out, "    Route %s via %s\n", route.CIDR, route.Via)
+					}
+				}
+			}
 		}
 		for _, notice := range v.Notices {
 			fmt.Fprintln(out, notice)

@@ -382,7 +382,7 @@ func ValidateEnvironment(e Environment) error {
 			return bad("aws", "account, region, zone and instance type allowlist are required")
 		}
 		for _, t := range a.Types {
-			if t.Name == "" || t.CPU < 1 || t.MemoryMiB < 256 {
+			if t.Name == "" || t.CPU < 1 || t.MemoryMiB < 256 || t.MaxNICs < 0 {
 				return bad("aws.types", "invalid instance type capacity")
 			}
 		}
@@ -509,13 +509,17 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		if im.Desktop {
 			policy = "xfce-minimal-1"
 		}
+		buildIdentity := buildEnvironment(e)
+		if !im.Desktop {
+			buildIdentity.Toolchain.DCVURL, buildIdentity.Toolchain.DCVSHA256 = "", ""
+		}
 		im.CacheKey = digest(struct {
 			S      string
 			I      PlannedImage
-			E      Environment
+			E      imageEnvironment
 			V      []InputValue
 			Policy string `json:"policy,omitempty"`
-		}{imageSourceDigest(s, n, e.Platform), im, e, p.Inputs, policy})
+		}{imageSourceDigest(s, n, e.Platform), im, buildIdentity, p.Inputs, policy})
 		p.Images = append(p.Images, im)
 	}
 	for _, n := range sortedKeys(s.Lab.Machines) {
@@ -533,6 +537,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 				return p, err
 			}
 			pm.InstanceType, pm.CPU, pm.MemoryMiB = selected.Name, selected.CPU, selected.MemoryMiB
+			if selected.MaxNICs > 0 && len(m.NICs) > selected.MaxNICs {
+				return p, problem(Unsupported, fmtPathIndex("machines."+n+".nics", selected.MaxNICs), "NIC count exceeds instance type ENI limit")
+			}
 			if Contains(m.Access, "desktop") && e.AWS.DesktopProfile == "" {
 				return p, problem(Invalid, "environment.aws.desktopProfile", "DCV needs a license-only instance profile")
 			}
@@ -554,7 +561,13 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			return p, problem(Unsupported, "environment.proxmox.vmidEnd", "VMID range is too small for images, validation and deployment")
 		}
 	}
+	if err := PlanNetworks(&p, nil); err != nil {
+		return p, err
+	}
 	p.Notices = []string{"Instances and native images remain billable until removed; no background cleanup service is installed.", "Builds may access package repositories; runtime Internet egress defaults to none."}
+	if e.Platform == "proxmox" {
+		p.Notices = append(p.Notices, "VLANs and addresses are previews; deployment reserves all networks atomically from the available range.")
+	}
 	for _, name := range sortedKeys(s.Lab.Networks) {
 		if s.Lab.Networks[name].Egress == "internet" {
 			p.Notices = append(p.Notices, "Network "+name+": Internet egress is enabled and is not filtered beyond private-range blocking.")

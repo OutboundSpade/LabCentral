@@ -18,9 +18,12 @@ func componentFilters(owner, component string) []t.Filter {
 	return append(filters(owner, "network"), t.Filter{Name: aw.String("tag:labcentral:component"), Values: []string{component}})
 }
 func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command, n *networkState) error {
-	var err error
+	_, _, edgeCIDR, err := lc.AWSLayout(c.Source.Lab)
+	if err != nil {
+		return err
+	}
 	n.EdgeSubnet, err = doEC2(ctx, p.Journal, c.Operation+"/edge-subnet", func() (string, error) {
-		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &n.VPC, AvailabilityZone: &c.Environment.AWS.Zone, CidrBlock: aw.String("10.77.255.0/28"), TagSpecifications: networkSpecs(t.ResourceTypeSubnet, c.Owner, "edge-subnet")})
+		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &n.VPC, AvailabilityZone: &c.Environment.AWS.Zone, CidrBlock: &edgeCIDR, TagSpecifications: networkSpecs(t.ResourceTypeSubnet, c.Owner, "edge-subnet")})
 		if e != nil {
 			return "", e
 		}
@@ -103,7 +106,15 @@ func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command,
 	if err != nil {
 		return err
 	}
-	ingress := []t.IpPermission{{IpProtocol: aw.String("-1"), UserIdGroupPairs: []t.UserIdGroupPair{{GroupId: &n.SG}}}}
+	ingress := []t.IpPermission{}
+	if len(n.Segments) > 1 {
+		for _, seg := range n.Segments {
+			ingress = append(ingress, t.IpPermission{IpProtocol: aw.String("-1"), IpRanges: []t.IpRange{{CidrIp: aw.String(seg.CIDR)}}})
+		}
+	}
+	if len(n.Segments) <= 1 {
+		ingress = append(ingress, t.IpPermission{IpProtocol: aw.String("-1"), UserIdGroupPairs: []t.UserIdGroupPair{{GroupId: &n.SG}}})
+	}
 	ranges := []t.IpRange{}
 	for _, cidr := range c.Environment.OperatorCIDRs {
 		ranges = append(ranges, t.IpRange{CidrIp: aw.String(cidr)})

@@ -36,7 +36,7 @@ func testSource(t *testing.T) Source {
 	return s
 }
 func testEnvironment() Environment {
-	return Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []InstanceType{{"t3.medium", 2, 4096}}}}
+	return Environment{Version: 2, Name: "test", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []InstanceType{{"t3.medium", 2, 4096, 0}}}}
 }
 func TestStrictAuthoring(t *testing.T) {
 	for name, src := range map[string]string{"unknown": sample + "unexpected: value\n", "duplicate": sample + "name: other\n", "alias": strings.Replace(sample, "access: [ssh]", "access: &shared [ssh]", 1), "multiple": sample + "---\nname: second\n", "wrong-version": strings.Replace(sample, "version: 3", "version: 1", 1), "unknown-image": strings.Replace(sample, "image: base", "image: missing", 1)} {
@@ -146,9 +146,9 @@ func TestDesktopPolicyInvalidatesOnlyDesktopBuilds(t *testing.T) {
 		previous := digest(struct {
 			S string
 			I PlannedImage
-			E Environment
+			E imageEnvironment
 			V []InputValue
-		}{imageSourceDigest(source, image.Name, env.Platform), image, env, plan.Inputs})
+		}{imageSourceDigest(source, image.Name, env.Platform), image, buildEnvironment(env), plan.Inputs})
 		if (key != previous) != image.Desktop {
 			t.Fatal("desktop policy must invalidate desktop images while preserving unchanged server builds", name)
 		}

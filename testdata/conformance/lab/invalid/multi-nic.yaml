@@ -1,6 +1,6 @@
-# field: machines.one.nics[1]
+# field: machines.one.nics[1].network
 # schema: accept
-# code: unsupported
+# code: invalid
 version: 3
 name: example
 images:

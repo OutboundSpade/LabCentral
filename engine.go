@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -170,7 +169,7 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 	if err := verifyPlan(p); err != nil {
 		return nil, err
 	}
-	if err := e.Check(ctx, p.Environment); err != nil {
+	if _, err := e.provider.Execute(ctx, Command{Action: "check", Environment: p.Environment, Source: p.Source}, e.observer); err != nil {
 		return nil, err
 	}
 	// Images have no dependencies on one another. A cache-key fence preserves
@@ -389,13 +388,16 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 }
 func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	env := i.Plan.Environment
+	legacy := len(i.Plan.Networks) == 0
+	var vlans []int
 	if env.Platform == "proxmox" {
 		p := env.Proxmox
-		v, err := e.state.Reserve(ctx, "vlan:"+p.URL+":"+p.Bridge, i.ID, p.VLANStart, p.VLANEnd, 1)
+		v, err := e.state.Reserve(ctx, "vlan:"+p.URL+":"+p.Bridge, i.ID, p.VLANStart, p.VLANEnd, len(effectiveNetworks(i.Plan.Source.Lab)))
 		if err != nil {
 			return err
 		}
 		i.VLAN = v[0]
+		vlans = v
 		ids, err := e.state.Reserve(ctx, "vmid:"+p.URL, i.ID, p.VMIDStart, p.VMIDEnd, len(i.Plan.Machines))
 		if err != nil {
 			return err
@@ -404,26 +406,17 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 			i.Plan.Machines[n].VMID = ids[n]
 		}
 	}
-	prefix := "10.77.0.0/24"
-	if env.Platform == "proxmox" {
-		var err error
-		prefix, _, err = ProxmoxSubnet(env.Proxmox, i.VLAN)
-		if err != nil {
-			return err
+	if err := PlanNetworks(&i.Plan, vlans); err != nil {
+		return err
+	}
+	if legacy { // Retained pre-Phase-3 operations keep their native request shape.
+		i.Plan.Networks = nil
+		i.Plan.VPCCIDR, i.Plan.EdgeCIDR = "", ""
+		for j := range i.Plan.Machines {
+			i.Plan.Machines[j].NICs = nil
+			i.Plan.Machines[j].Resolver = ""
 		}
 	}
-	p, _ := netip.ParsePrefix(prefix)
-	used := map[int]bool{}
-	if env.Platform == "proxmox" && env.Proxmox.Gateway != "" {
-		gateway, _ := netip.ParseAddr(env.Proxmox.Gateway)
-		used[int(gateway.As4()[3])] = true
-	}
-	for _, m := range i.Plan.Machines {
-		if len(m.Spec.NICs) > 0 && m.Spec.NICs[0].Address != nil {
-			used[*m.Spec.NICs[0].Address] = true
-		}
-	}
-	nextOffset := 11
 	keyDir := filepath.Join(e.state.Root, "credentials", i.ID)
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
 		return err
@@ -441,41 +434,12 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	}
 	for n := range i.Plan.Machines {
 		m := &i.Plan.Machines[n]
-		offset := 0
-		if len(m.Spec.NICs) > 0 && m.Spec.NICs[0].Address != nil {
-			offset = *m.Spec.NICs[0].Address
-		} else {
-			for used[nextOffset] {
-				nextOffset++
-			}
-			offset = nextOffset
-			used[offset] = true
-			nextOffset++
-		}
-		addr := p.Masked().Addr()
-		for j := 0; j < offset; j++ {
-			addr = addr.Next()
-		}
-		m.Address = addr.String()
 		m.PublicKey = pub
 		host, err := ensureKey(filepath.Join(keyDir, m.Name+".host"))
 		if err != nil {
 			return err
 		}
 		m.HostPublicKey = host
-	}
-	hosts := []HostEntry{}
-	for _, m := range i.Plan.Machines {
-		hosts = append(hosts, HostEntry{Name: m.Name, Address: m.Address})
-	}
-	for n := range i.Plan.Machines {
-		m := &i.Plan.Machines[n]
-		m.Hosts = []HostEntry{}
-		for _, host := range hosts {
-			if !m.Spec.HostnamePeers.Explicit || Contains(m.Spec.HostnamePeers.Names, host.Name) {
-				m.Hosts = append(m.Hosts, host)
-			}
-		}
 	}
 	return e.state.Put(ctx, "instance", i.ID, i)
 }
@@ -552,7 +516,7 @@ func (e *Engine) invoke(ctx context.Context, c Command) (Result, error) {
 }
 func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 	env := i.Plan.Environment
-	net, err := e.invoke(ctx, Command{Action: "network.create", Operation: i.ID + "/network", Owner: i.ID, Environment: env, Source: i.Plan.Source, VLAN: i.VLAN})
+	net, err := e.invoke(ctx, Command{Action: "network.create", Operation: i.ID + "/network", Owner: i.ID, Environment: env, Source: i.Plan.Source, VLAN: i.VLAN, Networks: i.Plan.Networks})
 	if err != nil {
 		return e.failed(*i, err)
 	}
@@ -562,7 +526,7 @@ func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 	}
 	gateway := Resource{}
 	if i.Gateway != nil {
-		result, err := e.invoke(ctx, Command{Action: "gateway.create", Operation: i.ID + "/gateway", Owner: i.ID, Environment: env, Source: i.Plan.Source, Machine: *i.Gateway, Prior: Resource{Kind: "gateway"}, Network: net.Resource})
+		result, err := e.invoke(ctx, Command{Action: "gateway.create", Operation: i.ID + "/gateway", Owner: i.ID, Environment: env, Source: i.Plan.Source, Networks: i.Plan.Networks, Machine: *i.Gateway, Prior: Resource{Kind: "gateway"}, Network: net.Resource})
 		if err != nil {
 			return e.failed(*i, err)
 		}
@@ -591,7 +555,7 @@ func (e *Engine) deploy(ctx context.Context, i *Instance) error {
 				failures[n] = ctx.Err()
 				return
 			}
-			r, err := e.invoke(ctx, Command{Action: "machine.create", Operation: i.ID + "/machine/" + m.Name, Owner: i.ID, Environment: env, Machine: m, Network: net.Resource, Gateway: gateway, Source: i.Plan.Source, VLAN: i.VLAN})
+			r, err := e.invoke(ctx, Command{Action: "machine.create", Operation: i.ID + "/machine/" + m.Name, Owner: i.ID, Environment: env, Machine: m, Network: net.Resource, Gateway: gateway, Source: i.Plan.Source, VLAN: i.VLAN, Networks: i.Plan.Networks})
 			if err != nil {
 				failures[n] = fmt.Errorf("%s: %w", m.Name, err)
 				return

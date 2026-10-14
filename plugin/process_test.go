@@ -64,6 +64,11 @@ func TestTypedProtocolRoundTrip(t *testing.T) {
 	c := lc.Command{ClientPrivateKey: []byte("transient"), Operation: "op", Environment: lc.Environment{Version: 2, Platform: "aws", Bases: map[string]lc.Base{"ubuntu": {ID: "ami", DiskGiB: 8}}}, Source: lc.Source{Files: []lc.File{{Path: "lab.yaml", Content: []byte("version: 2")}}}, Prior: lc.Resource{Data: json.RawMessage(`{"native":"state"}`)}}
 	c.Environment.AWS.Gateway = lc.AWSGatewayConfig{Base: "ubuntu-24.04", InstanceType: "t3.micro"}
 	c.Environment.AWS.AllowEgress = true
+	c.Environment.AWS.Types = []lc.InstanceType{{Name: "t3.large", CPU: 2, MemoryMiB: 8192, MaxNICs: 3}}
+	c.Networks = []lc.PlannedNetwork{{Name: "a", CIDR: "10.77.0.0/24", VLAN: 101, Routes: []lc.PlannedRoute{{Network: "b", CIDR: "10.77.1.0/24", Via: "10.77.0.12", Router: "router", RouterNIC: 0}}}}
+	c.Machine.NICs = []lc.PlannedNIC{{Network: "a", CIDR: "10.77.0.0/24", Address: "10.77.0.11", Default: true, Gateway: "10.77.0.1", Routes: c.Networks[0].Routes}}
+	c.Machine.Resolver = "10.77.0.2"
+
 	c.Environment.Proxmox.AllowEgress = true
 	c.Gateway = lc.Resource{Kind: "gateway", Owner: "owner", ID: "i-gateway", Address: "192.0.2.1", Complete: true, Data: json.RawMessage(`{"hostPublicKey":"pinned","eni":"eni-owned"}`)}
 	w := &wire.Command{}
@@ -74,7 +79,7 @@ func TestTypedProtocolRoundTrip(t *testing.T) {
 	if e := wireconvert.Decode(w, &got); e != nil {
 		t.Fatal(e)
 	}
-	if !reflect.DeepEqual(c.Gateway, got.Gateway) || !reflect.DeepEqual(c.Environment.AWS, got.Environment.AWS) || !got.Environment.Proxmox.AllowEgress || got.Environment.Bases["ubuntu"].ID != "ami" || string(got.Prior.Data) != string(c.Prior.Data) || string(got.ClientPrivateKey) != "transient" {
+	if !reflect.DeepEqual(c.Networks, got.Networks) || !reflect.DeepEqual(c.Machine, got.Machine) || !reflect.DeepEqual(c.Gateway, got.Gateway) || !reflect.DeepEqual(c.Environment.AWS, got.Environment.AWS) || !got.Environment.Proxmox.AllowEgress || got.Environment.Bases["ubuntu"].ID != "ami" || string(got.Prior.Data) != string(c.Prior.Data) || string(got.ClientPrivateKey) != "transient" {
 		t.Fatalf("lossy protocol %+v", got)
 	}
 }

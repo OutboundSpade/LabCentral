@@ -19,6 +19,7 @@ type firewallRule struct {
 	Dest   string `json:"dest,omitempty"`
 	Proto  string `json:"proto,omitempty"`
 	Dport  string `json:"dport,omitempty"`
+	Iface  string `json:"iface,omitempty"`
 }
 
 func firewallRules(e lc.Environment, cidr string, internet bool, management ...string) []firewallRule {

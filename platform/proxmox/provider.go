@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -133,12 +134,13 @@ func (c *Client) Wait(ctx context.Context, upid string) error {
 }
 
 type VMConfig struct {
-	Tags        string `json:"tags"`
-	Description string `json:"description"`
-	Digest      string `json:"digest"`
-	Template    int    `json:"template"`
-	Name        string `json:"name"`
-	Net0        string `json:"net0"`
+	Tags        string            `json:"tags"`
+	Description string            `json:"description"`
+	Digest      string            `json:"digest"`
+	Template    int               `json:"template"`
+	Name        string            `json:"name"`
+	Net0        string            `json:"net0"`
+	NICs        map[string]string `json:"-"`
 }
 
 func marker(owner, name string) string { return "labcentral:v2:" + owner + ":" + name }
@@ -182,11 +184,11 @@ func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (
 	case "check":
 		return p.check(ctx, c, cmd)
 	case "network.create":
-		cidr, gw, e := lc.ProxmoxSubnet(cmd.Environment.Proxmox, cmd.VLAN)
-		if e != nil {
-			return lc.Result{}, e
+		n, err := plannedNetwork(cmd)
+		if err != nil {
+			return lc.Result{}, err
 		}
-		b, _ := json.Marshal(network{CIDR: cidr, Gateway: gw, VLAN: cmd.VLAN})
+		b, _ := json.Marshal(n)
 		return lc.Result{Resource: lc.Resource{Kind: "network", Name: "private", ID: strconv.Itoa(cmd.VLAN), Owner: cmd.Owner, Complete: true, Data: b}}, nil
 	case "machine.create":
 		return p.machine(ctx, c, cmd)
@@ -297,9 +299,10 @@ func (p *Provider) check(ctx context.Context, c *Client, cmd lc.Command) (lc.Res
 }
 
 type network struct {
-	CIDR    string `json:"cidr"`
-	Gateway string `json:"gateway"`
-	VLAN    int    `json:"vlan"`
+	CIDR     string              `json:"cidr"`
+	Gateway  string              `json:"gateway"`
+	VLAN     int                 `json:"vlan"`
+	Segments []lc.PlannedNetwork `json:"segments,omitempty"`
 }
 
 func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.Result, error) {
@@ -398,6 +401,9 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	}
 
 	desired := firewallRules(cmd.Environment, net.CIDR, lc.InternetAccess(cmd.Source.Lab), management...)
+	if len(m.NICs) > 0 {
+		desired = machineFirewallRules(cmd.Environment, m, net.Segments, management...)
+	}
 	if e = installFirewallRules(ctx, c, m.VMID, desired); e != nil {
 		return lc.Result{}, e
 	}
@@ -440,6 +446,15 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	script := "cloud-init status --wait >/dev/null; printf '%s' '" + hosts + "' | base64 -d > /etc/hosts; chmod 644 /etc/hosts; umask 077; printf '%s' '" + priv + "' | base64 -d > /etc/ssh/ssh_host_ed25519_key; printf '%s' '" + pub + "' | base64 -d > /etc/ssh/ssh_host_ed25519_key.pub; systemctl restart ssh"
 	if e = c.GuestExec(ctx, m.VMID, []string{"/bin/sh", "-ec", script}); e != nil {
 		return lc.Result{}, e
+	}
+	if len(m.NICs) > 0 {
+		script, err := guest.NetworkExec(m)
+		if err != nil {
+			return lc.Result{}, err
+		}
+		if e = c.GuestExec(ctx, m.VMID, []string{"/bin/sh", "-ec", script}); e != nil {
+			return lc.Result{}, e
+		}
 	}
 	if e = remote.Wait(ctx, m.Address, "lab", cmd.ClientPrivateKey, m.HostPublicKey); e != nil {
 		return lc.Result{}, e
@@ -651,6 +666,35 @@ func machineConfig(cmd lc.Command, v VMConfig, ip string) map[string]any {
 		"cores": m.CPU, "memory": m.MemoryMiB,
 		"net0":      fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", nic, cmd.Environment.Proxmox.Bridge, cmd.VLAN),
 		"ipconfig0": ip, "ciuser": "lab", "sshkeys": url.QueryEscape(m.PublicKey), "agent": "enabled=1", "digest": v.Digest,
+	}
+	if len(m.NICs) > 0 {
+		var removed []string
+		for key := range v.NICs {
+			index, err := strconv.Atoi(strings.TrimPrefix(key, "net"))
+			if err == nil && index >= len(m.NICs) {
+				removed = append(removed, key, "ipconfig"+strconv.Itoa(index))
+			}
+		}
+		if len(removed) > 0 {
+			sort.Strings(removed)
+			cfg["delete"] = strings.Join(removed, ",")
+		}
+		for j, planned := range m.NICs {
+			modelNIC := model
+			original := v.NICs[fmt.Sprintf("net%d", j)]
+			if j == 0 {
+				original = v.Net0
+			}
+			if _, mac, ok := strings.Cut(strings.Split(original, ",")[0], "="); ok && mac != "" {
+				modelNIC += "=" + mac
+			}
+			cfg[fmt.Sprintf("net%d", j)] = fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", modelNIC, cmd.Environment.Proxmox.Bridge, planned.VLAN)
+			ipconfig := "ip=" + planned.Address + "/" + strings.Split(planned.CIDR, "/")[1]
+			if planned.Default && planned.Gateway != "" {
+				ipconfig += ",gw=" + planned.Gateway
+			}
+			cfg[fmt.Sprintf("ipconfig%d", j)] = ipconfig
+		}
 	}
 	if options != nil {
 		if options.CPUType != "" {

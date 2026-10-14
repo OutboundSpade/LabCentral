@@ -113,7 +113,12 @@ func validateV3(l Lab) error {
 		if v.NICs != nil && len(v.NICs) == 0 {
 			return problem(Invalid, f+".nics", "expected at least one NIC")
 		}
+		seenNIC := map[string]bool{}
 		for i, nic := range v.NICs {
+			if seenNIC[nic.Network] {
+				return problem(Invalid, fmtPathIndex(f+".nics", i)+".network", "duplicate NIC network")
+			}
+			seenNIC[nic.Network] = true
 			nf := fmtPathIndex(f+".nics", i)
 			net, ok := networks[nic.Network]
 			if !ok {
@@ -184,11 +189,8 @@ func validateV3(l Lab) error {
 // invalidate an image. Other source bytes retain their exact identity.
 func imageSourceDigest(s Source, n, platform string) string {
 	lab := s.Lab
-	lab.Machines = make(map[string]Machine, len(s.Lab.Machines))
-	for name, m := range s.Lab.Machines {
-		m.Platform = MachinePlatform{}
-		lab.Machines[name] = m
-	}
+	lab.Networks = nil
+	lab.Machines = nil // Build disk/desktop requirements are bound by PlannedImage.
 	lab.Images = make(map[string]Image, len(s.Lab.Images))
 	for name, i := range s.Lab.Images {
 		if platform == "aws" {

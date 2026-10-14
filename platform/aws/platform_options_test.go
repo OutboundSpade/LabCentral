@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	aw "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -58,7 +59,7 @@ func TestRuntimeOptionsInNativeRunInstances(t *testing.T) {
 			c.Machine.Spec.Platform.AWS = tc.options
 			// Foreign options must have no effect on the AWS request.
 			c.Machine.Spec.Platform.Proxmox = &lc.ProxmoxMachineOptions{CPUType: "forbidden", NICModel: "e1000", MemoryBalloon: aw.Bool(false)}
-			_, err := (&Provider{}).machine(context.Background(), api, c)
+			_, err := (&Provider{Journal: journal.Journal{Root: t.TempDir()}}).machine(context.Background(), api, c)
 			if err == nil || calls != 1 {
 				t.Fatalf("request not captured once: calls=%d err=%v", calls, err)
 			}

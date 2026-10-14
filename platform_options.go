@@ -172,6 +172,19 @@ func checkImplementedOptions(options any, accepted []string, field string) error
 // CheckCommandPlatformOptions also checks standalone planned requests used by
 // native image validation and rejects a plan that contradicts an explicit type.
 func CheckCommandPlatformOptions(c Command) error {
+	if c.Environment.Platform == "aws" {
+		if err := CheckAWSNICLimits(c.Source.Lab, c.Environment, nil); err != nil {
+			return err
+		}
+		if c.Machine.Name != "" && c.Machine.Name != "gateway" {
+			for _, instance := range c.Environment.AWS.Types {
+				if instance.Name == c.Machine.InstanceType && instance.MaxNICs > 0 && len(c.Machine.Spec.NICs) > instance.MaxNICs {
+					return problem(Unsupported, fmtPathIndex("machines."+c.Machine.Name+".nics", instance.MaxNICs), "NIC count exceeds instance type ENI limit")
+				}
+			}
+		}
+	}
+
 	if err := CheckPlatformOptions(c.Source.Lab, c.Environment); err != nil {
 		return err
 	}

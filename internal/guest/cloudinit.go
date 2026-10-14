@@ -32,13 +32,31 @@ type config struct {
 	Delete   bool        `yaml:"ssh_deletekeys"`
 	Password bool        `yaml:"ssh_pwauth"`
 	Root     bool        `yaml:"disable_root"`
+	Commands []string    `yaml:"runcmd,omitempty"`
 }
 
 func CloudInit(m lc.PlannedMachine) (string, error) {
 	if m.HostPrivateKey == "" || m.HostPublicKey == "" || m.PublicKey == "" {
 		return "", fmt.Errorf("instance keys are required")
 	}
-	b, e := yaml.Marshal(config{Hostname: m.Name, Manage: false, Files: []writeFile{{Path: "/etc/hosts", Content: Hosts(m), Permissions: "0644"}}, Users: []user{{"lab", "sudo", "/bin/bash", []string{"ALL=(ALL) NOPASSWD:ALL"}, []string{strings.TrimSpace(m.PublicKey)}}}, SSHKeys: hostKeys{m.HostPrivateKey, strings.TrimSpace(m.HostPublicKey)}, Delete: false, Password: false, Root: true})
+	c := config{Hostname: m.Name, Manage: false, Files: []writeFile{{Path: "/etc/hosts", Content: Hosts(m), Permissions: "0644"}}, Users: []user{{"lab", "sudo", "/bin/bash", []string{"ALL=(ALL) NOPASSWD:ALL"}, []string{strings.TrimSpace(m.PublicKey)}}}, SSHKeys: hostKeys{m.HostPrivateKey, strings.TrimSpace(m.HostPublicKey)}, Delete: false, Password: false, Root: true}
+	if len(m.NICs) > 0 {
+		netplan, err := Netplan(m, "aws")
+		if err != nil {
+			return "", err
+		}
+		c.Files = append(c.Files, writeFile{Path: "/etc/labcentral-network.yaml", Content: netplan, Permissions: "0600"}, writeFile{Path: "/usr/local/sbin/labcentral-network", Content: AWSNetworkScript, Permissions: "0700"}, writeFile{Path: "/etc/cloud/cloud.cfg.d/99-labcentral-network.cfg", Content: "network: {config: disabled}\n", Permissions: "0644"})
+		c.Commands = []string{"/usr/local/sbin/labcentral-network", "rm -f /etc/netplan/50-cloud-init.yaml && netplan generate && netplan apply"}
+	}
+	if len(m.NICs) > 0 || m.Spec.Forwarding {
+		forwarding := "0"
+		if m.Spec.Forwarding {
+			forwarding = "1"
+		}
+		c.Files = append(c.Files, writeFile{Path: "/etc/sysctl.d/90-labcentral-router.conf", Content: "net.ipv4.ip_forward=" + forwarding + "\n", Permissions: "0644"})
+		c.Commands = append(c.Commands, "sysctl -p /etc/sysctl.d/90-labcentral-router.conf")
+	}
+	b, e := yaml.Marshal(c)
 	return "#cloud-config\n" + string(b), e
 }
 

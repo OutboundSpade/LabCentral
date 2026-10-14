@@ -12,8 +12,9 @@ func PlatformCapabilities(platform string) (Capabilities, bool) {
 	if platform != "aws" && platform != "proxmox" {
 		return Capabilities{}, false
 	}
-	c := Capabilities{MaxNetworks: 1, MaxNICs: 1, Egress: []string{"none", "internet"}, OS: []string{"linux"}}
+	c := Capabilities{MaxNetworks: 4, MaxNICs: 4, Forwarding: true, Egress: []string{"none", "internet"}, OS: []string{"linux"}}
 	if platform == "aws" {
+		c.MaxNetworks, c.MaxNICs, c.AuthorCIDR = 8, 8, true
 		c.ImageOptions = []string{"buildInstanceType"}
 		c.MachineOptions = []string{"instanceType", "volume", "volume.type", "volume.iops", "volume.throughput", "cpuCredits"}
 	} else {
@@ -33,10 +34,10 @@ func CheckCapabilities(l Lab, platform string) error {
 		f := "networks." + n
 		v := l.Networks[n]
 		if index >= c.MaxNetworks {
-			return problem(Unsupported, f, "multiple networks are not implemented")
+			return problem(Unsupported, f, "network count exceeds platform limit")
 		}
 		if v.CIDR != "" && !c.AuthorCIDR {
-			return problem(Unsupported, f+".cidr", "author CIDRs are not implemented")
+			return problem(Unsupported, f+".cidr", "author CIDRs are unsupported on Proxmox: operator routing requires disjoint allocated ranges")
 		}
 		if v.Egress != "" && !Contains(c.Egress, v.Egress) {
 			return problem(Unsupported, f+".egress", "egress mode is not implemented")
@@ -66,7 +67,7 @@ func CheckCapabilities(l Lab, platform string) error {
 			return err
 		}
 		if len(v.NICs) > c.MaxNICs {
-			return problem(Unsupported, fmtPathIndex(f+".nics", c.MaxNICs), "multiple NICs are not implemented")
+			return problem(Unsupported, fmtPathIndex(f+".nics", c.MaxNICs), "NIC count exceeds platform limit")
 		}
 		if v.Forwarding && !c.Forwarding {
 			return problem(Unsupported, f+".forwarding", "forwarding is not implemented")

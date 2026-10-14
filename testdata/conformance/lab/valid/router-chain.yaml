@@ -1,0 +1,26 @@
+version: 3
+name: routed
+networks: {a: {}, b: {}, c: {}}
+images:
+  base: {base: ubuntu-24.04}
+machines:
+  a:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    nics: [{network: a}]
+  r1:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    forwarding: true
+    nics: [{network: a}, {network: b}]
+  r2:
+    image: base
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    forwarding: true
+    nics: [{network: b}, {network: c}]

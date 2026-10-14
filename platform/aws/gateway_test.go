@@ -31,10 +31,13 @@ type networkEC2 struct {
 	terminated       map[string]bool
 	defaults         map[string]string
 	subnets          map[string]string
+	routes           map[string]map[string]string
+	instanceNICs     map[string]url.Values
+	routeReject      string
 }
 
 func newNetworkEC2(t *testing.T) (*networkEC2, *ec2.Client) {
-	f := &networkEC2{t: t, terminated: map[string]bool{}, defaults: map[string]string{}, subnets: map[string]string{}, public: "192.0.2.5"}
+	f := &networkEC2{t: t, terminated: map[string]bool{}, defaults: map[string]string{}, subnets: map[string]string{}, public: "192.0.2.5", routes: map[string]map[string]string{}, instanceNICs: map[string]url.Values{}}
 	api := ec2.New(ec2.Options{Region: "us-east-1", Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""), RetryMaxAttempts: 1, HTTPClient: optionHTTPClient(f.do)})
 	return f, api
 }
@@ -109,6 +112,7 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 		case "endpoint":
 			body = "<vpcEndpoint><vpcEndpointId>" + id + "</vpcEndpointId></vpcEndpoint>"
 		case "instance":
+			f.instanceNICs[id] = v
 			body = "<instancesSet><item><instanceId>" + id + "</instanceId></item></instancesSet>"
 		}
 		if f.loss == action+":"+component || f.loss == action+":"+o.cidr || f.loss == action+":"+o.role {
@@ -150,6 +154,9 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 						}
 						item += "<item><destinationCidrBlock>0.0.0.0/0</destinationCidrBlock><" + target + ">" + dest + "</" + target + "></item>"
 					}
+					for destination, target := range f.routes[o.id] {
+						item += "<item><destinationCidrBlock>" + destination + "</destinationCidrBlock><networkInterfaceId>" + target + "</networkInterfaceId></item>"
+					}
 					item += "</routeSet>"
 				case "sg":
 					item = "<groupId>" + o.id + "</groupId><vpcId>vpc-1</vpcId><ipPermissionsEgress><item><ipProtocol>-1</ipProtocol><ipRanges><item><cidrIp>0.0.0.0/0</cidrIp></item></ipRanges></item></ipPermissionsEgress>"
@@ -157,6 +164,24 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 					item = "<vpcEndpointId>" + o.id + "</vpcEndpointId><vpcId>vpc-1</vpcId>"
 				case "instance":
 					item = "<instanceId>" + o.id + "</instanceId><instanceState><name>running</name><code>16</code></instanceState><ipAddress>" + f.public + "</ipAddress><privateIpAddress>10.77.0.11</privateIpAddress><networkInterfaceSet><item><networkInterfaceId>eni-gateway</networkInterfaceId></item></networkInterfaceSet>"
+				}
+				if kind == "instance" && strings.HasPrefix(o.role, "machine:") {
+					request := f.instanceNICs[o.id]
+					if request.Get("NetworkInterface.1.PrivateIpAddress") != "" {
+						enis := ""
+						for j := 1; j <= 8; j++ {
+							prefix := fmt.Sprintf("NetworkInterface.%d.", j)
+							address := request.Get(prefix + "PrivateIpAddress")
+							if address == "" {
+								break
+							}
+							enis += "<item><networkInterfaceId>eni-" + o.id + fmt.Sprint(j) + "</networkInterfaceId><vpcId>vpc-1</vpcId><subnetId>" + request.Get(prefix+"SubnetId") + "</subnetId><privateIpAddress>" + address + "</privateIpAddress><attachment><deviceIndex>" + request.Get(prefix+"DeviceIndex") + "</deviceIndex><deleteOnTermination>true</deleteOnTermination></attachment></item>"
+						}
+						a := strings.Index(item, "<networkInterfaceSet>")
+						b := strings.Index(item, "</networkInterfaceSet>") + len("</networkInterfaceSet>")
+						item = item[:a] + "<networkInterfaceSet>" + enis + "</networkInterfaceSet>" + item[b:]
+						item = strings.Replace(item, "<privateIpAddress>10.77.0.11</privateIpAddress>", "<privateIpAddress>"+request.Get("NetworkInterface.1.PrivateIpAddress")+"</privateIpAddress>", 1)
+					}
 				}
 				item += fakeTags(o.role, o.component)
 				if kind == "instance" {
@@ -180,10 +205,21 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 			if target == "" {
 				target = v.Get("NetworkInterfaceId")
 			}
-			f.defaults[v.Get("RouteTableId")] = target
+			if destination := v.Get("DestinationCidrBlock"); destination == "0.0.0.0/0" {
+				f.defaults[v.Get("RouteTableId")] = target
+			} else {
+				if f.routeReject != "" {
+					errorCode = f.routeReject
+				} else {
+					if f.routes[v.Get("RouteTableId")] == nil {
+						f.routes[v.Get("RouteTableId")] = map[string]string{}
+					}
+					f.routes[v.Get("RouteTableId")][destination] = target
+				}
+			}
 		case "AssociateRouteTable":
 			f.subnets[v.Get("RouteTableId")] = v.Get("SubnetId")
-		case "AttachInternetGateway", "DetachInternetGateway", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupEgress", "RevokeSecurityGroupIngress", "ModifyInstanceAttribute":
+		case "AttachInternetGateway", "DetachInternetGateway", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupEgress", "RevokeSecurityGroupIngress", "ModifyInstanceAttribute", "ModifyNetworkInterfaceAttribute":
 		case "DeleteSubnet", "DeleteRouteTable", "DeleteSecurityGroup", "DeleteInternetGateway", "DeleteVpc", "DeleteVpcEndpoints", "TerminateInstances":
 			id := ""
 			for _, key := range []string{"SubnetId", "RouteTableId", "GroupId", "InternetGatewayId", "VpcId", "VpcEndpointId.1", "InstanceId.1"} {
@@ -304,7 +340,7 @@ func TestPrivateLayoutAndGatewayRequests(t *testing.T) {
 					if strings.Contains(text, "masquerade") != internet {
 						t.Fatal("wrong NAT policy", internet)
 					}
-				case "ModifyInstanceAttribute":
+				case "ModifyInstanceAttribute", "ModifyNetworkInterfaceAttribute":
 					seenModify = true
 					requestValue(t, v, "SourceDestCheck.Value", "false")
 				}

@@ -42,11 +42,18 @@ func (p *Provider) gateway(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		if len(images.Images) != 1 || images.Images[0].RootDeviceName == nil {
 			return "", fmt.Errorf("gateway AMI root device unavailable")
 		}
-		cidrs := []string{}
-		if lc.InternetAccess(c.Source.Lab) {
-			cidrs = append(cidrs, "10.77.0.0/24")
+		cidrs, all := []string{}, []string{}
+		planned, _, _, err := lc.AWSLayout(c.Source.Lab)
+		if err != nil {
+			return "", err
 		}
-		ud, err := guest.GatewayCloudInit(c.Machine, cidrs)
+		for _, seg := range planned {
+			all = append(all, seg.CIDR)
+			if seg.Egress == "internet" {
+				cidrs = append(cidrs, seg.CIDR)
+			}
+		}
+		ud, err := guest.GatewayCloudInit(c.Machine, cidrs, all...)
 		if err != nil {
 			return "", err
 		}
@@ -97,9 +104,19 @@ func (p *Provider) gateway(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	}
 	// Install the lab default only for an explicitly enabled network. The edge
 	// default always targets the IGW and is independent of future lab networks.
-	if lc.InternetAccess(c.Source.Lab) {
-		if err = ensureENIRoute(ctx, a, c.Owner, n.VPC, n.Route, identity.ENI, waitRouteRetry); err != nil {
-			return result, err
+	if len(n.Segments) == 0 {
+		if lc.InternetAccess(c.Source.Lab) {
+			if err = ensureENIRoute(ctx, a, c.Owner, n.VPC, n.Route, identity.ENI, waitRouteRetry); err != nil {
+				return result, err
+			}
+		}
+	} else {
+		for _, seg := range n.Segments {
+			if seg.Egress == "internet" {
+				if err = ensureENIRoute(ctx, a, c.Owner, n.VPC, seg.Route, identity.ENI, waitRouteRetry); err != nil {
+					return result, err
+				}
+			}
 		}
 	}
 	if err = remote.Wait(ctx, result.Resource.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey); err != nil {
