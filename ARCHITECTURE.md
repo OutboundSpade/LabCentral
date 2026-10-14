@@ -693,7 +693,7 @@ identifiers belong outside tracked source.
 | Hosted identity and meetings | Real OIDC, revocation, seat switching and retained desktop workspaces; twenty desktops across five teams on an earlier layout | Current-layout cohort qualification and configurable group policy |
 | Hosted practice/scenarios | Individual AWS attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts and full weekly quota exhaustion/reset |
 | Hosted coach/desktops | Native terminal input/resize/reconnect/revocation and cold/reboot desktop samples | Generalized launch latency and classroom concurrency |
-| Multiple networks and routers | None yet; planning, adapter requests, routes and recovery have local coverage | AWS two-network lab with a router and one-sided egress, author CIDRs, reboot and interrupted multi-NIC recovery; the same on Proxmox |
+| Multiple networks and routers | AWS: two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot and complete cleanup | Interrupted multi-NIC recovery on AWS; all of it on Proxmox |
 | Proxmox | No complete live lifecycle qualification recorded | All examples, isolation, noVNC input/auth/revocation, options and egress |
 | Durability and scheduler | Local failure, persistence, response-loss, authorization and race coverage; prior hosted restore rehearsal | Full native failure matrix and configured aggregate capacity ceilings |
 

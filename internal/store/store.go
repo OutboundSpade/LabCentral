@@ -32,7 +32,10 @@ func Open(root string) (*Store, error) {
 	if err := os.Chmod(root, 0700); err != nil {
 		return nil, err
 	}
-	db, e := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: filepath.Join(root, "state.db")}).String()+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(FULL)")
+	// Immediate transactions take the write lock at BEGIN and wait for it, instead of
+	// failing with SQLITE_BUSY when a read transaction later needs to write while another
+	// process (for example a second CLI command on the same state) is writing.
+	db, e := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: filepath.Join(root, "state.db")}).String()+"?_txlock=immediate&_pragma=busy_timeout(30000)&_pragma=foreign_keys(1)&_pragma=synchronous(FULL)")
 	if e != nil {
 		return nil, e
 	}

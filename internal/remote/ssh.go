@@ -159,6 +159,12 @@ func Run(ctx context.Context, c *ssh.Client, command string) ([]byte, error) {
 func Wait(ctx context.Context, address, user string, private []byte, host string) error {
 	return WaitWithDialer(ctx, &Dialer{}, address, user, private, host)
 }
+
+// cloud-init exits 2 for "done" with recoverable warnings, such as an unreachable IPv6
+// metadata endpoint on a network without a default route. Only a hard error (exit 1)
+// or a missing provisioned user leaves the guest unready.
+const readinessCommand = `cloud-init status --wait >/dev/null; rc=$?; { [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; } && test -d /home/lab`
+
 func WaitWithDialer(ctx context.Context, d *Dialer, address, user string, private []byte, host string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -167,7 +173,7 @@ func WaitWithDialer(ctx context.Context, d *Dialer, address, user string, privat
 	for {
 		c, e := d.Dial(ctx, address, user, private, host)
 		if e == nil {
-			_, e = Run(ctx, c, "cloud-init status --wait >/dev/null && test -d /home/lab")
+			_, e = Run(ctx, c, readinessCommand)
 			c.Close()
 			if e == nil {
 				return nil

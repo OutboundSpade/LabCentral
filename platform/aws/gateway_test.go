@@ -220,7 +220,25 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 		case "AssociateRouteTable":
 			f.subnets[v.Get("RouteTableId")] = v.Get("SubnetId")
 		case "AttachInternetGateway", "DetachInternetGateway", "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupEgress", "RevokeSecurityGroupIngress", "ModifyInstanceAttribute", "ModifyNetworkInterfaceAttribute":
+		case "DeleteRoute":
+			if destination := v.Get("DestinationCidrBlock"); destination == "0.0.0.0/0" {
+				delete(f.defaults, v.Get("RouteTableId"))
+			} else {
+				delete(f.routes[v.Get("RouteTableId")], destination)
+			}
 		case "DeleteSubnet", "DeleteRouteTable", "DeleteSecurityGroup", "DeleteInternetGateway", "DeleteVpc", "DeleteVpcEndpoints", "TerminateInstances":
+			// Like EC2, a subnet cannot be deleted while a more-specific route
+			// to a router ENI still references it.
+			if action == "DeleteSubnet" {
+				blocked := false
+				for _, routes := range f.routes {
+					blocked = blocked || len(routes) > 0
+				}
+				if blocked {
+					errorCode = "DependencyViolation"
+					break
+				}
+			}
 			id := ""
 			for _, key := range []string{"SubnetId", "RouteTableId", "GroupId", "InternetGatewayId", "VpcId", "VpcEndpointId.1", "InstanceId.1"} {
 				if v.Get(key) != "" {

@@ -925,6 +925,27 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 			return lc.Result{}, fmt.Errorf("endpoint deletion incomplete")
 		}
 	}
+	// Routes to router and gateway ENIs (including routes more specific than VPC-local
+	// routing) reference subnets and must go before those subnets can be deleted. Only
+	// routes in owned route tables of this VPC are removed; local and IGW routes stay.
+	tables, err := a.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{Filters: filters(owner, "network")})
+	if err != nil {
+		return lc.Result{}, err
+	}
+	for _, x := range tables.RouteTables {
+		if aw.ToString(x.VpcId) != c.Prior.ID {
+			return lc.Result{}, fmt.Errorf("route target mismatch")
+		}
+		for _, route := range x.Routes {
+			if route.DestinationCidrBlock == nil || aw.ToString(route.NetworkInterfaceId) == "" {
+				continue
+			}
+			_, err = a.DeleteRoute(ctx, &ec2.DeleteRouteInput{RouteTableId: x.RouteTableId, DestinationCidrBlock: route.DestinationCidrBlock})
+			if err != nil && !apiCode(err, "InvalidRoute.NotFound") {
+				return lc.Result{}, err
+			}
+		}
+	}
 	sub, err := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{Filters: filters(owner, "network")})
 	if err != nil {
 		return lc.Result{}, err

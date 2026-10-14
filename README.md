@@ -88,8 +88,8 @@ Provider credentials stay in the operator's environment and the provider process
 | Windows guests | Planned | Planned |
 
 Guests are Ubuntu 24.04 amd64. The operator machine is Linux amd64. Multiple networks
-and routers are implemented on both platforms but have not yet been verified on real
-accounts. See
+and routers have been verified on AWS; Proxmox support is implemented but not yet
+verified on a real cluster. See
 [ARCHITECTURE.md](ARCHITECTURE.md#qualification-status) for what has been verified on
 real platforms and what is only covered by local tests.
 
