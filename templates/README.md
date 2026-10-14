@@ -1,52 +1,54 @@
 # Standard template library
 
-Each directory is a self-contained, portable lab with a student README,
-`lab.yaml`, image playbooks, and private hosted `instructor.yaml` metadata.
-The Go library loads the portable source; hosted imports extract instructor
-material before building or providing student downloads.
+Each directory is a portable lab with a student README.md, `lab.yaml`, image
+playbooks and private hosted `instructor.yaml` metadata. The Go library loads
+portable source; hosted imports extract instructor material before building
+images or providing student downloads.
 
-`ccdc-service-recovery` is a small Linux CCDC preparation lab with a workstation,
-a branch services machine, three baseline stages, two independent service breaks,
-native guest checks, and three randomized combinations including a combined
-outage. It was imported into the hosted library and both native AWS images were
-built on 2026-10-13. Real OIDC and rendered student desktop acceptance confirmed
-the combined outage, both repairs and native checks, followed by a fresh web-only
-attempt with independent progress. Owned test allocations were cleaned up.
-The subsequent DCV startup fix passed a real student's first cold desktop launch
-on an untouched AWS workstation. Larger cohorts and Proxmox remain unqualified.
+`ccdc-service-recovery` is a Linux CCDC preparation lab with a workstation, a
+services machine, three baseline stages, two independent service breaks, native
+guest checks and three randomized combinations, including a combined outage.
+Source presence and local validation do not establish live platform qualification.
 
-To publish this template through the existing hosted importer, place its directory
-under `templates/` in the configured private template repository, commit that
-revision, then refresh and build it through Admin → Templates. No publication
-editor or manually duplicated stages are required. Templates remain pinned to
-that imported commit; existing meetings and attempts keep their revision.
+To import a template, place its directory under `templates/` in your configured
+template repository, commit the revision, then refresh and build through
+Admin → Templates. Each import pins that commit; existing meetings and attempts
+retain their revision. Stages stay with the template, without a publication editor
+or manually duplicated teaching material.
 
-Templates use version 3 instructor manifests with `library` metadata:
-category, beginner/intermediate/advanced difficulty, estimated minutes and up to
-twelve unique tags. Stages own instructions, accepted answers or check references,
-and optional solutions. Baseline stages have no linked break.
+Templates use instructor format v3. `visibility.audience` selects students or
+coaches, and only coach revisions may hide machines. `practice.desktopMachine`
+names a visible, desktop-enabled machine whenever stages or scenarios exist.
+Optional `library` metadata supplies category, beginner/intermediate/advanced
+difficulty, estimated minutes and up to twelve unique tags.
 
-Randomized `scenarios` declare 2–32 distinct variants. Each variant identifies
-1–8 existing `breaks` in execution order, its self-paced `stages` and an explicit
-`compatible: true` assertion. Every break must have an action recovery stage.
-Certify combinations by testing the shared reset followed by all selected breaks:
-break playbooks must not reset the lab or undo another selected break. The server
-runs the reset once, applies the saved combination, and makes the desktop ready
-only after confirmed completion. It will not generate arbitrary guest code or
-reapply an uncertain mutation. A failed or interrupted application requires
-confirmed cleanup and a new attempt.
+Stages own instructions, optional solutions and exactly one `completion`: an
+`answer` with accepted alternatives and case policy, a pinned `check`, or
+`instructor: true`. Baseline practice excludes break-linked stages and instructor
+checkpoints. Keep accepted answers and private programs out of student handovers;
+solutions become visible only through an explicit authorized reveal.
 
-Keep provider credentials and environment configuration outside template source.
-Qualify new images, breaks, combined cases, real OIDC and rendered desktop sessions
-in an explicitly configured test environment before claiming live acceptance.
+Randomized `scenarios` declare 2–32 distinct variants. Each selects 1–8 existing
+`breaks` in execution order, self-paced `stages` and `compatible: true`. Every
+selected break needs an action recovery stage. Qualify combinations by running the
+shared reset followed by all selected breaks: break playbooks must not reset the
+lab or undo another selected break. The server resets once and publishes readiness
+only after confirmed application. An uncertain mutation requires confirmed cleanup
+and a new attempt.
 
-Visibility is required. `practice.desktopMachine` names a visible, desktop-enabled
-machine whenever stages or scenarios exist. Stages use exactly one `completion`:
-`answer` with accepted alternatives and case policy, `check` or `instructor: true`.
-Guest steps always deliver their playbook; `files` adds private helpers and `assets`
-selects portable files under `template/`. Generated identities and extension context
-use `labcentral/`. Reserved paths and payload collisions are rejected. A coach
-revision’s visible guests cannot receive hidden identities or private image files.
-Validate each author directory with `labcentral validate --template DIRECTORY`;
-validation preserves the author’s private files. Hosted import isolates directory
-errors, exposes them to administrators, and stores each revision in one transaction.
+Guest steps always deliver their playbook. `files` adds private helpers, `assets`
+selects portable files under `template/`, and generated identities/context use
+`labcentral/`. Reserved paths and payload collisions fail validation. Visible
+guests in hidden-machine templates require explicit image file and hostname-peer
+selections excluding private topology and programs. Structural validation does
+not inspect file contents; native image disclosure checks remain necessary.
+
+Validate an author directory with `labcentral validate --template DIRECTORY`;
+validation preserves private author files. Hosted import isolates directory errors,
+reports them to administrators and saves each valid revision in one transaction.
+See [the instructor contract](../ARCHITECTURE.md#instructor-format-v3-and-disclosure).
+
+Keep environment configuration and provider credentials outside template source.
+Qualify images, guest programs and combined breaks in an explicitly configured
+test environment. Hosted release qualification requires real OIDC and rendered
+desktop sessions; local fixtures cannot substitute for those checks.
