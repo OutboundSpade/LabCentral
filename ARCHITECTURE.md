@@ -425,6 +425,18 @@ DTOs call exercises breaks; historical job/object keys stay readable. Example Br
 fallback programs and publication authoring/release/unpublish endpoints are removed;
 stored attempts, releases, progress and cleanup remain readable.
 
+**Format v3 was deployed to the hosted AWS service on 2026-10-14** over the idle
+installation, after a fresh backup, with its retained state. Real administrator and
+student OIDC sessions imported all three migrated templates without failures, kept
+earlier revisions listed and hid the coach-only template from students. The
+service-recovery images were rebuilt, and one student scenario attempt was prepared:
+its reset and selected break ran through the v3 guest payload, and the student
+opened the rendered DCV desktop and repaired the break by keyboard. The v3 guest
+check failed before the repair and passed after it, completing the stage. The
+allocation was stopped with confirmed native cleanup and the temporary identities
+were removed. Example Branch v3 images, meetings, coach templates, Proxmox and larger
+cohorts were not qualified in this rollout.
+
 ## Proposals after the foundation
 
 Registries, additional hosted platforms, classroom governance beyond published
