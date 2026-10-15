@@ -559,7 +559,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 				if err := ValidateWindowsDCV(e.Build); err != nil {
 					return p, err
 				}
-				policy = "windows-console-1:" + e.Build.WindowsDCVURL + ":" + e.Build.WindowsDCVSHA256
+				policy = "windows-console-2:" + e.Build.WindowsDCVURL + ":" + e.Build.WindowsDCVSHA256
 			}
 		}
 		buildIdentity := buildEnvironment(e)

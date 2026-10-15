@@ -92,3 +92,17 @@ func TestWindowsHostnameRebootPrecedesSSHExposure(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsRoutesUseTheDefaultPersistentCreationStore(t *testing.T) {
+	m := lc.PlannedMachine{Name: "server", PublicKey: "public", HostPrivateKey: "private", HostPublicKey: "host public", NICs: []lc.PlannedNIC{{Address: "10.77.0.12", CIDR: "10.77.0.0/24", Routes: []lc.PlannedRoute{{CIDR: "10.77.255.0/28", Via: "10.77.0.1"}}}}}
+	data, err := WindowsUserData(m, []string{"10.77.255.14/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(data, "-PolicyStore PersistentStore") {
+		t.Fatal("New-NetRoute rejects explicit PersistentStore")
+	}
+	if !strings.Contains(data, `New-NetRoute -InterfaceIndex $address.InterfaceIndex -DestinationPrefix $route.cidr -NextHop $route.via | Out-Null`) {
+		t.Fatal("persistent route creation missing")
+	}
+}

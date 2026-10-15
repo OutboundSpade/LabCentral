@@ -36,7 +36,7 @@ func EncodedSyntax(t *testing.T, command string) string {
 	if len(parts) != 2 {
 		t.Fatal("expected encoded PowerShell command")
 	}
-	b, err := base64.StdEncoding.DecodeString(parts[1])
+	b, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(parts[1], "; exit $LASTEXITCODE"))
 	if err != nil || len(b)%2 != 0 {
 		t.Fatal("invalid encoded PowerShell", err)
 	}

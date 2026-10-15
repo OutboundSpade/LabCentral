@@ -3,7 +3,11 @@ package windows
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"github.com/OutboundSpade/LabCentral/v2/internal/pscheck"
+	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -15,7 +19,7 @@ func decodeCommand(t *testing.T, command string) string {
 	if len(parts) != 2 {
 		t.Fatal("unencoded command")
 	}
-	b, err := base64.StdEncoding.DecodeString(parts[1])
+	b, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(parts[1], "; exit $LASTEXITCODE"))
 	if err != nil || len(b)%2 != 0 {
 		t.Fatal("invalid UTF16", err)
 	}
@@ -62,3 +66,30 @@ func TestLauncherLockTimeoutAndProcessOwnership(t *testing.T) {
 }
 
 func TestLauncherPowerShellSyntax(t *testing.T) { pscheck.Syntax(t, StepLauncher) }
+
+func TestSSHCommandPropagatesPowerShellExitStatus(t *testing.T) {
+	if !strings.HasSuffix(Command("exit 42"), "; exit $LASTEXITCODE") {
+		t.Fatal("SSH default shell would collapse failure classification")
+	}
+}
+func TestNativeWindowsDefaultShellExitStatus(t *testing.T) {
+	shell := os.Getenv("LABCENTRAL_TEST_WINDOWS_POWERSHELL")
+	if runtime.GOOS != "windows" || shell == "" {
+		t.Skip("requires explicitly configured Windows guest")
+	}
+	for _, code := range []int{0, 42, 43} {
+		cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-Command", Command(fmt.Sprintf("exit %d", code)))
+		err := cmd.Run()
+		got := 0
+		if err != nil {
+			if ex, ok := err.(*exec.ExitError); ok {
+				got = ex.ExitCode()
+			} else {
+				t.Fatal(err)
+			}
+		}
+		if got != code {
+			t.Fatalf("default shell status %d, want %d", got, code)
+		}
+	}
+}

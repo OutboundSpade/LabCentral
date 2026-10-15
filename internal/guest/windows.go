@@ -113,17 +113,7 @@ if ($p.Desktop) {
  if (!(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object Name -eq ($env:COMPUTERNAME + '\lab'))) {Add-LocalGroupMember -SID 'S-1-5-32-544' -Member lab}
  New-NetFirewallRule -Name LabCentral-DCV -DisplayName 'LabCentral DCV gateway' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8443 -RemoteAddress $p.Management | Out-Null
 }
-if (!$p.Build -and $p.NICs.Count -gt 0) {
- $address=Get-NetIPAddress -AddressFamily IPv4 | Where-Object IPAddress -eq $p.NICs[0].address | Select-Object -First 1
- if (!$address) {throw 'management NIC is unavailable'}
- foreach ($route in $p.NICs[0].routes) {
-  $existing=Get-NetRoute -InterfaceIndex $address.InterfaceIndex -DestinationPrefix $route.cidr -ErrorAction SilentlyContinue
-  if ($existing) {if (@($existing | Where-Object NextHop -ne $route.via).Count -gt 0) {throw 'route ownership mismatch'}} else {
-   New-NetRoute -InterfaceIndex $address.InterfaceIndex -DestinationPrefix $route.cidr -NextHop $route.via -PolicyStore PersistentStore | Out-Null
-  }
- }
-}
-if (!$p.Build) {[IO.File]::WriteAllText("$env:SystemRoot\System32\drivers\etc\hosts",$p.Hosts)}
+` + windows.Routes + `if (!$p.Build) {[IO.File]::WriteAllText("$env:SystemRoot\System32\drivers\etc\hosts",$p.Hosts)}
 Set-Service sshd -StartupType Automatic
 Start-Service sshd
 if ((Get-Service sshd).Status -ne 'Running') {throw 'sshd is not ready'}

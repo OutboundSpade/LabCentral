@@ -10,7 +10,13 @@ import (
 
 // Command avoids both SSH's default shell parsing and interpolation of payload data.
 func Command(program string) string {
-	u := utf16.Encode([]rune(program))
+	return ProcessCommand(program) + "; exit $LASTEXITCODE"
+}
+
+// ProcessCommand invokes PowerShell directly; Command also propagates its status
+// through the PowerShell default shell used by Windows OpenSSH.
+func ProcessCommand(program string) string {
+	u := utf16.Encode([]rune("$ProgressPreference='SilentlyContinue'\n" + program))
 	b := make([]byte, len(u)*2)
 	for i, v := range u {
 		binary.LittleEndian.PutUint16(b[i*2:], v)

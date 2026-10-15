@@ -11,20 +11,27 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 )
 
+// Explicit foreach enumeration also handles PowerShell 5.1's preserved array object.
+const windowsSessionJSON = `
+ $parsed=($output -join [Environment]::NewLine) | ConvertFrom-Json
+ $sessions=@()
+ foreach ($session in $parsed) {
+  $account=New-Object Security.Principal.NTAccount([string]$session.owner)
+  if ($account.Translate([Security.Principal.SecurityIdentifier]).Value -eq (Get-LocalUser lab).SID.Value) {$session.owner='lab'}
+  $sessions += $session
+ }
+ ConvertTo-Json -InputObject $sessions -Depth 8 -Compress
+`
+
 const WindowsCLI = `& 'C:\Program Files\NICE\DCV\Server\bin\dcv.exe' `
-const WindowsCertificate = `C:\Windows\System32\config\systemprofile\AppData\Local\NICE\dcv\dcv.pem`
+const WindowsCertificate = `C:\Windows\System32\config\systemprofile\AppData\Local\NICE\dcv\private\dcv.pem`
 
 func WindowsState(ctx context.Context, run Run) (bool, bool, error) {
 	output, err := run(ctx, windows.Command(`$ErrorActionPreference='Stop'
 $output=`+WindowsCLI+`list-sessions -j
 if ($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
 if (![string]::IsNullOrWhiteSpace(($output -join [Environment]::NewLine))) {
- $sessions=@(($output -join [Environment]::NewLine) | ConvertFrom-Json)
- foreach ($session in $sessions) {
-  $account=New-Object Security.Principal.NTAccount([string]$session.owner)
-  if ($account.Translate([Security.Principal.SecurityIdentifier]).Value -eq (Get-LocalUser lab).SID.Value) {$session.owner='lab'}
- }
- ConvertTo-Json -InputObject @($sessions) -Depth 8 -Compress
+`+windowsSessionJSON+`
 }`))
 	if err != nil {
 		return false, false, err

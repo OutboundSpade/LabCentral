@@ -132,7 +132,9 @@ base's OS; environment bases default to Linux. Windows bindings require a pinned
 AMI ID/identity and `user: Administrator`. Operators resolve the official regional
 SSM parameter `/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base`
 once and retain its AMI ID outside source. Windows build capacity must be declared
-in the environment's type allowlist.
+in the environment's type allowlist. Runtime guest routes are created in both the
+active and persistent Windows stores; an existing conflicting next hop fails
+bootstrap instead of being overwritten.
 
 
 ### Platform options and extensions
@@ -395,7 +397,11 @@ mutation of a replacement account. Windows
 cannot provide simultaneous per-user virtual workspaces. Readiness requires an
 observed running console with the expected owner/type, without Linux's X-display
 requirement. Unknown status never creates a replacement session. The existing
-DCV relay and hosted Web SDK use the certificate fetched over pinned SSH.
+DCV relay and hosted Web SDK use the certificate fetched over pinned SSH from
+SYSTEM’s `NICE\dcv\private` directory. Capture removes that directory’s certificate
+and private key; Windows desktop image policy version 2 invalidates earlier
+captures. PowerShell 5.1 session JSON explicitly enumerates both empty and populated
+arrays, and account ownership is normalized by SID.
 Revocation verifies ownership, disables the account, closes the observed console,
 logs off the local Windows session and terminates remaining processes; profile
 retention follows access policy. Repeated cleanup reconciles confirmed absence.
@@ -639,7 +645,9 @@ limits), uses an exclusive lock-file handle and a private per-run temporary dire
 and passes `$env:LABCENTRAL_STEP_DIR`. A kill-on-close Windows job object owns the
 complete author process tree before its execution gate opens. Timeout or bounded
 output overflow kills the job and cleans staging; normal nonzero exits map to check
-failure, while launcher/transport/lock/timeout failures remain unknown. Stage checks,
+failure, while launcher/transport/lock/timeout failures remain unknown. The
+encoded SSH command propagates its child exit code through the Windows PowerShell
+default shell and suppresses module progress records so structured output stays valid. Stage checks,
 meeting checks, breaks, resets and scenario preparation select by the pinned machine
 OS. `guestHosts`/context JSON and file/asset paths retain Linux's contract. Expired steps have unknown outcomes;
 uncertain scenario mutation requires cleanup. There is no generic remote-command job API

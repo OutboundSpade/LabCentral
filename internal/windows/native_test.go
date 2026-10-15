@@ -36,7 +36,7 @@ func TestNativeWindowsStepFailureTimeoutLockAndCleanup(t *testing.T) {
 			Content []byte `json:"content"`
 		}{{"check.ps1", []byte(script)}}, "check.ps1", timeout})
 		program := "$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd())) | ConvertFrom-Json\n" + StepLauncher
-		args := strings.Fields(Command(program))
+		args := strings.Fields(ProcessCommand(program))
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 		cmd := exec.CommandContext(ctx, shell, args[1:]...)

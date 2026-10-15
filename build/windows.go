@@ -94,7 +94,7 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 	// skip_create_ami is never used: Packer waits for native stopped state to capture.
 	ps(`Remove-Item -Recurse -Force 'C:\ProgramData\LabCentral'`,
 		`Get-ChildItem 'C:\ProgramData\ssh\*authorized_keys','C:\ProgramData\ssh\ssh_host_*','C:\Users\*\.ssh\authorized_keys' -ErrorAction SilentlyContinue | Remove-Item -Force`,
-		`if (Get-Service dcvserver -ErrorAction SilentlyContinue) {Stop-Service dcvserver; Remove-Item -Force 'C:\Windows\System32\config\systemprofile\AppData\Local\NICE\dcv\dcv.pem','C:\Windows\System32\config\systemprofile\AppData\Local\NICE\dcv\dcv.key' -ErrorAction SilentlyContinue}`,
+		`if (Get-Service dcvserver -ErrorAction SilentlyContinue) {Stop-Service dcvserver; Remove-Item -Force 'C:\Windows\System32\config\systemprofile\AppData\Local\NICE\dcv\private\dcv.pem','C:\Windows\System32\config\systemprofile\AppData\Local\NICE\dcv\private\dcv.key' -ErrorAction SilentlyContinue}`,
 		`& 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' sysprep --shutdown --block`,
 		`if ($LASTEXITCODE -ne 0) {throw 'EC2Launch generalize failed'}`)
 	// Sysprep closes the SSH connection as the instance shuts down.

@@ -74,6 +74,9 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 				}
 				if strings.Contains(text, "sysprep --shutdown --block") {
 					sysprep = i
+					if !strings.Contains(text, `dcv\\private\\dcv.pem`) || !strings.Contains(text, `dcv\\private\\dcv.key`) {
+						t.Fatal("DCV private certificate not sanitized")
+					}
 					if !strings.Contains(text, "authorized_keys") || !strings.Contains(text, "Remove-Item -Recurse") {
 						t.Fatal("capture not sanitized")
 					}

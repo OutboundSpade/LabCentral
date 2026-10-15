@@ -35,7 +35,7 @@ foreach ($rule in $rules) {
  if ($rule.IdentityReference.Value -notin 'S-1-5-18','S-1-5-32-544' -or $rule.AccessControlType -ne 'Allow' -or $rule.FileSystemRights -ne 'FullControl') {throw 'unsafe host key access rule'}
 }
 `
-	args := strings.Fields(Command(program))
+	args := strings.Fields(ProcessCommand(program))
 	if out, err := exec.Command(shell, args[1:]...).CombinedOutput(); err != nil {
 		t.Fatalf("native host key ACL: %s: %v", out, err)
 	}
