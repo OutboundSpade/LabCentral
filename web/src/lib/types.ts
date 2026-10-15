@@ -76,6 +76,7 @@ export interface Template {
   removedAt?: string | null;
   removing: boolean;
   latest: boolean;
+  retired: boolean;
   imagesReady: number;
   imagesTotal: number;
   removalBlocked?: string;

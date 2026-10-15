@@ -546,6 +546,22 @@ func TestV2StateRefreshKeepsPinnedRevisions(t *testing.T) {
 	if len(admin.Templates) != 7 || admin.Meeting.Template == digest(commit + ":branch-services")[:24] {
 		t.Fatal("refresh changed meeting pin", admin.Meeting)
 	}
+	// Retained v2 revisions are marked retired; freshly imported v3 revisions are not.
+	retired := 0
+	for _, tpl := range admin.Templates {
+		if tpl.Retired {
+			retired++
+		}
+		if tpl.Commit == commit && tpl.Retired {
+			t.Fatal("freshly imported v3 revision marked retired", tpl.Name)
+		}
+		if tpl.Commit != commit && !tpl.Retired {
+			t.Fatal("retained v2 revision not marked retired", tpl.Name)
+		}
+	}
+	if retired != 4 {
+		t.Fatal("retired revisions", retired)
+	}
 	decodeLearning[LearningCatalog](t, request(s, "GET", "/api/learning", "", "", ""), 200)
 }
 

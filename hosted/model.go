@@ -68,19 +68,21 @@ type Membership struct {
 	Switching   bool   `json:"switching"`
 }
 type Template struct {
-	Instructor     *InstructorView `json:"instructor,omitempty"`
-	Operation      *Job            `json:"operation,omitempty"`
-	BuildsPending  int             `json:"buildsPending"`
-	CommitTitle    string          `json:"commitTitle,omitempty"`
-	CommittedAt    *time.Time      `json:"committedAt,omitempty"`
-	ImportedAt     *time.Time      `json:"importedAt,omitempty"`
-	BuiltAt        *time.Time      `json:"builtAt,omitempty"`
-	RemovedAt      *time.Time      `json:"removedAt,omitempty"`
-	Removing       bool            `json:"removing"`
-	Latest         bool            `json:"latest"`
-	ImagesReady    int             `json:"imagesReady"`
-	ImagesTotal    int             `json:"imagesTotal"`
-	RemovalBlocked string          `json:"removalBlocked,omitempty"`
+	Instructor    *InstructorView `json:"instructor,omitempty"`
+	Operation     *Job            `json:"operation,omitempty"`
+	BuildsPending int             `json:"buildsPending"`
+	CommitTitle   string          `json:"commitTitle,omitempty"`
+	CommittedAt   *time.Time      `json:"committedAt,omitempty"`
+	ImportedAt    *time.Time      `json:"importedAt,omitempty"`
+	BuiltAt       *time.Time      `json:"builtAt,omitempty"`
+	RemovedAt     *time.Time      `json:"removedAt,omitempty"`
+	Removing      bool            `json:"removing"`
+	Latest        bool            `json:"latest"`
+	// Retired revisions use a retired source format: history and cleanup only.
+	Retired        bool   `json:"retired"`
+	ImagesReady    int    `json:"imagesReady"`
+	ImagesTotal    int    `json:"imagesTotal"`
+	RemovalBlocked string `json:"removalBlocked,omitempty"`
 
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`

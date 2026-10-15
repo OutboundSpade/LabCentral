@@ -100,6 +100,11 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 			t.Operation = &operation
 		}
 		t.Latest = heads[t.Name] == t.ID
+		if err := s.actionableRevision(ctx, t.ID); errors.Is(err, errRetainedRevision) {
+			t.Retired = true
+		} else if err != nil {
+			return nil, err
+		}
 		keys, e := s.templateKeys(ctx, t.ID)
 		if e != nil {
 			if errors.Is(e, errRetainedRevision) {

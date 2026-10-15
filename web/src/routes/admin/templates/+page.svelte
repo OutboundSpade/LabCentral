@@ -162,7 +162,7 @@
                 <div class="mb-2 flex flex-wrap items-center gap-3 text-xs">
                   <span class="font-mono text-base-content/70">{template.name}</span
                   >{#if template.latest}<span class="badge badge-sm badge-ghost">Latest</span
-                    >{/if}{#if data.meeting?.template === template.id && data.meeting.status !== "ended"}<span
+                    >{/if}{#if template.retired}<span class="badge badge-sm badge-ghost" title="Older format: kept for history and cleanup">Retired</span>{/if}{#if data.meeting?.template === template.id && data.meeting.status !== "ended"}<span
                       class="inline-flex items-center gap-1 text-base-content/60"
                       ><LockKeyhole size={12} />In use</span
                     >{/if}
@@ -280,7 +280,7 @@
                   >
                     Removed {date(template.removedAt)}. Images shared by other
                     revisions are retained.
-                  </p>{:else if template.builtAt}<p
+                  </p>{:else if template.builtAt && template.built}<p
                     class="mt-2 text-xs text-base-content/60"
                   >
                     Built {date(template.builtAt)}
@@ -297,7 +297,7 @@
                     aria-label={`Open ${template.name} revision ${template.commit.slice(0, 7)} in the library`}
                     ><LibraryBig size={15} />Open in library</a
                   >
-                  {#if !template.built && !template.removing}<button
+                  {#if !template.built && !template.removing && !template.retired}<button
                       class="btn btn-sm min-h-11 lg:min-h-8"
                       class:btn-primary={template.latest}
                       disabled={busy || working}
@@ -377,7 +377,7 @@
     </p>{/if}
     <p class="mt-3 text-sm leading-relaxed">
       {action === "prune-images"
-        ? `Currently ${pruneCount} unused images. Latest revisions, open meetings, active and pending practice, and builds are kept. Old revisions stay in history and can be rebuilt.`
+        ? `Currently ${pruneCount} unused images. Latest revisions, open meetings, active and pending practice, and builds are kept. Older revisions stay in history.`
         : action === "build"
         ? `Builds ${selected?.imagesTotal ?? 0} images from this revision. Temporary build machines incur charges; matching images are reused.`
         : "Removes this revision’s unused images and unfinished builds. Shared images are kept, and the revision can be rebuilt."}
