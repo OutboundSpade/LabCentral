@@ -24,7 +24,7 @@ func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 	root := t.TempDir()
 	declaration := []byte("version: 3\nname: private-source\nimages:\n  base:\n    base: ubuntu\n    build:\n      playbook: build.yml\n      files: [build.yml]\nmachines:\n  bank:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n    hostnamePeers: [bank]\n  coach:\n    image: base\n    cpu: 1\n    memory: 1Gi\n    disk: 8Gi\n    access: [ssh]\n")
 	declaration = append(declaration, []byte("    hostnamePeers: []\n")...)
-	declaration = []byte(strings.ReplaceAll(string(declaration), "    base: ubuntu\n", "    base: ubuntu\n    os: windows\n    platform: {aws: {buildInstanceType: t3.large}, proxmox: {}}\n    extensions: {org.example.image: [null, false, 1]}\n"))
+	declaration = []byte(strings.ReplaceAll(string(declaration), "    base: ubuntu\n", "    base: ubuntu\n    os: linux\n    platform: {aws: {buildInstanceType: t3.large}, proxmox: {}}\n    extensions: {org.example.image: [null, false, 1]}\n"))
 	declaration = []byte(strings.ReplaceAll(string(declaration), "    hostnamePeers: [bank]", "    hostnamePeers: [bank]\n    nics: [{network: lab, address: 250}]\n    forwarding: true\n    platform: {aws: {instanceType: t3.large, volume: {type: gp3, iops: 4000, throughput: 1000}, cpuCredits: unlimited}, proxmox: {cpuType: host, nicModel: e1000e, memoryBalloon: false}}\n    extensions: {org.example.machine: {key: value}}"))
 	declaration = append(declaration, []byte("platforms: [aws, proxmox]\nnetworks: {lab: {egress: internet, cidr: 10.0.0.0/24, extensions: {org.example.network: 2}}}\nextensions: {org.example.lab: true}\ninputs: {count: {type: integer, default: 0, description: Count}, enabled: {type: boolean, default: false}}\n")...)
 	if err := os.WriteFile(filepath.Join(root, "lab.yaml"), declaration, 0600); err != nil {
@@ -62,12 +62,18 @@ func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 
 func TestTypedProtocolRoundTrip(t *testing.T) {
 	c := lc.Command{ClientPrivateKey: []byte("transient"), Operation: "op", Environment: lc.Environment{Version: 2, Platform: "aws", Bases: map[string]lc.Base{"ubuntu": {ID: "ami", DiskGiB: 8}}}, Source: lc.Source{Files: []lc.File{{Path: "lab.yaml", Content: []byte("version: 2")}}}, Prior: lc.Resource{Data: json.RawMessage(`{"native":"state"}`)}}
+	c.Environment.Build.WindowsDCVURL = "https://example.invalid/windows.msi"
+	c.Environment.Build.WindowsDCVSHA256 = strings.Repeat("b", 64)
 	c.Environment.AWS.Gateway = lc.AWSGatewayConfig{Base: "ubuntu-24.04", InstanceType: "t3.micro"}
 	c.Environment.AWS.AllowEgress = true
 	c.Environment.AWS.Types = []lc.InstanceType{{Name: "t3.large", CPU: 2, MemoryMiB: 8192, MaxNICs: 3}}
 	c.Networks = []lc.PlannedNetwork{{Name: "a", CIDR: "10.77.0.0/24", VLAN: 101, Routes: []lc.PlannedRoute{{Network: "b", CIDR: "10.77.1.0/24", Via: "10.77.0.12", Router: "router", RouterNIC: 0}}}}
 	c.Machine.NICs = []lc.PlannedNIC{{Network: "a", CIDR: "10.77.0.0/24", Address: "10.77.0.11", Default: true, Gateway: "10.77.0.1", Routes: c.Networks[0].Routes}}
 	c.Machine.Resolver = "10.77.0.2"
+	c.Machine.OS = "windows"
+	c.Image.Script = "build.ps1"
+	c.Image.Base = lc.Base{OS: "windows", ID: "ami-pinned", User: "Administrator", Identity: "ami-pinned", DiskGiB: 30}
+	c.Source.Lab.Images = map[string]lc.Image{"windows": {OS: "windows", Build: &lc.ImageBuild{Script: "build.ps1", Files: []string{"build.ps1"}}}}
 
 	c.Environment.Proxmox.AllowEgress = true
 	c.Gateway = lc.Resource{Kind: "gateway", Owner: "owner", ID: "i-gateway", Address: "192.0.2.1", Complete: true, Data: json.RawMessage(`{"hostPublicKey":"pinned","eni":"eni-owned"}`)}

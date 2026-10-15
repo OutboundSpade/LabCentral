@@ -11,6 +11,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	"github.com/OutboundSpade/LabCentral/v2/internal/privatefile"
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"golang.org/x/crypto/ssh"
 	"net/netip"
 	"os"
@@ -59,7 +60,11 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 	if err := lc.CheckCommandPlatformOptions(c); err != nil {
 		return image, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	timeout := 10 * time.Minute
+	if c.Image.Base.OS == "windows" {
+		timeout = 20 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	dir := filepath.Join(root, c.Owner, "validation")
 	if e := os.MkdirAll(dir, 0700); e != nil {
@@ -132,6 +137,9 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		}
 	}
 	m := lc.PlannedMachine{Name: "validation", NativeImage: image.ID, CPU: 2, MemoryMiB: 4096, DiskGiB: c.Image.DiskGiB, InstanceType: c.Environment.Build.InstanceType, VMID: c.ValidationVMID, Address: "10.77.0.10", PublicKey: pub, HostPrivateKey: string(hp), HostPublicKey: hpub, Spec: lc.Machine{Image: c.Image.Name, CPU: 2, Memory: "4Gi", Disk: fmt.Sprintf("%dGi", c.Image.DiskGiB), Access: []string{"ssh"}}}
+	if c.Image.Base.OS == "windows" {
+		m.OS = "windows"
+	}
 	if c.Environment.Platform == "aws" && c.Image.BuildInstanceType != "" {
 		m.InstanceType = c.Image.BuildInstanceType
 		// Validation uses the chosen build type, without inheriting runtime options.
@@ -173,7 +181,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		return image, err
 	}
 	defer dialer.Close()
-	client, err := dialer.Dial(ctx, machine.Resource.Address, "lab", priv, hpub)
+	client, err := dialer.Dial(ctx, machine.Resource.Address, m.SSHUser(), priv, hpub)
 	if err == nil {
 		command := "test -d /home/lab"
 		if c.Image.Desktop {
@@ -183,8 +191,15 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 				command = "systemctl is-active lightdm >/dev/null"
 			}
 		}
+		if m.OS == "windows" {
+			command = windows.Ready
+			if c.Image.Desktop {
+				command += windows.DesktopReady
+			}
+			command = windows.Command(command)
+		}
 		_, err = remote.Run(ctx, client, command)
-		if err == nil && c.Image.Desktop && c.Environment.Platform == "aws" {
+		if err == nil && c.Image.Desktop && c.Environment.Platform == "aws" && m.OS != "windows" {
 			_, err = remote.Run(ctx, client, "sudo dcv close-session labcentral-validation >/dev/null 2>&1 || true")
 			if err == nil {
 				err = dcv.Start(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, "lab", "labcentral-validation")

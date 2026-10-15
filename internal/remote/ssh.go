@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"golang.org/x/crypto/ssh"
 	"net"
 	"sync"
@@ -132,6 +133,10 @@ func Dial(ctx context.Context, address, user string, private []byte, host string
 	return (&Dialer{}).Dial(ctx, address, user, private, host)
 }
 func Run(ctx context.Context, c *ssh.Client, command string) ([]byte, error) {
+	return RunInput(ctx, c, command, nil)
+}
+
+func RunInput(ctx context.Context, c *ssh.Client, command string, input []byte) ([]byte, error) {
 	s, e := c.NewSession()
 	if e != nil {
 		return nil, e
@@ -146,6 +151,7 @@ func Run(ctx context.Context, c *ssh.Client, command string) ([]byte, error) {
 		case <-done:
 		}
 	}()
+	s.Stdin = bytes.NewReader(input)
 	var out limitedOutput
 	s.Stdout = &out
 	s.Stderr = &out
@@ -166,14 +172,26 @@ func Wait(ctx context.Context, address, user string, private []byte, host string
 const readinessCommand = `cloud-init status --wait >/dev/null; rc=$?; { [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; } && test -d /home/lab`
 
 func WaitWithDialer(ctx context.Context, d *Dialer, address, user string, private []byte, host string) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	return waitCommand(ctx, d, address, user, private, host, readinessCommand, 5*time.Minute)
+}
+
+func WaitWindows(ctx context.Context, d *Dialer, address string, private []byte, host string, desktop bool) error {
+	command := windows.Ready
+	if desktop {
+		command += windows.DesktopReady
+	}
+	return waitCommand(ctx, d, address, "Administrator", private, host, windows.Command(command), 15*time.Minute)
+}
+
+func waitCommand(ctx context.Context, d *Dialer, address, user string, private []byte, host, command string, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 	for {
 		c, e := d.Dial(ctx, address, user, private, host)
 		if e == nil {
-			_, e = Run(ctx, c, readinessCommand)
+			_, e = Run(ctx, c, command)
 			c.Close()
 			if e == nil {
 				return nil

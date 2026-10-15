@@ -246,8 +246,8 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 				fmt.Fprintf(errOut, "  %s: %s, %d CPU, %d MiB, %d GiB\n", m.Name, m.InstanceType, m.CPU, m.MemoryMiB, m.DiskGiB)
 			}
 			for _, im := range plan.Images {
-				if im.Playbook != "" {
-					fmt.Fprintf(errOut, "  image %s: build %s (reuse only if cached artifact verifies)\n", im.Name, im.Playbook)
+				if im.BuildProgram() != "" {
+					fmt.Fprintf(errOut, "  image %s: build %s (reuse only if cached artifact verifies)\n", im.Name, im.BuildProgram())
 				}
 			}
 			for _, notice := range plan.Notices {

@@ -1,0 +1,11 @@
+- name: Verify IIS from the client network
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Check the page over HTTP
+      ansible.builtin.command: curl --fail --silent --show-error --max-time 10 http://server/index.html
+      register: page
+      changed_when: false
+    - name: Verify content
+      ansible.builtin.assert:
+        that: "'LabCentral IIS is ready' in page.stdout"

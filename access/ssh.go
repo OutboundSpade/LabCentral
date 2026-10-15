@@ -24,7 +24,7 @@ func Shell(ctx context.Context, e *lc.Engine, instance, machine string, in *os.F
 		return 0, err
 	}
 	defer dialer.Close()
-	client, err := dialer.Dial(ctx, r.Address, "lab", key, m.HostPublicKey)
+	client, err := dialer.Dial(ctx, r.Address, m.SSHUser(), key, m.HostPublicKey)
 	if err != nil {
 		return 0, err
 	}

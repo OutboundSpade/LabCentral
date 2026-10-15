@@ -132,3 +132,20 @@ func TestDisclosureAndPayloadCollisions(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowsPayloadCaseInsensitiveDestinations(t *testing.T) {
+	src, b, err := LoadTemplate("../examples/windows-iis", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"CHECK.ps1", "LabCentral/hosts.json", "AUX.txt"} {
+		copy := *b
+		copy.Files = append(append([]lc.File{}, b.Files...), lc.File{Path: p, Content: []byte("data")})
+		copy.Checks = append([]Check{}, b.Checks...)
+		copy.Checks[0].Steps = append([]Step{}, b.Checks[0].Steps...)
+		copy.Checks[0].Steps[0].Files = []string{p}
+		if err = copy.Validate(src); err == nil {
+			t.Fatal("Windows payload collision accepted", p)
+		}
+	}
+}

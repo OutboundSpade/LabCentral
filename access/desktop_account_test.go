@@ -25,7 +25,7 @@ func TestDesktopAccountComment(t *testing.T) {
 	script := desktopAccountScript("labcentral-x", "pw", c)
 	for _, tc := range []struct {
 		name, gecos, want string
-		ok              bool
+		ok                bool
 	}{
 		{"new account shows a friendly name", "", "useradd --create-home --shell /bin/bash --comment " + comment, true},
 		{"retained account in the old format is converted", marker, "usermod --comment " + comment, true},

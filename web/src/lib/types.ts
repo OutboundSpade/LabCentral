@@ -372,6 +372,7 @@ export interface PublicTemplate {
   scenarios: TemplateScenarioSummary[];
 }
 export interface PublicTemplateMachine {
+  os: "linux" | "windows";
   name: string;
   cpu: number;
   memory: string;

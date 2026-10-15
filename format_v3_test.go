@@ -183,7 +183,11 @@ func TestCapabilitiesPrecedeEnvironmentBindings(t *testing.T) {
 	for _, platform := range []string{"aws", "proxmox"} {
 		env := Environment{Platform: platform}
 		_, e = PlanLab(s, env, nil)
-		requireField(t, e, Unsupported, "images.base.os")
+		field := "images.base.os"
+		if platform == "aws" {
+			field = "machines.one.memory"
+		}
+		requireField(t, e, Unsupported, field)
 	}
 	c, _ := PlatformCapabilities("aws")
 	c.OS[0] = "windows"

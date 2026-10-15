@@ -172,6 +172,9 @@ func checkImplementedOptions(options any, accepted []string, field string) error
 // CheckCommandPlatformOptions also checks standalone planned requests used by
 // native image validation and rejects a plan that contradicts an explicit type.
 func CheckCommandPlatformOptions(c Command) error {
+	if err := CheckWindowsCommand(c); err != nil {
+		return err
+	}
 	if c.Environment.Platform == "aws" {
 		if err := CheckAWSNICLimits(c.Source.Lab, c.Environment, nil); err != nil {
 			return err

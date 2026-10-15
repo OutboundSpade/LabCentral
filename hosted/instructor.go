@@ -9,6 +9,7 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"golang.org/x/crypto/ssh"
 	"os"
 	"path/filepath"
@@ -122,7 +123,23 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 				Playbook       string    `json:"playbook"`
 				TimeoutSeconds int       `json:"timeoutSeconds"`
 			}{files, step.Playbook, int(step.Timeout() / time.Second)})
-			_, err = remote.Run(stepCtx, client, fmt.Sprintf("sudo -n timeout --kill-after=5s %ds flock -w 5 /run/lock/labcentral-exercise.lock python3 -c ", int(step.Timeout()/time.Second)+10)+quote(guestPlaybookLauncher)+" "+quote(base64.StdEncoding.EncodeToString(payload)))
+			if src.Lab.Images[src.Lab.Machines[step.Machine].Image].OS == "windows" {
+				if m.Spec.Image != src.Lab.Machines[step.Machine].Image || m.OS != "windows" || step.Script == "" || step.Playbook != "" {
+					return fmt.Errorf("Windows step identity mismatch")
+				}
+				payload, _ = json.Marshal(struct {
+					Files          []lc.File `json:"files"`
+					Script         string    `json:"script"`
+					TimeoutSeconds int       `json:"timeoutSeconds"`
+				}{files, step.Script, int(step.Timeout() / time.Second)})
+				command := windows.Command("$ErrorActionPreference='Stop'; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd())) | ConvertFrom-Json\n" + windows.StepLauncher)
+				_, err = remote.RunInput(stepCtx, client, command, []byte(base64.StdEncoding.EncodeToString(payload)))
+			} else {
+				if step.Script != "" {
+					return fmt.Errorf("Linux steps require a playbook")
+				}
+				_, err = remote.Run(stepCtx, client, fmt.Sprintf("sudo -n timeout --kill-after=5s %ds flock -w 5 /run/lock/labcentral-exercise.lock python3 -c ", int(step.Timeout()/time.Second)+10)+quote(guestPlaybookLauncher)+" "+quote(base64.StdEncoding.EncodeToString(payload)))
+			}
 			if err != nil {
 				var exit *ssh.ExitError
 				if errors.As(err, &exit) && exit.ExitStatus() == 42 {
@@ -163,7 +180,11 @@ func guestCacheFor(ctx context.Context) (*guestCache, bool) {
 	}
 	return &guestCache{connections: map[string]guestConnection{}, dial: remote.Dial}, true
 }
-func (c *guestCache) client(ctx context.Context, instance, machine, address string, key []byte, hostKey string) (*ssh.Client, error) {
+func (c *guestCache) client(ctx context.Context, instance, machine, address string, key []byte, hostKey string, users ...string) (*ssh.Client, error) {
+	user := "lab"
+	if len(users) > 0 {
+		user = users[0]
+	}
 	name := instance + ":" + machine
 	c.mu.Lock()
 	previous, ok := c.connections[name]
@@ -174,7 +195,7 @@ func (c *guestCache) client(ctx context.Context, instance, machine, address stri
 		}
 		return previous.client, nil
 	}
-	client, err := c.dial(ctx, address, "lab", key, hostKey)
+	client, err := c.dial(ctx, address, user, key, hostKey)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +227,13 @@ func guestJobContext(ctx context.Context) (context.Context, func()) {
 // A job reuses both its gateway transport and each machine handshake. Identity
 // changes within the job are rejected before opening another channel.
 func (c *guestCache) clientFor(ctx context.Context, inst lc.Instance, machine, address string, key []byte, hostKey string) (*ssh.Client, error) {
+	user := "lab"
+	for _, m := range inst.Plan.Machines {
+		if m.Name == machine {
+			user = m.SSHUser()
+			break
+		}
+	}
 	gateway := lc.InstanceGateway(inst)
 	encoded, _ := json.Marshal(gateway)
 	c.mu.Lock()
@@ -220,7 +248,7 @@ func (c *guestCache) clientFor(ctx context.Context, inst lc.Instance, machine, a
 	c.gateways[inst.ID] = string(encoded)
 	c.mu.Unlock()
 	if gateway.Kind == "" {
-		return c.client(ctx, inst.ID, machine, address, key, hostKey)
+		return c.client(ctx, inst.ID, machine, address, key, hostKey, user)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -245,7 +273,7 @@ func (c *guestCache) clientFor(ctx context.Context, inst lc.Instance, machine, a
 		}
 		return previous.client, nil
 	}
-	client, err := d.Dial(ctx, address, "lab", key, hostKey)
+	client, err := d.Dial(ctx, address, user, key, hostKey)
 	if err != nil {
 		return nil, err
 	}

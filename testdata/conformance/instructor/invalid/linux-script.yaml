@@ -1,0 +1,12 @@
+# windows: true
+# schema: accept
+# code: invalid
+# field: checks[0].steps[0].script
+version: 3
+visibility: {audience: students}
+checks:
+  - id: page
+    name: Page
+    points: 10
+    steps:
+      - {machine: client, script: check.ps1, files: [reset.ps1], assets: [images/iis.ps1], guestHosts: [client], timeoutSeconds: 10}

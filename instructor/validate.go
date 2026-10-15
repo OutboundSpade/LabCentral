@@ -363,8 +363,8 @@ func (b Bundle) validateVisibility(src lc.Source) error {
 			return invalid(f, "visible images require explicit files excluding lab.yaml")
 		}
 		for _, h := range hidden {
-			private := src.Lab.Images[src.Lab.Machines[h].Image].BuildPlaybook()
-			if private != "" && private != im.BuildPlaybook() && lc.Contains(im.BuildFiles(), private) {
+			private := src.Lab.Images[src.Lab.Machines[h].Image].BuildProgram()
+			if private != "" && private != im.BuildProgram() && lc.Contains(im.BuildFiles(), private) {
 				return invalid(f, "private image playbook reaches visible image")
 			}
 		}
@@ -383,6 +383,23 @@ func (b Bundle) validateStep(src lc.Source, s Step, f string, extensions lc.Exte
 	if _, ok := src.Lab.Machines[s.Machine]; !ok {
 		return invalid(f+".machine", "unknown machine")
 	}
+	if (s.Playbook == "") == (s.Script == "") {
+		return invalid(f+".playbook", "exactly one of playbook or script is required")
+	}
+	os := lc.OSFamily(src.Lab.Images[src.Lab.Machines[s.Machine].Image].OS)
+	if os == "windows" && s.Playbook != "" {
+		return invalid(f+".playbook", "Windows steps require script")
+	}
+	if os == "linux" && s.Script != "" {
+		return invalid(f+".script", "Linux steps require playbook in this phase")
+	}
+	if s.Script != "" && !strings.HasSuffix(s.Script, ".ps1") {
+		return invalid(f+".script", "expected a .ps1 script")
+	}
+	programField := f + ".playbook"
+	if s.Script != "" {
+		programField = f + ".script"
+	}
 	if s.TimeoutSeconds != 0 && (s.TimeoutSeconds < 10 || s.TimeoutSeconds > 600) {
 		return invalid(f+".timeoutSeconds", "expected 10–600")
 	}
@@ -400,32 +417,43 @@ func (b Bundle) validateStep(src lc.Source, s Step, f string, extensions lc.Exte
 	for _, file := range src.Files {
 		portable[file.Path] = file
 	}
+	canonical := func(p string) string {
+		if os == "windows" {
+			return strings.ToLower(p)
+		}
+		return p
+	}
 	destinations := map[string]bool{"labcentral/hosts.json": true, "labcentral/context.json": true}
 	payload := []lc.File{}
 	payloadFields := map[string]string{}
 	add := func(dest string, file lc.File, field string) error {
-		if destinations[dest] {
+		if os == "windows" {
+			if err := lc.WindowsFilePaths([]string{dest}); err != nil {
+				return invalid(field, err.Error())
+			}
+		}
+		if destinations[canonical(dest)] {
 			return invalid(field, "duplicate payload destination")
 		}
 		for existing := range destinations {
-			if strings.HasPrefix(existing, dest+"/") || strings.HasPrefix(dest, existing+"/") {
+			if strings.HasPrefix(existing, canonical(dest)+"/") || strings.HasPrefix(canonical(dest), existing+"/") {
 				return invalid(field, "payload file/directory collision")
 			}
 		}
-		destinations[dest] = true
+		destinations[canonical(dest)] = true
 		payloadFields[dest] = field
 		file.Path = dest
 		payload = append(payload, file)
 		return nil
 	}
-	if !safePath(s.Playbook) || strings.HasPrefix(s.Playbook, "template/") || strings.HasPrefix(s.Playbook, "labcentral/") {
-		return invalid(f+".playbook", "unsafe or reserved path")
+	if !safePath(s.Program()) || strings.HasPrefix(s.Program(), "template/") || strings.HasPrefix(s.Program(), "labcentral/") {
+		return invalid(programField, "unsafe or reserved path")
 	}
-	file, ok := private[s.Playbook]
+	file, ok := private[s.Program()]
 	if !ok {
-		return invalid(f+".playbook", "missing instructor playbook")
+		return invalid(programField, "missing instructor program")
 	}
-	if err := add(s.Playbook, file, f+".playbook"); err != nil {
+	if err := add(s.Program(), file, programField); err != nil {
 		return err
 	}
 	for i, p := range s.Files {
@@ -476,7 +504,7 @@ func (b Bundle) validateStep(src lc.Source, s Step, f string, extensions lc.Exte
 		privateImageFiles := map[string]bool{}
 		for _, h := range b.Visibility.HiddenMachines {
 			im := src.Lab.Images[src.Lab.Machines[h].Image]
-			for _, p := range append([]string{im.BuildPlaybook()}, im.BuildFiles()...) {
+			for _, p := range append([]string{im.BuildProgram()}, im.BuildFiles()...) {
 				if p != "" {
 					privateImageFiles[p] = true
 				}

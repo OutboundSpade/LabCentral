@@ -1,0 +1,190 @@
+{
+  "version": 2,
+  "source": {
+    "lab": {
+      "version": 3,
+      "name": "example",
+      "images": {
+        "base": {
+          "base": "ubuntu-24.04",
+          "build": {
+            "playbook": "build.yml",
+            "files": [
+              "build.yml"
+            ]
+          },
+          "platform": {}
+        }
+      },
+      "machines": {
+        "one": {
+          "image": "base",
+          "cpu": 2,
+          "memory": "2Gi",
+          "disk": "20Gi",
+          "access": [
+            "ssh",
+            "desktop"
+          ],
+          "hostnamePeers": "all",
+          "platform": {}
+        }
+      }
+    },
+    "files": [
+      {
+        "path": "build.yml",
+        "content": "LSBob3N0czogbG9jYWxob3N0CiAgdGFza3M6IFtdCg=="
+      },
+      {
+        "path": "data.txt",
+        "content": "ZGF0YQ=="
+      },
+      {
+        "path": "lab.yaml",
+        "content": "dmVyc2lvbjogMwpuYW1lOiBleGFtcGxlCmltYWdlczoKICBiYXNlOgogICAgYmFzZTogdWJ1bnR1LTI0LjA0CiAgICBidWlsZDoge3BsYXlib29rOiBidWlsZC55bWwsIGZpbGVzOiBbYnVpbGQueW1sXX0KbWFjaGluZXM6CiAgb25lOgogICAgaW1hZ2U6IGJhc2UKICAgIGNwdTogMgogICAgbWVtb3J5OiAyR2kKICAgIGRpc2s6IDIwR2kKICAgIGFjY2VzczogW3NzaCwgZGVza3RvcF0K"
+      }
+    ],
+    "digest": "e94fd4c73462ecb390c27b27d9cf8ae01e7940f8b88043a987c9e9f7af9b7daa"
+  },
+  "environment": {
+    "version": 2,
+    "name": "test",
+    "platform": "aws",
+    "operatorCIDRs": [
+      "192.0.2.1/32"
+    ],
+    "bases": {
+      "ubuntu-24.04": {
+        "id": "ami-test",
+        "user": "ubuntu",
+        "diskGiB": 1,
+        "identity": "immutable"
+      }
+    },
+    "aws": {
+      "region": "us-east-1",
+      "zone": "us-east-1a",
+      "account": "123456789012",
+      "types": [
+        {
+          "name": "t3.medium",
+          "cpu": 2,
+          "memoryMiB": 4096
+        },
+        {
+          "name": "large",
+          "cpu": 64,
+          "memoryMiB": 262144
+        },
+        {
+          "name": "t3.large",
+          "cpu": 2,
+          "memoryMiB": 8192
+        }
+      ],
+      "desktopProfile": "license-only"
+    },
+    "proxmox": {
+      "url": "",
+      "tokenID": "",
+      "tokenEnv": "",
+      "node": "",
+      "storage": "",
+      "pool": "",
+      "bridge": "",
+      "vmidStart": 0,
+      "vmidEnd": 0,
+      "vlanStart": 0,
+      "vlanEnd": 0,
+      "cidr": "",
+      "verifiedIsolation": false
+    },
+    "build": {
+      "packer": "/packer",
+      "packerSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pluginDirectory": "/plugins",
+      "toolchainID": "pinned",
+      "ansibleVersion": "2.19.3",
+      "timeoutSeconds": 3600
+    }
+  },
+  "environmentDigest": "9de86d81d020f95d895c273e4dbec501272ade711c9c878974e5955d3c32e025",
+  "images": [
+    {
+      "name": "base",
+      "base": {
+        "id": "ami-test",
+        "user": "ubuntu",
+        "diskGiB": 1,
+        "identity": "immutable"
+      },
+      "playbook": "build.yml",
+      "cacheKey": "d0caa4f66b42157dc7454400b73f2d5e873ea3439cd7cc32bd71717784fdf64d",
+      "desktop": true,
+      "diskGiB": 20
+    }
+  ],
+  "machines": [
+    {
+      "hosts": [
+        {
+          "name": "one",
+          "address": "10.77.0.11"
+        }
+      ],
+      "name": "one",
+      "spec": {
+        "image": "base",
+        "cpu": 2,
+        "memory": "2Gi",
+        "disk": "20Gi",
+        "access": [
+          "ssh",
+          "desktop"
+        ],
+        "hostnamePeers": "all",
+        "platform": {}
+      },
+      "instanceType": "t3.medium",
+      "allocatedCPU": 2,
+      "allocatedMemoryMiB": 4096,
+      "diskGiB": 20,
+      "address": "10.77.0.11",
+      "nics": [
+        {
+          "network": "lab",
+          "cidr": "10.77.0.0/24",
+          "address": "10.77.0.11",
+          "gateway": "10.77.0.1",
+          "routes": [
+            {
+              "network": "",
+              "cidr": "10.77.255.0/28",
+              "via": "10.77.0.1",
+              "router": "",
+              "routerNIC": 0
+            }
+          ]
+        }
+      ],
+      "resolver": "10.77.0.2"
+    }
+  ],
+  "notices": [
+    "Instances and native images remain billable until removed; no background cleanup service is installed.",
+    "Builds may access package repositories; runtime Internet egress defaults to none.",
+    "Public IPv4 is billed. AWS DNS and metadata are not filtered by security groups; this is not an air gap.",
+    "DCV desktop machines receive a license-only instance role. This lab allows HTTPS to S3 through an endpoint restricted to the regional DCV licensing bucket."
+  ],
+  "networks": [
+    {
+      "name": "lab",
+      "cidr": "10.77.0.0/24",
+      "gateway": "10.77.0.1",
+      "egress": "none"
+    }
+  ],
+  "vpcCIDR": "10.77.0.0/16",
+  "edgeCIDR": "10.77.255.0/28"
+}

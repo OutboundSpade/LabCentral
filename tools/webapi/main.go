@@ -7,6 +7,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -49,7 +50,15 @@ func main() {
 			if len(tag) > 1 && tag[1] == "omitempty" {
 				optional = "?"
 			}
-			fmt.Fprintf(&b, "  %s%s: %s;\n", tag[0], optional, typ(f.Type))
+			fieldType := typ(f.Type)
+			if values := f.Tag.Get("enum"); values != "" {
+				items := strings.Split(values, ",")
+				for i, v := range items {
+					items[i] = strconv.Quote(v)
+				}
+				fieldType = strings.Join(items, " | ")
+			}
+			fmt.Fprintf(&b, "  %s%s: %s;\n", tag[0], optional, fieldType)
 		}
 		b.WriteString("}\n")
 	}

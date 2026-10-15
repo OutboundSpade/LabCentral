@@ -35,6 +35,7 @@ message Environment {
   BuildConfig build = 8 [json_name = "build"];
 }
 message Base {
+  string os = 5 [json_name = "os"];
   string id = 1 [json_name = "id"];
   string user = 2 [json_name = "user"];
   int32 disk_gi_b = 3 [json_name = "diskGiB"];
@@ -95,6 +96,8 @@ message BuildConfig {
   string bridge = 12 [json_name = "bridge"];
   int32 vlan = 13 [json_name = "vlan"];
   string gateway = 14 [json_name = "gateway"];
+  string windows_dcvurl = 15 [json_name = "windowsDCVURL"];
+  string windows_dcvsha256 = 16 [json_name = "windowsDCVSHA256"];
 }
 message PlannedMachine {
   repeated HostEntry hosts = 1 [json_name = "hosts"];
@@ -112,6 +115,7 @@ message PlannedMachine {
   string host_public_key = 13 [json_name = "hostPublicKey"];
   repeated PlannedNIC nics = 14 [json_name = "nics"];
   string resolver = 15 [json_name = "resolver"];
+  string os = 16 [json_name = "os"];
 }
 message HostEntry {
   string name = 1 [json_name = "name"];
@@ -181,6 +185,7 @@ message PlannedImage {
   bool desktop = 5 [json_name = "desktop"];
   int32 disk_gi_b = 6 [json_name = "diskGiB"];
   string build_instance_type = 7 [json_name = "buildInstanceType"];
+  string script = 8 [json_name = "script"];
 }
 message Source {
   Lab lab = 1 [json_name = "lab"];
@@ -210,6 +215,7 @@ message Image {
 }
 message ImageBuild {
   string playbook = 1 [json_name = "playbook"];
+  string script = 3 [json_name = "script"];
   repeated string files = 2 [json_name = "files"];
 }
 message ImagePlatform {

@@ -10,7 +10,6 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
-	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
 	aw "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -175,7 +174,7 @@ func (p *Provider) check(ctx context.Context, a *ec2.Client, c lc.Command) (lc.R
 	if len(z.AvailabilityZones) != 1 || z.AvailabilityZones[0].State != t.AvailabilityZoneStateAvailable {
 		return lc.Result{}, fmt.Errorf("availability zone is unavailable")
 	}
-	for _, b := range e.Bases {
+	for name, b := range e.Bases {
 		if b.Identity != b.ID {
 			return lc.Result{}, fmt.Errorf("AWS base identity must be its immutable AMI ID")
 		}
@@ -185,6 +184,9 @@ func (p *Provider) check(ctx context.Context, a *ec2.Client, c lc.Command) (lc.R
 		}
 		if len(r.Images) != 1 || r.Images[0].State != t.ImageStateAvailable || r.Images[0].Architecture != t.ArchitectureValuesX8664 {
 			return lc.Result{}, fmt.Errorf("base AMI must be available x86_64")
+		}
+		if err := checkAMIPlatform(r.Images[0], b.OS); err != nil {
+			return lc.Result{}, fmt.Errorf("base %s: %w", name, err)
 		}
 	}
 	gatewayType := e.AWS.Gateway.Effective().InstanceType
@@ -581,7 +583,7 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		if err = p.routerNetworking(ctx, a, c, ns); err != nil {
 			return r, err
 		}
-		if err = remote.WaitWithDialer(ctx, dialer, r.Resource.Address, "lab", c.ClientPrivateKey, m.HostPublicKey); err != nil {
+		if err = waitMachine(ctx, dialer, r.Resource.Address, c); err != nil {
 			return r, err
 		}
 		return r, nil
@@ -593,7 +595,16 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if len(im.Images) != 1 || im.Images[0].RootDeviceName == nil {
 		return lc.Result{}, fmt.Errorf("AMI root device unavailable")
 	}
+	if err = checkAMIPlatform(im.Images[0], m.OS); err != nil {
+		return lc.Result{}, err
+	}
 	ud, err := guest.CloudInit(m)
+	if m.OS == "windows" {
+		if c.Gateway.PrivateAddress == "" {
+			return lc.Result{}, fmt.Errorf("Windows requires a private management gateway")
+		}
+		ud, err = guest.WindowsUserData(m, []string{c.Gateway.PrivateAddress + "/32"})
+	}
 	if err != nil {
 		return lc.Result{}, err
 	}
@@ -670,7 +681,7 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err = p.routerNetworking(ctx, a, c, ns); err != nil {
 		return r, err
 	}
-	if err = remote.WaitWithDialer(ctx, dialer, r.Resource.Address, "lab", c.ClientPrivateKey, m.HostPublicKey); err != nil {
+	if err = waitMachine(ctx, dialer, r.Resource.Address, c); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -1067,6 +1078,10 @@ func (p *Provider) FindBuild(ctx context.Context, c lc.Command) (lc.Resource, bo
 }
 
 func (p *Provider) PrepareBuild(ctx context.Context, c lc.Command, publicKey string) error {
+	if c.Image.Base.OS == "windows" {
+		return nil
+	} // The fixed EC2Launch bootstrap installs this key directly.
+
 	a, _, err := client(ctx, c.Environment)
 	if err != nil {
 		return err
@@ -1098,7 +1113,15 @@ func (p *Provider) CleanupBuild(ctx context.Context, c lc.Command) error {
 	if err != nil {
 		return err
 	}
-	r, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: []t.Filter{{Name: aw.String("key-name"), Values: []string{"labcentral-" + c.Owner}}}})
+	return p.cleanupBuild(ctx, a, c)
+}
+
+func (p *Provider) cleanupBuild(ctx context.Context, a *ec2.Client, c lc.Command) error {
+	instanceFilters := []t.Filter{{Name: aw.String("key-name"), Values: []string{"labcentral-" + c.Owner}}}
+	if c.Image.Base.OS == "windows" {
+		instanceFilters = filters(c.Owner, c.Image.Name)
+	}
+	r, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: instanceFilters})
 	if err != nil {
 		return err
 	}
@@ -1133,6 +1156,9 @@ func (p *Provider) CleanupBuild(ctx context.Context, c lc.Command) error {
 		if _, err = a.DeleteVolume(ctx, &ec2.DeleteVolumeInput{VolumeId: v.VolumeId}); err != nil {
 			return err
 		}
+	}
+	if c.Image.Base.OS == "windows" {
+		return nil
 	}
 	keys, err := a.DescribeKeyPairs(ctx, &ec2.DescribeKeyPairsInput{KeyNames: []string{"labcentral-" + c.Owner}})
 	if apiCode(err, "InvalidKeyPair.NotFound") {

@@ -37,7 +37,7 @@ func (b Bundle) GuestFiles(src lc.Source, inst lc.Instance, step Step, extension
 	for _, f := range b.Files {
 		private[f.Path] = f
 	}
-	for _, p := range append([]string{step.Playbook}, step.Files...) {
+	for _, p := range append([]string{step.Program()}, step.Files...) {
 		f, ok := private[p]
 		if !ok {
 			return nil, fmt.Errorf("pinned instructor file %q unavailable", p)

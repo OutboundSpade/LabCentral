@@ -1,0 +1,12 @@
+# windows: true
+# schema: accept
+# code: invalid
+# field: checks[0].steps[0].playbook
+version: 3
+visibility: {audience: students}
+checks:
+  - id: page
+    name: Page
+    points: 10
+    steps:
+      - {machine: server, playbook: check-client.yml, files: [reset.ps1], assets: [images/iis.ps1], guestHosts: [client], timeoutSeconds: 10}

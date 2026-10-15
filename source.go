@@ -267,11 +267,29 @@ func Validate(s Source) error {
 		if !basePattern.MatchString(i.Base) {
 			return problem(Invalid, "images."+n+".base", "invalid base")
 		}
-		if i.BuildPlaybook() != "" && !paths[i.BuildPlaybook()] {
-			return problem(Invalid, "images."+n+".build.playbook", "file is not part of the source")
+		if err := validateImageBuild(i, "images."+n); err != nil {
+			return err
 		}
-		if len(i.BuildFiles()) > 0 && (i.BuildPlaybook() == "" || !Contains(i.BuildFiles(), i.BuildPlaybook())) {
-			return problem(Invalid, "images."+n+".build.files", "selected build files require the image playbook")
+		if i.BuildProgram() != "" && !paths[i.BuildProgram()] {
+			field := "playbook"
+			if i.BuildScript() != "" {
+				field = "script"
+			}
+			return problem(Invalid, "images."+n+".build."+field, "file is not part of the source")
+		}
+		if len(i.BuildFiles()) > 0 && (i.BuildProgram() == "" || !Contains(i.BuildFiles(), i.BuildProgram())) {
+			return problem(Invalid, "images."+n+".build.files", "selected build files require the image build program")
+		}
+		if i.OS == "windows" && i.Build != nil {
+			selected := []string{}
+			for _, file := range s.Files {
+				if i.BuildFiles() == nil || Contains(i.BuildFiles(), file.Path) {
+					selected = append(selected, file.Path)
+				}
+			}
+			if err := WindowsFilePaths(selected); err != nil {
+				return problem(Invalid, "images."+n+".build.files", err.Error())
+			}
 		}
 		seenFiles := map[string]bool{}
 		for _, path := range i.BuildFiles() {
@@ -369,7 +387,24 @@ func ValidateEnvironment(e Environment) error {
 		}
 	}
 	for n, b := range e.Bases {
-		if !basePattern.MatchString(n) || b.ID == "" || b.Identity == "" || !namePattern.MatchString(b.User) || b.DiskGiB < 1 {
+		if OSFamily(b.OS) != "linux" && b.OS != "windows" {
+			return bad("bases."+n+".os", "expected linux or windows")
+		}
+		if b.OS == "windows" {
+			if e.Platform != "aws" {
+				return bad("bases."+n+".os", "Windows bases are supported only on AWS")
+			}
+			if b.User != "Administrator" {
+				return bad("bases."+n+".user", "Windows requires Administrator")
+			}
+			if b.DiskGiB < 30 {
+				return bad("bases."+n+".diskGiB", "Windows requires at least 30 GiB")
+			}
+			if !regexp.MustCompile(`^ami-[a-f0-9]{8,17}$`).MatchString(b.ID) || b.Identity != b.ID {
+				return bad("bases."+n+".id", "Windows requires a pinned AMI ID and matching identity")
+			}
+		}
+		if !basePattern.MatchString(n) || b.ID == "" || b.Identity == "" || (!namePattern.MatchString(b.User) && !(b.OS == "windows" && b.User == "Administrator")) || b.DiskGiB < 1 {
 			return bad("bases."+n, "id, immutable identity, user and diskGiB are required")
 		}
 	}
@@ -478,11 +513,23 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		if !ok {
 			return p, problem(Invalid, "images."+n+".base", "no environment binding")
 		}
-		im := PlannedImage{Name: n, Base: b, Playbook: i.BuildPlaybook(), DiskGiB: b.DiskGiB}
+		if OSFamily(i.OS) != OSFamily(b.OS) {
+			return p, problem(Invalid, "images."+n+".base", "image OS must match the environment base OS")
+		}
+		im := PlannedImage{Name: n, Base: b, Playbook: i.BuildPlaybook(), Script: i.BuildScript(), DiskGiB: b.DiskGiB}
 		// Only an explicit request enters the image identity; otherwise the
 		// environment's build instance type applies, as it did before options existed.
 		if e.Platform == "aws" && i.Platform.AWS != nil {
 			im.BuildInstanceType = i.Platform.AWS.BuildInstanceType
+		}
+		if b.OS == "windows" && im.BuildProgram() != "" {
+			name := im.BuildInstanceType
+			if name == "" {
+				name = e.Build.InstanceType
+			}
+			if err := WindowsBuildCapacity(e, name, "images."+n+".platform.aws.buildInstanceType"); err != nil {
+				return p, err
+			}
 		}
 		minDisk := 0
 		for _, m := range s.Lab.Machines {
@@ -494,23 +541,29 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 				}
 			}
 		}
-		if im.Desktop && i.BuildPlaybook() == "" {
+		if im.Desktop && i.BuildProgram() == "" {
 			return p, problem(Unsupported, "images."+n+".build.playbook", "desktop requires an image build with the platform access components")
 		}
 		if minDisk > 0 && e.Platform == "aws" {
 			im.DiskGiB = minDisk
 		}
-		if i.BuildPlaybook() != "" {
-			if e.Build.Packer == "" || len(e.Build.PackerSHA256) != 64 || e.Build.ToolchainID == "" || e.Build.AnsibleVersion == "" || e.Build.PluginDirectory == "" || e.Build.TimeoutSeconds < 60 {
+		if i.BuildProgram() != "" {
+			if e.Build.Packer == "" || len(e.Build.PackerSHA256) != 64 || e.Build.ToolchainID == "" || (b.OS != "windows" && e.Build.AnsibleVersion == "") || e.Build.PluginDirectory == "" || e.Build.TimeoutSeconds < 60 {
 				return p, problem(Invalid, "environment.build", "pinned Packer, plugin directory, toolchain ID, Ansible version and timeout are required")
 			}
 		}
 		policy := ""
 		if im.Desktop {
 			policy = "xfce-minimal-1"
+			if b.OS == "windows" {
+				if err := ValidateWindowsDCV(e.Build); err != nil {
+					return p, err
+				}
+				policy = "windows-console-2:" + e.Build.WindowsDCVURL + ":" + e.Build.WindowsDCVSHA256
+			}
 		}
 		buildIdentity := buildEnvironment(e)
-		if !im.Desktop {
+		if !im.Desktop || b.OS == "windows" {
 			buildIdentity.Toolchain.DCVURL, buildIdentity.Toolchain.DCVSHA256 = "", ""
 		}
 		im.CacheKey = digest(struct {
@@ -531,6 +584,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			return p, problem(Invalid, "machines."+n+".disk", "cannot shrink the base disk")
 		}
 		pm := PlannedMachine{Name: n, Spec: m, CPU: m.CPU, MemoryMiB: mem, DiskGiB: disk / 1024}
+		if b.OS == "windows" {
+			pm.OS = "windows"
+		}
 		if e.Platform == "aws" {
 			selected, err := selectAWSInstanceType(m, e.AWS, "machines."+n)
 			if err != nil {
@@ -549,7 +605,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 	if e.Platform == "proxmox" {
 		builds := 0
 		for _, im := range p.Images {
-			if im.Playbook != "" {
+			if im.BuildProgram() != "" {
 				builds++
 			}
 		}
@@ -633,7 +689,7 @@ func declarationError(err error) error {
 // author machine allowlist. Defaults still require a pinned base binding.
 func ValidateAWSGateway(e Environment) error {
 	g := e.AWS.Gateway.Effective()
-	if b, ok := e.Bases[g.Base]; !ok || b.ID == "" || b.Identity == "" || b.DiskGiB < 1 {
+	if b, ok := e.Bases[g.Base]; !ok || b.ID == "" || b.Identity == "" || b.DiskGiB < 1 || OSFamily(b.OS) != "linux" {
 		return problem(Invalid, "environment.aws.gateway.base", "no valid environment base binding for "+g.Base)
 	}
 	if !regexp.MustCompile(`^[a-z][a-z0-9-]*\.[a-z0-9]+$`).MatchString(g.InstanceType) {

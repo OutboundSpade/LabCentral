@@ -35,6 +35,7 @@ type PublicTemplate struct {
 	Scenarios        []TemplateScenarioSummary `json:"scenarios"`
 }
 type PublicTemplateMachine struct {
+	OS     string   `json:"os" enum:"linux,windows"`
 	Name   string   `json:"name"`
 	CPU    int      `json:"cpu"`
 	Memory string   `json:"memory"`
@@ -126,7 +127,7 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 			}
 		}
 		for name, machine := range lab.Machines {
-			public.Machines = append(public.Machines, PublicTemplateMachine{name, machine.CPU, machine.Memory, machine.Disk, append([]string{}, machine.Access...)})
+			public.Machines = append(public.Machines, PublicTemplateMachine{OS: lc.OSFamily(lab.Images[machine.Image].OS), Name: name, CPU: machine.CPU, Memory: machine.Memory, Disk: machine.Disk, Access: append([]string{}, machine.Access...)})
 		}
 		sort.Slice(public.Machines, func(i, j int) bool { return public.Machines[i].Name < public.Machines[j].Name })
 		for _, stage := range stages {

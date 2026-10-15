@@ -15,6 +15,48 @@
     "images": {
       "additionalProperties": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "build": {
+                  "not": {
+                    "required": [
+                      "script"
+                    ]
+                  },
+                  "required": [
+                    "playbook"
+                  ]
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "os": {
+                  "const": "windows"
+                }
+              },
+              "required": [
+                "os"
+              ]
+            },
+            "then": {
+              "properties": {
+                "build": {
+                  "not": {
+                    "required": [
+                      "playbook"
+                    ]
+                  },
+                  "required": [
+                    "script"
+                  ]
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "base": {
             "pattern": "^[a-z][a-z0-9.-]{0,63}$",
@@ -22,6 +64,18 @@
           },
           "build": {
             "additionalProperties": false,
+            "oneOf": [
+              {
+                "required": [
+                  "playbook"
+                ]
+              },
+              {
+                "required": [
+                  "script"
+                ]
+              }
+            ],
             "properties": {
               "files": {
                 "items": {
@@ -36,11 +90,13 @@
                 "minLength": 1,
                 "pattern": "^[a-zA-Z0-9_./-]+$",
                 "type": "string"
+              },
+              "script": {
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9_./-]+\\.ps1$",
+                "type": "string"
               }
             },
-            "required": [
-              "playbook"
-            ],
             "type": "object"
           },
           "extensions": {

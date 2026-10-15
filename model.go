@@ -51,8 +51,9 @@ type Image struct {
 	Extensions Extensions    `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"7"`
 }
 type ImageBuild struct {
-	Playbook string   `yaml:"playbook" json:"playbook"`
-	Files    []string `yaml:"files,omitempty" json:"files,omitempty"`
+	Playbook string   `yaml:"playbook,omitempty" json:"playbook"`
+	Script   string   `yaml:"script,omitempty" json:"script,omitempty" proto:"3"`
+	Files    []string `yaml:"files,omitempty" json:"files,omitempty" proto:"2"`
 }
 
 func (i Image) BuildPlaybook() string {
@@ -154,10 +155,11 @@ type Environment struct {
 	Build         BuildConfig     `yaml:"build" json:"build"`
 }
 type Base struct {
-	ID       string `yaml:"id" json:"id"`
-	User     string `yaml:"user" json:"user"`
-	DiskGiB  int    `yaml:"diskGiB" json:"diskGiB"`
-	Identity string `yaml:"identity" json:"identity"`
+	OS       string `yaml:"os,omitempty" json:"os,omitempty" proto:"5"`
+	ID       string `yaml:"id" json:"id" proto:"1"`
+	User     string `yaml:"user" json:"user" proto:"2"`
+	DiskGiB  int    `yaml:"diskGiB" json:"diskGiB" proto:"3"`
+	Identity string `yaml:"identity" json:"identity" proto:"4"`
 }
 type AWSGatewayConfig struct {
 	Base         string `yaml:"base,omitempty" json:"base,omitempty"`
@@ -211,20 +213,22 @@ type ProxmoxConfig struct {
 	AllowEgress           bool     `yaml:"allowEgress,omitempty" json:"allowEgress,omitempty"`
 }
 type BuildConfig struct {
-	DCVURL          string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
-	DCVSHA256       string `yaml:"dcvSHA256,omitempty" json:"dcvSHA256,omitempty"`
-	Packer          string `yaml:"packer" json:"packer"`
-	PackerSHA256    string `yaml:"packerSHA256" json:"packerSHA256"`
-	PluginDirectory string `yaml:"pluginDirectory" json:"pluginDirectory"`
-	ToolchainID     string `yaml:"toolchainID" json:"toolchainID"`
-	AnsibleVersion  string `yaml:"ansibleVersion" json:"ansibleVersion"`
-	TimeoutSeconds  int    `yaml:"timeoutSeconds" json:"timeoutSeconds"`
-	SubnetID        string `yaml:"subnetID,omitempty" json:"subnetID,omitempty"`
-	SecurityGroupID string `yaml:"securityGroupID,omitempty" json:"securityGroupID,omitempty"`
-	InstanceType    string `yaml:"instanceType,omitempty" json:"instanceType,omitempty"`
-	Bridge          string `yaml:"bridge,omitempty" json:"bridge,omitempty"`
-	VLAN            int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
-	Gateway         string `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	DCVURL           string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
+	DCVSHA256        string `yaml:"dcvSHA256,omitempty" json:"dcvSHA256,omitempty"`
+	Packer           string `yaml:"packer" json:"packer"`
+	PackerSHA256     string `yaml:"packerSHA256" json:"packerSHA256"`
+	PluginDirectory  string `yaml:"pluginDirectory" json:"pluginDirectory"`
+	ToolchainID      string `yaml:"toolchainID" json:"toolchainID"`
+	AnsibleVersion   string `yaml:"ansibleVersion" json:"ansibleVersion"`
+	TimeoutSeconds   int    `yaml:"timeoutSeconds" json:"timeoutSeconds"`
+	SubnetID         string `yaml:"subnetID,omitempty" json:"subnetID,omitempty"`
+	SecurityGroupID  string `yaml:"securityGroupID,omitempty" json:"securityGroupID,omitempty"`
+	InstanceType     string `yaml:"instanceType,omitempty" json:"instanceType,omitempty"`
+	Bridge           string `yaml:"bridge,omitempty" json:"bridge,omitempty"`
+	VLAN             int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
+	Gateway          string `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	WindowsDCVURL    string `yaml:"windowsDCVURL,omitempty" json:"windowsDCVURL,omitempty"`
+	WindowsDCVSHA256 string `yaml:"windowsDCVSHA256,omitempty" json:"windowsDCVSHA256,omitempty"`
 }
 
 type HostEntry struct {
@@ -273,6 +277,7 @@ type PlannedMachine struct {
 	HostPublicKey  string       `json:"hostPublicKey,omitempty"`
 	NICs           []PlannedNIC `json:"nics,omitempty"`
 	Resolver       string       `json:"resolver,omitempty"`
+	OS             string       `json:"os,omitempty"`
 }
 type PlannedImage struct {
 	Name              string `json:"name"`
@@ -282,6 +287,7 @@ type PlannedImage struct {
 	Desktop           bool   `json:"desktop"`
 	DiskGiB           int    `json:"diskGiB"`
 	BuildInstanceType string `json:"buildInstanceType,omitempty"`
+	Script            string `json:"script,omitempty"`
 }
 type Plan struct {
 	Version           int              `json:"version"`

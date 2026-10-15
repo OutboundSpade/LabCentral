@@ -7,8 +7,8 @@ compatibility.
 ## Overview and boundaries
 
 LabCentral combines a portable Go library, optional CLI, provider processes and a hosted
-application. Operators initially use Linux amd64 with Ubuntu 24.04 amd64 guests. AWS EC2
-and Proxmox are library platforms; hosted provisioning requires AWS.
+application. Operators use Linux amd64 with Ubuntu 24.04 amd64 guests and AWS
+Windows Server 2022 guests (AWS CLI/library live qualification; hosted Windows identity acceptance pending). AWS EC2 and Proxmox are library platforms; hosted provisioning requires AWS.
 
 ```mermaid
 flowchart TD
@@ -22,7 +22,7 @@ flowchart TD
     Provider --> Journal[Provider recovery journals]
     Provider --> APIs[Native platform APIs]
     Provider --> Packer[Pinned Packer]
-    Packer --> BuildGuest[Build guest: author Ansible]
+    Packer --> BuildGuest[Build guest: author Ansible or PowerShell]
     APIs --> Guests[Owned lab guests]
     Library -->|Pinned SSH and desktop transports| Guests
 ```
@@ -47,7 +47,7 @@ private teaching definitions without identity, HTTP, storage or provider depende
 
 ## Lab source format v3
 
-A shared directory contains `lab.yaml`, image playbooks and supporting files. The
+A shared directory contains `lab.yaml`, image playbooks/PowerShell scripts and supporting files. The
 environment binds logical base names. Sharing uses Git or local directories, without a
 registry, inheritance, loop expansion or author Packer extension. Ansible expressions
 execute inside build guests.
@@ -59,10 +59,12 @@ access methods, typed inputs and optional platform requests. Omission means one 
 named `lab`, one NIC per machine, Linux and egress `none`. An optional `platforms`
 restriction selects AWS, Proxmox or both.
 
-Images name an environment base and optionally `build.playbook` and `build.files`. An
-image without a playbook can use its bound base directly for SSH access. Desktop images
+Images name an environment base and optionally a build with exactly one of
+`build.playbook` (Linux) or `build.script` ending in `.ps1` (Windows), plus
+`build.files`. Cross-OS programs are rejected with field paths in this phase. An
+image without a build can use its bound base directly for SSH access. Desktop images
 require a build that installs platform access components. Explicit file selections must
-include the playbook and reject duplicate or unknown paths; omission includes the
+include the build program and reject duplicate or unknown paths; omission includes the
 portable source files.
 
 Machines specify an image, CPU, memory, disk and declared `ssh`/`desktop` access. Memory
@@ -106,7 +108,8 @@ capabilities, operator permission and native readiness:
 
 Both platforms implement Linux guests, multiple networks and NICs (AWS up to eight each,
 Proxmox up to four), forwarding routers and `none`/`internet` egress. Author CIDRs are
-AWS-only. Windows and unsupported combinations fail before provisioning. Structural
+AWS-only. AWS also implements Windows with the restrictions below; unsupported
+combinations fail before provisioning. Structural
 validation accepts private IPv4 /16–/28 CIDRs and usable unique offsets 4–250; format
 support does not imply adapter support.
 
@@ -115,6 +118,24 @@ Internet egress also requires `environment.aws.allowEgress` or
 an operator VLAN gateway providing NAT. Rejection identifies both the author field and
 operator setting. Plans disclose enabled egress and its filtering limits.
 [capabilities.go](capabilities.go) is the implemented capability contract.
+
+| Capability | AWS | Proxmox |
+| --- | --- | --- |
+| Guest OS | Linux, Windows Server 2022 | Linux; Windows rejected before binding/provisioning |
+| Networks / Linux NICs | 8 / 8 (subject to ENI limits) | 4 / 4 |
+| Windows NICs | `MaxWindowsNICs = 1` | 0 |
+| Windows forwarding | Rejected; routers remain Linux | Rejected |
+| Windows capacity | At least 4 GiB memory for machines, builds and qualification; base disk ≥30 GiB | Unsupported |
+
+Windows computer names are limited to 15 characters. Image OS must match its
+base's OS; environment bases default to Linux. Windows bindings require a pinned
+AMI ID/identity and `user: Administrator`. Operators resolve the official regional
+SSM parameter `/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base`
+once and retain its AMI ID outside source. Windows build capacity must be declared
+in the environment's type allowlist. Runtime guest routes are created in both the
+active and persistent Windows stores; an existing conflicting next hop fails
+bootstrap instead of being overwritten.
+
 
 ### Platform options and extensions
 
@@ -186,6 +207,40 @@ Builds pin amazon 1.8.1, proxmox 1.2.3 and ansible 1.1.4 plugins. The environmen
 Packer checksums, toolchain identity, ansible-core and timeout. Fixed bootstrap installs
 guest-local Ansible; author values stay out of host shell commands. Infrastructure
 credentials remain in operator/provider/Packer processes; staging and logs are private.
+
+Windows Packer builds use SSH/Administrator with SFTP and platform-owned
+`<powershell>` EC2Launch v2 user data, never WinRM or author code on the operator. The controlled hostname reboot completes before
+OpenSSH installation/key setup can expose the build communicator, preventing
+Packer provisioning from overlapping that first reboot.
+The build key is installed in `administrators_authorized_keys` with SYSTEM and
+Administrators-only ACLs. Windows builds do not attach EC2 Ed25519 key pairs;
+their interrupted instances are discovered by atomic owner/role tags and verified
+before cleanup. Generated and supplied SSH host private keys both receive
+SYSTEM/Administrators-only ACLs with the Administrators group as owner before
+SYSTEM starts sshd; the individual generator account is not retained as owner. Linux retains its existing key-pair path. Source selection is copied into
+`C:\ProgramData\LabCentral\build\`; `$env:LABCENTRAL_INPUTS` names typed JSON.
+Platform code installs the Windows DCV MSI pinned by operator environment
+`build.windowsDCVURL`/`build.windowsDCVSHA256` before author PowerShell.
+Planning and provider requests require valid HTTPS/checksum fields only for
+Windows desktop builds, with field-path errors before provisioning. The MSI also needs a valid
+Authenticode signature. Platform settings use DCV's SYSTEM user registry hive
+(`HKEY_USERS\S-1-5-18`), verified from the pinned MSI metadata. Installation
+disables automatic sessions/server startup, configures the service, and performs
+a platform driver reboot before author execution. README and the Windows example document Amazon's DCV download
+for 2025.0-20103. The operator URL and checksum participate only in Windows desktop policy. Linux plan and image-key golden fixtures retain the preceding
+implementation's exact serialized bytes.
+
+After author execution, platform code removes build files, inputs, management
+keys and DCV/SSH identities, then invokes EC2Launch v2 sysprep with shutdown.
+Packer waits for the stopped guest before capture. The final Windows sysprep provisioner alone
+accepts the pinned guest/OpenSSH shutdown status 2300218, alongside zero. It
+does not accept this status during installation or author execution; native
+stopped-state capture and boot qualification remain mandatory. Windows AMI qualification uses
+an owned disposable gateway and guest and checks the readiness marker, sshd and
+DCV service when declared. Qualification receipts and cleanup confirmation use
+the existing recovery journal. Windows execution and real AWS acceptance remain
+unqualified by local generation, parser and fake-provider tests.
+
 
 Packer emits native images without disk conversion or mandatory nested virtualization:
 
@@ -262,6 +317,18 @@ operator-owned and validated. Captured-image qualification uses an owned disposa
 gateway. See [DCV
 licensing](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html).
 
+Windows guests use these same private ENIs, security groups, routes, gateway and
+egress rules. Platform-owned EC2Launch user data installs/verifies the built-in
+OpenSSH Server capability, sets PowerShell as its default shell and provisions
+per-allocation management and pinned SSH host keys. It applies lab-network Windows
+firewall rules while limiting added management 22/8443 ingress to the gateway's
+private address, keeps all firewall profiles enabled, installs peer inventory in
+the Windows hosts file and applies planned guest routes. Rename records one
+controlled reboot before a readiness marker is written. Pinned jump SSH polls that
+marker, sshd and, for desktops, dcvserver; timeout retains an unknown create.
+Build networks need Windows Update access for capability installation; captured
+images retain OpenSSH for isolated runtime networks.
+
 Retained pre-gateway records keep their original management path. A durable gateway plan
 distinguishes new deployments; recovery never adds a gateway to an old record. Both
 resource shapes remain discoverable and removable. AWS DNS and metadata are special
@@ -313,13 +380,31 @@ boot.
 
 ### Desktop transports
 
-AWS uses DCV system authentication and named per-access virtual sessions. The session
+AWS Linux uses DCV system authentication and named per-access virtual sessions. The session
 owner and desktop process user are the temporary guest account. DCV TLS certificates are
 fetched through verified SSH and pinned end to end by the relay; image capture removes
 generated certificates so each guest gets its own identity. See [certificate
 handling](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-cert.html) and
 [virtual-session
 users](https://docs.aws.amazon.com/dcv/latest/adminguide/managing-sessions-start.html).
+
+Windows uses DCV system authentication and one console session named `console`
+owned by local `lab`. Bootstrap creates the disabled administrative account;
+authorized access creates its temporary credential and enables it. This follows
+the existing credential-on-access flow rather than inventing a deploy-time secret.
+A durable access-owner marker and pinned local account SID prevent takeover or
+mutation of a replacement account. Windows
+cannot provide simultaneous per-user virtual workspaces. Readiness requires an
+observed running console with the expected owner/type, without Linux's X-display
+requirement. Unknown status never creates a replacement session. The existing
+DCV relay and hosted Web SDK use the certificate fetched over pinned SSH from
+SYSTEM’s `NICE\dcv\private` directory. Capture removes that directory’s certificate
+and private key; Windows desktop image policy version 2 invalidates earlier
+captures. PowerShell 5.1 session JSON explicitly enumerates both empty and populated
+arrays, and account ownership is normalized by SID.
+Revocation verifies ownership, disables the account, closes the observed console,
+logs off the local Windows session and terminates remaining processes; profile
+retention follows access policy. Repeated cleanup reconciles confirmed absence.
 
 Proxmox uses bundled noVNC 1.6.0 with an encrypted upstream console connection. Provider
 management tokens stay in the provider process. Both platforms create temporary guest
@@ -547,7 +632,7 @@ cannot select hidden identities or files used only by hidden images. Validation 
 structure, not contents; disclosure qualification requires native image inspection.
 
 Checks and `breaks` contain ordered guest steps and optional private extensions. Breaks
-require a nonempty reset. Every step delivers its playbook; `files` selects private
+require a nonempty reset. Every step delivers its OS-matched playbook or PowerShell script; `files` selects private
 helpers, `assets` selects portable files under `template/`, and `guestHosts` selects
 public addresses/host keys under `labcentral/hosts.json`. Generated
 `labcentral/context.json` carries machine and lab/template/owner extensions. Reserved
@@ -555,7 +640,17 @@ paths, duplicate destinations and file/directory collisions fail import.
 
 Step timeouts default to 90 seconds and accept 10–600, bounding the guest subprocess,
 SSH wrapper and aggregate deadline. Fixed launchers stage pinned files and run Ansible
-only in verified guests under a guest lock. Expired steps have unknown outcomes;
+or PowerShell only in verified guests under a guest lock. The Windows fixed program
+receives a base64 JSON payload over SSH stdin (avoiding Windows command-line size
+limits), uses an exclusive lock-file handle and a private per-run temporary directory,
+and passes `$env:LABCENTRAL_STEP_DIR`. A kill-on-close Windows job object owns the
+complete author process tree before its execution gate opens. Timeout or bounded
+output overflow kills the job and cleans staging; normal nonzero exits map to check
+failure, while launcher/transport/lock/timeout failures remain unknown. The
+encoded SSH command propagates its child exit code through the Windows PowerShell
+default shell and suppresses module progress records so structured output stays valid. Stage checks,
+meeting checks, breaks, resets and scenario preparation select by the pinned machine
+OS. `guestHosts`/context JSON and file/asset paths retain Linux's contract. Expired steps have unknown outcomes;
 uncertain scenario mutation requires cleanup. There is no generic remote-command job API
 or author execution on the control host. Guest administrators can inspect transferred
 programs and effects; guest files are not a secrecy boundary.
@@ -566,7 +661,8 @@ answer with 1–10 accepted values and explicit case policy, a pinned `check`, o
 all normalized digests in constant time. Stages can link a `break`. Optional library
 metadata supplies category, difficulty, duration and unique tags.
 
-Public DTOs expose only permitted instructions, topology, summaries and owned progress.
+Public DTOs expose only permitted instructions, topology (including each machine's
+explicit `linux`/`windows` OS), summaries and owned progress.
 Accepted answers, private programs, selected variant/break IDs and credentials are
 excluded. Solution text is revealed only by an explicit authorized request for a
 current/completed released stage; reveal does not advance progress. Portable downloads
@@ -715,6 +811,7 @@ identifiers belong outside tracked source.
 | Hosted practice/scenarios | Individual AWS attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts and full weekly quota exhaustion/reset |
 | Hosted coach/desktops | Native terminal input/resize/reconnect/revocation and cold/reboot desktop samples; one AWS meeting of 4 teams × 3 students (12 concurrent desktops, a break and checks on all teams) | Generalized launch latency and meetings larger than 4 × 3 |
 | Multiple networks and routers | AWS: two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot and complete cleanup | Interrupted multi-NIC recovery on AWS; all of it on Proxmox |
+| AWS Windows guests | 2026-10-15 AWS CLI/library: both mixed IIS images built and boot-qualified; Windows sysprep and native DCV certificate sanitization; fresh private deployment without recovery; pinned coach PTY and both student SSH paths; firewall, hosts and persistent routes; EC2-licensed DCV console with browser screenshot/OCR, reconnect and revoked-session refusal; both IIS break/check/repair/stage/scenario variants; native ACL, launcher failure/timeout/descendant/output/lock/cleanup and DCV JSON/certificate tests; SIGKILL during destroy followed by recovery; engine image removal and confirmed native inventory cleanup | Real hosted Windows OIDC/session and release acceptance, typed desktop input proof, cohorts, and the full interruption/response-loss/stale-ownership matrix remain unverified |
 | Proxmox | No complete live lifecycle qualification recorded | All examples, isolation, noVNC input/auth/revocation, options and egress |
 | Durability and scheduler | Local failure, persistence, response-loss, authorization and race coverage; prior hosted restore rehearsal | Full native failure matrix and configured aggregate capacity ceilings |
 
@@ -723,22 +820,22 @@ local behavior, not platform acceptance. Hosted AWS evidence does not establish 
 portability. Cross-platform release qualification needs native lifecycles and image
 removal/inventory reconciliation on both platforms.
 
-Not yet supported: Windows execution, author CIDRs on Proxmox, additional hosted
+Not yet supported: Windows on Proxmox, Windows forwarding/multiple NICs, Linux
+PowerShell builds or a Linux-controller Ansible path for Windows, author CIDRs on
+Proxmox, additional hosted
 platforms, multi-operator allocation, laptop hypervisors or Docker runners, a template
 registry and automatic CLI background cleanup. Meetings larger than 4 teams × 3
 students are not load-qualified.
 
 ## Proposals and roadmap
 
-These are design intentions, not implemented contracts. Windows guests are next. Each
-step needs meaningful failure tests and real AWS/Proxmox qualification in an explicitly
-configured test environment.
-
-Windows bases bind OS family and native bootstrap requirements. Proposed builds run
-PowerShell inside temporary guests, with EC2Launch or cloudbase-init and an
-SSH/PowerShell check launcher. Ansible for Windows could use a disposable Linux
-controller guest; author code still never runs on the operator host. Firmware, machine
-type and disk controller remain base-binding responsibilities.
+These are design intentions, not implemented contracts. Further Windows work includes
+Proxmox bootstrap/firmware bindings, additional NICs and an optional disposable Linux
+controller for Ansible targeting Windows. Author code must still stay in guests.
+Firmware, machine type and disk controller remain base-binding responsibilities.
+Each expansion needs meaningful failure tests and live qualification in an explicitly
+configured environment. AWS Windows implementation and its qualification limits are
+described above, not proposed here.
 
 Registries, additional hosted platforms, broader classroom governance and EC2 Image
 Builder are deferred. Hosted policy must stay outside portable declarations.

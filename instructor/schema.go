@@ -44,6 +44,11 @@ func annotateSchema(object, field string, s map[string]any) {
 	case "Step.timeoutSeconds":
 		bound(10, 600)
 		s["default"] = 90
+	case "Step.":
+		s["oneOf"] = []any{map[string]any{"required": []string{"playbook"}}, map[string]any{"required": []string{"script"}}}
+	case "Step.script":
+		length(1, 1024)
+		s["pattern"] = `^[a-zA-Z0-9_./-]+\.ps1$`
 	case "Step.playbook":
 		length(1, 1024)
 		s["pattern"] = `^[a-zA-Z0-9_./-]+$`

@@ -22,3 +22,7 @@ Operator configuration and credentials belong outside the shared source.
 The examples are authoring fixtures, not evidence of live platform qualification.
 The separate `consumer` Go module demonstrates using the library without the CLI.
 See [the design](../ARCHITECTURE.md) for capabilities and qualification limits.
+
+[windows-iis](windows-iis/README.md) pairs Windows Server 2022/IIS with a Linux
+client on AWS, with PowerShell builds, local/remote checks and an IIS scenario.
+Windows acceptance is local only until a disposable AWS run is recorded.

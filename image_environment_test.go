@@ -22,6 +22,8 @@ func TestImageKeysBindOnlyBuildEnvironment(t *testing.T) {
 					e.Build.TimeoutSeconds = 900
 					e.Build.DCVURL = "https://example.invalid/desktop"
 					e.Build.DCVSHA256 = "desktop-only"
+					e.Build.WindowsDCVURL = "https://example.invalid/windows.msi"
+					e.Build.WindowsDCVSHA256 = "windows-only"
 				},
 				func(e *Environment) { e.Name = "other"; e.OperatorCIDRs = []string{"198.51.100.1/32"} },
 				func(e *Environment) {

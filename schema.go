@@ -125,6 +125,17 @@ func annotateSchema(object, field string, s map[string]any) {
 	case "Image.os":
 		enum("linux", "windows")
 		s["default"] = "linux"
+	case "ImageBuild.":
+		s["oneOf"] = []any{map[string]any{"required": []string{"playbook"}}, map[string]any{"required": []string{"script"}}}
+	case "Image.":
+		s["allOf"] = []any{map[string]any{
+			"if":   map[string]any{"required": []string{"os"}, "properties": map[string]any{"os": map[string]any{"const": "windows"}}},
+			"then": map[string]any{"properties": map[string]any{"build": map[string]any{"required": []string{"script"}, "not": map[string]any{"required": []string{"playbook"}}}}},
+			"else": map[string]any{"properties": map[string]any{"build": map[string]any{"required": []string{"playbook"}, "not": map[string]any{"required": []string{"script"}}}}},
+		}}
+	case "ImageBuild.script":
+		s["pattern"] = `^[a-zA-Z0-9_./-]+\.ps1$`
+		s["minLength"] = 1
 	case "ImageBuild.playbook":
 		s["pattern"] = `^[a-zA-Z0-9_./-]+$`
 		s["minLength"] = 1

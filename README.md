@@ -85,7 +85,7 @@ Provider credentials stay in the operator's environment and the provider process
 | Platform options | Instance type, gp3 volume, CPU credits, build instance type | CPU model, NIC model, memory ballooning |
 | Hosted service | Yes | Library and CLI only |
 | Multiple networks, NICs and routers | Up to 8 networks and 8 NICs per machine; author CIDRs | Up to 4 networks and 4 NICs per machine |
-| Windows guests | Planned | Planned |
+| Windows guests | Windows Server 2022 (desktop, SSH, PowerShell builds and checks) | Not supported |
 
 Guests are Ubuntu 24.04 amd64. The operator machine is Linux amd64. Multiple networks
 and routers have been verified on AWS; Proxmox support is implemented but not yet
