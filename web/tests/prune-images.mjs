@@ -18,6 +18,7 @@ try {
     await page.route("**/api/**",async route=>{
       const req=route.request(),path=new URL(req.url()).pathname;
       if(path==="/api/me")return route.fulfill({json:{user:{id:"admin",name:"Administrator",admin:true},csrf:"csrf",meeting:null,membership:{},teams:[],lab:{machines:[]}}});
+      if(path==="/api/templates")return route.fulfill({json:{templates:[{...template,description:"Branch recovery",machines:[],stages:[],stageCount:0,practiceStageIDs:[],scenarios:[]}]}});
       if(path==="/api/admin")return route.fulfill({json:{templates:[template],jobs,teams:[],meeting:null,breaks:[],breakRuns:[],checkRuns:[],imageSummary:{images:19,unusedImages:17}}});
       assert.equal(req.headers()["x-csrf-token"],"csrf");
       if(path==="/api/admin/images/prune") {
@@ -42,7 +43,7 @@ try {
     const dialog=page.getByRole("dialog");
     await dialog.waitFor();
     assert((await dialog.innerText()).includes("17 unused images"));
-    assert((await dialog.innerText()).includes("Latest revisions, open meetings, active and pending practice, and builds are kept."));
+    assert((await dialog.innerText()).includes("Latest revisions, open meetings, active practice and builds are kept."));
     if(evidence)await page.screenshot({animations:"disabled",path:`${evidence}/prune-confirmation-${width}.png`});
     await dialog.getByRole("button",{name:"Cancel",exact:true}).click();await dialog.waitFor({state:"hidden"});assert.equal(posts,0);
     await prune.click();await dialog.getByRole("button",{name:"Remove unused images",exact:true}).click();

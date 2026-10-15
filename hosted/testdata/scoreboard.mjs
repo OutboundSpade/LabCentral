@@ -12,7 +12,14 @@ try{
  await page.getByRole('button',{name:'Pause checks'}).click();await page.getByText('Scheduled checks paused. Check now runs once on ready teams.',{exact:true}).waitFor();
  const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;if(output){fs.mkdirSync(output,{recursive:true});await page.screenshot({path:output+'/scoreboard-desktop.png',fullPage:true})}
  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(output)await page.screenshot({path:output+'/scoreboard-mobile.png',fullPage:true});
- await page.goto(app+'/admin/templates/');await page.getByText('Instructor only · abcdef1',{exact:true}).click();await page.getByText('private instructor sentinel',{exact:true}).waitFor();
+ await page.goto(app+'/admin/templates/');
+ const explore=page.getByRole('link',{name:'Explore Branch services revision abcdef1',exact:true});
+ await explore.waitFor();assert.equal(await explore.getAttribute('href'),'/labs/?template=scoreboard-template');
+ await explore.click();await page.waitForURL(app+'/labs/?template=scoreboard-template');
+ await page.getByRole('region',{name:'Administration',exact:true}).getByText('Ready',{exact:true}).waitFor();
+ await page.getByText('abcdef123456',{exact:true}).waitFor();
+ await page.locator('summary').filter({hasText:'Instructor notes'}).click();
+ await page.getByText('private instructor sentinel',{exact:true}).waitFor();
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(output)await page.screenshot({path:output+'/instructor-mobile.png',fullPage:true});
  await page.setViewportSize({width:1366,height:1050});if(output)await page.screenshot({path:output+'/instructor-desktop.png',fullPage:true});assert.deepEqual(errors,[]);
  console.log('Scoreboard schedule/pause, failure visibility, live activity, pinned private notes and desktop/mobile layouts passed with guest execution unavailable fixture.');

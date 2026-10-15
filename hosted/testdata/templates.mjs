@@ -1,19 +1,73 @@
-import assert from 'node:assert/strict';import fs from 'node:fs';
+// Real hosted handlers and durable jobs with a fake image engine; no live provisioning.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
 const {chromium}=await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE);
 const browser=await chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox']});
-try{
- const app=process.argv[2];const context=await browser.newContext({ignoreHTTPSErrors:true,reducedMotion:'reduce',viewport:{width:1366,height:1050}});
+try {
+ const app=process.argv[2];
+ const context=await browser.newContext({ignoreHTTPSErrors:true,reducedMotion:'reduce',viewport:{width:1366,height:1050}});
  await context.addCookies([{name:'__Host-labcentral',value:'cookie',url:app,secure:true,httpOnly:true,sameSite:'Lax'}]);
- const page=await context.newPage();await page.goto(app+'/admin/templates/');await page.getByText('Latest',{exact:true}).waitFor();
- const articles=page.getByRole('article');assert((await articles.first().innerText()).includes('Include netstat'));assert((await articles.nth(1).innerText()).includes('2 / 2 images ready'));
- const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;if(output){fs.mkdirSync(output,{recursive:true});await page.screenshot({path:output+'/templates-desktop.png',fullPage:true})}
- assert.equal(new Set(await page.locator('article time').allInnerTexts()).size,2);
- await page.setViewportSize({width:390,height:844});assert((await articles.first().boundingBox()).width>270);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(output)await page.screenshot({path:output+'/templates-mobile.png',fullPage:true});
- await articles.first().getByRole('button',{name:'Build images',exact:true}).click();await page.getByRole('dialog').waitFor();assert((await page.getByRole('dialog').innerText()).includes('bbbbbbb'));await page.getByRole('button',{name:'Cancel',exact:true}).click();
- await articles.nth(1).getByRole('button',{name:'Remove images',exact:true}).click();await page.getByRole('dialog').waitFor();if(output)await page.screenshot({path:output+'/templates-remove-mobile.png'});
- await page.getByRole('dialog').getByRole('button',{name:'Remove unused images',exact:true}).click();await page.getByText('Images removed',{exact:true}).waitFor({timeout:15000});assert.equal(await articles.count(),2);await articles.nth(1).getByRole('button',{name:'Rebuild images',exact:true}).waitFor();
- // A build failure stays on its revision and offers a retry. This fixture has no source.
- await articles.first().getByRole('button',{name:'Build images',exact:true}).click();await page.getByRole('button',{name:'Start build',exact:true}).click();await page.getByText('Build failed',{exact:true}).waitFor({timeout:15000});await articles.first().getByRole('button',{name:'Retry build',exact:true}).waitFor();
- if(output)await page.screenshot({path:output+'/templates-failure-mobile.png',fullPage:true});
- console.log('Timeline ordering, dates, latest marker, build confirmation/failure, native-removal job fixture, retained revision and mobile layout passed.');
-}finally{await browser.close()}
+ const page=await context.newPage(), errors=[], writes=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ page.on('request',r=>{if(r.method()==='POST')writes.push({path:new URL(r.url()).pathname,body:r.postDataJSON()})});
+ const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;
+ if(output)fs.mkdirSync(output,{recursive:true});
+ const fits=()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
+ const shot=async name=>{if(output)await page.screenshot({path:`${output}/${name}.png`,fullPage:true})};
+ await page.goto(app+'/admin/templates/');
+ const cards=page.getByRole('region',{name:'Templates',exact:true});
+ const card=cards.getByRole('listitem');
+ const explore=card.getByRole('link',{name:'Explore Branch services revision bbbbbbb',exact:true});
+ await explore.waitFor();
+ assert.equal(await card.count(),1,'only the newest revision gets a card');
+ assert.equal(await explore.getAttribute('href'),'/labs/?template=new');
+ await card.getByText('Not built',{exact:true}).waitFor();
+ assert(await fits());await shot('templates-desktop');
+ await page.setViewportSize({width:390,height:844});
+ assert((await card.boundingBox()).width>270);assert(await fits());await shot('templates-mobile');
+ await card.getByRole('button',{name:'Build images',exact:true}).click();
+ const imageDialog=page.getByRole('dialog');
+ await imageDialog.waitFor();
+ assert((await imageDialog.innerText()).includes('bbbbbbb'));
+ await imageDialog.getByRole('button',{name:'Cancel',exact:true}).click();
+ assert.equal(writes.length,0,'cancelling build has no effects');
+ await explore.click();await page.waitForURL(app+'/labs/?template=new');
+ const admin=page.getByRole('region',{name:'Administration',exact:true});
+ await admin.getByText('Not built',{exact:true}).waitFor();
+ await page.getByText('Include netstat and verify workstation network tools',{exact:false}).waitFor();
+ // Historical revisions remain reachable through the existing selector.
+ await page.getByLabel('Revision',{exact:true}).selectOption('old');
+ await page.waitForURL(app+'/labs/?template=old');
+ await admin.getByText('2 / 2 images',{exact:true}).waitFor();
+ await admin.getByRole('button',{name:'Start meeting',exact:true}).waitFor();
+ await page.getByText('Initial Example Branch workstation',{exact:false}).waitFor();
+ assert(await fits());await shot('template-administration-mobile');
+ await admin.getByRole('button',{name:'Remove images',exact:true}).click();
+ await imageDialog.waitFor();assert((await imageDialog.innerText()).includes('aaaaaaa'));
+ await shot('templates-remove-mobile');
+ await imageDialog.getByRole('button',{name:'Remove images',exact:true}).click();
+ await admin.getByText('Images removed',{exact:true}).waitFor({timeout:15000});
+ await admin.getByRole('button',{name:'Rebuild images',exact:true}).waitFor();
+ assert.equal(await admin.getByRole('button',{name:'Start meeting',exact:true}).count(),0);
+ assert.deepEqual(writes.at(-1),{path:'/api/admin/templates/remove-images',body:{id:'old'}});
+ assert.equal(await page.getByLabel('Revision',{exact:true}).locator('option').count(),2,'removed revision keeps its source and selector entry');
+ // The fake engine returns a controlled failure after real planning and admission.
+ await page.getByLabel('Revision',{exact:true}).selectOption('new');
+ await page.waitForURL(app+'/labs/?template=new');
+ await admin.getByRole('button',{name:'Build images',exact:true}).click();
+ await imageDialog.waitFor();assert((await imageDialog.innerText()).includes('bbbbbbb'));
+ await imageDialog.getByRole('button',{name:'Start build',exact:true}).click();
+ await admin.getByText('Build failed',{exact:true}).waitFor({timeout:15000});
+ await admin.getByRole('button',{name:'Retry build',exact:true}).waitFor();
+ await admin.getByText('Fixture image build failure',{exact:true}).waitFor();
+ assert.deepEqual(writes.at(-1),{path:'/api/admin/templates/build',body:{id:'new'}});
+ assert(await fits());await shot('templates-failure-mobile');
+ await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Admin',exact:true}).click();
+ await page.getByRole('link',{name:'Choose a template',exact:true}).click();
+ await card.getByText('Build failed',{exact:true}).waitFor();
+ await card.getByRole('button',{name:'Retry build',exact:true}).waitFor();
+ assert.equal(await card.count(),1);
+ await page.setViewportSize({width:1366,height:1050});assert(await fits());await shot('templates-failure-desktop');
+ assert.deepEqual(errors,[]);
+ console.log('Newest-revision cards, historical detail selection, pinned build confirmation/failure/retry, image removal/rebuild, retained revisions and desktop/mobile layout passed (fake engine).');
+} finally {await browser.close()}

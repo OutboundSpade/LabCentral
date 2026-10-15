@@ -2,6 +2,7 @@ package hosted
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -127,6 +129,11 @@ func TestHostedCapacityBrowser(t *testing.T) {
 	if err := s.Store.Put(context.Background(), "template", "built", Template{ID: "built", Name: "Example Branch", Commit: "abcdef123", Built: true}); err != nil {
 		t.Fatal(err)
 	}
+	putBrowserTemplateSource(t, s, "built")
+	if err := s.Store.Put(context.Background(), "template-images", "built", []string{}); err != nil {
+		t.Fatal(err)
+	}
+
 	s.Config.WebRoot = filepath.Join("..", "web", "build")
 	app := httptest.NewUnstartedServer(nil)
 	defer app.Close()
@@ -146,11 +153,16 @@ func TestHostedCapacityBrowser(t *testing.T) {
 	}
 }
 
-func TestHostedTemplateTimelineBrowser(t *testing.T) {
+func TestHostedTemplateCardsBrowser(t *testing.T) {
 	if os.Getenv("LABCENTRAL_PLAYWRIGHT_MODULE") == "" {
 		t.Skip("set LABCENTRAL_PLAYWRIGHT_MODULE for browser checks")
 	}
-	s, _ := templateFixture(t)
+	s, engine := templateFixture(t)
+	s.Engine = browserImageBuildFailure{engine}
+	s.env = lc.Environment{Version: 2, Name: "browser-fixture", Platform: "aws", OperatorCIDRs: []string{"192.0.2.1/32"}, Bases: map[string]lc.Base{"ubuntu-24.04": {ID: "ami-example", Identity: "ami-example", User: "ubuntu", DiskGiB: 8}}, AWS: lc.AWSConfig{Account: "123456789012", Region: "us-east-1", Zone: "us-east-1a", Types: []lc.InstanceType{{Name: "t3.medium", CPU: 2, MemoryMiB: 4096}}, DesktopProfile: "fixture-license-profile"}}
+	s.env.Build = lc.BuildConfig{Packer: "/fixture/packer", PackerSHA256: strings.Repeat("a", 64), PluginDirectory: "/fixture/plugins", ToolchainID: "fixture-toolchain", AnsibleVersion: "2.19.3", TimeoutSeconds: 3600}
+	putBrowserTemplateSource(t, s, "old")
+	putBrowserTemplateSource(t, s, "new")
 	s.Config.WebRoot = filepath.Join("..", "web", "build")
 	app := httptest.NewUnstartedServer(nil)
 	defer app.Close()
@@ -181,12 +193,36 @@ func TestHostedScoreboardBrowser(t *testing.T) {
 	if err := s.Store.Get(ctx, "template", "", &template); err != nil {
 		t.Fatal(err)
 	}
+	template.ID = "scoreboard-template"
 	template.Commit = "abcdef123456"
 	template.CommitTitle = "Pinned private training checks"
 	template.Built = true
-	if err := s.Store.Put(ctx, "template", "", template); err != nil {
+	if err := s.Store.Put(ctx, "template", template.ID, template); err != nil {
 		t.Fatal(err)
 	}
+	// The detail route requires a nonempty exact revision pin; retain the same
+	// source, private checks and image identities used by the scoreboard fixture.
+	for _, kind := range []string{"source", "template-instructor", "template-images"} {
+		var value json.RawMessage
+		if err := s.Store.Get(ctx, kind, "", &value); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Store.Put(ctx, kind, template.ID, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Store.Delete(ctx, "template", ""); err != nil {
+		t.Fatal(err)
+	}
+	meeting, err := s.Store.Meeting(ctx)
+	if err != nil || meeting == nil {
+		t.Fatal("missing fixture meeting", err)
+	}
+	meeting.Template = template.ID
+	if err := s.Store.Put(ctx, "meeting", "current", meeting); err != nil {
+		t.Fatal(err)
+	}
+
 	s.Config.WebRoot = filepath.Join("..", "web", "build")
 	app := httptest.NewUnstartedServer(nil)
 	defer app.Close()
@@ -274,4 +310,24 @@ func TestHostedCoachConsoleBrowser(t *testing.T) {
 	} else {
 		t.Log(string(out))
 	}
+}
+
+// The cards and revision selector read the real public catalog, which requires
+// pinned source. Provider operations remain local fakes.
+func putBrowserTemplateSource(t *testing.T, s *Service, id string) {
+	t.Helper()
+	src, err := lc.Load("../examples/workstation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.Put(context.Background(), "source", id, src); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Fail at the engine boundary after real planning and durable job admission.
+type browserImageBuildFailure struct{ *imageTestEngine }
+
+func (browserImageBuildFailure) Build(context.Context, lc.Plan) ([]lc.ImageRecord, error) {
+	return nil, fmt.Errorf("Fixture image build failure")
 }

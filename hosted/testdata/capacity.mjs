@@ -10,6 +10,15 @@ try {
  let documents=0,creations=0;
  page.on('request',request=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())documents++;if(request.url().endsWith('/api/admin/meeting')&&request.method()==='POST')creations++});
  await page.goto(app+'/admin/');
+ await page.getByRole('heading',{name:'No meeting running',exact:true}).waitFor();
+ await page.getByRole('link',{name:'Choose a template',exact:true}).click();
+ await page.waitForURL(app+'/admin/templates/');
+ await page.getByRole('button',{name:'Start meeting: Example Branch',exact:true}).click();
+ const creation=page.getByRole('dialog',{name:'Start a meeting',exact:true});
+ await creation.waitFor();
+ assert((await creation.innerText()).includes('abcdef1'));
+ assert.equal(await creation.getByLabel('Name',{exact:true}).inputValue(),'Example Branch');
+ await creation.getByLabel('Name',{exact:true}).fill('Capacity workshop');
  await page.getByLabel('Number of teams').waitFor();
  assert.equal(await page.getByLabel('Number of teams').inputValue(),'5');
  assert.equal(await page.getByLabel('Students per team').inputValue(),'6');
@@ -28,9 +37,14 @@ try {
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  if(output)await page.screenshot({animations:'disabled',path:output+'/capacity-mobile.png',fullPage:true});
  await page.getByRole('button',{name:'Create meeting',exact:true}).click();
- await page.getByRole('button',{name:'Prepare labs now',exact:true}).waitFor();
+ await page.waitForURL(app+'/admin/');
+ await page.getByRole('heading',{name:'Capacity workshop',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Prepare labs',exact:true}).waitFor();
+ await page.getByText('Prepare labs to open them to teams.',{exact:true}).waitFor();
+ assert.equal(creations,1);
  assert.equal(await page.getByRole('cell',{name:'0 / 20',exact:true}).count(),12);
  let data=await page.evaluate(async()=>await(await fetch('/api/admin')).json());
+ assert.equal(data.meeting.template,'built');
  assert.equal(data.teams.length,12);
  assert(data.teams.every(team=>team.capacity===20));
  assert.equal(Date.parse(data.meeting.expires)-Date.parse(data.meeting.created),2*3600000);
@@ -51,12 +65,14 @@ try {
  await page.setViewportSize({width:1366,height:950});
  if(output)await page.screenshot({animations:'disabled',path:output+'/meeting-desktop.png',fullPage:true});
  // Internal navigation must preserve this document, authentication and warmed admin content.
- await page.evaluate(()=>{window.__navigationMarker='same-document';window.__workspaceFlash=false;new MutationObserver(()=>{if(document.body.innerText.includes('Loading your workspace')||document.body.innerText.includes('Loading revisions'))window.__workspaceFlash=true}).observe(document.body,{childList:true,subtree:true})});
+ await page.evaluate(()=>{window.__navigationMarker='same-document';window.__workspaceFlash=false;new MutationObserver(()=>{if(document.body.innerText.includes('Loading your workspace')||document.body.innerText.includes('Loading meeting…'))window.__workspaceFlash=true}).observe(document.body,{childList:true,subtree:true})});
  await page.getByRole('navigation').getByRole('link',{name:'Templates',exact:true}).click();
  await page.getByRole('heading',{name:'Templates',exact:true}).waitFor();
- await page.getByText('Ready to use',{exact:true}).waitFor();
+ await page.getByRole('region',{name:'Templates',exact:true}).getByText('Ready',{exact:true}).waitFor();
+ await page.getByText('In meeting',{exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:/Start meeting/}).count(),0);
  const nav=page.getByRole('navigation',{name:'Main navigation'});
- for(const [label,url,heading] of [['Admin','/admin/','Team practice'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Practice'],['Admin','/admin/','Team practice']]){
+ for(const [label,url,heading] of [['Admin','/admin/','Capacity workshop'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Practice'],['Admin','/admin/','Capacity workshop']]){
   await nav.getByRole('link',{name:label,exact:true}).click();await page.waitForURL(app+url);
   await page.getByRole('heading',{name:heading,exact:true}).first().waitFor();
   assert.equal(await page.evaluate(()=>window.__navigationMarker),'same-document');

@@ -683,6 +683,15 @@ exercises, scoreboard and templates. Players combine stages/workspace controls, 
 lesson panels beside desktops. Layout includes safe areas, touch targets and keyboard
 focus clearance.
 
+Practice and Admin → Templates share one card per template's newest revision. Cards
+read public catalog content and use audience-specific availability or admin image
+status. An empty admin revision list still loads the catalog and reaches its empty
+state. Per-revision image actions and instructor notes live on the template detail
+page; its revision selector reaches older pins. Meeting creation opens a dialog from
+a built card or revision panel, retains that exact pin, and refuses submission if the
+admin view no longer considers it built or marks it for removal. The Meeting page
+links to template selection when no meeting is open.
+
 Admin views are scoped to user/CSRF session and clear on sign-out, identity/role changes
 or unauthorized reads. A two-second poll shares refreshes. Transient failures retain the
 last view; repeated failures show a separate stale warning. Late responses cannot

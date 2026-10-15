@@ -16,8 +16,8 @@ try {
     const now=Date.now(), iso=n=>new Date(now+n).toISOString();
     await page.clock.install({time:now});
     let admin=false, user="student", signedIn=true, practiceFailure=false, stageOnly=false, meetingActive=true;
-    let activeRun=null, meFailure=false, logouts=0;
-    let heldDetail=null, heldSolution=null, heldAttempt=null, reserveRemoving=false;
+    let activeRun=null, meFailure=false, logouts=0, emptyCatalog=false;
+    let heldDetail=null, heldSolution=null, heldAttempt=null, olderRemoving=false, olderBuilt=true;
     const plan=[], committed=new Map();
     const stages=[
       {id:"discover",title:"Map the branch",instructions:"## Investigate\n\nList the machines with `hostname`.\n\n<script>window.unsafe=1</script>",kind:"answer",prompt:"How many machines?",answer:"4",solution:"The branch has **four machines**.",break:"",checkID:""},
@@ -34,11 +34,11 @@ try {
     const ubuntu={...newest,id:"ubuntu",name:"ubuntu-basics",description:"Learn service management on one server.",stages:[safe(stages[0])],stageCount:1,machines:[machines[0]],imagesBuilt:false,practiceStageIDs:["discover"],library:{category:"Linux",difficulty:"beginner",estimatedMinutes:45,tags:["systemd"]},scenarios:[{...outage,id:"svc",title:"Service sweep",variantCount:3,minBreaks:1,maxBreaks:1}]};
     const dns={...newest,id:"dns",name:"dns-recovery",description:"Recover name resolution for a small office.",stages:[safe(stages[0])],stageCount:1,machines:[machines[1]],imagesBuilt:true,practiceStageIDs:["discover"],library:{category:"DNS",difficulty:"advanced",estimatedMinutes:40,tags:["bind"]},scenarios:[{...outage,id:"resolver",title:"Resolver failure"}]};
     const coach={...newest,id:"coach",name:"coach-support",coachOnly:true,description:"Coach preview environment.",library:undefined,scenarios:[{...outage,id:"coach-scenario",title:"Coach drill"}]};
-    const catalog=()=>admin?[newest,second,older,ubuntu,dns,coach]:[newest,second,older,ubuntu,dns];
+    const catalog=()=>emptyCatalog?[]:admin?[newest,second,older,ubuntu,dns,coach]:[newest,second,older,ubuntu,dns];
     const privateStages=stages.map(s=>({...s,completion:s.kind==="answer"?{answer:{accepted:[s.answer,"four"],caseSensitive:false}}:s.kind==="action"?{check:s.checkID}:{instructor:true}}));
     const template={id:"latest",name:newest.name,commit:newest.commit,commitTitle:newest.commitTitle,committedAt:newest.committedAt,built:true,latest:true,imagesReady:2,imagesTotal:2,buildsPending:0,removing:false,handover:newest.handover,instructor:{notes:"Instructor notes",stages:privateStages,checks:[{id:"website",name:"Website",points:10}],breaks:[{id:"port",name:"Change Apache port",description:"Change the listener.",walkthrough:"Inspect the listener."},{id:"stop",name:"Stop the web service",description:"Stop Apache for recovery practice.",walkthrough:"Restart Apache and check service health."}]}};
     const teams=[{id:"t1",meetingID:"meeting",name:"Team 1",capacity:6,members:2,status:"ready"},{id:"t2",meetingID:"meeting",name:"Team 2",capacity:6,members:2,status:"ready"}];
-    const meeting={id:"meeting",name:"Bank recovery meeting",template:"latest",status:"ready",created:iso(0),expires:iso(7200000)};
+    let meeting={id:"meeting",name:"Bank recovery meeting",template:"latest",status:"ready",created:iso(0),expires:iso(7200000)};
     const quota={limitMinutes:180,usedSeconds:0,remainingSeconds:10800,resetsAt:iso(86400000)};
     const legacyLab={id:"practice",template:"latest",title:"Branch discovery",description:"Discover and verify the branch.",mode:"self-paced",estimatedMinutes:30,publishedAt:iso(-500000),stepCount:2,completedSteps:0};
     const labs=[legacyLab,
@@ -82,8 +82,8 @@ try {
       if(path==="/api/learning/practice/solution") {if(heldSolution){const gate=heldSolution;heldSolution=null;await gate;} return route.fulfill({json:{stepID:body.stepID,solution:stages.find(s=>s.id===body.stepID).solution}});}
       const learning=path.match(/^\/api\/learning\/([\w-]+)$/);
       if(learning) {const lab=labs.find(l=>l.id===learning[1]); return route.fulfill(lab?{json:view(lab)}:{status:404,json:{error:"Lab not found"}});}
-      if(path==="/api/admin") return route.fulfill({json:{meeting:meetingActive?meeting:null,teams:meetingActive?teams:[],templates:[stageOnly?{...template,instructor:{...template.instructor,stages:[privateStages[0]],breaks:[]}}:template,{...template,id:"network",name:second.name,built:false,imagesReady:0},{...template,id:"reserve",committedAt:iso(-50000),removing:reserveRemoving}],breaks:stageOnly?[]:template.instructor.breaks,breakRuns:[],checkRuns:[],jobs:[],joinedStudents:4,teamDesktops:[],activeDesktops:0,repositoryURL:"",importFailures:[{directory:"bad-template",error:"invalid: stages[2].completion.check: line 44: unknown check"}]}});
-      if(path==="/api/admin/meeting") {assert.equal(body.template,"latest");meetingActive=true;return route.fulfill({json:meeting});}
+      if(path==="/api/admin") return route.fulfill({json:{meeting:meetingActive?meeting:null,teams:meetingActive?teams:[],templates:emptyCatalog?[]:[stageOnly?{...template,instructor:{...template.instructor,stages:[privateStages[0]],breaks:[]}}:template,{...template,id:"network",name:second.name,built:false,imagesReady:0},{...template,id:"older",commit:older.commit,latest:false,committedAt:older.committedAt,built:olderBuilt,removing:olderRemoving}],breaks:stageOnly?[]:template.instructor.breaks,breakRuns:[],checkRuns:[],jobs:[],joinedStudents:4,teamDesktops:[],activeDesktops:0,repositoryURL:"",importFailures:[{directory:"bad-template",error:"invalid: stages[2].completion.check: line 44: unknown check"}]}});
+      if(path==="/api/admin/meeting") {meeting={...meeting,name:body.name,template:body.template};meetingActive=true;return route.fulfill({json:meeting});}
       if(path==="/api/admin/exercises" || path==="/api/admin/checks/run") return route.fulfill({json:{ok:true}});
       throw new Error(`Unexpected fixture request ${req.method()} ${path}`);
     });
@@ -98,10 +98,11 @@ try {
     assert.equal(await page.getByRole("link",{name:/Explore /}).count(),4,"one card per template, not per revision; coach-only hidden from students");
     assert.equal(await page.getByRole("link",{name:"Published labs"}).count(),0,"no published-lab navigation");
     const bank=page.getByRole("listitem").filter({has:page.getByRole("link",{name:"Explore Branch services revision 1234567"})});
-    for(const text of ["Incident response","Intermediate","1 h 30 min","ccdc","Baseline practice","1 scenario","2 machines · 4 stages"]) await bank.getByText(text,{exact:true}).waitFor();
+    for(const text of ["Incident response","Intermediate","1 h 30 min","2 machines · 4 stages · 1 scenario","Workspace ready"]) await bank.getByText(text,{exact:true}).waitFor();
+    for(const text of ["ccdc","Baseline practice","1 scenario"]) assert.equal(await bank.getByText(text,{exact:true}).count(),0,"cards omit tags and separate practice metadata");
     await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Network investigation/})}).getByText("Preview only",{exact:true}).waitFor();
-    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore DNS recovery/})}).getByText("Local only · no desktop",{exact:true}).waitFor();
-    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Ubuntu basics/})}).getByText("Local only · images not built",{exact:true}).waitFor();
+    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore DNS recovery/})}).getByText("Local only",{exact:true}).waitFor();
+    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Ubuntu basics/})}).getByText("Local only",{exact:true}).waitFor();
     assert(await fits(page),"library width");
     await shot(page,"library",width);
     await page.getByLabel("Search templates").fill("nmap");
@@ -130,7 +131,9 @@ try {
     // Exact revision detail: baseline and scenario starts, attempts filtered by pin.
     await page.goto(app+"/labs/?q=bank");
     await page.getByRole("link",{name:"Explore Branch services revision 1234567"}).click();
-    await page.getByRole("heading",{name:"Practice this revision"}).waitFor();
+    await page.getByRole("heading",{name:"Practice",exact:true}).waitFor();
+    await page.getByText("ccdc",{exact:true}).waitFor();
+    await page.getByText("web",{exact:true}).waitFor();
     const yours=page.getByRole("region",{name:"Your attempts on this revision"});
     await yours.getByText("Branch outage",{exact:true}).waitFor();
     assert.equal(await yours.getByRole("listitem").count(),2,"attempt history matches the exact revision");
@@ -426,13 +429,19 @@ try {
 
     // Administrators manage images; publishing navigation is gone and its route redirects.
     user="student"; admin=true; meetingActive=false;
+    emptyCatalog=true;
+    await page.goto(app+"/admin/templates/");
+    await page.getByRole("heading",{name:"No templates yet",exact:true}).waitFor();
+    assert.equal(await page.getByText("Loading templates…",{exact:true}).count(),0,"an empty installation finishes loading");
+    emptyCatalog=false;
     await page.goto(app+"/labs/?template=coach");
     await page.getByText("Coach-only",{exact:true}).waitFor();
     assert(await page.getByRole("button",{name:"Start practice: Coach support"}).isDisabled());
     assert(await page.getByRole("button",{name:"New scenario: Coach drill"}).isDisabled());
     await page.getByText("Coach-only revisions are previews for instructors.",{exact:true}).first().waitFor();
     await page.goto(app+"/labs/?template=network");
-    await page.getByRole("link",{name:"Build images",exact:true}).waitFor();
+    const administration=page.getByRole("region",{name:"Administration",exact:true});
+    await administration.getByRole("button",{name:"Build images",exact:true}).waitFor();
     assert.equal(await page.getByRole("link",{name:"Publish practice"}).count(),0,"no publishing call to action");
     assert.equal(await page.getByRole("link",{name:"Prepare meeting",exact:true}).count(),0,"unbuilt revision guides image administration");
     await page.goto(app+"/admin/labs/?template=latest");
@@ -440,46 +449,99 @@ try {
     const adminNav=page.getByRole("navigation",{name:"Administration"});
     await adminNav.getByRole("link",{name:"Templates"}).waitFor();
     assert.deepEqual(await adminNav.getByRole("link").allInnerTexts(),["Meeting","Templates"]);
-    assert.equal(await page.getByRole("link",{name:"Student library"}).getAttribute("href"),"/labs/");
-    assert.equal(await page.getByRole("link",{name:"Open branch-services revision 1234567 in the library"}).first().getAttribute("href"),"/labs/?template=latest");
-    assert.equal(await page.getByText("Authoring practice",{exact:true}).count(),0);
+    const cards=page.getByRole("region",{name:"Templates",exact:true});
+    const branch=cards.getByRole("listitem").filter({has:page.getByRole("link",{name:"Explore Branch services revision 1234567"})});
+    assert.equal(await cards.getByRole("link",{name:/Explore /}).count(),5,"admin cards include coach templates, with one card per name");
+    assert.equal(await branch.getByRole("link",{name:/Explore /}).getAttribute("href"),"/labs/?template=latest");
+    await branch.getByText("Ready",{exact:true}).waitFor();
     assert(await fits(page),"admin templates width");
     await shot(page,"admin-templates",width);
-    assert.equal(writes.filter(w=>w.path==="/api/admin/meeting").length,0,"exploring a revision does not provision");
-    await page.goto(app+"/admin/?template=network");
-    await page.getByText("The requested revision needs its images built",{exact:false}).waitFor();
-    assert.equal(await page.getByLabel("Built template revision").inputValue(),"","unbuilt pin is not replaced by an available built revision");
-    assert(await page.getByRole("button",{name:"Create meeting",exact:true}).isDisabled());
-    await page.clock.runFor(10500);
-    assert.equal(await page.getByLabel("Built template revision").inputValue(),"","polling preserves an unavailable requested pin");
+    const creations=()=>writes.filter(w=>w.path==="/api/admin/meeting");
+    assert.equal(creations().length,0,"exploring a revision does not provision");
     await page.goto(app+"/admin/");
-    await page.getByLabel("Built template revision").waitFor();
-    assert.equal(await page.getByLabel("Built template revision").inputValue(),"latest","no-query creation still defaults to the newest built revision");
-    await page.getByLabel("Built template revision").selectOption("reserve");
-    const lostChoiceRead=page.waitForResponse(async r=>r.url().endsWith("/api/admin") && (await r.json()).templates.some(t=>t.id==="reserve" && t.removing));
-    reserveRemoving=true;
-    await page.clock.runFor(10500);
-    await lostChoiceRead;
-    await page.getByText("The selected revision is no longer available",{exact:false}).waitFor();
-    assert.equal(await page.getByLabel("Built template revision").inputValue(),"","loss of an explicitly selected revision does not substitute another revision");
-    assert(await page.getByRole("button",{name:"Create meeting",exact:true}).isDisabled());
-    await page.clock.runFor(2500);
-    assert.equal(await page.getByLabel("Built template revision").inputValue(),"","subsequent polls preserve the need for an explicit choice");
-    assert.equal(writes.filter(w=>w.path==="/api/admin/meeting").length,0);
-    await page.goto(app+"/labs/?template=older");
-    await page.getByRole("link",{name:"Prepare meeting",exact:true}).click();
-    await page.getByText("The requested revision is unavailable",{exact:false}).waitFor();
-    assert.equal(await page.getByLabel("Built template revision").inputValue(),"","removed pin is not replaced by an available built revision");
-    assert(await page.getByRole("button",{name:"Create meeting",exact:true}).isDisabled());
-    await page.locator("form").filter({has:page.getByLabel("Built template revision")}).evaluate(f=>f.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
-    await page.getByRole("alert").getByText("Choose an available built template revision.",{exact:true}).waitFor();
-    assert.equal(writes.filter(w=>w.path==="/api/admin/meeting").length,0,"invalid pin cannot create through form submission");
-    assert(await fits(page),"unavailable pin notice width");
-    await page.getByLabel("Built template revision").selectOption("latest");
-    await page.getByRole("button",{name:"Create meeting",exact:true}).click();
-    await page.getByText("Meeting created. Prepare labs now",{exact:false}).waitFor();
-    assert.equal(writes.filter(w=>w.path==="/api/admin/meeting").length,1,"an explicit valid choice permits meeting creation");
+    await page.getByRole("heading",{name:"No meeting running",exact:true}).waitFor();
+    assert.equal(await page.getByRole("button",{name:"Create meeting",exact:true}).count(),0);
+    await page.getByRole("link",{name:"Choose a template",exact:true}).click();
+    await page.waitForURL(app+"/admin/templates/");
 
+    // A card opens a dialog pinned to its newest revision, with validated settings.
+    await page.getByRole("button",{name:"Start meeting: Branch services",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"Start a meeting",exact:true});
+    await dialog.waitFor();
+    assert((await dialog.innerText()).includes("1234567"));
+    assert.equal(await dialog.getByLabel("Name",{exact:true}).inputValue(),"Branch services");
+    assert.equal(await dialog.getByLabel("Number of teams").inputValue(),"5");
+    assert.equal(await dialog.getByLabel("Students per team").inputValue(),"6");
+    assert.equal(await dialog.getByLabel("Duration (hours)").inputValue(),"4");
+    await dialog.getByText("30 desktop places · deleted after 4 hours",{exact:true}).waitFor();
+    const submit=dialog.getByRole("button",{name:"Create meeting",exact:true});
+    for(const [label,valid,invalids] of [["Number of teams","5",["0","101","1.5"]],["Students per team","6",["0","101","1.5"]],["Duration (hours)","4",["0","9","1.5"]]]) {
+      for(const value of invalids) {
+        await dialog.getByLabel(label).fill(value);
+        await submit.click();
+        assert.equal(await dialog.locator("form.modal-box").evaluate(f=>f.checkValidity()),false);
+        assert.equal(creations().length,0,"invalid settings do not submit");
+      }
+      await dialog.getByLabel(label).fill(valid);
+    }
+    assert(await fits(page),"meeting dialog width");
+    await shot(page,"meeting-dialog",width);
+    await dialog.getByRole("button",{name:"Cancel",exact:true}).click();
+    await dialog.waitFor({state:"hidden"});
+    assert.equal(creations().length,0,"cancel does not create a meeting");
+    await page.getByRole("button",{name:"Start meeting: Branch services",exact:true}).click();
+    await dialog.getByLabel("Name",{exact:true}).fill("Card meeting");
+    await submit.click();
+    await page.waitForURL(app+"/admin/");
+    await page.getByRole("heading",{name:"Card meeting",exact:true}).waitFor();
+    assert.deepEqual(creations().at(-1).body,{name:"Card meeting",template:"latest",hours:4,teamCount:5,capacity:6});
+    await page.getByRole("navigation",{name:"Administration"}).getByRole("link",{name:"Templates",exact:true}).click();
+    await branch.getByText("In meeting",{exact:true}).waitFor();
+    await cards.getByRole("link",{name:"Open meeting",exact:true}).waitFor();
+    assert.equal(await cards.getByRole("button",{name:/Start meeting/}).count(),0,"an open meeting replaces creation actions");
+    await branch.getByRole("link",{name:/Explore /}).click();
+    await administration.getByRole("link",{name:"Open meeting",exact:true}).waitFor();
+    assert.equal(await administration.getByRole("button",{name:"Start meeting",exact:true}).count(),0);
+    await page.locator("summary").filter({hasText:"Instructor notes"}).click();
+    await page.getByText("Inspect the listener.",{exact:true}).waitFor();
+
+    // A historical detail revision is never substituted if its images become unavailable.
+    meetingActive=false;
+    await page.goto(app+"/labs/?template=latest");
+    await page.getByLabel("Revision",{exact:true}).selectOption("older");
+    await page.waitForURL(app+"/labs/?template=older");
+    const startMeeting=administration.getByRole("button",{name:"Start meeting",exact:true});
+    for(const unavailable of ["unbuilt","removing"]) {
+      olderBuilt=true; olderRemoving=false;
+      await page.clock.runFor(10500);
+      await startMeeting.click();
+      await dialog.waitFor();
+      assert((await dialog.innerText()).includes("abc1234"));
+      const updated=page.waitForResponse(async r=>r.url().endsWith("/api/admin") && (await r.json()).templates.some(t=>t.id==="older" && (unavailable==="unbuilt"?!t.built:t.removing)));
+      if(unavailable==="unbuilt") olderBuilt=false; else olderRemoving=true;
+      await page.clock.runFor(10500);
+      await updated;
+      await page.clock.runFor(100);
+      assert(await submit.isDisabled(),"the exact pin must remain built and outside cleanup");
+      await dialog.locator("form.modal-box").evaluate(f=>f.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+      await dialog.getByRole("alert").getByText("This revision is no longer built. Choose another template.",{exact:true}).waitFor();
+      assert.equal(creations().length,1,"unavailable pin cannot submit or substitute the newer built revision");
+      await page.clock.runFor(2500);
+      assert(await submit.isDisabled(),"subsequent polls keep the pin unavailable");
+      await dialog.getByRole("button",{name:"Cancel",exact:true}).click();
+    }
+    olderBuilt=true; olderRemoving=false;
+    await page.clock.runFor(10500);
+    await startMeeting.click();
+    await dialog.getByLabel("Name",{exact:true}).fill("Historical meeting");
+    await submit.click();
+    await page.waitForURL(app+"/admin/");
+    await page.getByRole("heading",{name:"Historical meeting",exact:true}).waitFor();
+    assert.deepEqual(creations().at(-1).body,{name:"Historical meeting",template:"older",hours:4,teamCount:5,capacity:6});
+    assert.equal(creations().length,2);
+
+    // Independent meeting-stage fixture uses the current revision.
+    meeting={...meeting,template:"latest"};
     // Meeting stages remain freely selectable and explicit.
     await page.goto(app+"/admin/#exercises");
     await page.getByLabel("Template stage").selectOption("discover");

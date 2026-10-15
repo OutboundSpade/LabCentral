@@ -80,6 +80,12 @@ try {
         breaks: [exercise],
       },
     };
+    const publicTemplate = {
+      id:template.id,name:template.name,commit:template.commit,
+      commitTitle:template.commitTitle,committedAt:template.committedAt,
+      description:"Troubleshooting practice",handover:template.handover,
+      imagesBuilt:true,machines:[],stages:[],stageCount:0,practiceStageIDs:[],scenarios:[],
+    };
     const jobs = Array.from({ length: 26 }, (_, i) => ({
       id: `j${i}`,
       kind: [
@@ -152,6 +158,9 @@ try {
               json: { error: "Session transport unavailable" },
             })
           : route.fulfill({ json: overview() });
+      if (path === "/api/templates") return route.fulfill({json:{templates:[publicTemplate]}});
+      if (path === "/api/templates/revision") return route.fulfill({json:publicTemplate});
+      if (path === "/api/learning") return route.fulfill({json:{labs:[],run:null,quota:{limitMinutes:180,usedSeconds:0,remainingSeconds:10800,resetsAt:new Date(start+86400000).toISOString()}}});
       if (path === "/api/admin") {
         adminReads++;
         return pollFailure
@@ -378,12 +387,16 @@ try {
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await page.goto(app + "/admin/templates/");
-    assert.equal(
-      await page
-        .getByRole("link", { name: "abcdef1", exact: true })
-        .getAttribute("href"),
-      "https://github.com/example/training/commit/abcdef1234567890",
-    );
+    const explore=page.getByRole("link",{name:"Explore Training lab revision abcdef1",exact:true});
+    await explore.waitFor();
+    assert.equal(await explore.getAttribute("href"),"/labs/?template=revision");
+    await explore.click();
+    await page.clock.runFor(100);
+    await page.waitForURL(app+"/labs/?template=revision");
+    await page.getByText("abcdef123456",{exact:true}).waitFor().catch(async e=>{console.error(await page.locator("body").innerText(),errors);throw e});
+    await page.getByRole("region",{name:"Administration",exact:true}).getByText("Ready",{exact:true}).waitFor();
+    await page.locator("summary").filter({hasText:"Instructor notes"}).click();
+    await page.getByText("Instructor private sentinel",{exact:true}).waitFor();
     admin = false;
     await page.goto(app + "/teams/");
     await page

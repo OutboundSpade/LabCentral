@@ -15,6 +15,7 @@ try{
   await page.route('**/api/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;
    if(!authenticated){await route.fulfill({status:401,json:{error:'Sign in'}});return}
    if(path==='/api/me'){await route.fulfill({json:overview()});return}
+   if(path==='/api/templates'){await route.fulfill({json:{templates:[{...template,description:'Branch service recovery',machines:[],stages:[],stageCount:0,practiceStageIDs:[],scenarios:[]}]}});return}
    if(path==='/api/admin'){await route.fulfill({json:{imageSummary:{images:19,unusedImages:17},meeting,teams,templates:[template],jobs:[{id:'j',kind:'prepare',target:'m',status:'complete',created:meeting.created}]}});return}
    assert.equal(req.headers()['x-csrf-token'],'test-csrf');
    if(path==='/api/access'){await new Promise(resolve=>setTimeout(resolve,6000));await route.fulfill({json:{url:'http://127.0.0.1:5173/desktop-test-launch',ticket:'test-ticket'}});return}

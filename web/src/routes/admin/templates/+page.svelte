@@ -63,9 +63,10 @@
     }
   }
   // Reload card content when revisions are imported or removed.
-  const revisions = $derived(data?.templates.map((t) => t.id).join(",") ?? "");
+  const revisions = $derived(data?.templates.map((t) => t.id).join(",") ?? null);
   $effect(() => {
-    if (revisions) void loadCatalog();
+    // An empty installation still needs a catalog response to render its empty state.
+    if (revisions !== null) void loadCatalog();
   });
   onMount(() => {
     void refreshAdmin().catch(() => {});
