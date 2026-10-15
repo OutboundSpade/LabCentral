@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
+	if err := s.revisionPruneBlock(ctx, id); err != nil {
+		return err
+	}
 	if err := s.actionableRevision(ctx, id); err != nil {
 		return err
 	}

@@ -113,6 +113,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/templates/refresh", s.authorized(true, s.refreshTemplates))
 	mux.HandleFunc("POST /api/admin/templates/build", s.authorized(true, s.buildTemplate))
 	mux.HandleFunc("POST /api/admin/templates/remove-images", s.authorized(true, s.removeTemplateImages))
+	mux.HandleFunc("POST /api/admin/images/prune", s.authorized(true, s.pruneImages))
 	mux.HandleFunc("POST /api/admin/jobs/retry", s.authorized(true, s.retryJob))
 	mux.HandleFunc("POST /api/admin/checks/schedule", s.authorized(true, s.setCheckSchedule))
 	mux.HandleFunc("POST /api/admin/checks/run", s.authorized(true, s.startChecks))

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { templateName } from "$lib/display";
   import { RotateCw } from "@lucide/svelte";
   import type { AdminView, Job } from "$lib/types";
   import { api, adminUpdated, adminPollError } from "$lib/api";
@@ -63,7 +64,7 @@
   function target(job: Job) {
     if (job.targetLabel) return job.targetLabel;
     const t = data.templates.find((t) => t.id === job.target);
-    if (t) return `${t.name} · ${t.commit.slice(0, 7)}`;
+    if (t) return `${templateName(t.name)} · ${t.commit.slice(0, 7)}`;
     const r =
       data.breakRuns?.find((r) => r.id === job.target) ??
       data.checkRuns?.find((r) => r.id === job.target);
@@ -71,7 +72,9 @@
       data.teams.find((t) => t.id === r?.teamID)?.name ??
       (job.target === data.meeting?.id
         ? data.meeting.name
-        : job.kind === "refresh"
+        : job.kind === "prune-images"
+          ? "Unused images"
+          : job.kind === "refresh"
           ? "Template repository"
           : job.kind === "access-cleanup"
             ? "Desktop sessions"
@@ -167,6 +170,15 @@
               ? `Waiting for ${waiting(job)}`
               : "Waiting for an available worker"}
           </p>{/if}
+        {#if job.imageOutcomes?.length}<details class="mt-2 text-xs">
+            <summary class="min-h-11 cursor-pointer py-3 lg:min-h-8 lg:py-2">{job.imageOutcomes.filter((i) => ["removed", "skipped"].includes(i.status)).length} / {job.imageOutcomes.length} images processed</summary>
+            <ul class="space-y-2 pb-2">
+              {#each job.imageOutcomes as outcome, index (index)}<li class="break-words">
+                <span class="font-medium">{outcome.name}</span> · <Status status={outcome.status} />
+                {#if outcome.message}<p class="mt-0.5 text-base-content/70">{outcome.message}</p>{/if}
+              </li>{/each}
+            </ul>
+          </details>{/if}
         {#if job.error}<p
             class={[
               "mt-2 break-words text-sm",
@@ -178,7 +190,7 @@
               : job.error}
           </p>{/if}
         {#if job.status === "failed" && job.retryable}<button
-            class="btn btn-sm min-h-11 mt-3 lg:min-h-8"
+            class="btn btn-outline btn-sm min-h-11 mt-3 lg:min-h-8"
             disabled={!!retrying}
             onclick={() => retry(job)}
             >{#if retrying === job.id}<span
@@ -204,7 +216,7 @@
         Showing {visible.length} of {matching.length}
       </p>
       {#if visible.length < matching.length}<button
-          class="btn btn-sm btn-ghost min-h-11"
+          class="btn btn-sm btn-outline min-h-11"
           onclick={() => (recentLimit += 12)}>Show more</button
         >{/if}
     </div>{/if}

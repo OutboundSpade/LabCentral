@@ -87,13 +87,14 @@
 </script>
 
 <svelte:head><title>Choose your team · LabCentral</title></svelte:head>
-<div class="mx-auto max-w-2xl">
+<div>
   <Guard>
     {#if $session?.meeting && !["ended", "ending"].includes($session.meeting.status)}
       <PageHeader title="Choose your team">
-        {#snippet eyebrow()}{$session?.meeting?.name}{/snippet}
+        {#snippet eyebrow()}Meeting · {$session?.meeting?.name}{/snippet}
+        <Deadline expires={$session.meeting.expires} />
       </PageHeader>
-      <div class="-mt-5 mb-6"><Deadline expires={$session.meeting.expires} /></div>
+
       <Notice message={error} dismissible />
       {#if $session.membership.switching}<div
           class="alert my-4 text-sm"
@@ -110,7 +111,7 @@
             <div class="min-w-28 flex-1">
               <h2 class="flex items-center gap-2 text-sm font-medium">
                 {team.name}
-                {#if mine}<span class="badge badge-sm badge-soft badge-primary">Your team</span>{/if}
+                {#if mine}<span class="badge badge-sm badge-ghost">Your team</span>{/if}
               </h2>
               <p class="mt-0.5 text-xs tabular-nums text-base-content/60">
                 {team.members} of {team.capacity} seats{#if $session.user.admin || mine}{" · "}<Status status={team.status} />{/if}
@@ -122,7 +123,7 @@
                 >Your lab<ArrowRight size={15} /></a
               >
             {:else}<button
-                class="btn btn-sm min-h-11 lg:min-h-8"
+                class="btn btn-outline btn-sm min-h-11 lg:min-h-8"
                 disabled={!!pending || full}
                 onclick={() => choose(team.id)}
                 >{#if pending === team.id}<span
@@ -137,7 +138,7 @@
       </ul>
       {#if $session.membership.teamID}<div class="mt-3 flex justify-end">
           <button
-            class="btn btn-sm min-h-11 btn-ghost text-base-content/70"
+            class="btn btn-sm min-h-11 btn-outline text-base-content/70"
             disabled={!!pending}
             onclick={() => choose("")}><LogOut size={15} />Leave team</button
           >
@@ -159,9 +160,9 @@
             : "Teams appear here when a meeting starts."}
         <Notice message={error} dismissible />
         {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
-            >Practice labs<ArrowRight size={15} /></a
+            >Practice<ArrowRight size={15} /></a
           ><button
-            class="btn btn-sm btn-ghost min-h-11"
+            class="btn btn-sm btn-outline min-h-11"
             onclick={checkAgain}><RotateCw size={15} />Check again</button
           >{#if checked}<p
               class="basis-full text-xs text-base-content/60"
@@ -195,7 +196,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11" disabled={!!pending}>Cancel</button>
+        <button class="btn btn-outline btn-sm min-h-11" disabled={!!pending}>Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11 btn-primary"

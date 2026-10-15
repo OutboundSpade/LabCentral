@@ -6,7 +6,7 @@ try {
  const app=process.argv[2];
  const evidence=process.env.LABCENTRAL_BROWSER_EVIDENCE;
  if(evidence)fs.mkdirSync(evidence,{recursive:true});
- const context=await browser.newContext({ignoreHTTPSErrors:true,reducedMotion:'reduce',viewport:{width:1365,height:1000}});
+ const context=await browser.newContext({ignoreHTTPSErrors:true,reducedMotion:'reduce',viewport:{width:1366,height:1000}});
  await context.addCookies([{name:'__Host-labcentral',value:'cookie',url:app,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const page=await context.newPage();
  await page.goto(app+'/admin/');
@@ -100,7 +100,7 @@ try {
  const catalog=await context.request.get(app+'/api/templates');
  const teacherTemplates=(await catalog.json()).templates;assert.equal(teacherTemplates.length,1);assert(teacherTemplates[0].coachOnly && teacherTemplates[0].machines.some(m=>m.name==='support'));
  await page.goto(app+'/labs/?template=pinned');await page.getByText('Coach-only',{exact:true}).waitFor();assert.equal(await page.getByText('support',{exact:true}).count(),1);assert.equal(await page.getByRole('link',{name:'Publish practice',exact:true}).count(),0);assert(await page.getByRole('button',{name:/Start practice:/}).isDisabled(),'coach-only revisions cannot start student practice');await page.getByText('Coach-only revisions are previews for instructors.',{exact:true}).first().waitFor();
- if(evidence){await page.screenshot({path:evidence+'/coach-preview-mobile.png',fullPage:true});await page.setViewportSize({width:1365,height:1000});await page.screenshot({path:evidence+'/coach-preview-desktop.png',fullPage:true})}
+ if(evidence){await page.screenshot({path:evidence+'/coach-preview-mobile.png',fullPage:true});await page.setViewportSize({width:1366,height:1000});await page.screenshot({path:evidence+'/coach-preview-desktop.png',fullPage:true})}
  const studentContext=await browser.newContext({ignoreHTTPSErrors:true});await studentContext.addCookies([{name:'__Host-labcentral',value:'blue-cookie',url:app,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const studentCatalog=await studentContext.request.get(app+'/api/templates');assert.equal(studentCatalog.status(),200);assert.equal((await studentCatalog.json()).templates.length,0);
  const studentMachines=await studentContext.request.get(app+'/api/admin/teams/'+team+'/machines');assert([401,403].includes(studentMachines.status()),'students cannot list coach machines');

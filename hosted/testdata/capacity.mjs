@@ -4,7 +4,7 @@ const {chromium}=await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE);
 const browser=await chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox']});
 try {
  const app=process.argv[2];
- const context=await browser.newContext({ignoreHTTPSErrors:true,reducedMotion:'reduce',viewport:{width:1365,height:950}});
+ const context=await browser.newContext({ignoreHTTPSErrors:true,reducedMotion:'reduce',viewport:{width:1366,height:950}});
  await context.addCookies([{name:'__Host-labcentral',value:'cookie',url:app,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const page=await context.newPage();
  let documents=0,creations=0;
@@ -41,22 +41,22 @@ try {
  data=await page.evaluate(async()=>await(await fetch('/api/admin')).json());
  assert.equal(Date.parse(data.meeting.expires)-Date.parse(data.meeting.created),8*3600000);
  const end=page.getByRole('button',{name:'End meeting',exact:true});
- assert((await end.getAttribute('class')).includes('text-error'));
+ assert((await end.getAttribute('class')).includes('btn-error'));
  assert.equal(await end.locator('input[type="checkbox"]').count(),0);
  if(output)await page.screenshot({animations:'disabled',path:output+'/meeting-mobile.png',fullPage:true});
  await end.click();await page.getByRole('dialog').waitFor();
  if(output)await page.screenshot({animations:'disabled',path:output+'/end-confirmation-mobile.png'});
  await page.getByRole('button',{name:'Cancel',exact:true}).click();
  assert.equal((await page.evaluate(async()=>await(await fetch('/api/admin')).json())).meeting.status,'waiting');
- await page.setViewportSize({width:1365,height:950});
+ await page.setViewportSize({width:1366,height:950});
  if(output)await page.screenshot({animations:'disabled',path:output+'/meeting-desktop.png',fullPage:true});
  // Internal navigation must preserve this document, authentication and warmed admin content.
  await page.evaluate(()=>{window.__navigationMarker='same-document';window.__workspaceFlash=false;new MutationObserver(()=>{if(document.body.innerText.includes('Loading your workspace')||document.body.innerText.includes('Loading revisions'))window.__workspaceFlash=true}).observe(document.body,{childList:true,subtree:true})});
  await page.getByRole('navigation').getByRole('link',{name:'Templates',exact:true}).click();
- await page.getByRole('heading',{name:'Lab templates',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'Templates',exact:true}).waitFor();
  await page.getByText('Ready to use',{exact:true}).waitFor();
  const nav=page.getByRole('navigation',{name:'Main navigation'});
- for(const [label,url,heading] of [['Admin','/admin/','Team practice'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Lab library'],['Admin','/admin/','Team practice']]){
+ for(const [label,url,heading] of [['Admin','/admin/','Team practice'],['Meeting','/teams/','Choose your team'],['Practice','/labs/','Practice'],['Admin','/admin/','Team practice']]){
   await nav.getByRole('link',{name:label,exact:true}).click();await page.waitForURL(app+url);
   await page.getByRole('heading',{name:heading,exact:true}).first().waitFor();
   assert.equal(await page.evaluate(()=>window.__navigationMarker),'same-document');

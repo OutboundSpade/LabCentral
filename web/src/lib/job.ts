@@ -5,6 +5,7 @@ export function jobName(kind: string) {
         prepare: "Prepare labs",
         build: "Build images",
         "remove-images": "Remove images",
+        "prune-images": "Remove unused images",
         refresh: "Refresh templates",
         exercise: "Run exercise",
         check: "Service checks",

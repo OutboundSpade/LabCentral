@@ -16,7 +16,7 @@
   <p class="flex min-h-48 flex-wrap items-center gap-3 text-sm text-base-content/70" role="status">
     <span class="loading loading-spinner loading-sm"></span>Practice now starts from
     templates. Opening Lab templates…
-    <a class="btn btn-sm btn-ghost min-h-11" href="/admin/templates/"
+    <a class="btn btn-sm btn-outline min-h-11" href="/admin/templates/"
       >Open Lab templates<ArrowRight size={15} /></a
     >
   </p>

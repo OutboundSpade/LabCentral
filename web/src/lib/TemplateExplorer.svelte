@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PageHeader from "$lib/PageHeader.svelte";
+  import { templateName } from "$lib/display";
   import { onMount, untrack } from "svelte";
   import { browser } from "$app/environment";
   import { page } from "$app/state";
@@ -25,7 +27,6 @@
   import { sessionScope, learnPath, kindLabel } from "$lib/learning";
   import {
     attempts as ownAttempts,
-    legacy as legacyLabs,
     attemptBlocked,
     baselineBlocked,
     baselineHint,
@@ -195,9 +196,6 @@
   const mine = $derived(
     ownAttempts(catalog).filter((lab) => lab.template === template?.id),
   );
-  const earlier = $derived(
-    legacyLabs(catalog).filter((lab) => lab.template === template?.id),
-  );
   function listParams() {
     const params = new URLSearchParams();
     for (const [name, value] of [
@@ -242,35 +240,24 @@
 </script>
 
 {#if id}
-  <a
-    class="btn btn-sm btn-ghost min-h-11 mb-4 -ml-3 text-base-content/70"
-    href={listPath()}><ArrowLeft size={15} />All templates</a
-  >
   {#if template}
     {@const meta = template.library}
     {@const baseline = baselineBlocked(template)}
     {@const scenarioReason = scenarioBlocked(template)}
     {@const busyRun = attemptBlocked(catalog?.run)}
+    <PageHeader title={templateName(template.name)} description={template.description}>
+      {#snippet eyebrow()}<a class="link link-hover" href={listPath()}>Practice</a>{#if meta?.category} · {meta.category}{/if}{/snippet}
+      <a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href={listPath()}><ArrowLeft size={15} />All templates</a>
+    </PageHeader>
     <div class="grid items-start gap-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10">
       <aside class="contents lg:block lg:min-w-0 lg:space-y-6">
         <div class="order-0">
-          {#if meta?.category}<p class="mb-1 text-xs font-medium text-base-content/70">
-              {meta.category}
-            </p>{/if}
-          <h2 class="break-words text-2xl font-semibold tracking-tight">
-            {template.name}
-          </h2>
-          {#if template.description}<p
-              class="mt-2 text-sm leading-relaxed text-base-content/70"
-            >
-              {template.description}
-            </p>{/if}
-          <div class="mt-3 flex flex-wrap items-center gap-1.5">
+          <div class="flex flex-wrap items-center gap-1.5">
             {#if template.coachOnly}<span class="badge badge-sm badge-ghost">Coach-only</span>{/if}
-            {#if meta?.difficulty}<span class="badge badge-sm badge-soft"
+            {#if meta?.difficulty}<span class="badge badge-sm badge-ghost"
                 ><Gauge size={12} aria-hidden="true" />{difficultyLabel(meta.difficulty)}</span
               >{/if}
-            {#if meta?.estimatedMinutes}<span class="badge badge-sm badge-soft"
+            {#if meta?.estimatedMinutes}<span class="badge badge-sm badge-ghost"
                 ><Clock size={12} aria-hidden="true" />{minutes(meta.estimatedMinutes)}</span
               >{/if}
             {#each meta?.tags ?? [] as tag (tag)}<span class="badge badge-sm badge-ghost">{tag}</span>{/each}
@@ -287,7 +274,7 @@
                   >{revisionLabel(revision)}</option
                 >{/each}</select
             ><p class="mt-1.5 break-words text-xs text-base-content/60">
-              {template.commitTitle || "Imported revision"}{#if template.committedAt}{` · ${date(template.committedAt, { dateStyle: "medium" })}`}{/if}
+              {template.name} · {template.commitTitle || "Imported revision"}{#if template.committedAt}{` · ${date(template.committedAt, { dateStyle: "medium" })}`}{/if}
             </p>
           {:else}<p class="mt-4 text-xs text-base-content/60">
               <span class="font-mono">{template.commit.slice(0, 12)}</span
@@ -297,12 +284,12 @@
         </div>
         {#if $session?.user.admin}<div class="order-2 flex flex-wrap gap-2">
             {#if template.imagesBuilt}<a
-                class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+                class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
                 href={`/admin/?template=${encodeURIComponent(template.id)}`}
                 ><Users size={15} />Prepare meeting</a
               >
             {:else}<a
-                class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+                class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
                 href="/admin/templates/"><Server size={15} />Build images</a
               >{/if}
           </div>{/if}
@@ -348,10 +335,7 @@
           <h3 id="template-practice-title" class="text-sm font-semibold">
             Practice this revision
           </h3>
-          <p class="mt-1 text-sm text-base-content/70">
-            Each start saves a private attempt. Cloud workspaces start separately from
-            the lab, using your weekly cloud time.
-          </p>
+
           <ul class="mt-4 grid gap-3 xl:grid-cols-2">
             <li class="card card-sm border border-base-content/9 bg-base-200/70">
               <div class="card-body">
@@ -365,7 +349,7 @@
                     >{/if}
                 </div>
                 <p class="text-sm leading-relaxed text-base-content/70">
-                  Work through the self-paced stages from the baseline environment.
+                  Self-paced stages in the baseline environment.
                 </p>
                 <p id="baseline-help" class="grow-0 text-xs leading-relaxed text-base-content/70">
                   {baseline || busyRun || baselineHint(template)}
@@ -374,7 +358,7 @@
                   <AttemptButton
                     template={template.id}
                     label="Start practice"
-                    name={`Start practice: ${template.name}`}
+                    name={`Start practice: ${templateName(template.name)}`}
                     icon={Play}
                     primary
                     blocked={baseline || busyRun}
@@ -418,7 +402,7 @@
                   >
                     {scenarioReason ||
                       busyRun ||
-                      "Cloud workspace only. Each attempt saves a fresh compatible variant."}
+                      "Cloud only · new combination each attempt"}
                   </p>
                   <div class="card-actions mt-1">
                     <AttemptButton
@@ -446,7 +430,7 @@
           {#if !catalog && catalogError}<p class="mt-2 text-sm text-warning" role="status">
               Your attempts could not be loaded ({catalogError}).
             </p>
-            {#if retryCatalog}<button class="btn btn-sm min-h-11 mt-3" onclick={retryCatalog}
+            {#if retryCatalog}<button class="btn btn-outline btn-sm min-h-11 mt-3" onclick={retryCatalog}
                 ><RotateCw size={15} />Retry attempts</button
               >{/if}
           {:else if !catalog}<p class="mt-2 text-sm text-base-content/70" role="status">
@@ -468,7 +452,7 @@
                     </p>
                   </div>
                   <a
-                    class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+                    class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
                     href={learnPath(lab.id)}
                     aria-label={`${done ? "Review" : "Continue"} ${lab.scenarioID ? scenarioTitle(lab.scenarioID) : "baseline practice"} attempt from ${date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}`}
                     >{done ? "Review" : "Continue"}<ArrowRight size={15} /></a
@@ -478,13 +462,6 @@
             </ul>
           {:else}<p class="mt-2 text-sm text-base-content/70">
               No attempts on this revision yet.
-            </p>{/if}
-          {#if earlier.length}<p class="mt-3 text-xs text-base-content/60">
-              Earlier published labs:
-              {#each earlier as lab, i (lab.id)}{#if i}, {/if}<a
-                  class="link link-hover"
-                  href={learnPath(lab.id)}>{lab.title}</a
-                >{/each}
             </p>{/if}
         </section>
         <section aria-labelledby="template-stages-title">
@@ -515,9 +492,7 @@
             </div>
             {#if stage}<article class="mt-6" aria-label="Stage preview">
                 <p class="text-xs font-medium text-base-content/70">
-                  {kindLabel(stage.kind)}{#if !template.practiceStageIDs.includes(stage.id)}{stage.kind !== "instructor" && scenarioList(template).length
-                      ? " · Scenario or meeting"
-                      : " · Meeting only"}{/if}
+                  {kindLabel(stage.kind)}
                 </p>
                 <h4 class="mt-1 text-xl font-semibold tracking-tight">{stage.title}</h4>
                 <div
@@ -536,7 +511,7 @@
       </div>
     </div>
   {:else if detailFailure}<Notice message={detailFailure} /><button
-      class="btn btn-sm min-h-11"
+      class="btn btn-outline btn-sm min-h-11"
       onclick={() => detail(id)}><RotateCw size={15} />Retry template</button
     >
   {:else}<div role="status" class="space-y-4">
@@ -605,7 +580,7 @@
                   {meta.category}
                 </p>{/if}
               <h2 class="card-title break-words text-base leading-snug">
-                <a class="hover:underline" href={path(t.id)}>{t.name}</a>
+                <a class="hover:underline" href={path(t.id)}>{templateName(t.name)}</a>
               </h2>
               <p class="line-clamp-2 text-sm leading-relaxed text-base-content/70">
                 {t.description || "A pinned lab environment."}
@@ -614,10 +589,10 @@
                   class="flex flex-wrap gap-1.5"
                 >
                   {#if t.coachOnly}<span class="badge badge-sm badge-ghost">Coach-only</span>{/if}
-                  {#if meta?.difficulty}<span class="badge badge-sm badge-soft"
+                  {#if meta?.difficulty}<span class="badge badge-sm badge-ghost"
                       ><Gauge size={12} aria-hidden="true" />{difficultyLabel(meta.difficulty)}</span
                     >{/if}
-                  {#if meta?.estimatedMinutes}<span class="badge badge-sm badge-soft"
+                  {#if meta?.estimatedMinutes}<span class="badge badge-sm badge-ghost"
                       ><Clock size={12} aria-hidden="true" />{minutes(meta.estimatedMinutes)}</span
                     >{/if}
                   {#each meta?.tags ?? [] as tag (tag)}<span class="badge badge-sm badge-ghost"
@@ -636,16 +611,23 @@
                     >{/if}
                   {#if randomized(t)}<span class="inline-flex items-center gap-1"
                       ><Shuffle size={12} aria-hidden="true" />{count}
-                      {count === 1 ? "scenario" : "scenarios"}{#if !desktopWorkstation(t)}{" · needs a desktop workstation"}{:else if !t.imagesBuilt}{" · images not built"}{/if}</span
+                      {count === 1 ? "scenario" : "scenarios"}</span
                     >{/if}
-                  {#if !practicable(t) && !randomized(t)}<span>Preview only</span>{/if}
+
                 </p>
+                <p>{t.coachOnly || (!practicable(t) && !randomized(t))
+                    ? "Preview only"
+                    : !desktopWorkstation(t)
+                      ? "Local only · no desktop"
+                      : !t.imagesBuilt
+                        ? "Local only · images not built"
+                        : "Workspace available"}</p>
               </div>
               <div class="card-actions justify-end pt-1">
                 <a
-                  class="btn btn-sm min-h-11 lg:min-h-8"
+                  class="btn btn-outline btn-sm min-h-11 lg:min-h-8"
                   href={path(t.id)}
-                  aria-label={`Explore ${t.name} revision ${t.commit.slice(0, 7)}`}
+                  aria-label={`Explore ${templateName(t.name)} revision ${t.commit.slice(0, 7)}`}
                   >Explore<ArrowRight size={15} /></a
                 >
               </div>
@@ -662,13 +644,13 @@
                     href="/admin/templates/">Lab templates</a
                   >.{:else}Templates appear here once an instructor imports them.{/if}
               </p>{/if}
-            {#if filtered}<button class="btn btn-sm btn-ghost min-h-11 mt-3" onclick={clear}
+            {#if filtered}<button class="btn btn-sm btn-outline min-h-11 mt-3" onclick={clear}
                 >Clear filters</button
               >{/if}
           </li>{/each}
       </ul>
     {:else if failure}<Notice message={failure} /><button
-        class="btn btn-sm min-h-11"
+        class="btn btn-outline btn-sm min-h-11"
         onclick={load}><RotateCw size={15} />Retry library</button
       >
     {:else}<div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="status">

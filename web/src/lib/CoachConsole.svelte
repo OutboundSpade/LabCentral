@@ -92,9 +92,9 @@
     <SquareTerminal size={16} aria-hidden="true" class="text-primary" />Coach machine access
   </h2>
   <p id="coach-ssh-hint" class="mt-1 text-xs leading-relaxed text-base-content/70">
-    SSH opens in a new tab, pinned to this meeting's revision and the chosen team. Shells renew every ten minutes and
-    reconnect with a fresh shell. Close the console before running checks or resets on that machine.
+    Opens a terminal in a new tab.
   </p>
+  {#if data.jobs.some((j) => ["check", "exercise"].includes(j.kind) && ["queued", "running"].includes(j.status))}<p class="mt-2 text-xs text-warning" role="status">Close the terminal before checks or resets use this machine.</p>{/if}
   <Notice message={error} />
   <div class="mt-4 flex flex-wrap items-end gap-3">
     <fieldset class="fieldset min-w-44 flex-1">
@@ -138,7 +138,7 @@
         >{:else}<button type="button" class="btn btn-sm btn-primary min-h-11" disabled
           ><SquareTerminal size={15} aria-hidden="true" />Open SSH</button
         >{/if}
-      {#if teamID && !loading && (error || !pinned)}<button type="button" class="btn btn-sm min-h-11" onclick={load}
+      {#if teamID && !loading && (error || !pinned)}<button type="button" class="btn btn-outline btn-sm min-h-11" onclick={load}
           ><RotateCw size={15} aria-hidden="true" />Refresh machines</button
         >{/if}
     </div>

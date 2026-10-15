@@ -514,6 +514,17 @@ Uncertain cleanup disables rebuilding until reconciled; superseded jobs cannot r
 later rebuilt images. Source snapshots remain for rebuilds. The standard author library
 is under [templates](templates/README.md).
 
+The admin view includes `imageSummary: {images, unusedImages}` when inventory is
+available. Admin/CSRF-protected `POST /api/admin/images/prune` queues a durable bulk
+`prune-images` job. It keeps saved/current planned keys for template heads, non-ended
+meetings and personal allocations (including pending cleanup), plus building images.
+Candidates come from engine records, including orphaned rebuild keys. Frozen candidate
+keys have write claims; other image keys, revisions and the repository have read claims.
+Allocation decisions honor persisted removal reservations. Per-image outcomes report
+confirmed removal, referenced-instance skips and retryable unknown outcomes; cleanup
+intent remains until engine confirmation. Revision readiness is reconciled with remaining
+images before reservations are released; historical revisions remain listed.
+
 ### Instructor format v3 and disclosure
 
 The independent `instructor` package owns strict decoding, field-path/line errors,

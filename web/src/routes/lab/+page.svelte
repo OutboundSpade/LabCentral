@@ -83,8 +83,8 @@
         ? "Team machines and workspaces are being removed."
         : "Workspace files are no longer available."}
       {#snippet actions()}<a href="/labs/" class="btn btn-sm min-h-11 btn-primary"
-          >Practice labs</a
-        ><a href="/teams/" class="btn btn-sm btn-ghost min-h-11">Back to teams</a
+          >Practice</a
+        ><a href="/teams/" class="btn btn-sm btn-outline min-h-11">Back to teams</a
         >{/snippet}
     </EmptyState>
   {:else if !$session?.lab.team}
@@ -93,22 +93,22 @@
       Join a team to get your meeting desktop.
       {#snippet actions()}<a href="/teams/" class="btn btn-sm min-h-11 btn-primary"
           >Choose a team</a
-        ><a href="/labs/" class="btn btn-sm min-h-11 btn-ghost"
-          >Practice labs</a
+        ><a href="/labs/" class="btn btn-sm min-h-11 btn-outline"
+          >Practice</a
         >{/snippet}
     </EmptyState>
   {:else}
     <PageHeader title={$session.lab.team.name}>
       {#snippet eyebrow()}{$session?.meeting?.name ?? "Your lab"}{/snippet}
-      <a href="/teams/" class="btn btn-sm btn-ghost min-h-11 lg:min-h-8 text-base-content/70"
-        >Change team</a
+      <a href="/teams/" class="btn btn-sm btn-outline min-h-11 lg:min-h-8 text-base-content/70"
+        >Switch team</a
       >
     </PageHeader>
     <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-12">
       <aside class="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
         <section class="rounded-box border border-base-content/9 bg-base-200/70 p-5" aria-labelledby="desktop-title">
           <div class="flex items-center justify-between gap-3">
-            <h2 id="desktop-title" class="text-sm font-medium">Your desktop</h2>
+            <h2 id="desktop-title" class="text-sm font-medium">Desktop</h2>
             <span aria-live="polite" aria-atomic="true"
               ><Status status={$session.lab.team.status} /></span
             >
@@ -139,26 +139,26 @@
                   ? "Your lab is being prepared."
                   : readyNotice
                     ? "Your lab is ready."
-                    : "Opens in a new tab and resumes where you left off."}
+                    : "Opens in a new tab."}
           </p>
-          <div class="mt-4 flex items-center justify-between gap-2 border-t border-base-content/8 pt-3">
+          {#if $session.lab.desktopActive}<div class="mt-4 flex items-center justify-between gap-2 border-t border-base-content/8 pt-3">
             <p class="flex items-center gap-2 text-xs whitespace-nowrap text-base-content/70" role="status">
               <span
                 class={["size-1.5 rounded-full", $session.lab.desktopActive ? "bg-success" : "bg-base-content/30"]}
                 aria-hidden="true"
               ></span>{$session.lab.desktopActive
-                ? "Session open"
-                : "Not connected"}
+                ? "Desktop open"
+                : "Desktop closed"}
             </p>
             <button
-              class="btn btn-xs btn-ghost min-h-9 text-base-content/70"
+              class="btn btn-sm btn-outline min-h-11 lg:min-h-8 text-base-content/70"
               disabled={busy || !$session.lab.desktopActive}
               title="Closes your session. Files remain until the meeting ends."
               onclick={close}><Unplug size={13} />Disconnect desktop</button
             >
-          </div>
+          </div>{/if}
           <details class="mt-3 text-sm">
-            <summary class="cursor-pointer text-xs text-base-content/70 hover:text-base-content"
+            <summary class="flex min-h-11 cursor-pointer items-center text-xs text-base-content/70 hover:text-base-content lg:min-h-8"
               >Using your desktop</summary
             >
             <ul class="mt-2 [list-style-type:disc] space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">

@@ -4,7 +4,7 @@ const evidence=process.env.LABCENTRAL_BROWSER_EVIDENCE;
 if(!evidence)throw new Error('Set LABCENTRAL_BROWSER_EVIDENCE outside source');fs.mkdirSync(evidence,{recursive:true});
 const browser=await (process.env.LABCENTRAL_FIREFOX?firefox.launch({headless:true,executablePath:process.env.LABCENTRAL_FIREFOX}):chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox'],ignoreDefaultArgs:['--disable-popup-blocking']}));
 try{
- for(const width of [1365,390]){
+ for(const width of [1366,390]){
   const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   let authenticated=false;let currentTeam='t1';let switched=false;
   const teams=Array.from({length:5},(_,i)=>({id:'t'+(i+1),meetingID:'m',name:'Team '+(i+1),capacity:4,members:i===4?4:2,status:'ready'}));
@@ -15,14 +15,14 @@ try{
   await page.route('**/api/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;
    if(!authenticated){await route.fulfill({status:401,json:{error:'Sign in'}});return}
    if(path==='/api/me'){await route.fulfill({json:overview()});return}
-   if(path==='/api/admin'){await route.fulfill({json:{meeting,teams,templates:[template],jobs:[{id:'j',kind:'prepare',target:'m',status:'complete',created:meeting.created}]}});return}
+   if(path==='/api/admin'){await route.fulfill({json:{imageSummary:{images:19,unusedImages:17},meeting,teams,templates:[template],jobs:[{id:'j',kind:'prepare',target:'m',status:'complete',created:meeting.created}]}});return}
    assert.equal(req.headers()['x-csrf-token'],'test-csrf');
    if(path==='/api/access'){await new Promise(resolve=>setTimeout(resolve,6000));await route.fulfill({json:{url:'http://127.0.0.1:5173/desktop-test-launch',ticket:'test-ticket'}});return}
    if(path==='/api/team'){currentTeam=JSON.parse(req.postData()).teamID;switched=true}
    await route.fulfill({json:{ok:true}});
   });
   await page.goto('http://127.0.0.1:5173/');await page.getByRole('heading',{name:'Hands-on labs for team practice.'}).waitFor();await page.screenshot({path:`${evidence}/home-${width}.png`,fullPage:true});authenticated=true;
-  for(const [route,heading] of [['teams/','Choose your team'],['lab/','Team 1'],['admin/','Team practice'],['admin/templates/','Lab templates']]){
+  for(const [route,heading] of [['teams/','Choose your team'],['lab/','Team 1'],['admin/','Team practice'],['admin/templates/','Templates']]){
    if(route==='teams/')await page.goto('http://127.0.0.1:5173/'+route);
    else {await page.getByRole('navigation',{name:route==='admin/templates/'?'Administration':'Main navigation'}).getByRole('link',{name:route==='lab/'?'Meeting':route==='admin/'?'Admin':'Templates',exact:true}).click();await page.waitForURL('**/'+route);await page.waitForFunction(()=>document.querySelector('#svelte-announcer')?.textContent===document.title);assert(await page.locator('#svelte-announcer').evaluate(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return e.getAttribute('aria-live')==='assertive'&&s.position==='absolute'&&s.clipPath==='inset(50%)'&&r.width<=1&&r.height<=1}),'navigation title is visually exposed on '+route)}
    await page.getByRole('heading',{name:heading,exact:true}).waitFor();await page.getByRole('button',{name:route==='teams/'?'Team full':route==='lab/'?'Open desktop':route==='admin/'?'End meeting':'Refresh from GitHub',exact:true}).waitFor();

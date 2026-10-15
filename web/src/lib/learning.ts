@@ -19,9 +19,9 @@ export function modeLabel(mode: string) {
 
 export function kindLabel(kind: string) {
   return kind === "action"
-    ? "Workspace check"
+    ? "Checked automatically"
     : kind === "instructor"
-      ? "Instructor checkpoint"
+      ? "Instructor"
       : "Answer";
 }
 

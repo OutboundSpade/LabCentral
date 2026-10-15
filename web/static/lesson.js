@@ -362,7 +362,7 @@ const PROSE =
 
 /** @param {string} kind */
 function kindLabel(kind) {
-  return kind === "action" ? "Workspace check" : kind === "instructor" ? "Instructor checkpoint" : "Answer";
+  return kind === "action" ? "Checked automatically" : kind === "instructor" ? "Instructor" : "Answer";
 }
 
 /** @param {string} value */
@@ -413,7 +413,7 @@ function mount(initial, viewport, closed = "") {
   title.id = "lesson-title";
   const count = el("p", "text-xs tabular-nums text-base-content/75");
   heading.append(eyebrow, title, count);
-  const toggle = /** @type {HTMLInputElement} */ (el("input", "btn btn-sm btn-ghost min-h-11 shrink-0 lg:hidden"));
+  const toggle = /** @type {HTMLInputElement} */ (el("input", "btn btn-sm btn-outline min-h-11 shrink-0 lg:hidden"));
   toggle.type = "button";
   toggle.value = "Hide";
   toggle.setAttribute("aria-label", "Hide lesson");
@@ -475,11 +475,11 @@ function mount(initial, viewport, closed = "") {
   const actionHelp = el(
     "p",
     "text-xs leading-relaxed text-base-content/75",
-    "Your workspace is checked automatically about every 20 seconds while this is your current stage. A passing check completes it.",
+    "Checked every 20 seconds.",
   );
   const checkState = el("div", "mt-3");
   checkState.setAttribute("role", "status");
-  const checkNow = /** @type {HTMLInputElement} */ (el("input", "btn btn-sm btn-ghost min-h-11 mt-2"));
+  const checkNow = /** @type {HTMLInputElement} */ (el("input", "btn btn-sm btn-outline min-h-11 mt-2"));
   checkNow.type = "button";
   checkNow.value = "Check now";
   action.append(actionPrompt, actionHelp, checkState, checkNow);
@@ -491,7 +491,7 @@ function mount(initial, viewport, closed = "") {
   complete.type = "button";
   complete.value = "Complete checkpoint";
   checkpoint.append(
-    el("p", "font-medium", "Instructor checkpoint"),
+    el("p", "font-medium", "Instructor"),
     checkpointPrompt,
     el(
       "p",
@@ -832,7 +832,9 @@ function mount(initial, viewport, closed = "") {
     }
 
     eyebrow.textContent = `${v.lab.mode === "instructor" ? "Instructor-led" : "Self-paced"} lesson`;
-    title.textContent = v.lab.title;
+    const [name, ...context] = v.lab.title.split(" · ");
+    const words = name.replace(/[-_]+/g, " ");
+    title.textContent = v.lab.attempt ? [words.charAt(0).toUpperCase() + words.slice(1), ...context].join(" · ") : v.lab.title;
     count.textContent = finished
       ? `All ${total} stages complete`
       : `Stage ${completed + 1} of ${total} · ${completed} complete`;
@@ -880,7 +882,7 @@ function mount(initial, viewport, closed = "") {
     const c = v.check && step && v.check.stepID === step.id ? v.check : null;
     const pending = !!c && (c.status === "queued" || c.status === "running");
     const ready = v.run?.status === "ready" && v.run.labID === v.lab.id;
-    block(checkNow, pending ? "A workspace check is already running." : ready ? "" : "Your cloud workspace is not ready.");
+    block(checkNow, pending ? "A workspace check is already running." : ready ? "" : "Your workspace is not ready.");
     block(complete, "");
     if (step?.kind === "action") renderCheck(c);
     else checkState.replaceChildren();

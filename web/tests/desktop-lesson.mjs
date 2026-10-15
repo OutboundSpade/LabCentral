@@ -256,7 +256,7 @@ try {
   // before, without loading the lesson client or asking for a lesson.
   {
     const { context, page, errors, paths } = await desktop(
-      1365,
+      1366,
       (route) => route.fulfill({ status: 404, body: "404 page not found" }),
       "",
     );
@@ -279,7 +279,7 @@ try {
     await context.close();
   }
 
-  for (const width of [1365, 390]) {
+  for (const width of [1366, 390]) {
     const lesson = practice(steps, { released: 2 });
     const { state, writes, now, progress, gets } = lesson;
     const write = (route, body) => {
@@ -394,7 +394,7 @@ try {
     assert.equal(await answer.inputValue(), "");
 
     // Workspace checks run automatically; Check now only queues one sooner.
-    await panel.getByText("checked automatically about every 20 seconds").waitFor();
+    await panel.getByText("Checked every 20 seconds.").waitFor();
     await panel.getByRole("button", { name: "Check now" }).click();
     await panel.getByText("Check queued.").waitFor();
     assert.equal(
@@ -466,7 +466,7 @@ try {
     [{ responseRun: "run-9" }, "This desktop window no longer matches your cloud lab. Reload it"],
   ]) {
     const lesson = practice(steps, options);
-    const { context, page, errors } = await desktop(1365, (route, request, url) =>
+    const { context, page, errors } = await desktop(1366, (route, request, url) =>
       lesson.route(route, request, url, () => assert.fail("write without a lesson")),
     );
     const panel = page.locator("#lesson-panel");
@@ -504,7 +504,7 @@ try {
   // lessons under an in-progress draft.
   {
     const lesson = practice(steps);
-    const { context, page, errors } = await desktop(1365, (route, request, url) =>
+    const { context, page, errors } = await desktop(1366, (route, request, url) =>
       lesson.route(route, request, url, () => assert.fail("unexpected write")),
     );
     const panel = page.locator("#lesson-panel");
@@ -530,7 +530,7 @@ try {
   {
     const lesson = practice(steps);
     const gate = held();
-    const { context, page, errors } = await desktop(1365, (route, request, url) =>
+    const { context, page, errors } = await desktop(1366, (route, request, url) =>
       lesson.route(route, request, url, answerHeld(lesson, gate)),
     );
     const panel = page.locator("#lesson-panel");
@@ -574,7 +574,7 @@ try {
   {
     const lesson = practice(steps);
     const gate = held();
-    const { context, page, errors } = await desktop(1365, (route, request, url) =>
+    const { context, page, errors } = await desktop(1366, (route, request, url) =>
       lesson.route(route, request, url, answerHeld(lesson, gate)),
     );
     const panel = page.locator("#lesson-panel");
@@ -604,7 +604,7 @@ try {
     await context.close();
   }
   console.log(
-    "desktop lesson panel: local mocked flows passed at 1365 and 390, plus run binding, identity change and late-write cases",
+    "desktop lesson panel: local mocked flows passed at 1366 and 390, plus run binding, identity change and late-write cases",
   );
 } finally {
   await browser.close();

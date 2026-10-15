@@ -2,6 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { browser } from "$app/environment";
   import { page } from "$app/state";
+  import { templateName } from "$lib/display";
   import TemplateExplorer from "$lib/TemplateExplorer.svelte";
   import {
     ArrowRight,
@@ -28,7 +29,6 @@
   } from "$lib/learning";
   import {
     attempts as ownAttempts,
-    legacy as legacyLabs,
     templatePath,
     type AttemptCatalog,
   } from "$lib/library";
@@ -90,7 +90,7 @@
     return () => clearInterval(timer);
   });
   const mine = $derived(ownAttempts(catalog));
-  const earlier = $derived(legacyLabs(catalog));
+  const detail = $derived(browser && mounted && page.url.searchParams.has("template"));
   const runLab = $derived(catalog?.labs.find((lab) => lab.id === run?.labID));
   const meetingOpen = $derived(
     !!$session?.meeting &&
@@ -117,17 +117,17 @@
 </script>
 
 <svelte:head
-  ><title>{history ? "My attempts" : "Lab library"} · LabCentral</title></svelte:head
+  ><title>{history ? "My attempts" : "Practice"} · LabCentral</title></svelte:head
 >
-<PageHeader title="Lab library">
+{#if !detail}<PageHeader title="Practice">
   {#if catalog}<div class="w-48"><Quota quota={catalog.quota} /></div>{/if}
-</PageHeader>
+</PageHeader>{/if}
 <Guard>
-  <nav class="mb-6 flex gap-5 border-b border-base-content/8 text-sm" aria-label="Library views">
+  {#if !detail}<nav class="mb-6 flex gap-5 border-b border-base-content/8 text-sm" aria-label="Library views">
     <a
       class={[tab, !history ? "border-primary font-medium" : "border-transparent text-base-content/70 hover:text-base-content"]}
       aria-current={!history ? "page" : undefined}
-      href="/labs/"><LibraryBig size={15} aria-hidden="true" />Templates</a
+      href="/labs/"><LibraryBig size={15} aria-hidden="true" />Library</a
     >
     <a
       class={[tab, history ? "border-primary font-medium" : "border-transparent text-base-content/70 hover:text-base-content"]}
@@ -137,7 +137,7 @@
           class="badge badge-sm badge-ghost">{mine.length}</span
         >{/if}</a
     >
-  </nav>
+  </nav>{/if}
   <Notice message={error} dismissible />
   {#if meetingOpen && $session?.meeting}<div
         class="rounded-box border border-base-content/9 bg-base-200/70 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-sm"
@@ -150,7 +150,7 @@
         <a
           class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
           href={$session.membership.teamID ? "/lab/" : "/teams/"}
-          >{$session.membership.teamID ? "Go to your lab" : "Choose your team"}<ArrowRight
+          >{$session.membership.teamID ? "Your lab" : "Choose your team"}<ArrowRight
             size={15}
           /></a
         >
@@ -162,7 +162,7 @@
         <Cloud size={17} class="shrink-0 text-base-content/70" aria-hidden="true" />
         <div class="min-w-0 flex-1 basis-56 text-sm">
           <p id="run-title" class="font-medium">
-            {runLab ? runLab.title : "Cloud workspace"}
+            {runLab ? templateName(runLab.title) : "Workspace"}
           </p>
           <p class="mt-0.5 flex flex-wrap items-center gap-2 text-base-content/70">
             <Status status={run.status} label={runLabel(run.status)} />
@@ -171,10 +171,10 @@
           {#if run.error}<p class="mt-1 break-words text-error">{run.error}</p>{/if}
         </div>
         <div class="flex flex-wrap gap-2">
-          <a class="btn btn-sm min-h-11 lg:min-h-8" href={learnPath(run.labID)}>Open lab</a>
+          <a class="btn btn-outline btn-sm min-h-11 lg:min-h-8" href={learnPath(run.labID)}>Open lab</a>
           {#if run.status !== "ending"}<button
               type="button"
-              class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+              class="btn btn-sm btn-error min-h-11 lg:min-h-8"
               disabled={busy}
               onclick={() => {
                 error = "";
@@ -198,7 +198,7 @@
             <div class="card-body">
               <div class="flex items-start justify-between gap-3">
                 <h2 class="card-title break-words text-base leading-snug">
-                  <a class="hover:underline" href={learnPath(lab.id)}>{lab.title}</a>
+                  <a class="hover:underline" href={learnPath(lab.id)}>{templateName(lab.title)}</a>
                 </h2>
                 {#if run?.labID === lab.id}<Status
                     status={run.status}
@@ -230,9 +230,9 @@
                   aria-label={`Template revision for ${lab.title}`}>Template revision</a
                 >
                 <a
-                  class={["btn btn-sm min-h-11 lg:min-h-8", done ? "" : "btn-primary"]}
+                  class={["btn btn-sm min-h-11 lg:min-h-8", done ? "btn-outline" : "btn-primary"]}
                   href={learnPath(lab.id)}
-                  aria-label={`${verb} ${lab.title}, started ${date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}`}
+                  aria-label={`${verb} ${templateName(lab.title)}, started ${date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}`}
                   >{verb}<ArrowRight size={15} /></a
                 >
               </div>
@@ -245,30 +245,14 @@
             <p class="mt-1 text-sm text-base-content/70">
               Start baseline practice or a scenario from a template.
             </p>
-            <a class="btn btn-sm min-h-11 mt-4" href="/labs/">Browse templates<ArrowRight size={15} /></a>
+            <a class="btn btn-outline btn-sm min-h-11 mt-4" href="/labs/">Browse templates<ArrowRight size={15} /></a>
           </li>
         {/each}
       </ul>
     </section>
-    {#if earlier.length}<section
-        class="mt-10 border-t border-base-content/8 pt-5"
-        aria-labelledby="earlier-labs-title"
-      >
-        <h2 id="earlier-labs-title" class="text-xs font-medium text-base-content/70">
-          Earlier published labs
-        </h2>
-        <ul class="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-          {#each earlier as lab (lab.id)}<li>
-              <a
-                class="link link-hover inline-flex min-h-11 items-center text-sm lg:min-h-8"
-                href={learnPath(lab.id)}>{lab.title}</a
-              >
-            </li>{/each}
-        </ul>
-      </section>{/if}
   {:else if failure}
     <Notice message={failure} />
-    <button class="btn btn-sm min-h-11" onclick={() => load()}
+    <button class="btn btn-outline btn-sm min-h-11" onclick={() => load()}
       ><RotateCw size={15} />Retry</button
     >
   {:else}
@@ -281,7 +265,7 @@
 <dialog bind:this={stopDialog} class="modal" aria-labelledby="catalog-stop-title">
   <div class="modal-box">
     <h2 id="catalog-stop-title" class="text-lg font-semibold">
-      Stop your cloud workspace?
+      Stop your workspace?
     </h2>
     <p class="mt-3 text-sm leading-relaxed text-base-content/80">
       Workspace files are deleted. Your stage progress is kept.
@@ -289,7 +273,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11" disabled={busy}>Cancel</button>
+        <button class="btn btn-outline btn-sm min-h-11" disabled={busy}>Cancel</button>
       </form>
       <button class="btn btn-sm btn-error min-h-11" disabled={busy} onclick={stop}
         >{#if busy}<span class="loading loading-spinner loading-xs"></span>{/if}Stop

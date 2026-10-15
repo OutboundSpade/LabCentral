@@ -111,6 +111,7 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 			}
 			continue
 		}
+		t.ImagesReady, t.BuildsPending = 0, 0
 		t.ImagesTotal = len(keys)
 		for _, im := range images {
 			if slices.Contains(keys, im.Key) {
@@ -207,6 +208,11 @@ func (s *Service) queueTemplateDecision(ctx context.Context, kind, id string) (J
 	if err != nil {
 		return Job{}, err
 	}
+	if kind == "build" {
+		if err := s.revisionPruneBlock(ctx, id); err != nil {
+			return Job{}, err
+		}
+	}
 	if kind == "build" && t.Removing {
 		return Job{}, fmt.Errorf("Finish image cleanup before rebuilding this revision.")
 	}
@@ -285,6 +291,16 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 		}
 		p, err := s.plan(ctx, t.ID)
 		if err != nil {
+			return err
+		}
+		// Save the current plan, rather than stale keys from an earlier build.
+		keys = nil
+		for _, im := range p.Images {
+			if im.Playbook != "" {
+				keys = append(keys, im.CacheKey)
+			}
+		}
+		if err = s.Store.Put(ctx, "template-images", t.ID, keys); err != nil {
 			return err
 		}
 		if _, err = s.Engine.Build(ctx, p); err != nil {

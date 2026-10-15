@@ -39,7 +39,7 @@ try {
  await tab.bringToFront();await tab.getByRole('button',{name:'Paste to desktop',exact:true}).click();await tab.getByRole('textbox',{name:'Paste text here with Ctrl+V or ⌘V.'}).waitFor();
  await tab.keyboard.press('Control+v');await tab.waitForFunction(()=>window.fixturePastedText==='Firefox paste — first line\nsecond line');
  assert(!await tab.getByRole('dialog').isVisible());assert.equal(await tab.locator('#paste-text').inputValue(),'');await source.close();
- for(const width of [1365,390]){
+ for(const width of [1366,390]){
   await tab.setViewportSize({width,height:900});
   await tab.waitForFunction(width=>window.fixtureResolution?.[0]===width,width);
   await tab.waitForFunction(()=>{const d=document.querySelector('#dcv-display').getBoundingClientRect(),v=document.querySelector('#desktop-viewport').getBoundingClientRect();return d.width<=v.width+.1&&d.height<=v.height+.1});

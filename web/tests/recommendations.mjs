@@ -17,7 +17,7 @@ const app = process.argv[2] || "http://127.0.0.1:5173";
 const evidence = process.env.LABCENTRAL_BROWSER_EVIDENCE;
 if (evidence) fs.mkdirSync(evidence, { recursive: true });
 try {
-  for (const width of [1365, 390]) {
+  for (const width of [1366, 390]) {
     const context = await browser.newContext({
       viewport: { width, height: 900 },
       reducedMotion: "reduce",
@@ -191,15 +191,11 @@ try {
         .getByRole("button", { name: "Open desktop", exact: true })
         .isDisabled(),
     );
-    assert(
-      await page
-        .getByRole("button", { name: "Disconnect desktop", exact: true })
-        .isDisabled(),
-    );
+    assert.equal(await page.getByRole("button", { name: "Disconnect desktop", exact: true }).count(), 0);
     teams[0].status = "ready";
     active = true;
     await page.clock.runFor(10000);
-    await page.getByText("Session open", { exact: true }).waitFor();
+    await page.getByText("Desktop open", { exact: true }).waitFor();
     assert.equal(await page.title(), "Lab ready · LabCentral");
     assert(
       (
@@ -211,7 +207,7 @@ try {
     await page
       .getByRole("button", { name: "Disconnect desktop", exact: true })
       .click();
-    await page.getByText("Not connected", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Disconnect desktop", exact: true }).waitFor({ state: "hidden" });
     await page.getByText("Using your desktop", { exact: true }).click();
     await page
       .getByText("After 60 idle minutes the desktop disconnects", {
@@ -329,7 +325,7 @@ try {
       .waitFor({ state: "hidden" });
     assert.equal(await table.getByRole("row").count(), 101);
     await page.getByRole("tab", { name: "Exercises", exact: true }).click();
-    await page.getByLabel("Exercise", { exact: true }).selectOption("ftp");
+    await page.getByLabel("Break", { exact: true }).selectOption("ftp");
     await page.getByText("Instructor walkthrough", { exact: true }).click();
     await page
       .getByRole("button", { name: "Select ready teams", exact: true })

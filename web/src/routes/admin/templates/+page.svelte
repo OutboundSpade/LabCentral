@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { templateName } from "$lib/display";
   import Activity from "$lib/Activity.svelte";
   import { onMount } from "svelte";
   import {
@@ -11,7 +12,6 @@
     Clock,
     LockKeyhole,
     LibraryBig,
-    BookOpen,
     TriangleAlert,
   } from "@lucide/svelte";
   import Guard from "$lib/Guard.svelte";
@@ -27,7 +27,7 @@
   let error = $state("");
   let busy = $state(false);
   let selected = $state<Template | null>(null);
-  let action = $state<"build" | "remove-images">("build");
+  let action = $state<"build" | "remove-images" | "prune-images">("build");
   let confirmation: HTMLDialogElement;
   const refreshing = $derived(
     data?.jobs.some(
@@ -74,6 +74,9 @@
     error = "";
     confirmation.showModal();
   }
+  const pruning = $derived(data?.jobs.some((j) => j.kind === "prune-images" && ["queued", "running"].includes(j.status)) ?? false);
+  const pruneAttention = $derived(data?.jobs.some((j) => j.kind === "prune-images" && j.needsAttention) ?? false);
+  let pruneCount = $state(0);
   let history = $state(false);
   function featured(template: Template, index: number) {
     return (
@@ -88,13 +91,12 @@
   );
 </script>
 
-<svelte:head><title>Lab templates · LabCentral</title></svelte:head>
-{#if $session?.user.admin}<AdminNav />{/if}
-<PageHeader title="Lab templates">
-  {#if $session?.user.admin}<a class="btn btn-sm btn-ghost min-h-11 lg:min-h-8" href="/labs/"
+<svelte:head><title>Templates · LabCentral</title></svelte:head>
+<PageHeader title="Templates">
+  {#if $session?.user.admin}<a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href="/labs/"
       ><LibraryBig size={15} />Student library</a
     ><button
-      class="btn btn-sm min-h-11 lg:min-h-8"
+      class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
       disabled={busy || refreshing}
       onclick={() => run("/api/admin/templates/refresh")}
       >{#if refreshing}<span class="loading loading-spinner loading-xs"
@@ -103,9 +105,18 @@
         : "Refresh from GitHub"}</button
     >{/if}
 </PageHeader>
+{#if $session?.user.admin}<AdminNav />{/if}
 <Guard admin
   ><Notice message={error} dismissible /><PollStatus />
   {#if data}
+    <div class="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" aria-live="polite">
+      {#if data.imageSummary}<p>{data.imageSummary.images} images · {data.imageSummary.unusedImages} unused</p>
+        <button class="btn btn-sm btn-error min-h-11 lg:min-h-8" disabled={busy || pruning || pruneAttention || !data.imageSummary.unusedImages} title={pruneAttention ? "Retry cleanup in Live activity" : undefined}
+          onclick={() => { selected = null; action = "prune-images"; pruneCount = data?.imageSummary?.unusedImages ?? 0; error = ""; confirmation.showModal(); }}>
+          <Trash2 size={15} />{pruning ? "Removing unused images…" : "Remove unused images"}
+        </button>
+      {:else}<p class="text-base-content/70">Image inventory unavailable.</p>{/if}
+    </div>
     {#if data.jobs.find((j) => j.kind === "refresh")?.status === "failed"}<Notice
         message={data.jobs.find((j) => j.kind === "refresh")?.error ??
           "GitHub refresh failed. Please retry."}
@@ -136,39 +147,6 @@
       class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
     >
       <section class="min-w-0">
-        <details
-          class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mb-4"
-        >
-          <summary class="collapse-title flex min-h-11 items-center gap-2 text-sm font-medium"
-            ><BookOpen size={14} aria-hidden="true" />Authoring practice</summary
-          >
-          <div class="collapse-content space-y-2 text-sm leading-relaxed text-base-content/80">
-            <p>
-              Students start practice from the <a class="link" href="/labs/">library</a>; nothing
-              is published here. Each revision's <code>instructor.yaml</code> supplies it:
-            </p>
-            <ul class="[list-style-type:disc] space-y-1 pl-5">
-              <li>
-                <code>stages</code> without a break or instructor checkpoint become baseline
-                practice from the image's initial state.
-              </li>
-              <li>
-                <code>scenarios</code> combine compatible breaks into randomized attempts. Each
-                attempt saves its variant before any guest change and runs only in a cloud
-                workspace.
-              </li>
-              <li>
-                <code>library</code> sets the category, difficulty, duration and tags shown on
-                template cards.
-              </li>
-            </ul>
-            <p class="text-base-content/70">
-              Revisions are pinned: attempts keep the exact revision they started from. Cloud
-              practice needs built images and the named <code>practice.desktopMachine</code>; baseline practice
-              can still run locally.
-            </p>
-          </div>
-        </details>
         <ul
           class="rounded-box border border-base-content/9 bg-base-200/70 divide-y divide-base-content/8"
           aria-label="Template revision history"
@@ -182,16 +160,17 @@
                 aria-label={`${template.name} revision ${template.commit.slice(0, 7)}`}
               >
                 <div class="mb-2 flex flex-wrap items-center gap-3 text-xs">
-                  <span class="font-medium">{template.name}</span
-                  >{#if template.latest}<span class="badge badge-sm badge-soft badge-primary">Latest</span
+                  <span class="font-mono text-base-content/70">{template.name}</span
+                  >{#if template.latest}<span class="badge badge-sm badge-ghost">Latest</span
                     >{/if}{#if data.meeting?.template === template.id && data.meeting.status !== "ended"}<span
                       class="inline-flex items-center gap-1 text-base-content/60"
                       ><LockKeyhole size={12} />In use</span
                     >{/if}
                 </div>
                 <h2 class="text-base font-semibold leading-snug">
-                  {template.commitTitle || "Imported revision"}
+                  {templateName(template.name)}
                 </h2>
+                <p class="mt-1 text-sm text-base-content/70">{template.commitTitle || "Imported revision"}</p>
                 <div
                   class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-base-content/60"
                 >
@@ -313,7 +292,7 @@
                   </p>{/if}
                 <div class="mt-3 flex flex-wrap gap-2">
                   <a
-                    class="btn btn-sm min-h-11 btn-ghost lg:min-h-8"
+                    class="btn btn-sm min-h-11 btn-outline lg:min-h-8"
                     href={`/labs/?template=${encodeURIComponent(template.id)}`}
                     aria-label={`Open ${template.name} revision ${template.commit.slice(0, 7)} in the library`}
                     ><LibraryBig size={15} />Open in library</a
@@ -321,6 +300,7 @@
                   {#if !template.built && !template.removing}<button
                       class="btn btn-sm min-h-11 lg:min-h-8"
                       class:btn-primary={template.latest}
+                      class:btn-outline={!template.latest}
                       disabled={busy || working}
                       onclick={() => confirm(template, "build")}
                       ><Hammer size={15} />{job?.kind === "build" &&
@@ -331,7 +311,7 @@
                           : "Build images"}</button
                     >{/if}
                   {#if template.imagesReady > 0 || template.buildsPending > 0 || template.removing || (job?.kind === "build" && job.status === "failed")}<button
-                      class="btn btn-sm min-h-11 btn-ghost lg:min-h-8"
+                      class="btn btn-sm min-h-11 btn-error lg:min-h-8"
                       disabled={busy || working || !!template.removalBlocked}
                       onclick={() => confirm(template, "remove-images")}
                       ><Trash2 size={15} />{template.removing
@@ -359,7 +339,7 @@
         </ul>
         {#if earlier}<button
             type="button"
-            class="btn btn-sm min-h-11 btn-ghost mt-3"
+            class="btn btn-sm min-h-11 btn-outline mt-3"
             aria-expanded={history}
             onclick={() => (history = !history)}
             ><History size={15} />{history
@@ -391,28 +371,30 @@
 >
   <div class="modal-box">
     <h2 id="revision-action-title" class="text-lg font-semibold">
-      {action === "build" ? "Build images?" : "Remove images?"}
+      {action === "prune-images" ? "Remove unused images?" : action === "build" ? "Build images?" : "Remove images?"}
     </h2>
-    <p class="mt-3 text-sm font-medium">
-      {selected?.name} · <code>{selected?.commit.slice(0, 7)}</code>
-    </p>
+    {#if selected}<p class="mt-3 text-sm font-medium">
+      {templateName(selected.name)} · <code>{selected.commit.slice(0, 7)}</code>
+    </p>{/if}
     <p class="mt-3 text-sm leading-relaxed">
-      {action === "build"
+      {action === "prune-images"
+        ? `Currently ${pruneCount} unused images. Latest revisions, open meetings, active and pending practice, and builds are kept. Old revisions stay in history and can be rebuilt.`
+        : action === "build"
         ? `Builds ${selected?.imagesTotal ?? 0} images from this revision. Temporary build machines incur charges; matching images are reused.`
         : "Removes this revision’s unused images and unfinished builds. Shared images are kept, and the revision can be rebuilt."}
     </p>
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11">Cancel</button>
+        <button class="btn btn-outline btn-sm min-h-11">Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11"
         class:btn-primary={action === "build"}
-        class:btn-error={action === "remove-images"}
+        class:btn-error={action !== "build"}
         disabled={busy}
         onclick={() =>
-          run("/api/admin/templates/" + action, { id: selected?.id })}
+          run(action === "prune-images" ? "/api/admin/images/prune" : "/api/admin/templates/" + action, action === "prune-images" ? {} : { id: selected?.id })}
         >{#if busy}<span class="loading loading-spinner loading-xs"
           ></span>{/if}{action === "build"
           ? "Start build"

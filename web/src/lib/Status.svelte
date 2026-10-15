@@ -3,18 +3,21 @@
   let {
     status,
     label,
-    soft = false,
   }: { status: string; label?: string; soft?: boolean } = $props();
-  const good = $derived(["ready", "passed"].includes(status));
-  const bad = $derived(["failed", "unavailable"].includes(status));
+  const good = $derived(["ready", "passed", "removed"].includes(status));
+  const bad = $derived(["failed", "unavailable", "unknown"].includes(status));
   const working = $derived(
-    ["running", "preparing", "checking", "resetting", "applying"].includes(
+    ["running", "preparing", "checking", "resetting", "applying", "removing"].includes(
       status,
     ),
   );
   const caution = $derived(["partial", "queued", "pending"].includes(status));
   const names: Record<string, string> = {
     ready: "Ready",
+    removed: "Removed",
+    removing: "Removing",
+    skipped: "Skipped",
+    unknown: "Needs attention",
     waiting: "Not prepared",
     passed: "Pass",
     failed: "Failed",
@@ -35,13 +38,7 @@
 </script>
 
 <span
-  class={[
-    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs",
-    soft ? "badge badge-soft badge-sm h-auto min-h-6 py-1" : "",
-  ]}
-  class:badge-success={soft && good}
-  class:badge-warning={soft && caution}
-  class:badge-error={soft && bad}
+  class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs"
   class:text-error={bad}
 >
   {#if good}<Check

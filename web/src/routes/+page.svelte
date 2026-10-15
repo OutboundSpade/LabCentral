@@ -3,7 +3,7 @@
   import { session, loading } from "$lib/api";
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
-  import Logo from "$lib/Logo.svelte";
+  import PageHeader from "$lib/PageHeader.svelte";
   let mounted = $state(false);
   onMount(() => {
     mounted = true;
@@ -28,20 +28,9 @@
   >
     <span class="loading loading-spinner loading-sm"></span>Opening LabCentral…
   </p>{:else}
-  <section class="mx-auto flex max-w-xl flex-col items-center pt-10 text-center sm:pt-20">
-    <Logo size={52} />
-    <h1 class="mt-8 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-      Hands-on labs for team practice.
-    </h1>
-    <p class="mt-4 max-w-md text-base leading-relaxed text-base-content/70">
-      Work through guided labs at your own pace, and join your team's desktop
-      during meetings.
-    </p>
-    <a
-      href="/auth/login"
-      data-sveltekit-reload
-      class="btn btn-primary mt-8 min-h-11 px-6"
-      >Sign in<LogIn size={16} /></a
-    >
+  <section>
+    <PageHeader title="Hands-on labs for team practice." description="Guided practice and team meetings.">
+      <a href="/auth/login" data-sveltekit-reload class="btn btn-sm btn-primary min-h-11 lg:min-h-8">Sign in<LogIn size={16} /></a>
+    </PageHeader>
   </section>
 {/if}

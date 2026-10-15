@@ -33,7 +33,7 @@ export function desktopWorkstation(t: LibraryTemplate) {
 }
 
 export const runBlocked =
-  "Stop your active cloud workspace and let cleanup finish before starting another attempt.";
+  "Stop your workspace and wait for cleanup before starting another attempt.";
 
 // A new attempt is refused while any personal cloud run is still live.
 export function attemptBlocked(run: PracticeRun | null | undefined) {
@@ -51,19 +51,19 @@ export function baselineBlocked(t: LibraryTemplate) {
 
 export function baselineHint(t: LibraryTemplate) {
   if (!desktopWorkstation(t))
-    return "Cloud workspaces need a desktop workstation, which this revision doesn't define. You can still run it locally.";
+    return "Local only · no desktop";
   if (!t.imagesBuilt)
-    return "Cloud workspaces need built images. You can still run it locally.";
-  return "Run it in a cloud workspace or on your own infrastructure.";
+    return "Local only · images not built";
+  return "Workspace or local infrastructure.";
 }
 
 // Randomized scenarios run only in a cloud workspace.
 export function scenarioBlocked(t: LibraryTemplate) {
   if (t.coachOnly) return "Coach-only revisions are previews for instructors.";
   if (!desktopWorkstation(t))
-    return "Scenarios need a cloud workspace with a desktop workstation, which this revision doesn't define.";
+    return "Unavailable · no desktop";
   if (!t.imagesBuilt)
-    return "Scenarios need a cloud workspace, and this revision's images aren't built yet.";
+    return "Unavailable · images not built";
   return "";
 }
 

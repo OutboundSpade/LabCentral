@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';import fs from 'node:fs';
 const {chromium}=await import(process.env.LABCENTRAL_PLAYWRIGHT_MODULE);
 const browser=await chromium.launch({headless:true,executablePath:process.env.LABCENTRAL_CHROMIUM,args:['--no-sandbox']});
 try{
- const app=process.argv[2],context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1365,height:1000}});
+ const app=process.argv[2],context=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:1366,height:1000}});
  await context.addCookies([{name:'__Host-labcentral',value:'cookie',url:app,secure:true,httpOnly:true,sameSite:'Lax'}]);
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(app+'/admin/');const activity=page.locator('section').filter({has:page.getByRole('heading',{name:'Live activity',exact:true})});
@@ -10,7 +10,7 @@ try{
  await active.waitFor();assert.equal(await active.getAttribute('aria-pressed'),'true');assert.equal(await attention.getAttribute('aria-pressed'),'false');
  await recent.click();await activity.getByText('This meeting ended or expired. Run checks or exercises in the current meeting.',{exact:true}).waitFor();assert.equal(await activity.getByRole('button',{name:'Retry recovery',exact:true}).count(),2);
  const output=process.env.LABCENTRAL_BROWSER_EVIDENCE;
- for(const width of [1365,390]){
+ for(const width of [1366,390]){
   await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(output){fs.mkdirSync(output,{recursive:true});await activity.screenshot({path:output+`/activity-recent-${width}.png`})}
  }

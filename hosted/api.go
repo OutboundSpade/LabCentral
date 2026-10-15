@@ -154,6 +154,12 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	if err == nil {
 		out.Templates, err = s.templates(ctx)
 	}
+	if err == nil && s.Engine != nil {
+		summary, _, inventoryErr := s.imageInventory(ctx)
+		if inventoryErr == nil {
+			out.ImageSummary = &summary
+		}
+	}
 	if err == nil {
 		for n := range out.Templates {
 			if out.Templates[n].Operation != nil {
@@ -222,6 +228,10 @@ func (s *Service) createMeetingDecision(w http.ResponseWriter, r *http.Request, 
 	var template Template
 	if e := s.Store.Get(r.Context(), "template", q.Template, &template); e != nil || !template.Built || template.Removing {
 		writeError(w, 409, "Build a template revision before creating the meeting.")
+		return
+	}
+	if err := s.revisionPruneBlock(r.Context(), q.Template); err != nil {
+		writeError(w, 409, err.Error())
 		return
 	}
 	if err := s.actionableRevision(r.Context(), q.Template); err != nil {

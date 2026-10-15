@@ -69,7 +69,7 @@ const until = async (check, message, ms = 5000) => {
 
 // One browser context with a scripted backend. `mode` decides how each new
 // terminal socket behaves; `log` keeps the order of API and socket events.
-async function fixture({ width = 1365, height = 900, admin = true, clock = true } = {}) {
+async function fixture({ width = 1366, height = 900, admin = true, clock = true } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce" });
   const f = {
     context,
@@ -253,7 +253,7 @@ try {
     await page.getByLabel("Team", { exact: true }).selectOption({ label: "Team 1" });
     await page.getByRole("link", { name: "Open SSH", exact: true }).waitFor();
     assert(await fits(page), "admin picker overflow");
-    await page.getByRole("heading", { name: "Coach machine access" }).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", { name: "Coach machine access" }).evaluate(e => scrollTo(0, scrollY + e.getBoundingClientRect().top - 80));
     await page.screenshot({ path: evidence + "/picker-desktop.png" });
     const popupPromise = page.waitForEvent("popup");
     await page.getByRole("link", { name: "Open SSH", exact: true }).click();
@@ -272,7 +272,7 @@ try {
     assert.equal(f.sockets.at(-1).closed, null);
     assert.equal(await popup.locator("[data-terminal-status]").getAttribute("data-terminal-status"), "connected");
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole("heading", { name: "Coach machine access" }).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", { name: "Coach machine access" }).evaluate(e => scrollTo(0, scrollY + e.getBoundingClientRect().top - 80));
     assert(await fits(page), "mobile admin picker overflow");
     await page.screenshot({ path: evidence + "/picker-mobile-390.png" });
     assert.deepEqual(f.errors, []);
@@ -381,7 +381,7 @@ try {
     assert(afterFont.cols < s.hello.cols, "larger font gives fewer columns");
     assert.equal(s.resize.length, before + 1, "font resizes coalesced");
     await page.getByText("16 px", { exact: true }).waitFor();
-    await page.screenshot({ path: evidence + "/terminal-desktop-1365.png" });
+    await page.screenshot({ path: evidence + "/terminal-desktop-1366.png" });
     // Copy selection: success, then a rejected clipboard with feedback.
     await page.evaluate(() => {
       window.__copied = [];
@@ -801,7 +801,7 @@ try {
     await s.page.waitForTimeout(500);
     assert.equal(s.sockets.length, 0, "students never open a terminal socket");
     assert(!s.log.some((e) => e.startsWith("inventory")), "students never request inventory");
-    await s.page.screenshot({ path: evidence + "/terminal-student-1365.png" });
+    await s.page.screenshot({ path: evidence + "/terminal-student-1366.png" });
     await s.context.close();
     console.log("PASS missing target and student denial");
   }
@@ -842,7 +842,7 @@ try {
     const layout = await page.evaluate(() => ({
       section: document.querySelector("section[aria-labelledby='terminal-title']").getBoundingClientRect().bottom,
       keys: document.querySelector("[aria-label='Send keys']").getBoundingClientRect().bottom,
-      actions: document.querySelector(".navbar-end").getBoundingClientRect().bottom,
+      actions: document.querySelector("[data-terminal-actions]").getBoundingClientRect().bottom,
       rows: document.querySelectorAll(".xterm-rows > div").length,
       screen: document.querySelector(".xterm-screen").getBoundingClientRect(),
       host: document.querySelector("[role='region'][aria-label^='SSH terminal']").getBoundingClientRect(),
@@ -1077,12 +1077,12 @@ try {
       await waitScreen(page, "NEW-OUTPUT-AFTER-RECOVERY");
       ordered(await rowsOf(page), [...kept, "NEW-MOTD-2 query xyz lmnop", "coach@support:~$ uptime", "NEW-OUTPUT-AFTER-RECOVERY"], label + " follow-up");
       if (label === "main buffer") {
-        await page.screenshot({ path: evidence + "/terminal-recovery-history-1365.png" });
+        await page.screenshot({ path: evidence + "/terminal-recovery-history-1366.png" });
         await page.setViewportSize({ width: 390, height: 844 });
         await page.clock.runFor(400);
         await waitScreen(page, "NEW-OUTPUT-AFTER-RECOVERY");
         await page.screenshot({ path: evidence + "/terminal-recovery-history-390.png" });
-      } else await page.screenshot({ path: evidence + "/terminal-recovery-alternate-1365.png" });
+      } else await page.screenshot({ path: evidence + "/terminal-recovery-alternate-1366.png" });
       assert.deepEqual(f.errors, []);
       await f.context.close();
     }

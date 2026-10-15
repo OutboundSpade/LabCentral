@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { templateName } from "$lib/display";
   import CoachConsole from "$lib/CoachConsole.svelte";
   import Activity from "$lib/Activity.svelte";
   import Scoreboard from "$lib/Scoreboard.svelte";
@@ -195,13 +196,13 @@
 </script>
 
 <svelte:head><title>Manage meeting · LabCentral</title></svelte:head>
-{#if $session?.user.admin}<AdminNav />{/if}
 <Guard admin
   ><Notice message={error} dismissible /><PollStatus />
   {#if success}<p class="mb-4 text-sm text-success" role="status">{success}</p>{/if}
   {#if data}
     {#if !data.meeting || data.meeting.status === "ended"}
-      <PageHeader title="New meeting" />
+      <PageHeader title="New meeting">{#snippet eyebrow()}Meeting{/snippet}</PageHeader>
+      <AdminNav />
       <div
         class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
       >
@@ -242,7 +243,7 @@
                 aria-describedby={revisionNotice ? "revision-notice" : undefined}
                 ><option value="" disabled>Choose a built revision</option
                 >{#each builtRevisions as t}<option value={t.id}
-                    >{t.name} · {t.commitTitle || "Imported revision"} · {t.commit.slice(
+                    >{templateName(t.name)} · {t.name} · {t.commitTitle || "Imported revision"} · {t.commit.slice(
                       0,
                       7,
                     )}</option
@@ -337,7 +338,7 @@
                   >{/each}</select
               ><button
                 type="button"
-                class="btn btn-sm join-item min-h-11 lg:min-h-8"
+                class="btn btn-outline btn-sm join-item min-h-11 lg:min-h-8"
                 disabled={busy}
                 onclick={() => run("/api/admin/extend", { hours: extension })}
                 ><Plus size={15} />Add time</button
@@ -356,13 +357,14 @@
             >{/if}
           <button
             type="button"
-            class="btn btn-sm min-h-11 btn-ghost text-error lg:min-h-8"
+            class="btn btn-sm min-h-11 btn-error lg:min-h-8"
             disabled={busy}
             onclick={() => confirm("end")}
             ><Trash2 size={15} />End meeting</button
           >
         {/if}
       </PageHeader>
+      <AdminNav />
       <section
         class="rounded-box border border-base-content/9 bg-base-200/70 mb-8 grid grid-cols-2 divide-base-content/8 sm:grid-cols-4 sm:divide-x"
         aria-label="Meeting overview"
@@ -472,7 +474,7 @@
                             {failureFor(team.name)}
                           </p>
                           {#if prepareFailure?.retryable}<button
-                              class="btn btn-sm min-h-11 mt-2"
+                              class="btn btn-outline btn-sm min-h-11 mt-2"
                               disabled={busy || preparing}
                               onclick={() =>
                                 run("/api/admin/jobs/retry", {
@@ -539,7 +541,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11" disabled={busy}>Cancel</button>
+        <button class="btn btn-outline btn-sm min-h-11" disabled={busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11"

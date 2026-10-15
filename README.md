@@ -463,6 +463,9 @@ retained lab.
 - **Template library.** Imports lab templates from a Git repository, pins each commit
   and builds its images once. Students browse templates by category, difficulty, tags
   and duration.
+- **Image cleanup.** Admin → Templates shows image and unused-image counts.
+  “Remove unused images” queues recoverable cleanup through the admin/CSRF-protected
+  `POST /api/admin/images/prune` API; progress and retry appear in Live activity.
 - **Guided practice.** Each attempt snapshots a template revision's stages. Stages are
   completed by an answer, by a guest check that verifies the student's actual repair,
   or by an instructor. Authors can attach solutions that students reveal deliberately.

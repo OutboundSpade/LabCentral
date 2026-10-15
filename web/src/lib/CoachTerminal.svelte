@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PageHeader from "$lib/PageHeader.svelte";
   import "@xterm/xterm/css/xterm.css";
   import { onMount } from "svelte";
   import type { Terminal } from "@xterm/xterm";
@@ -334,9 +335,7 @@
     >
     <h1 class="mt-4 text-lg font-semibold">This console link is incomplete</h1>
     <p class="mt-2 text-sm leading-relaxed text-base-content/70">
-      A machine console is pinned to one team, machine, meeting, revision and lab allocation, and this link does not
-      name all of them. LabCentral will not guess a replacement. Choose the team and machine again under Coach machine
-      access, then select Open SSH.
+      Choose the team and machine again in Coach machine access, then open SSH.
     </p>
     <a href="/admin/" class="btn btn-sm btn-primary mt-6 min-h-11">Choose a machine</a>
   </section>
@@ -347,35 +346,10 @@
     style:height={fitHeight ? `${fitHeight}px` : null}
     aria-labelledby="terminal-title"
   >
-    <div class="navbar min-h-0 flex-wrap gap-x-4 gap-y-1.5 border-b border-base-content/10 bg-base-100 px-3 py-1.5 sm:px-4">
-      <div class="navbar-start w-auto min-w-52 flex-1 gap-3">
-        <SquareTerminal size={20} aria-hidden="true" class="shrink-0 text-primary" />
-        <div class="min-w-0 flex-1">
-          <h1 id="terminal-title" class="flex min-w-0 items-baseline gap-2 text-sm font-semibold">
-            <span class="truncate font-mono">{target?.machine ?? "Machine"}</span><span
-              class="shrink-0 text-xs font-normal text-base-content/70">SSH</span
-            >
-          </h1>
-          <div class={["breadcrumbs max-w-full py-0 text-xs text-base-content/70", compact && "hidden"]}>
-            <ul>
-              <li><a href="/admin/" class="min-h-6">{meetingLabel}</a></li>
-              <li>
-                <span class="inline-flex items-center gap-1.5"
-                  ><Users size={13} aria-hidden="true" />{teamLabel}</span
-                >
-              </li>
-              <li>
-                <span class="inline-flex items-center gap-1.5" title={target?.template}
-                  ><Server size={13} aria-hidden="true" /><span class="sr-only">Revision </span><span
-                    class="max-w-48 truncate font-mono">{target?.template ?? ""}</span
-                  ></span
-                >
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-      <div class="navbar-end ml-auto w-auto gap-2">
+    <div class="border-b border-base-content/10 bg-base-100 px-3 py-1.5 sm:px-4">
+      <PageHeader compact title={`${target?.machine ?? "Machine"} · SSH`} titleId="terminal-title">
+        {#snippet eyebrow()}{#if !compact}<a class="link link-hover" href="/admin/">{meetingLabel}</a> · <span>{teamLabel}</span> · <span class="inline-block max-w-48 truncate align-bottom font-mono" title={target?.template}>Revision {target?.template ?? ""}</span>{/if}{/snippet}
+        <div data-terminal-actions class="flex flex-wrap items-center gap-2">
         <span
           class={[
             "inline-flex min-h-11 items-center gap-2 px-1 text-sm",
@@ -397,7 +371,7 @@
         </span>
         <button
           type="button"
-          class="btn btn-sm min-h-11"
+          class="btn btn-outline btn-sm min-h-11"
           disabled={!terminalReady}
           onpointerdown={keepFocus}
           aria-label="Copy selection"
@@ -408,19 +382,20 @@
         >
         {#if active}<button
             type="button"
-            class="btn btn-sm min-h-11"
+            class="btn btn-outline btn-sm min-h-11"
             onclick={() => connection?.disconnect()}><Unplug size={15} aria-hidden="true" />Disconnect</button
           >{/if}
         {#if view?.canReconnect && !["authorizing", "connecting", "connected"].includes(phase)}<button
             type="button"
-            class={["btn btn-sm min-h-11", !active && "btn-primary"]}
+            class={["btn btn-sm min-h-11", active ? "btn-outline" : "btn-primary"]}
             aria-label={phase === "retrying" || phase === "offline" ? "Reconnect now" : "Reconnect"}
             onclick={() => {
               connection?.reconnect();
               term?.focus();
             }}><RotateCw size={15} aria-hidden="true" />Reconnect</button
           >{/if}
-      </div>
+        </div>
+      </PageHeader>
     </div>
 
     {#if failed}
@@ -440,8 +415,7 @@
             : `Retry ${view?.attempt} of ${RETRY_DELAYS.length}`}{#if phase === "retrying"}<span
               class="tabular-nums"
               aria-hidden="true">{` in ${seconds} s`}</span
-            >{/if}. Reconnecting starts a fresh shell; the previous interactive session is not restored and input is never
-          replayed.</span
+            >{/if}. Reconnecting starts a fresh shell. Input is never replayed.</span
         >
       </div>
     {:else if phase === "ended" || phase === "disconnected"}
@@ -462,7 +436,7 @@
             ? `Stopped after ${RETRY_DELAYS.length} automatic retries. ${view?.message} Reconnect when the machine is available.`
             : view?.message}</span
         >
-        {#if phase === "denied" && !view?.canReconnect}<a href="/admin/" class="btn btn-sm min-h-11"
+        {#if phase === "denied" && !view?.canReconnect}<a href="/admin/" class="btn btn-outline btn-sm min-h-11"
             >Meeting admin</a
           >{/if}
       </div>
@@ -496,7 +470,7 @@
       <div class="join" role="group" aria-label="Send keys">
         <button
           type="button"
-          class="btn btn-sm join-item min-h-11 px-2.5"
+          class="btn btn-outline btn-sm join-item min-h-11 px-2.5"
           aria-label="Send Ctrl+C"
           disabled={phase !== "connected"}
           onpointerdown={keepFocus}
@@ -504,7 +478,7 @@
         >
         <button
           type="button"
-          class="btn btn-sm join-item min-h-11 px-2.5"
+          class="btn btn-outline btn-sm join-item min-h-11 px-2.5"
           aria-label="Send Escape"
           disabled={phase !== "connected"}
           onpointerdown={keepFocus}
@@ -512,7 +486,7 @@
         >
         <button
           type="button"
-          class="btn btn-sm join-item min-h-11 px-2.5"
+          class="btn btn-outline btn-sm join-item min-h-11 px-2.5"
           aria-label="Send Tab"
           disabled={phase !== "connected"}
           onpointerdown={keepFocus}
@@ -522,7 +496,7 @@
         <div class={["join", compact && "hidden"]} role="group" aria-label="Terminal text size">
           <button
             type="button"
-            class="btn btn-sm join-item min-h-11 min-w-11 px-2"
+            class="btn btn-outline btn-sm join-item min-h-11 min-w-11 px-2"
             aria-label="Smaller text"
             disabled={fontSize <= 10}
             onclick={() => setFont(fontSize - 1)}><AArrowDown size={16} aria-hidden="true" /></button
@@ -532,7 +506,7 @@
           >
           <button
             type="button"
-            class="btn btn-sm join-item min-h-11 min-w-11 px-2"
+            class="btn btn-outline btn-sm join-item min-h-11 min-w-11 px-2"
             aria-label="Larger text"
             disabled={fontSize >= 24}
             onclick={() => setFont(fontSize + 1)}><AArrowUp size={16} aria-hidden="true" /></button

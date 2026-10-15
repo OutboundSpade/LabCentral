@@ -38,7 +38,7 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 				return nil, err
 			}
 			claims = append(claims, jobClaim{"template:" + p.Template, false})
-			keys, err := s.templateKeys(ctx, p.Template)
+			keys, err := s.protectedRevisionKeys(ctx, p.Template)
 			if err != nil {
 				return nil, err
 			}
@@ -73,6 +73,25 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 				}
 			}
 		}
+	case "prune-images":
+		var p imagePrune
+		if err := s.Store.Get(ctx, "image-prune", j.Target, &p); err != nil {
+			return nil, err
+		}
+		claims = append(claims, jobClaim{"repository", false})
+		templates, err := s.rawTemplates(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range templates {
+			claims = append(claims, jobClaim{"template:" + t.ID, false})
+		}
+		for _, im := range p.Images {
+			claims = append(claims, jobClaim{"image:" + im.Key, true})
+		}
+		for _, key := range p.ReadKeys {
+			claims = append(claims, jobClaim{"image:" + key, false})
+		}
 	case "refresh":
 		claims = append(claims, jobClaim{"repository", true})
 	case "access-cleanup":
@@ -101,7 +120,7 @@ func (s *Service) jobClaims(ctx context.Context, j Job) ([]jobClaim, error) {
 		}
 		write := j.Kind != "prepare"
 		claims = append(claims, jobClaim{"template:" + template, write})
-		keys, err := s.templateKeys(ctx, template)
+		keys, err := s.protectedRevisionKeys(ctx, template)
 		if err != nil {
 			return nil, err
 		}
@@ -311,6 +330,16 @@ func (s *Service) jobDetails(ctx context.Context, jobs []Job) error {
 	}
 	for n := range jobs {
 		j := &jobs[n]
+		if j.Kind == "prune-images" {
+			j.ImageOutcomes = nil
+			var p imagePrune
+			if err := s.Store.Get(ctx, "image-prune", j.Target, &p); err != nil {
+				return err
+			}
+			for _, im := range p.Images {
+				j.ImageOutcomes = append(j.ImageOutcomes, im.Outcome)
+			}
+		}
 		if j.Status == "failed" {
 			var err error
 			j.RetryBlocked, j.NeedsAttention, err = s.retryDisposition(ctx, *j)

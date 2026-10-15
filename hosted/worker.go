@@ -132,6 +132,8 @@ func (s *Service) runJob(ctx context.Context, j Job) error {
 		return s.runExercise(ctx, j)
 	case "refresh":
 		return s.syncSource(ctx)
+	case "prune-images":
+		return s.runPruneImages(ctx, j)
 	case "build", "remove-images":
 		return s.runTemplateJob(ctx, j)
 	case "prepare", "end":

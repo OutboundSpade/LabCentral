@@ -76,7 +76,7 @@
         </p>
       </div>
       <button
-        class="btn btn-sm min-h-11"
+        class="btn btn-outline btn-sm min-h-11"
         disabled={busy || !data.teams.some((t) => t.status === "ready")}
         onclick={() => run("/api/admin/checks/run")}
         ><Play size={16} />Check now</button
@@ -103,14 +103,14 @@
             >{/each}
         </select>
       </div>
-      <button class="btn btn-sm min-h-11" disabled={busy}
+      <button class="btn btn-outline btn-sm min-h-11" disabled={busy}
         >{data.checkSchedule?.intervalSeconds
           ? "Update schedule"
           : "Start scheduled checks"}</button
       >
       {#if data.checkSchedule?.intervalSeconds}<button
           type="button"
-          class="btn btn-sm min-h-11 btn-ghost"
+          class="btn btn-sm min-h-11 btn-outline"
           disabled={busy}
           onclick={() =>
             run("/api/admin/checks/schedule", { intervalSeconds: 0 })}

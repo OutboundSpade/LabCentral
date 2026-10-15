@@ -22,7 +22,7 @@ if (evidence) fs.mkdirSync(evidence, { recursive: true });
 const fits = (page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
 try {
-  for (const width of [1365, 390]) {
+  for (const width of [1366, 390]) {
     const context = await browser.newContext({
       viewport: { width, height: 900 },
       reducedMotion: "reduce",
@@ -314,21 +314,20 @@ try {
     // Signed-in home without a live meeting opens the template-first library.
     await page.goto(app + "/");
     await page.waitForURL(app + "/labs/");
-    await page.getByRole("heading", { name: "Lab library", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Practice", exact: true }).waitFor();
     await page.getByText("2 h 30 m", { exact: true }).waitFor();
     await page.getByRole("heading", { name: "No templates yet", exact: true }).waitFor();
     assert.equal(await page.getByRole("link", { name: "Published labs" }).count(), 0);
-    // Legacy publications are not attempts; their links stay reachable from history.
+    // Legacy publications stay reachable by their saved URL.
     await page.getByRole("link", { name: /My attempts/ }).click();
     await page.getByText("No attempts yet", { exact: true }).waitFor();
-    const earlier = page.getByRole("region", { name: "Earlier published labs" });
-    await earlier.getByRole("link", { name: "Network mapping", exact: true }).waitFor();
+    assert.equal(await page.getByRole("region", { name: "Earlier published labs" }).count(), 0);
     assert(await fits(page), "history overflow");
     if (evidence)
       await page.screenshot({ path: `${evidence}/labs-${width}.png`, fullPage: true });
 
     // Guided player: wrong answers keep the stage; correct answers advance.
-    await earlier.getByRole("link", { name: "Web recovery", exact: true }).click();
+    await page.goto(app + "/learn/?id=web");
     await page.waitForURL("**/learn/?id=web");
     await page.getByRole("heading", { name: "Web recovery", level: 1 }).waitFor();
     await page.getByRole("heading", { name: "Find the port", level: 2 }).waitFor();
@@ -376,10 +375,11 @@ try {
     await page.getByRole("dialog").waitFor({ state: "hidden" });
 
     // Paid resources start only after an explicit confirmation.
-    await page.getByRole("button", { name: "Start cloud workspace" }).click();
+    await page.getByRole("button", { name: "Start workspace" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
     assert.equal(calls.filter((c) => c.path.endsWith("/start")).length, 0);
-    await page.getByRole("button", { name: "Start cloud workspace" }).click();
+    await page.getByRole("button", { name: "Start workspace" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Start workspace" }).click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByText("Your machines are being prepared.", { exact: false }).waitFor();
@@ -440,7 +440,7 @@ try {
     admin = true;
     await page.goto(app + "/admin/labs/");
     await page.waitForURL(app + "/admin/templates/");
-    await page.getByRole("heading", { name: "Lab templates", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Templates", exact: true }).waitFor();
     assert.deepEqual(
       await page.getByRole("navigation", { name: "Administration" }).getByRole("link").allInnerTexts(),
       ["Meeting", "Templates"],

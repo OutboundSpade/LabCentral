@@ -19,7 +19,7 @@
     >
     {#if dismissible}<button
         type="button"
-        class="btn btn-sm btn-ghost min-h-11 min-w-11"
+        class="btn btn-sm btn-outline min-h-11 min-w-11"
         aria-label="Dismiss error"
         onclick={() => (dismissed = message)}><X size={16} /></button
       >{/if}

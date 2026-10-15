@@ -90,19 +90,20 @@ type Template struct {
 	Source   lc.Source `json:"-"`
 }
 type Job struct {
-	Retryable      bool       `json:"retryable"`
-	RetryBlocked   string     `json:"retryBlocked,omitempty"`
-	NeedsAttention bool       `json:"needsAttention"`
-	TargetLabel    string     `json:"targetLabel,omitempty"`
-	Started        *time.Time `json:"started,omitempty"`
-	Finished       *time.Time `json:"finished,omitempty"`
-	WaitingOn      []string   `json:"waitingOn,omitempty"`
-	ID             string     `json:"id"`
-	Kind           string     `json:"kind"`
-	Target         string     `json:"target"`
-	Status         string     `json:"status"`
-	Error          string     `json:"error,omitempty"`
-	Created        time.Time  `json:"created"`
+	ImageOutcomes  []ImagePruneOutcome `json:"imageOutcomes,omitempty"`
+	Retryable      bool                `json:"retryable"`
+	RetryBlocked   string              `json:"retryBlocked,omitempty"`
+	NeedsAttention bool                `json:"needsAttention"`
+	TargetLabel    string              `json:"targetLabel,omitempty"`
+	Started        *time.Time          `json:"started,omitempty"`
+	Finished       *time.Time          `json:"finished,omitempty"`
+	WaitingOn      []string            `json:"waitingOn,omitempty"`
+	ID             string              `json:"id"`
+	Kind           string              `json:"kind"`
+	Target         string              `json:"target"`
+	Status         string              `json:"status"`
+	Error          string              `json:"error,omitempty"`
+	Created        time.Time           `json:"created"`
 }
 type Machine struct {
 	Name    string `json:"name"`
@@ -128,6 +129,7 @@ type Overview struct {
 	Lab        LabView    `json:"lab"`
 }
 type AdminView struct {
+	ImageSummary   *ImageSummary           `json:"imageSummary,omitempty"`
 	ImportFailures []TemplateImportFailure `json:"importFailures"`
 	JoinedStudents int                     `json:"joinedStudents"`
 	RepositoryURL  string                  `json:"repositoryURL"`

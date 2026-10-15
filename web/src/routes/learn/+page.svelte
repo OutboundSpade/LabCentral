@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PageHeader from "$lib/PageHeader.svelte";
+  import { templateName } from "$lib/display";
   import { onMount, untrack } from "svelte";
   import { browser } from "$app/environment";
   import { page } from "$app/state";
@@ -367,10 +369,10 @@
       ? ""
       : !view.cloudReady
         ? scenario
-          ? "Cloud workspaces aren't available for this scenario yet."
-          : "Cloud workspaces aren't available for this lab yet. You can run it locally."
+          ? "Workspaces aren't available for this scenario yet."
+          : "Workspaces aren't available for this lab yet. You can run it locally."
         : otherRun
-          ? "Another lab's cloud workspace is still running."
+          ? "Another lab's workspace is still running."
           : view.quota.remainingSeconds < 60
             ? `Out of cloud time until ${date(view.quota.resetsAt, { weekday: "short", hour: "numeric", minute: "2-digit" })}.`
             : "",
@@ -379,9 +381,9 @@
     checkPending
       ? "A workspace check is already running."
       : !ownRun
-        ? "Start a cloud workspace to verify this stage."
+        ? "Start a workspace to verify this stage."
         : ownRun.status !== "ready"
-          ? "Available when your cloud workspace is ready."
+          ? "Available when your workspace is ready."
           : "",
   );
 </script>
@@ -397,39 +399,18 @@
       your attempts.
       {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
           >Browse templates<ArrowRight size={15} /></a
-        ><a class="btn btn-sm min-h-11" href="/labs/?view=attempts">My attempts</a>{/snippet}
+        ><a class="btn btn-outline btn-sm min-h-11" href="/labs/?view=attempts">My attempts</a>{/snippet}
     </EmptyState>
   {:else if missing}<EmptyState icon={BookOpen} title="This lab is unavailable">
       It may no longer be offered. Your saved progress is kept; any active
-      cloud workspace can still be stopped from the library.
-      {#snippet actions()}<a class="btn btn-sm min-h-11" href="/labs/"
+      workspace can still be stopped from the library.
+      {#snippet actions()}<a class="btn btn-outline btn-sm min-h-11" href="/labs/"
           ><ArrowLeft size={15} />Back to library</a
         >{/snippet}
     </EmptyState>
   {:else if view}
-    <a
-      class="btn btn-sm btn-ghost min-h-11 mb-3 -ml-3 text-base-content/70"
-      href={view.lab.attempt ? "/labs/?view=attempts" : "/labs/"}
-      ><ArrowLeft size={15} />{view.lab.attempt ? "My attempts" : "Lab library"}</a
-    >
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
-      <div class="min-w-0">
-        <h1 class="text-2xl font-semibold tracking-tight">{view.lab.title}</h1>
-        {#if view.lab.description}<p
-            class="mt-1.5 max-w-[60ch] text-sm text-base-content/70"
-          >
-            {view.lab.description}
-          </p>{/if}
-        {#if view.lab.attempt}<p
-            class="mt-2 flex flex-wrap items-center gap-x-4 text-xs text-base-content/70"
-          >
-            <span>{randomized ? "Randomized scenario" : "Baseline practice"} attempt</span>
-            <span>Started {date(view.lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}</span>
-            <a class="link link-hover inline-flex min-h-11 items-center lg:min-h-0" href={templatePath(view.lab.template)}
-              >Template revision</a
-            >
-          </p>{/if}
-      </div>
+    <PageHeader title={view.lab.attempt ? templateName(view.lab.title) : view.lab.title} description={view.lab.description}>
+      {#snippet eyebrow()}<a class="link link-hover" href={view?.lab.attempt ? "/labs/?view=attempts" : "/labs/"}>{view?.lab.attempt ? "My attempts" : "Practice"}</a>{#if view?.lab.attempt} · <span>{randomized ? "Randomized scenario" : "Baseline practice"} attempt</span>{/if}{/snippet}
       <div class="flex w-full items-center gap-3 sm:w-56">
         <progress
           class="progress progress-primary h-1.5 flex-1"
@@ -441,7 +422,8 @@
           >{completed} of {steps.length} stages complete</span
         >
       </div>
-    </div>
+      {#if view.lab.attempt}<a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}>Template revision</a>{/if}
+    </PageHeader>
     {#if scenario}<section
         aria-labelledby="scenario-title"
         class="rounded-box border border-base-content/9 bg-base-200/70 mb-4 px-4 py-3 text-sm"
@@ -459,8 +441,7 @@
           <span>{breakRange(scenario)}</span>
         </p>
         <p class="mt-2 max-w-[68ch] text-xs leading-relaxed text-base-content/70">
-          This attempt has its own saved variant, used when you start its cloud
-          workspace. Investigate to find what changed.
+          Investigate the workspace to find what changed.
         </p>
       </section>{/if}
     <section
@@ -471,7 +452,7 @@
       {#if ownRun}
         <div class="min-w-0 flex-1 basis-64 text-sm">
           <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span class="font-medium">Cloud workspace</span>
+            <span class="font-medium">Workspace</span>
             <span aria-live="polite"
               ><Status status={ownRun.status} label={runLabel(ownRun.status)} /></span
             >
@@ -515,7 +496,7 @@
             >{/if}
           {#if ownRun.status !== "ending"}<button
               type="button"
-              class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+              class="btn btn-sm btn-error min-h-11 lg:min-h-8"
               disabled={!!busy}
               onclick={() => {
                 error = "";
@@ -529,7 +510,7 @@
           <p class="mt-0.5 text-base-content/70" id="start-blocked">
             {#if startBlocked}{startBlocked}
               {#if otherRun}<a class="link" href={learnPath(otherRun.labID)}>Go to that lab</a>{/if}
-            {:else if randomized}Scenarios run only in a private cloud workspace.
+            {:else if randomized}Scenarios run only in a private workspace.
             {:else}Start a private cloud copy of this lab's machines.{/if}
           </p>
         </div>
@@ -543,11 +524,11 @@
             onclick={() => {
               error = "";
               startDialog.showModal();
-            }}><Play size={15} />Start cloud workspace</button
+            }}><Play size={15} />Start workspace</button
           >
           {#if !randomized}<button
               type="button"
-              class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
+              class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
               onclick={() => localDialog.showModal()}
               ><Laptop size={15} />Run locally</button
             >{/if}
@@ -604,13 +585,13 @@
                   label={randomized ? "New scenario" : "Try again"}
                   name={randomized
                     ? `New scenario: ${scenario?.title ?? view.lab.title}`
-                    : `Try again: ${view.lab.title}`}
+                    : `Try again: ${templateName(view.lab.title)}`}
                   icon={randomized ? Shuffle : RotateCcw}
                   primary
                   blocked={attemptBlocked(view.run)}
                   describedby="repeat-help"
                 />
-                <a class="btn btn-sm btn-ghost min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}
+                <a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}
                   >Template revision<ArrowRight size={15} /></a
                 >
                 {#if attemptBlocked(view.run)}<p id="repeat-help" class="basis-full text-xs text-base-content/70">
@@ -672,7 +653,7 @@
                   </p>
                   <button
                     type="button"
-                    class="btn btn-sm btn-ghost min-h-11 mt-2 -ml-3"
+                    class="btn btn-sm btn-outline min-h-11 mt-2 -ml-3"
                     onclick={() => choose(completed)}
                     ><ArrowLeft size={15} />Go to stage {completed + 1}</button
                   >
@@ -775,8 +756,8 @@
               </section>
               {#if step.hasSolution && shown <= completed}
                 <section class="mt-4" aria-label="Stage solution">
-                  {#if solution}<div class={[prose, "rounded-box border border-base-content/9 bg-base-200/70 p-5"]}>{@html render(solution)}</div><button class="btn btn-sm btn-ghost min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
-                  {:else}<button type="button" class="btn btn-sm btn-ghost min-h-11 -ml-3 text-base-content/70" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
+                  {#if solution}<div class={[prose, "rounded-box border border-base-content/9 bg-base-200/70 p-5"]}>{@html render(solution)}</div><button class="btn btn-sm btn-outline min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
+                  {:else}<button type="button" class="btn btn-sm btn-outline min-h-11 -ml-3 text-base-content/70" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
                   {#if solutionError}<p class="mt-2 text-sm text-error" role="alert">{solutionError}</p>{/if}
                 </section>
               {/if}
@@ -786,14 +767,14 @@
             >
               <button
                 type="button"
-                class="btn btn-sm btn-ghost min-h-11"
+                class="btn btn-sm btn-outline min-h-11"
                 disabled={shown === 0}
                 onclick={() => choose(shown - 1)}
                 ><ArrowLeft size={15} />Previous stage</button
               >
               <button
                 type="button"
-                class="btn btn-sm btn-ghost min-h-11"
+                class="btn btn-sm btn-outline min-h-11"
                 disabled={shown >= steps.length - 1 || shown + 1 >= released}
                 onclick={() => choose(shown + 1)}
                 >Next stage<ArrowRight size={15} /></button
@@ -805,7 +786,7 @@
     {/if}
   {:else if failure}
     <Notice message={failure} />
-    <button class="btn btn-sm min-h-11" onclick={() => load()}>Retry</button>
+    <button class="btn btn-outline btn-sm min-h-11" onclick={() => load()}>Retry</button>
   {:else}
     <div role="status" class="space-y-3">
       <span class="sr-only">Loading lab…</span>
@@ -818,7 +799,7 @@
 <dialog bind:this={startDialog} class="modal" aria-labelledby="start-title">
   <div class="modal-box">
     <h2 id="start-title" class="text-lg font-semibold">
-      Start a cloud workspace?
+      Start a workspace?
     </h2>
     {#if view}
       <p class="mt-3 font-medium">{view.lab.title}</p>
@@ -831,7 +812,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11" disabled={!!busy}>Cancel</button>
+        <button class="btn btn-outline btn-sm min-h-11" disabled={!!busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm btn-primary min-h-11"
@@ -846,7 +827,7 @@
 <dialog bind:this={stopDialog} class="modal" aria-labelledby="stop-title">
   <div class="modal-box">
     <h2 id="stop-title" class="text-lg font-semibold">
-      Stop your cloud workspace?
+      Stop your workspace?
     </h2>
     <p class="mt-3 text-sm leading-relaxed text-base-content/80">
       Workspace files are deleted. Your stage progress is kept.
@@ -854,7 +835,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-sm min-h-11" disabled={!!busy}>Cancel</button>
+        <button class="btn btn-outline btn-sm min-h-11" disabled={!!busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm btn-error min-h-11"
@@ -872,7 +853,7 @@
     <p class="mt-2 text-sm leading-relaxed text-base-content/80">
       Download the lab and run it with the LabCentral CLI on your own AWS or
       Proxmox environment. Answers still save here; workspace checks need the
-      cloud workspace.
+      workspace.
     </p>
     {#if view?.localAvailable && !randomized}<a
         class="btn btn-sm btn-primary min-h-11 mt-4"
@@ -887,7 +868,7 @@
         <p class="text-sm font-medium">Commands</p>
         <button
           type="button"
-          class="btn btn-xs btn-ghost min-h-9"
+          class="btn btn-sm btn-outline min-h-9"
           onclick={copyCommands}><Copy size={13} />Copy</button
         >
       </div>
@@ -900,7 +881,7 @@
       {#if copied}<p class="mt-1.5 text-xs" role="status">{copied}</p>{/if}
     </div>
     <div class="modal-action">
-      <form method="dialog"><button class="btn btn-sm min-h-11">Close</button></form>
+      <form method="dialog"><button class="btn btn-outline btn-sm min-h-11">Close</button></form>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>Close</button></form>
