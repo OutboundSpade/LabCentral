@@ -59,6 +59,11 @@ func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Sessio
 	generation, err := s.reserveDesktop(r.Context(), record)
 	if err != nil {
 		_, _ = s.Store.Enqueue(r.Context(), "access-cleanup", "pending")
+		if errors.Is(err, errDesktopBusy) {
+			// Another open or close of this desktop is in flight (a cold desktop can
+			// take about half a minute); clients may retry the same request.
+			w.Header().Set("Retry-After", "3")
+		}
 		writeError(w, 503, "Your desktop is opening or closing. Retry shortly.")
 		return
 	}

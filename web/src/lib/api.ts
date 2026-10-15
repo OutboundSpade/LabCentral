@@ -97,6 +97,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     throw new APIError(
       result.error ?? "Request failed. Please try again.",
       res.status,
+      Number(res.headers.get("Retry-After")) || 0,
     );
   return result;
 }
@@ -104,6 +105,8 @@ export class APIError extends Error {
   constructor(
     message: string,
     public status: number,
+    // Seconds the server asks a client to wait before repeating this request.
+    public retryAfter = 0,
   ) {
     super(message);
   }

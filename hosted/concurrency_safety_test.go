@@ -419,3 +419,31 @@ func TestDesktopSSHLeaseIsSharedWithoutDoubleAdmission(t *testing.T) {
 		t.Fatal("mismatched aggregate provider budget accepted")
 	}
 }
+
+// A second open while the first is still starting is retryable and says so; the
+// first open still completes normally.
+func TestConcurrentOpenAsksClientToRetry(t *testing.T) {
+	s, v, team, e := desktopIntentFixture(t)
+	first := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		s.launchDesktop(first, httptest.NewRequest("POST", "/api/access", nil), v, team, v.Expires, "workstation")
+		close(done)
+	}()
+	<-e.entered
+	second := httptest.NewRecorder()
+	s.launchDesktop(second, httptest.NewRequest("POST", "/api/access", nil), v, team, v.Expires, "workstation")
+	if second.Code != 503 || second.Header().Get("Retry-After") != "3" {
+		t.Fatal("busy open is not retryable", second.Code, second.Header())
+	}
+	close(e.release)
+	<-done
+	if first.Code != 200 || first.Header().Get("Retry-After") != "" {
+		t.Fatal(first.Code, first.Header(), first.Body.String())
+	}
+	s.desktopMu.Lock()
+	for _, d := range s.desktops {
+		d.cancel()
+	}
+	s.desktopMu.Unlock()
+}

@@ -6,7 +6,7 @@ const browser=await (process.env.LABCENTRAL_FIREFOX?firefox.launch({headless:tru
 try{
  for(const width of [1366,390]){
   const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let authenticated=false;let currentTeam='t1';let switched=false;
+  let authenticated=false;let currentTeam='t1';let switched=false;let accessCalls=0;
   const teams=Array.from({length:5},(_,i)=>({id:'t'+(i+1),meetingID:'m',name:'Team '+(i+1),capacity:4,members:i===4?4:2,status:'ready'}));
   const meeting={id:'m',name:'Team practice',template:'template',status:'ready',created:new Date().toISOString(),expires:new Date(Date.now()+3600000).toISOString()};
   const template={latest:true,removing:false,imagesReady:4,imagesTotal:4,buildsPending:0,commitTitle:'Modernize Example Branch as portable Ubuntu lab and Ansible playbooks',committedAt:'2026-09-28T12:00:00Z',removalBlocked:'Used by the current meeting. End it before removing images.',id:'template',name:'branch-services',commit:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',built:true,handover:'# Example Branch\n\nKeep customer banking, ledger processing, and document publishing available during your shift.\n\nVisit **http://web** from your desktop.\n\n## The branch\n\nYour team shares four machines. Use the handover in Documents to find the exercise accounts.\n\n<script>alert("unsafe")</script>'};
@@ -18,7 +18,8 @@ try{
    if(path==='/api/templates'){await route.fulfill({json:{templates:[{...template,description:'Branch service recovery',machines:[],stages:[],stageCount:0,practiceStageIDs:[],scenarios:[]}]}});return}
    if(path==='/api/admin'){await route.fulfill({json:{imageSummary:{images:19,unusedImages:17},meeting,teams,templates:[template],jobs:[{id:'j',kind:'prepare',target:'m',status:'complete',created:meeting.created}]}});return}
    assert.equal(req.headers()['x-csrf-token'],'test-csrf');
-   if(path==='/api/access'){await new Promise(resolve=>setTimeout(resolve,6000));await route.fulfill({json:{url:'http://127.0.0.1:5173/desktop-test-launch',ticket:'test-ticket'}});return}
+   // The first open meets a desktop that is still starting and is asked to retry.
+   if(path==='/api/access'){accessCalls++;if(accessCalls===1){await route.fulfill({status:503,headers:{'Retry-After':'1'},json:{error:'Your desktop is opening or closing. Retry shortly.'}});return}await new Promise(resolve=>setTimeout(resolve,6000));await route.fulfill({json:{url:'http://127.0.0.1:5173/desktop-test-launch',ticket:'test-ticket'}});return}
    if(path==='/api/team'){currentTeam=JSON.parse(req.postData()).teamID;switched=true}
    await route.fulfill({json:{ok:true}});
   });
@@ -30,7 +31,7 @@ try{
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow on '+route);
    await page.screenshot({path:`${evidence}/${route.replaceAll('/','-')}${width}.png`,fullPage:true});
    if(route==='teams/'){await page.getByRole('button',{name:'Team full'}).waitFor();assert(await page.getByRole('button',{name:'Team full'}).isDisabled())}
-   if(route==='lab/'){assert.equal(await page.locator('article script').count(),0);await page.getByRole('button',{name:'Open desktop'}).waitFor();const next=page.waitForEvent('popup');await page.getByRole('button',{name:'Open desktop'}).click();const desktop=await next;await desktop.getByRole('heading',{name:'Desktop launch accepted'}).waitFor();assert.equal(await desktop.evaluate(()=>window.opener),null);await desktop.close()}
+   if(route==='lab/'){assert.equal(await page.locator('article script').count(),0);await page.getByRole('button',{name:'Open desktop'}).waitFor();const next=page.waitForEvent('popup');await page.getByRole('button',{name:'Open desktop'}).click();const desktop=await next;await desktop.getByRole('heading',{name:'Desktop launch accepted'}).waitFor();assert.equal(accessCalls,2,'busy open is retried in the same tab');assert.equal(await page.getByText('opening or closing',{exact:false}).count(),0,'retryable busy is not shown as an error');assert.equal(await desktop.evaluate(()=>window.opener),null);await desktop.close()}
    if(route==='admin/'){await page.getByRole('button',{name:'End meeting',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'})}
   }
   await page.goto('http://127.0.0.1:5173/teams/');await page.getByRole('button',{name:'Switch team'}).first().click();await page.getByRole('dialog').getByRole('button',{name:'Switch to Team 2',exact:true}).click();await page.waitForURL('**/lab/');assert(switched);assert.equal(currentTeam,'t2');assert.deepEqual(errors,[]);await context.close();console.log('PASS routes, responsive layout, full team, safe handover, confirmation, team switch:',width);
