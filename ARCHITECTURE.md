@@ -211,7 +211,9 @@ Windows Packer builds use SSH/Administrator with SFTP and platform-owned
 The build key is installed in `administrators_authorized_keys` with SYSTEM and
 Administrators-only ACLs. Windows builds do not attach EC2 Ed25519 key pairs;
 their interrupted instances are discovered by atomic owner/role tags and verified
-before cleanup. Linux retains its existing key-pair path. Source selection is copied into
+before cleanup. Generated and supplied SSH host private keys both receive
+SYSTEM/Administrators-only ACLs with the Administrators group as owner before
+SYSTEM starts sshd; the individual generator account is not retained as owner. Linux retains its existing key-pair path. Source selection is copied into
 `C:\ProgramData\LabCentral\build\`; `$env:LABCENTRAL_INPUTS` names typed JSON.
 Platform code installs the Windows DCV MSI pinned by operator environment
 `build.windowsDCVURL`/`build.windowsDCVSHA256` before author PowerShell.

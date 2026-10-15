@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 )
 
 // WindowsUserData is platform-owned EC2Launch v2 user data; it never includes
@@ -63,18 +64,7 @@ New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value "$env:
 $ssh='C:\ProgramData\ssh'
 New-Item -ItemType Directory -Force -Path $ssh | Out-Null
 Stop-Service sshd -ErrorAction SilentlyContinue
-function Protect-LabCentralKey([string]$path) {
- $acl=New-Object Security.AccessControl.FileSecurity
- $acl.SetAccessRuleProtection($true,$false)
- $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
- foreach ($sid in @('S-1-5-18','S-1-5-32-544')) {
-  $identity=New-Object Security.Principal.SecurityIdentifier($sid)
-  $rule=New-Object Security.AccessControl.FileSystemAccessRule($identity,'FullControl','Allow')
-  $acl.AddAccessRule($rule)
- }
- Set-Acl -LiteralPath $path -AclObject $acl
-}
-[IO.File]::WriteAllText((Join-Path $ssh 'administrators_authorized_keys'),$p.PublicKey + "` + "`n" + `")
+` + windows.KeyProtection + `[IO.File]::WriteAllText((Join-Path $ssh 'administrators_authorized_keys'),$p.PublicKey + "` + "`n" + `")
 & icacls.exe (Join-Path $ssh 'administrators_authorized_keys') /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
 if ($LASTEXITCODE -ne 0) {throw 'authorized key ACL failed'}
 Protect-LabCentralKey (Join-Path $ssh 'administrators_authorized_keys')
@@ -84,8 +74,10 @@ if (!$p.Build) {
  [IO.File]::WriteAllText((Join-Path $ssh 'ssh_host_ed25519_key.pub'),$p.HostPublicKey)
  & icacls.exe (Join-Path $ssh 'ssh_host_ed25519_key') /inheritance:r /grant:r '*S-1-5-18:F' '*S-1-5-32-544:F' | Out-Null
  if ($LASTEXITCODE -ne 0) {throw 'host key ACL failed'}
- Protect-LabCentralKey (Join-Path $ssh 'ssh_host_ed25519_key')
 } else {& "$env:SystemRoot\System32\OpenSSH\ssh-keygen.exe" -A; if ($LASTEXITCODE -ne 0) {throw 'host key generation failed'}}
+# ssh-keygen assigns the individual Administrator as owner; sshd runs as SYSTEM.
+# Apply the same restricted ownership to generated and supplied host keys.
+Protect-LabCentralKey (Join-Path $ssh 'ssh_host_ed25519_key')
 @'
 PubkeyAuthentication yes
 PasswordAuthentication no

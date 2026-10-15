@@ -62,3 +62,16 @@ func TestWindowsUserDataPowerShellSyntax(t *testing.T) {
 	}
 	pscheck.Syntax(t, strings.TrimSuffix(strings.TrimPrefix(ud, "<powershell>\n"), "\n</powershell>\n<persist>true</persist>\n"))
 }
+
+func TestWindowsBuildProtectsGeneratedHostKeyBeforeStartingSSHD(t *testing.T) {
+	data, err := WindowsBuildUserData("ssh-ed25519 public", []string{"192.0.2.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := strings.Index(data, `ssh-keygen.exe" -A`)
+	protection := strings.Index(data, `Protect-LabCentralKey (Join-Path $ssh 'ssh_host_ed25519_key')`)
+	start := strings.Index(data, `Start-Service sshd`)
+	if generation < 0 || protection <= generation || protection >= start {
+		t.Fatal("generated host key reaches SYSTEM sshd without restricted group ownership")
+	}
+}
