@@ -207,7 +207,9 @@ guest-local Ansible; author values stay out of host shell commands. Infrastructu
 credentials remain in operator/provider/Packer processes; staging and logs are private.
 
 Windows Packer builds use SSH/Administrator with SFTP and platform-owned
-`<powershell>` EC2Launch v2 user data, never WinRM or author code on the operator.
+`<powershell>` EC2Launch v2 user data, never WinRM or author code on the operator. The controlled hostname reboot completes before
+OpenSSH installation/key setup can expose the build communicator, preventing
+Packer provisioning from overlapping that first reboot.
 The build key is installed in `administrators_authorized_keys` with SYSTEM and
 Administrators-only ACLs. Windows builds do not attach EC2 Ed25519 key pairs;
 their interrupted instances are discovered by atomic owner/role tags and verified

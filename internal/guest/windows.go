@@ -57,6 +57,13 @@ New-Item -ItemType Directory -Force -Path $root | Out-Null
 & icacls.exe $root /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) {throw 'staging ACL failed'}
 Remove-Item (Join-Path $root 'ready') -ErrorAction SilentlyContinue
+# Complete the controlled hostname reboot before SSH can admit Packer.
+if ($env:COMPUTERNAME -ine $p.Name) {
+ if (Test-Path (Join-Path $root 'renamed')) {throw 'hostname reboot did not converge'}
+ Rename-Computer -NewName $p.Name -Force
+ New-Item -ItemType File -Force -Path (Join-Path $root 'renamed') | Out-Null
+ exit 3010
+}
 $cap=Get-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
 if ($cap.State -ne 'Installed') {Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null}
 if (!(Test-Path -LiteralPath 'HKLM:\SOFTWARE\OpenSSH')) {New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null}
@@ -119,12 +126,6 @@ if (!$p.Build -and $p.NICs.Count -gt 0) {
 if (!$p.Build) {[IO.File]::WriteAllText("$env:SystemRoot\System32\drivers\etc\hosts",$p.Hosts)}
 Set-Service sshd -StartupType Automatic
 Start-Service sshd
-if ($env:COMPUTERNAME -ine $p.Name) {
- if (Test-Path (Join-Path $root 'renamed')) {throw 'hostname reboot did not converge'}
- Rename-Computer -NewName $p.Name -Force
- New-Item -ItemType File -Force -Path (Join-Path $root 'renamed') | Out-Null
- exit 3010
-}
 if ((Get-Service sshd).Status -ne 'Running') {throw 'sshd is not ready'}
 if ($p.Desktop -and (Get-Service dcvserver).Status -ne 'Running') {Start-Service dcvserver}
 New-Item -ItemType File -Force -Path (Join-Path $root 'ready') | Out-Null

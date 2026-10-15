@@ -75,3 +75,20 @@ func TestWindowsBuildProtectsGeneratedHostKeyBeforeStartingSSHD(t *testing.T) {
 		t.Fatal("generated host key reaches SYSTEM sshd without restricted group ownership")
 	}
 }
+
+func TestWindowsHostnameRebootPrecedesSSHExposure(t *testing.T) {
+	for _, build := range []bool{false, true} {
+		m := lc.PlannedMachine{Name: "server", PublicKey: "public", HostPrivateKey: "private", HostPublicKey: "host public"}
+		data, err := windowsUserData(m, []string{"192.0.2.1/32"}, build)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rename := strings.Index(data, `Rename-Computer -NewName $p.Name`)
+		capability := strings.Index(data, `Get-WindowsCapability -Online`)
+		start := strings.Index(data, `Start-Service sshd`)
+		ready := strings.LastIndex(data, `New-Item -ItemType File -Force -Path (Join-Path $root 'ready')`)
+		if rename < 0 || rename >= capability || capability >= start || start >= ready {
+			t.Fatal("SSH provisioning can start while the hostname reboot is pending", build)
+		}
+	}
+}
