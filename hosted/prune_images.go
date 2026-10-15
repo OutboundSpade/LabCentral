@@ -354,6 +354,13 @@ func (s *Service) reconcilePrunedRevisions(ctx context.Context) error {
 	for _, t := range templates {
 		keys, err := s.templateKeys(ctx, t.ID)
 		if errors.Is(err, errRetainedRevision) {
+			// An older-format revision without saved keys owns no image this prune
+			// kept, so it is no longer built. Leave unresolved cleanup to its job.
+			if t.Built && !t.Removing {
+				if _, err = s.Store.DB.ExecContext(ctx, `UPDATE objects SET body=json_set(body,'$.built',json('false')) WHERE kind='template' AND id=?`, t.ID); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if err != nil {

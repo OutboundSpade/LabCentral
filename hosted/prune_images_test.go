@@ -431,3 +431,40 @@ func TestPruneConfirmedRemovalStillFencesAllocationUntilRecordsCommit(t *testing
 		t.Fatal("allocated during incomplete record reconciliation", run, err)
 	}
 }
+
+// Regression: an older-format revision still marked built but without saved
+// image keys blocked every per-revision removal and stayed built after a prune.
+func TestStaleRetainedRevisionNeitherBlocksRemovalNorStaysBuilt(t *testing.T) {
+	s, e := templateFixture(t)
+	ctx := context.Background()
+	imageRevision(t, s, "current", "current-image")
+	if err := s.Store.Put(ctx, "template", "legacy", Template{ID: "legacy", Name: "legacy", Built: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.Put(ctx, "source", "legacy", map[string]any{"lab": map[string]any{"version": 2}}); err != nil {
+		t.Fatal(err)
+	}
+	e.images = append(e.images, lc.ImageRecord{Key: "current-image", Name: "current-image"})
+	w := request(s, "POST", "/api/admin/templates/remove-images", `{"id":"current"}`, s.Config.Origin, "csrf")
+	if w.Code != 202 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var j Job
+	if err := json.Unmarshal(w.Body.Bytes(), &j); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.runJob(ctx, j); err != nil {
+		t.Fatal("stale retained revision blocked removal:", err)
+	}
+	if !slices.Contains(e.removed, "current-image") {
+		t.Fatal(e.removed)
+	}
+	p := pruneJob(t, s)
+	if err := s.runJob(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	var legacy Template
+	if err := s.Store.Get(ctx, "template", "legacy", &legacy); err != nil || legacy.Built {
+		t.Fatal("stale retained revision still built", legacy, err)
+	}
+}

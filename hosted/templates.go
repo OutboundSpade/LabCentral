@@ -342,6 +342,12 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 				continue
 			}
 			ks, err := s.templateKeys(ctx, other.ID)
+			if errors.Is(err, errRetainedRevision) {
+				// No current image can be attributed to an older-format revision
+				// without saved keys; unused-image removal treats such images as
+				// unused as well.
+				continue
+			}
 			if err != nil {
 				return err
 			}
