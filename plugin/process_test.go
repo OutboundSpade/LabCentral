@@ -62,6 +62,8 @@ func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 
 func TestTypedProtocolRoundTrip(t *testing.T) {
 	c := lc.Command{ClientPrivateKey: []byte("transient"), Operation: "op", Environment: lc.Environment{Version: 2, Platform: "aws", Bases: map[string]lc.Base{"ubuntu": {ID: "ami", DiskGiB: 8}}}, Source: lc.Source{Files: []lc.File{{Path: "lab.yaml", Content: []byte("version: 2")}}}, Prior: lc.Resource{Data: json.RawMessage(`{"native":"state"}`)}}
+	c.Environment.Build.WindowsDCVURL = "https://example.invalid/windows.msi"
+	c.Environment.Build.WindowsDCVSHA256 = strings.Repeat("b", 64)
 	c.Environment.AWS.Gateway = lc.AWSGatewayConfig{Base: "ubuntu-24.04", InstanceType: "t3.micro"}
 	c.Environment.AWS.AllowEgress = true
 	c.Environment.AWS.Types = []lc.InstanceType{{Name: "t3.large", CPU: 2, MemoryMiB: 8192, MaxNICs: 3}}

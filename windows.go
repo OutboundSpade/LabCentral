@@ -1,9 +1,9 @@
 package labcentral
 
 import (
-	_ "embed"
-	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -73,6 +73,11 @@ func CheckWindowsCommand(c Command) error {
 			return problem(Unsupported, "images."+c.Image.Name+".os", "Windows guests are unsupported on Proxmox")
 		}
 		if c.Image.BuildProgram() != "" {
+			if c.Image.Desktop {
+				if err := ValidateWindowsDCV(c.Environment.Build); err != nil {
+					return err
+				}
+			}
 			name := c.Image.BuildInstanceType
 			if name == "" {
 				name = c.Environment.Build.InstanceType
@@ -85,19 +90,16 @@ func CheckWindowsCommand(c Command) error {
 	return nil
 }
 
-//go:embed tools/toolchain.json
-var toolchainMetadata []byte
-
-type WindowsDCVPin struct{ Version, URL, SHA256 string }
-
-func WindowsDCVToolchain() WindowsDCVPin {
-	var metadata struct {
-		WindowsDCV WindowsDCVPin `json:"windowsDCV"`
+// ValidateWindowsDCV requires operator pins only for Windows desktop builds.
+func ValidateWindowsDCV(b BuildConfig) error {
+	u, err := url.Parse(b.WindowsDCVURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || strings.ContainsAny(b.WindowsDCVURL, "'\n\r \t") {
+		return problem(Invalid, "environment.build.windowsDCVURL", "a pinned HTTPS Windows DCV MSI URL without credentials or whitespace is required")
 	}
-	if err := json.Unmarshal(toolchainMetadata, &metadata); err != nil {
-		panic(err)
+	if !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(b.WindowsDCVSHA256) {
+		return problem(Invalid, "environment.build.windowsDCVSHA256", "a lowercase SHA-256 for the Windows DCV MSI is required")
 	}
-	return metadata.WindowsDCV
+	return nil
 }
 
 func WindowsBuildCapacity(e Environment, name, field string) error {

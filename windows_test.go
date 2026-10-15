@@ -122,3 +122,55 @@ func TestWindowsFileSelectionsPreserveFilesystemIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestWindowsDesktopOperatorPins(t *testing.T) {
+	p := windowsPlan(t)
+	for _, tc := range []struct {
+		name, field string
+		change      func(*BuildConfig)
+	}{
+		{"missing-url", "windowsDCVURL", func(b *BuildConfig) { b.WindowsDCVURL = "" }},
+		{"http", "windowsDCVURL", func(b *BuildConfig) { b.WindowsDCVURL = "http://example.invalid/a.msi" }},
+		{"credentials", "windowsDCVURL", func(b *BuildConfig) { b.WindowsDCVURL = "https://user:secret@example.invalid/a.msi" }},
+		{"quote", "windowsDCVURL", func(b *BuildConfig) { b.WindowsDCVURL = "https://example.invalid/a'msi" }},
+		{"missing-sha", "windowsDCVSHA256", func(b *BuildConfig) { b.WindowsDCVSHA256 = "" }},
+		{"bad-sha", "windowsDCVSHA256", func(b *BuildConfig) { b.WindowsDCVSHA256 = strings.Repeat("z", 64) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := p.Environment
+			tc.change(&e.Build)
+			_, err := PlanLab(p.Source, e, nil)
+			requireField(t, err, Invalid, "environment.build."+tc.field)
+			c := Command{Environment: e, Image: p.Images[0]}
+			requireField(t, CheckWindowsCommand(c), Invalid, "environment.build."+tc.field)
+		})
+	}
+	for _, change := range []func(*BuildConfig){
+		func(b *BuildConfig) { b.WindowsDCVURL = "https://example.invalid/other.msi" },
+		func(b *BuildConfig) { b.WindowsDCVSHA256 = strings.Repeat("c", 64) },
+	} {
+		e := p.Environment
+		change(&e.Build)
+		next, err := PlanLab(p.Source, e, nil)
+		if err != nil || next.Images[0].CacheKey == p.Images[0].CacheKey {
+			t.Fatal("Windows desktop pin omitted from image identity", err)
+		}
+	}
+	s, err := sourceYAML(t, []byte(strings.Replace(windowsLab, "[ssh, desktop]", "[ssh]", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := p.Environment
+	e.Build.WindowsDCVURL = ""
+	e.Build.WindowsDCVSHA256 = ""
+	server, err := PlanLab(s, e, nil)
+	if err != nil {
+		t.Fatal("SSH-only Windows build required desktop pins", err)
+	}
+	e.Build.WindowsDCVURL = "https://example.invalid/other.msi"
+	e.Build.WindowsDCVSHA256 = strings.Repeat("c", 64)
+	next, err := PlanLab(s, e, nil)
+	if err != nil || server.Images[0].CacheKey != next.Images[0].CacheKey {
+		t.Fatal("SSH-only Windows identity includes desktop pins", err)
+	}
+}

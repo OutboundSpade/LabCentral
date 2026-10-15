@@ -203,8 +203,17 @@ license-only `aws.desktopProfile`.
 
 Platform-owned bootstrap installs OpenSSH, pins the per-allocation keys, keeps the
 Windows firewall enabled, sets the hostname with one controlled reboot and checks
-readiness over the existing jump SSH path. Desktop builds install the MSI pinned
-in `tools/toolchain.json` before the author script. EC2Launch v2 generalizes and
+readiness over the existing jump SSH path. Desktop builds install the MSI pinned by operator settings
+`build.windowsDCVURL` and `build.windowsDCVSHA256` before the author script.
+These fields are required only for Windows desktop image builds. The current pin is:
+
+```yaml
+build:
+  windowsDCVURL: https://d1uj6qtbmh3dt5.cloudfront.net/2025.0/Servers/nice-dcv-server-x64-Release-2025.0-20103.msi
+  windowsDCVSHA256: 593e2b78cd41b64fac255f303e48b1e7f73129969279ba2eae067e519f962067
+```
+
+ EC2Launch v2 generalizes and
 shuts down the guest before capture; captured AMIs are boot-qualified before
 publication. AWS Windows acceptance has **not** been recorded.
 

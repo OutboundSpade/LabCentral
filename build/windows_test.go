@@ -17,6 +17,8 @@ func windowsFixture(t *testing.T, desktop bool) (lc.Command, string) {
 	c, dir := fixture(t, "aws")
 	c.Environment.OperatorCIDRs = []string{"192.0.2.1/32"}
 	c.Environment.AWS.Types = []lc.InstanceType{{Name: "t3.medium", CPU: 2, MemoryMiB: 4096}}
+	c.Environment.Build.WindowsDCVURL = "https://example.invalid/windows.msi"
+	c.Environment.Build.WindowsDCVSHA256 = strings.Repeat("b", 64)
 	c.Image.Playbook = ""
 	c.Image.Script = "images/build.ps1"
 	c.Image.Desktop = desktop
@@ -60,7 +62,7 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 				}
 				if strings.Contains(text, "Get-FileHash") {
 					install = i
-					if !strings.Contains(text, lc.WindowsDCVToolchain().SHA256) {
+					if !strings.Contains(text, c.Environment.Build.WindowsDCVSHA256) {
 						t.Fatal("missing MSI pin")
 					}
 					if !strings.Contains(text, "DISABLE_AUTOMATIC_SESSION_CREATION=1") || !strings.Contains(text, "HKEY_USERS") || !strings.Contains(text, "S-1-5-18") {

@@ -884,23 +884,25 @@ func (x *ProxmoxConfig) GetAllowEgress() bool {
 }
 
 type BuildConfig struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Dcvurl          string                 `protobuf:"bytes,1,opt,name=dcvurl,json=dcvURL,proto3" json:"dcvurl,omitempty"`
-	Dcvsha256       string                 `protobuf:"bytes,2,opt,name=dcvsha256,json=dcvSHA256,proto3" json:"dcvsha256,omitempty"`
-	Packer          string                 `protobuf:"bytes,3,opt,name=packer,proto3" json:"packer,omitempty"`
-	PackerSha256    string                 `protobuf:"bytes,4,opt,name=packer_sha256,json=packerSHA256,proto3" json:"packer_sha256,omitempty"`
-	PluginDirectory string                 `protobuf:"bytes,5,opt,name=plugin_directory,json=pluginDirectory,proto3" json:"plugin_directory,omitempty"`
-	ToolchainId     string                 `protobuf:"bytes,6,opt,name=toolchain_id,json=toolchainID,proto3" json:"toolchain_id,omitempty"`
-	AnsibleVersion  string                 `protobuf:"bytes,7,opt,name=ansible_version,json=ansibleVersion,proto3" json:"ansible_version,omitempty"`
-	TimeoutSeconds  int32                  `protobuf:"varint,8,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
-	SubnetId        string                 `protobuf:"bytes,9,opt,name=subnet_id,json=subnetID,proto3" json:"subnet_id,omitempty"`
-	SecurityGroupId string                 `protobuf:"bytes,10,opt,name=security_group_id,json=securityGroupID,proto3" json:"security_group_id,omitempty"`
-	InstanceType    string                 `protobuf:"bytes,11,opt,name=instance_type,json=instanceType,proto3" json:"instance_type,omitempty"`
-	Bridge          string                 `protobuf:"bytes,12,opt,name=bridge,proto3" json:"bridge,omitempty"`
-	Vlan            int32                  `protobuf:"varint,13,opt,name=vlan,proto3" json:"vlan,omitempty"`
-	Gateway         string                 `protobuf:"bytes,14,opt,name=gateway,proto3" json:"gateway,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Dcvurl           string                 `protobuf:"bytes,1,opt,name=dcvurl,json=dcvURL,proto3" json:"dcvurl,omitempty"`
+	Dcvsha256        string                 `protobuf:"bytes,2,opt,name=dcvsha256,json=dcvSHA256,proto3" json:"dcvsha256,omitempty"`
+	Packer           string                 `protobuf:"bytes,3,opt,name=packer,proto3" json:"packer,omitempty"`
+	PackerSha256     string                 `protobuf:"bytes,4,opt,name=packer_sha256,json=packerSHA256,proto3" json:"packer_sha256,omitempty"`
+	PluginDirectory  string                 `protobuf:"bytes,5,opt,name=plugin_directory,json=pluginDirectory,proto3" json:"plugin_directory,omitempty"`
+	ToolchainId      string                 `protobuf:"bytes,6,opt,name=toolchain_id,json=toolchainID,proto3" json:"toolchain_id,omitempty"`
+	AnsibleVersion   string                 `protobuf:"bytes,7,opt,name=ansible_version,json=ansibleVersion,proto3" json:"ansible_version,omitempty"`
+	TimeoutSeconds   int32                  `protobuf:"varint,8,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	SubnetId         string                 `protobuf:"bytes,9,opt,name=subnet_id,json=subnetID,proto3" json:"subnet_id,omitempty"`
+	SecurityGroupId  string                 `protobuf:"bytes,10,opt,name=security_group_id,json=securityGroupID,proto3" json:"security_group_id,omitempty"`
+	InstanceType     string                 `protobuf:"bytes,11,opt,name=instance_type,json=instanceType,proto3" json:"instance_type,omitempty"`
+	Bridge           string                 `protobuf:"bytes,12,opt,name=bridge,proto3" json:"bridge,omitempty"`
+	Vlan             int32                  `protobuf:"varint,13,opt,name=vlan,proto3" json:"vlan,omitempty"`
+	Gateway          string                 `protobuf:"bytes,14,opt,name=gateway,proto3" json:"gateway,omitempty"`
+	WindowsDcvurl    string                 `protobuf:"bytes,15,opt,name=windows_dcvurl,json=windowsDCVURL,proto3" json:"windows_dcvurl,omitempty"`
+	WindowsDcvsha256 string                 `protobuf:"bytes,16,opt,name=windows_dcvsha256,json=windowsDCVSHA256,proto3" json:"windows_dcvsha256,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *BuildConfig) Reset() {
@@ -1027,6 +1029,20 @@ func (x *BuildConfig) GetVlan() int32 {
 func (x *BuildConfig) GetGateway() string {
 	if x != nil {
 		return x.Gateway
+	}
+	return ""
+}
+
+func (x *BuildConfig) GetWindowsDcvurl() string {
+	if x != nil {
+		return x.WindowsDcvurl
+	}
+	return ""
+}
+
+func (x *BuildConfig) GetWindowsDcvsha256() string {
+	if x != nil {
+		return x.WindowsDcvsha256
 	}
 	return ""
 }
@@ -3273,7 +3289,7 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\agateway\x18\x0f \x01(\tR\agateway\x12-\n" +
 	"\x12verified_isolation\x18\x10 \x01(\bR\x11verifiedIsolation\x12\x1a\n" +
 	"\bcputypes\x18\x11 \x03(\tR\bcpuTypes\x12!\n" +
-	"\fallow_egress\x18\x12 \x01(\bR\vallowEgress\"\xd4\x03\n" +
+	"\fallow_egress\x18\x12 \x01(\bR\vallowEgress\"\xa8\x04\n" +
 	"\vBuildConfig\x12\x16\n" +
 	"\x06dcvurl\x18\x01 \x01(\tR\x06dcvURL\x12\x1c\n" +
 	"\tdcvsha256\x18\x02 \x01(\tR\tdcvSHA256\x12\x16\n" +
@@ -3289,7 +3305,9 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\rinstance_type\x18\v \x01(\tR\finstanceType\x12\x16\n" +
 	"\x06bridge\x18\f \x01(\tR\x06bridge\x12\x12\n" +
 	"\x04vlan\x18\r \x01(\x05R\x04vlan\x12\x18\n" +
-	"\agateway\x18\x0e \x01(\tR\agateway\"\xb7\x04\n" +
+	"\agateway\x18\x0e \x01(\tR\agateway\x12%\n" +
+	"\x0ewindows_dcvurl\x18\x0f \x01(\tR\rwindowsDCVURL\x12+\n" +
+	"\x11windows_dcvsha256\x18\x10 \x01(\tR\x10windowsDCVSHA256\"\xb7\x04\n" +
 	"\x0ePlannedMachine\x125\n" +
 	"\x05hosts\x18\x01 \x03(\v2\x1f.labcentral.plugin.v2.HostEntryR\x05hosts\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x121\n" +

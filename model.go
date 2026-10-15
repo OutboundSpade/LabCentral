@@ -213,20 +213,22 @@ type ProxmoxConfig struct {
 	AllowEgress           bool     `yaml:"allowEgress,omitempty" json:"allowEgress,omitempty"`
 }
 type BuildConfig struct {
-	DCVURL          string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
-	DCVSHA256       string `yaml:"dcvSHA256,omitempty" json:"dcvSHA256,omitempty"`
-	Packer          string `yaml:"packer" json:"packer"`
-	PackerSHA256    string `yaml:"packerSHA256" json:"packerSHA256"`
-	PluginDirectory string `yaml:"pluginDirectory" json:"pluginDirectory"`
-	ToolchainID     string `yaml:"toolchainID" json:"toolchainID"`
-	AnsibleVersion  string `yaml:"ansibleVersion" json:"ansibleVersion"`
-	TimeoutSeconds  int    `yaml:"timeoutSeconds" json:"timeoutSeconds"`
-	SubnetID        string `yaml:"subnetID,omitempty" json:"subnetID,omitempty"`
-	SecurityGroupID string `yaml:"securityGroupID,omitempty" json:"securityGroupID,omitempty"`
-	InstanceType    string `yaml:"instanceType,omitempty" json:"instanceType,omitempty"`
-	Bridge          string `yaml:"bridge,omitempty" json:"bridge,omitempty"`
-	VLAN            int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
-	Gateway         string `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	DCVURL           string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
+	DCVSHA256        string `yaml:"dcvSHA256,omitempty" json:"dcvSHA256,omitempty"`
+	Packer           string `yaml:"packer" json:"packer"`
+	PackerSHA256     string `yaml:"packerSHA256" json:"packerSHA256"`
+	PluginDirectory  string `yaml:"pluginDirectory" json:"pluginDirectory"`
+	ToolchainID      string `yaml:"toolchainID" json:"toolchainID"`
+	AnsibleVersion   string `yaml:"ansibleVersion" json:"ansibleVersion"`
+	TimeoutSeconds   int    `yaml:"timeoutSeconds" json:"timeoutSeconds"`
+	SubnetID         string `yaml:"subnetID,omitempty" json:"subnetID,omitempty"`
+	SecurityGroupID  string `yaml:"securityGroupID,omitempty" json:"securityGroupID,omitempty"`
+	InstanceType     string `yaml:"instanceType,omitempty" json:"instanceType,omitempty"`
+	Bridge           string `yaml:"bridge,omitempty" json:"bridge,omitempty"`
+	VLAN             int    `yaml:"vlan,omitempty" json:"vlan,omitempty"`
+	Gateway          string `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	WindowsDCVURL    string `yaml:"windowsDCVURL,omitempty" json:"windowsDCVURL,omitempty"`
+	WindowsDCVSHA256 string `yaml:"windowsDCVSHA256,omitempty" json:"windowsDCVSHA256,omitempty"`
 }
 
 type HostEntry struct {

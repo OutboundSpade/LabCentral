@@ -213,13 +213,15 @@ Administrators-only ACLs. Windows builds do not attach EC2 Ed25519 key pairs;
 their interrupted instances are discovered by atomic owner/role tags and verified
 before cleanup. Linux retains its existing key-pair path. Source selection is copied into
 `C:\ProgramData\LabCentral\build\`; `$env:LABCENTRAL_INPUTS` names typed JSON.
-Platform code installs the version/URL/SHA-256-pinned Windows DCV MSI from
-`tools/toolchain.json` before author PowerShell. The MSI also needs a valid
+Platform code installs the Windows DCV MSI pinned by operator environment
+`build.windowsDCVURL`/`build.windowsDCVSHA256` before author PowerShell.
+Planning and provider requests require valid HTTPS/checksum fields only for
+Windows desktop builds, with field-path errors before provisioning. The MSI also needs a valid
 Authenticode signature. Platform settings use DCV's SYSTEM user registry hive
 (`HKEY_USERS\S-1-5-18`), verified from the pinned MSI metadata. Installation
 disables automatic sessions/server startup, configures the service, and performs
-a platform driver reboot before author execution. The pin is Amazon's DCV download
-for 2025.0-20103. It participates only in Windows desktop policy. Linux plan and image-key golden fixtures retain the preceding
+a platform driver reboot before author execution. README and the Windows example document Amazon's DCV download
+for 2025.0-20103. The operator URL and checksum participate only in Windows desktop policy. Linux plan and image-key golden fixtures retain the preceding
 implementation's exact serialized bytes.
 
 After author execution, platform code removes build files, inputs, management

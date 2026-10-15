@@ -183,6 +183,8 @@ func windowsConformanceEnvironment(s Source, e Environment) Environment {
 		if i.OS == "windows" {
 			e.Bases["windows-2022"] = Base{OS: "windows", ID: "ami-0123456789abcdef0", Identity: "ami-0123456789abcdef0", User: "Administrator", DiskGiB: 30}
 			e.Build.InstanceType = "t3.medium"
+			e.Build.WindowsDCVURL = "https://example.invalid/windows.msi"
+			e.Build.WindowsDCVSHA256 = strings.Repeat("b", 64)
 		}
 	}
 	return e

@@ -65,10 +65,13 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 		cfg.Provisioners = append(cfg.Provisioners, raw(map[string]any{"type": "file", "source": f.source, "destination": f.dest}))
 	}
 	if c.Image.Desktop {
-		pin := lc.WindowsDCVToolchain()
+		if err := lc.ValidateWindowsDCV(c.Environment.Build); err != nil {
+			return cfg, err
+		}
+		pin := c.Environment.Build
 		ps(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12`,
-			`Invoke-WebRequest -UseBasicParsing -Uri '`+pin.URL+`' -OutFile 'C:\ProgramData\LabCentral\dcv.msi'`,
-			`if ((Get-FileHash 'C:\ProgramData\LabCentral\dcv.msi' -Algorithm SHA256).Hash -ine '`+pin.SHA256+`') {throw 'DCV checksum mismatch'}`,
+			`Invoke-WebRequest -UseBasicParsing -Uri '`+pin.WindowsDCVURL+`' -OutFile 'C:\ProgramData\LabCentral\dcv.msi'`,
+			`if ((Get-FileHash 'C:\ProgramData\LabCentral\dcv.msi' -Algorithm SHA256).Hash -ine '`+pin.WindowsDCVSHA256+`') {throw 'DCV checksum mismatch'}`,
 			`$signature=Get-AuthenticodeSignature 'C:\ProgramData\LabCentral\dcv.msi'; if ($signature.Status -ne 'Valid') {throw 'invalid DCV signature'}`,
 			`$msi=Start-Process msiexec.exe -ArgumentList '/i C:\ProgramData\LabCentral\dcv.msi /qn /norestart ADDLOCAL=ALL DISABLE_SERVER_AUTOSTART=1 DISABLE_AUTOMATIC_SESSION_CREATION=1' -Wait -PassThru; if ($msi.ExitCode -notin 0,3010) {throw 'DCV install failed'}`,
 			`if (!(Test-Path -LiteralPath 'Registry::HKEY_USERS\S-1-5-18\Software\GSettings\com\nicesoftware\dcv\security')) {New-Item -Force -Path 'Registry::HKEY_USERS\S-1-5-18\Software\GSettings\com\nicesoftware\dcv\security' | Out-Null}`,

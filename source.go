@@ -556,8 +556,10 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		if im.Desktop {
 			policy = "xfce-minimal-1"
 			if b.OS == "windows" {
-				pin := WindowsDCVToolchain()
-				policy = "windows-console-1:" + pin.Version + ":" + pin.URL + ":" + pin.SHA256
+				if err := ValidateWindowsDCV(e.Build); err != nil {
+					return p, err
+				}
+				policy = "windows-console-1:" + e.Build.WindowsDCVURL + ":" + e.Build.WindowsDCVSHA256
 			}
 		}
 		buildIdentity := buildEnvironment(e)

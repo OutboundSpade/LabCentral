@@ -27,8 +27,16 @@ build network Windows Update access to install the OpenSSH Server capability.
 Runtime Internet access is unnecessary for this example. Management remains
 private through the gateway; the Windows firewall stays enabled.
 
-The Windows DCV MSI URL and SHA-256 are recorded in `tools/toolchain.json` and
-checked in the guest, together with its Authenticode signature. The pin is Amazon's
+Set the operator environment’s `build.windowsDCVURL` and
+`build.windowsDCVSHA256`; they are required for this desktop image and checked
+in the guest, together with its Authenticode signature:
+
+```yaml
+build:
+  windowsDCVURL: https://d1uj6qtbmh3dt5.cloudfront.net/2025.0/Servers/nice-dcv-server-x64-Release-2025.0-20103.msi
+  windowsDCVSHA256: 593e2b78cd41b64fac255f303e48b1e7f73129969279ba2eae067e519f962067
+```
+ The pin is Amazon's
 DCV 2025.0-20103 server MSI. Updating the pin changes Windows desktop image keys only.
 
 Local tests establish code behavior only. Windows boot, EC2Launch reboot/sysprep,
