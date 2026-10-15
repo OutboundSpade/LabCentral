@@ -80,6 +80,18 @@
           "steps": {
             "items": {
               "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "playbook"
+                  ]
+                },
+                {
+                  "required": [
+                    "script"
+                  ]
+                }
+              ],
               "properties": {
                 "assets": {
                   "items": {
@@ -121,6 +133,12 @@
                   "pattern": "^[a-zA-Z0-9_./-]+$",
                   "type": "string"
                 },
+                "script": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "pattern": "^[a-zA-Z0-9_./-]+\\.ps1$",
+                  "type": "string"
+                },
                 "timeoutSeconds": {
                   "default": 90,
                   "maximum": 600,
@@ -129,8 +147,7 @@
                 }
               },
               "required": [
-                "machine",
-                "playbook"
+                "machine"
               ],
               "type": "object"
             },
@@ -183,6 +200,18 @@
           "steps": {
             "items": {
               "additionalProperties": false,
+              "oneOf": [
+                {
+                  "required": [
+                    "playbook"
+                  ]
+                },
+                {
+                  "required": [
+                    "script"
+                  ]
+                }
+              ],
               "properties": {
                 "assets": {
                   "items": {
@@ -224,6 +253,12 @@
                   "pattern": "^[a-zA-Z0-9_./-]+$",
                   "type": "string"
                 },
+                "script": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "pattern": "^[a-zA-Z0-9_./-]+\\.ps1$",
+                  "type": "string"
+                },
                 "timeoutSeconds": {
                   "default": 90,
                   "maximum": 600,
@@ -232,8 +267,7 @@
                 }
               },
               "required": [
-                "machine",
-                "playbook"
+                "machine"
               ],
               "type": "object"
             },
@@ -322,6 +356,18 @@
     "reset": {
       "items": {
         "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "playbook"
+            ]
+          },
+          {
+            "required": [
+              "script"
+            ]
+          }
+        ],
         "properties": {
           "assets": {
             "items": {
@@ -363,6 +409,12 @@
             "pattern": "^[a-zA-Z0-9_./-]+$",
             "type": "string"
           },
+          "script": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_./-]+\\.ps1$",
+            "type": "string"
+          },
           "timeoutSeconds": {
             "default": 90,
             "maximum": 600,
@@ -371,8 +423,7 @@
           }
         },
         "required": [
-          "machine",
-          "playbook"
+          "machine"
         ],
         "type": "object"
       },

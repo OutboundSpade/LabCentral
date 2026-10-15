@@ -1,8 +1,8 @@
 # LabCentral
 
 LabCentral builds and runs hands-on virtual labs from small YAML files and ordinary
-Ansible playbooks. A lab describes its images, machines and networks once; the same
-source deploys on AWS EC2 or Proxmox VE, with images kept native to each platform.
+Ansible playbooks or guest PowerShell scripts. A lab describes its images, machines and networks once; the same
+source deploys on AWS EC2 or Proxmox VE, with images kept native to each platform. Windows guests currently target AWS only.
 
 The project has three parts:
 
@@ -85,9 +85,9 @@ Provider credentials stay in the operator's environment and the provider process
 | Platform options | Instance type, gp3 volume, CPU credits, build instance type | CPU model, NIC model, memory ballooning |
 | Hosted service | Yes | Library and CLI only |
 | Multiple networks, NICs and routers | Up to 8 networks and 8 NICs per machine; author CIDRs | Up to 4 networks and 4 NICs per machine |
-| Windows guests | Planned | Planned |
+| Windows Server 2022 guests | Implemented; local qualification only | Rejected at plan time |
 
-Guests are Ubuntu 24.04 amd64. The operator machine is Linux amd64. Multiple networks
+Linux guests are Ubuntu 24.04 amd64; AWS also implements Windows Server 2022 amd64. The operator machine is Linux amd64. Multiple networks
 and routers have been verified on AWS; Proxmox support is implemented but not yet
 verified on a real cluster. See
 [ARCHITECTURE.md](ARCHITECTURE.md#qualification-status) for what has been verified on
@@ -173,12 +173,65 @@ More complete examples are in [examples/](examples/README.md) and
 - Ansible expressions run inside the build guest; LabCentral passes inputs and
   extensions as Ansible variables.
 
+### Windows on AWS
+
+Use `images.<name>.os: windows` and `build.script: images/build.ps1`. Builds
+require exactly one of `script` or `playbook`: Windows uses PowerShell, Linux uses
+Ansible in this phase. Windows build files land in
+`C:\ProgramData\LabCentral\build\`, preserving relative paths. The script's
+working directory is that directory; `$env:LABCENTRAL_INPUTS` names the typed JSON
+inputs file. `build.files` retains the same selection and image-identity rules.
+Author scripts run only inside the temporary Windows guest.
+
+Windows machines support `access: [desktop, ssh]`, require at least 4 GiB of
+memory, one NIC, a disk at least as large as the base (minimum 30 GiB), and names
+up to 15 characters. Routers remain Linux. Proxmox rejects Windows before binding
+bases or provisioning. Gateway, lab network isolation, routing and egress policy
+are shared with Linux. Student SSH and the coach terminal use Administrator with
+PowerShell as the default shell, through the pinned private gateway.
+
+Bind the base in the private environment with `os: windows`,
+`user: Administrator`, `diskGiB: 30` and a pinned AMI ID as both `id` and
+`identity`. Resolve that ID once from the regional SSM parameter
+`/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base`; do not
+save the mutable parameter path as an image ID. Base `os` defaults to Linux and
+must match image `os`. Declare a Windows build type of at least 4 GiB in
+`aws.types` and select it using `build.instanceType` or the image's
+`platform.aws.buildInstanceType`. The build network needs Windows Update access
+for the built-in OpenSSH Server capability. Desktop machines still require the
+license-only `aws.desktopProfile`.
+
+Platform-owned bootstrap installs OpenSSH, pins the per-allocation keys, keeps the
+Windows firewall enabled, sets the hostname with one controlled reboot and checks
+readiness over the existing jump SSH path. Desktop builds install the MSI pinned
+in `tools/toolchain.json` before the author script. EC2Launch v2 generalizes and
+shuts down the guest before capture; captured AMIs are boot-qualified before
+publication. AWS Windows acceptance has **not** been recorded.
+
+Instructor v3 steps use `script: check.ps1` for Windows and `playbook` for Linux,
+with exactly one program. Files and assets retain their relative paths in a
+private per-run temporary directory exposed as `$env:LABCENTRAL_STEP_DIR`.
+`labcentral/hosts.json` (when `guestHosts` is selected) and
+`labcentral/context.json` have the same JSON shape as Linux. Exit 0 passes a
+check; other script exits fail it. Lock, timeout, transport and output failures
+remain unknown outcomes. Breaks, resets, scenario breaks and stage checks share
+the same bounded launcher and cleanup.
+
+Windows uses one DCV console owned by local `lab`, whose credential is generated
+on authorized desktop launch using the existing access flow. Overlapping desktop
+owners are rejected; Windows cannot supply Linux's simultaneous independent
+virtual workspaces. Revocation disables the account, closes DCV, logs off the
+local console and cleans or retains its profile according to access policy.
+See [examples/windows-iis](examples/windows-iis/README.md) for a small mixed lab
+and the remaining live acceptance checklist.
+
 ### Machines
 
 - `cpu`, `memory` and `disk` are minimums. On AWS the planner picks the smallest
   allowed instance type that fits.
 - `access` is any of `ssh` and `desktop`.
-- `hostnamePeers` controls which machines appear in each guest's `/etc/hosts`:
+- `hostnamePeers` controls which machines appear in each guest's hosts file (`/etc/hosts`
+  or `C:\Windows\System32\drivers\etc\hosts`):
   `all` (the default), a list of names, or `[]` for none.
 
 ### Networks and Internet access
@@ -492,7 +545,7 @@ repository you configure. Each template is a directory containing:
 | `lab.yaml`, playbooks | Portable lab source, as above |
 | `README.md` | Student handover shown in the library |
 | `instructor.yaml` | Private teaching material: stages, checks, breaks, scenarios and catalog metadata |
-| `instructor/` | Private guest playbooks for checks, breaks and resets |
+| `instructor/` | Private guest playbooks or PowerShell scripts for checks, breaks and resets |
 
 Private material is removed before images are built and never reaches student responses
 or downloads. `labcentral validate --template DIR` checks a template exactly as the

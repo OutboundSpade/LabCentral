@@ -25,7 +25,8 @@ type Server struct {
 	// Forward maps the requested destination to a local fixture. Empty rejects it.
 	Forward func(string) string
 	// Exec returns fixture output; no shell is started.
-	Exec func(string) string
+	Exec       func(string) string
+	execResult func(string, string, []byte) ([]byte, uint32)
 }
 
 func Key(t testing.TB) ([]byte, string) {
@@ -46,6 +47,15 @@ func Key(t testing.TB) ([]byte, string) {
 	return key, string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 }
 func New(t testing.TB, forward func(string) string, exec func(string) string) *Server {
+	return newServer(t, forward, exec, nil)
+}
+
+// NewWithResult captures stdin and returns a controlled SSH exit status. It
+// executes no programs and accepts connections on loopback only.
+func NewWithResult(t testing.TB, forward func(string) string, result func(string, string, []byte) ([]byte, uint32)) *Server {
+	return newServer(t, forward, nil, result)
+}
+func newServer(t testing.TB, forward func(string) string, exec func(string) string, result func(string, string, []byte) ([]byte, uint32)) *Server {
 	t.Helper()
 	private, host := Key(t)
 	signer, err := ssh.ParsePrivateKey(private)
@@ -56,7 +66,7 @@ func New(t testing.TB, forward func(string) string, exec func(string) string) *S
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Address: listener.Addr().String(), HostKey: host, listener: listener, Forward: forward, Exec: exec}
+	s := &Server{Address: listener.Addr().String(), HostKey: host, listener: listener, Forward: forward, Exec: exec, execResult: result}
 	cfg := &ssh.ServerConfig{NoClientAuth: true}
 	cfg.AddHostKey(signer)
 	s.wg.Go(func() {
@@ -78,7 +88,7 @@ func New(t testing.TB, forward func(string) string, exec func(string) string) *S
 				s.Connections.Add(1)
 				go ssh.DiscardRequests(requests)
 				for incoming := range channels {
-					s.wg.Go(func() { s.channel(incoming) })
+					s.wg.Go(func() { s.channel(incoming, client.User()) })
 				}
 			})
 		}
@@ -95,7 +105,7 @@ func (s *Server) Close() {
 	s.mu.Unlock()
 	s.wg.Wait()
 }
-func (s *Server) channel(in ssh.NewChannel) {
+func (s *Server) channel(in ssh.NewChannel, user string) {
 	switch in.ChannelType() {
 	case "direct-tcpip":
 		var dest struct {
@@ -145,10 +155,17 @@ func (s *Server) channel(in ssh.NewChannel) {
 			var cmd struct{ Command string }
 			ssh.Unmarshal(r.Payload, &cmd)
 			r.Reply(true, nil)
+			status := uint32(0)
+			if s.execResult != nil {
+				input, _ := io.ReadAll(io.LimitReader(ch, 8<<20))
+				var out []byte
+				out, status = s.execResult(cmd.Command, user, input)
+				ch.Write(out)
+			}
 			if s.Exec != nil {
 				io.WriteString(ch, s.Exec(cmd.Command))
 			}
-			ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
+			ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 			return
 		}
 	default:

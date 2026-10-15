@@ -12,6 +12,7 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/dcv"
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
 	"github.com/coder/websocket"
 	"golang.org/x/crypto/ssh"
@@ -148,6 +149,10 @@ func dcvName(c lc.Command) string {
 	h := sha256.Sum256([]byte(c.Operation))
 	return "lc" + hex.EncodeToString(h[:6])
 }
+func dcvMarker(c lc.Command) string {
+	return fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
+}
+
 func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	var info Info
 	dialer, e := lc.MachineDialer(c.Gateway, c.ClientPrivateKey)
@@ -160,23 +165,39 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 			dialer.Close()
 		}
 	}()
-	sshClient, e := dialer.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+	sshClient, e := dialer.Dial(ctx, c.Prior.Address, c.Machine.SSHUser(), c.ClientPrivateKey, c.Machine.HostPublicKey)
 	if e != nil {
 		return nil, info, e
 	}
 	defer sshClient.Close()
 	username := dcvName(c)
-	password := random()
-	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
+	if c.Machine.OS == "windows" {
+		username = "lab"
+	}
+	password := desktopPassword(c.Machine.OS)
+	marker := dcvMarker(c)
 	script := "set -eu; if id " + username + " >/dev/null 2>&1; then test \"$(getent passwd " + username + " | cut -d: -f5)\" = " + marker + "; else sudo useradd --create-home --shell /bin/bash --comment " + marker + " " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd; sudo dcv close-session " + username + " >/dev/null 2>&1 || true"
+	if c.Machine.OS == "windows" {
+		script = windowsDesktopProgram(c, password)
+	}
 	if _, e = remote.Run(ctx, sshClient, script); e != nil {
 		return nil, info, fmt.Errorf("DCV session creation failed: %w", e)
 	}
-	if e = dcv.Start(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, sshClient, command) }, username, username); e != nil {
+	run := func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, sshClient, command) }
+	if c.Machine.OS == "windows" {
+		e = dcv.StartWindows(ctx, run)
+	} else {
+		e = dcv.Start(ctx, run, username, username)
+	}
+	if e != nil {
 		return nil, info, fmt.Errorf("DCV session readiness failed: %w", e)
 	}
 	// Read the instance certificate over an SSH connection with an exact host key.
-	cert, e := remote.Run(ctx, sshClient, "sudo openssl x509 -in /var/lib/dcv/.config/NICE/dcv/private/dcv.pem -outform PEM")
+	certCommand := "sudo openssl x509 -in /var/lib/dcv/.config/NICE/dcv/private/dcv.pem -outform PEM"
+	if c.Machine.OS == "windows" {
+		certCommand = windows.Command("[IO.File]::ReadAllText('" + dcv.WindowsCertificate + "')")
+	}
+	cert, e := remote.Run(ctx, sshClient, certCommand)
 	if e != nil {
 		_ = closeDCV(context.Background(), c)
 		return nil, info, fmt.Errorf("read DCV certificate: %w", e)
@@ -209,7 +230,7 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		defer dialer.Close()
-		client, err := dialer.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+		client, err := dialer.Dial(ctx, c.Prior.Address, c.Machine.SSHUser(), c.ClientPrivateKey, c.Machine.HostPublicKey)
 		if err != nil {
 			return err
 		}
@@ -218,11 +239,14 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	}
 	info = Info{URL: relay.URL, Username: username, Password: password}
 	ready := func(ctx context.Context) (bool, error) {
-		client, err := dialer.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+		client, err := dialer.Dial(ctx, c.Prior.Address, c.Machine.SSHUser(), c.ClientPrivateKey, c.Machine.HostPublicKey)
 		if err != nil {
 			return false, err
 		}
 		defer client.Close()
+		if c.Machine.OS == "windows" {
+			return dcv.WindowsReady(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) })
+		}
 		return dcv.Ready(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, username)
 	}
 	retained = true
@@ -271,13 +295,16 @@ func closeDCV(ctx context.Context, c lc.Command) error {
 	return closeDCVClient(ctx, c, sshClient)
 }
 func closeDCVClient(ctx context.Context, c lc.Command, sshClient *ssh.Client) error {
+	if c.Machine.OS == "windows" {
+		return closeWindowsDCV(ctx, c, sshClient)
+	}
 	var e error
 	name := dcvName(c)
 	remove := "sudo userdel --remove " + name
 	if c.Access.RetainWorkspace {
 		remove = "sudo usermod --lock " + name
 	}
-	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
+	marker := dcvMarker(c)
 	cleanup := "set -eu; if id " + name + " >/dev/null 2>&1; then test \"$(getent passwd " + name + " | cut -d: -f5)\" = " + marker + " || exit 1; fi; sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
 		"if id " + name + " >/dev/null 2>&1; then " +
 		"uid=$(id -u " + name + "); " +
@@ -445,7 +472,7 @@ func dialMachine(ctx context.Context, c lc.Command) (*ssh.Client, func(), error)
 	if err != nil {
 		return nil, nil, err
 	}
-	client, err := d.Dial(ctx, c.Prior.Address, "lab", c.ClientPrivateKey, c.Machine.HostPublicKey)
+	client, err := d.Dial(ctx, c.Prior.Address, c.Machine.SSHUser(), c.ClientPrivateKey, c.Machine.HostPublicKey)
 	if err != nil {
 		d.Close()
 		return nil, nil, err

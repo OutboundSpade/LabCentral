@@ -3,6 +3,7 @@ package labcentral
 // Capabilities describes the portable requests implemented by a platform.
 type Capabilities struct {
 	MaxNetworks, MaxNICs         int
+	MaxWindowsNICs               int
 	Egress, OS                   []string
 	AuthorCIDR, Forwarding       bool
 	ImageOptions, MachineOptions []string
@@ -15,6 +16,8 @@ func PlatformCapabilities(platform string) (Capabilities, bool) {
 	c := Capabilities{MaxNetworks: 4, MaxNICs: 4, Forwarding: true, Egress: []string{"none", "internet"}, OS: []string{"linux"}}
 	if platform == "aws" {
 		c.MaxNetworks, c.MaxNICs, c.AuthorCIDR = 8, 8, true
+		c.OS = append(c.OS, "windows")
+		c.MaxWindowsNICs = 1
 		c.ImageOptions = []string{"buildInstanceType"}
 		c.MachineOptions = []string{"instanceType", "volume", "volume.type", "volume.iops", "volume.throughput", "cpuCredits"}
 	} else {
@@ -53,12 +56,31 @@ func CheckCapabilities(l Lab, platform string) error {
 			return err
 		}
 		if v.OS != "" && !Contains(c.OS, v.OS) {
-			return problem(Unsupported, "images."+n+".os", "OS family is not implemented")
+			message := "OS family is not implemented"
+			if v.OS == "windows" && platform == "proxmox" {
+				message = "Windows guests are unsupported on Proxmox"
+			}
+			return problem(Unsupported, "images."+n+".os", message)
 		}
 	}
 	for _, n := range sortedKeys(l.Machines) {
 		v := l.Machines[n]
 		f := "machines." + n
+		if l.Images[v.Image].OS == "windows" {
+			if len(n) > 15 {
+				return problem(Unsupported, f, "Windows computer names must be at most 15 characters")
+			}
+			if v.Forwarding {
+				return problem(Unsupported, f+".forwarding", "Windows forwarding is unsupported; routers must use Linux")
+			}
+			if len(v.NICs) > c.MaxWindowsNICs {
+				return problem(Unsupported, f+".nics", "Windows supports at most one NIC (MaxWindowsNICs = 1)")
+			}
+			mem, _ := SizeMiB(v.Memory)
+			if mem < 4096 {
+				return problem(Unsupported, f+".memory", "Windows requires at least 4 GiB of memory")
+			}
+		}
 		var options any = v.Platform.AWS
 		if platform == "proxmox" {
 			options = v.Platform.Proxmox

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
 	"io"
 	"os"
 	"os/exec"
@@ -102,10 +103,10 @@ func Generate(c lc.Command, dir string) (Config, error) {
 	}
 	im := c.Image
 	var cfg Config
-	if !safePin(b.AnsibleVersion) {
+	if im.Base.OS != "windows" && !safePin(b.AnsibleVersion) {
 		return cfg, fmt.Errorf("Ansible must have an exact numeric version")
 	}
-	if im.Playbook == "" {
+	if im.BuildProgram() == "" {
 		return cfg, fmt.Errorf("build requires a playbook")
 	}
 	if !regexp.MustCompile(`^[a-z0-9-]+$`).MatchString(c.Owner) {
@@ -153,7 +154,31 @@ func Generate(c lc.Command, dir string) (Config, error) {
 			Encrypted bool   `json:"encrypted"`
 			Type      string `json:"volume_type"`
 		}{"/dev/sda1", im.DiskGiB, true, true, "gp3"})
-		cfg.Builders = append(cfg.Builders, raw(builder))
+		builderJSON := raw(builder)
+		if im.Base.OS == "windows" {
+			_, pub, err := key(filepath.Join(dir, "build.key"))
+			if err != nil {
+				return cfg, err
+			}
+			ud, err := guest.WindowsBuildUserData(pub, c.Environment.OperatorCIDRs)
+			if err != nil {
+				return cfg, err
+			}
+			var w map[string]any
+			if err = json.Unmarshal(builderJSON, &w); err != nil {
+				return cfg, err
+			}
+			delete(w, "ssh_keypair_name") // Windows EC2 key pairs cannot carry Ed25519; user data installs the SSH key.
+			w["communicator"] = "ssh"
+			w["ssh_username"] = "Administrator"
+			w["ssh_timeout"] = "20m"
+			w["ssh_file_transfer_method"] = "sftp"
+			w["user_data"] = ud
+			w["disable_stop_instance"] = true
+			w["windows_password_timeout"] = "20m"
+			builderJSON = raw(w)
+		}
+		cfg.Builders = append(cfg.Builders, builderJSON)
 	} else {
 		p := c.Environment.Proxmox
 		baseID, err := strconv.Atoi(im.Base.ID)
@@ -199,6 +224,9 @@ func Generate(c lc.Command, dir string) (Config, error) {
 			VLAN   string `json:"vlan_tag,omitempty"`
 		}{"virtio", b.Bridge, vlan})
 		cfg.Builders = append(cfg.Builders, raw(builder))
+	}
+	if im.Base.OS == "windows" {
+		return windowsProvisioners(c, dir, cfg)
 	}
 	bootstrap := []string{"set -eu", "sudo env DEBIAN_FRONTEND=noninteractive apt-get update", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y python3-venv qemu-guest-agent ca-certificates curl", "sudo python3 -m venv /opt/labcentral-ansible", "sudo /opt/labcentral-ansible/bin/pip install --disable-pip-version-check 'ansible-core==" + b.AnsibleVersion + "'", "sudo systemctl enable qemu-guest-agent"}
 	cfg.Provisioners = append(cfg.Provisioners, raw(struct {

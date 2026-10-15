@@ -16,5 +16,10 @@
     "url": "https://d1uj6qtbmh3dt5.cloudfront.net/webclientsdk/nice-dcv-web-client-sdk-1.13.2-1074.zip",
     "sha256": "31933c6b692983cfeb7fb2ca47d3a76433e61eaee84feb710aecca17919a4dee"
   },
-  "caddyImage": "caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d"
+  "caddyImage": "caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d",
+  "windowsDCV": {
+    "version": "2025.0-20103",
+    "url": "https://cdn.ni-sp.com/dcv-server-x64-Release.2025.0.msi",
+    "sha256": "593e2b78cd41b64fac255f303e48b1e7f73129969279ba2eae067e519f962067"
+  }
 }

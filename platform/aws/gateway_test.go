@@ -34,6 +34,7 @@ type networkEC2 struct {
 	routes           map[string]map[string]string
 	instanceNICs     map[string]url.Values
 	routeReject      string
+	imagePlatform    string
 }
 
 func newNetworkEC2(t *testing.T) (*networkEC2, *ec2.Client) {
@@ -122,7 +123,11 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 	} else {
 		switch action {
 		case "DescribeImages":
-			body = "<imagesSet><item><imageId>ami-base</imageId><rootDeviceName>/dev/sda1</rootDeviceName><state>available</state></item></imagesSet>"
+			body = "<imagesSet><item><imageId>ami-base</imageId><rootDeviceName>/dev/sda1</rootDeviceName><state>available</state>"
+			if f.imagePlatform != "" {
+				body += "<platform>" + f.imagePlatform + "</platform>"
+			}
+			body += "</item></imagesSet>"
 		case "DescribePrefixLists":
 			body = "<prefixListSet><item><prefixListId>pl-s3</prefixListId></item></prefixListSet>"
 		case "DescribeVolumes":

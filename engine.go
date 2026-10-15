@@ -126,7 +126,7 @@ func (e *Engine) Build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 func (e *Engine) lockImages(ctx context.Context, p Plan) (func(), error) {
 	keys := []string{}
 	for _, im := range p.Images {
-		if im.Playbook != "" {
+		if im.BuildProgram() != "" {
 			keys = append(keys, im.CacheKey)
 		}
 	}
@@ -179,7 +179,7 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 	slots := make(chan struct{}, e.options.MaxImageBuildConcurrency)
 	var workers sync.WaitGroup
 	for n, im := range p.Images {
-		if im.Playbook == "" {
+		if im.BuildProgram() == "" {
 			continue
 		}
 		workers.Go(func() {
@@ -352,7 +352,7 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 		}
 		native := map[string]string{}
 		for _, im := range p.Images {
-			if im.Playbook == "" {
+			if im.BuildProgram() == "" {
 				native[im.Name] = im.Base.ID
 			}
 		}

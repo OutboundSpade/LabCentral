@@ -83,6 +83,9 @@ func conformanceEnvironment() Environment {
 func sourceYAML(t *testing.T, b []byte) (Source, error) {
 	t.Helper()
 	s := Source{Files: []File{{Path: "build.yml", Content: []byte("- hosts: localhost\n  tasks: []\n")}, {Path: "data.txt", Content: []byte("data")}, {Path: "lab.yaml", Content: b}}}
+	if strings.Contains(string(b), ".ps1") {
+		s.Files = append(s.Files, File{Path: "build.ps1", Content: []byte("exit 0\n")})
+	}
 	s.Digest = digest(s.Files)
 	if e := DecodeStrictYAML(b, &s.Lab, YAMLLimits{}); e != nil {
 		return s, declarationError(e)
@@ -125,7 +128,7 @@ func TestLabConformance(t *testing.T) {
 				}
 				s, goErr := sourceYAML(t, b)
 				if goErr == nil {
-					_, goErr = PlanLab(s, env, nil)
+					_, goErr = PlanLab(s, windowsConformanceEnvironment(s, env), nil)
 				}
 				if kind == "valid" {
 					if schemaErr != nil || goErr != nil {
@@ -167,10 +170,20 @@ func TestLabConformance(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-				if _, e = PlanLab(s, conformanceEnvironment(), nil); e != nil {
+				if _, e = PlanLab(s, windowsConformanceEnvironment(s, conformanceEnvironment()), nil); e != nil {
 					t.Fatal(e)
 				}
 			})
 		}
 	}
+}
+
+func windowsConformanceEnvironment(s Source, e Environment) Environment {
+	for _, i := range s.Lab.Images {
+		if i.OS == "windows" {
+			e.Bases["windows-2022"] = Base{OS: "windows", ID: "ami-0123456789abcdef0", Identity: "ami-0123456789abcdef0", User: "Administrator", DiskGiB: 30}
+			e.Build.InstanceType = "t3.medium"
+		}
+	}
+	return e
 }

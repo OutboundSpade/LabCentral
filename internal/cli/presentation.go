@@ -13,8 +13,8 @@ func readable(out io.Writer, value any) bool {
 	case lc.Plan:
 		fmt.Fprintf(out, "%s on %s (%s)\nIsolated IPv4 networks; Internet egress is configured per network.\n", v.Source.Lab.Name, v.Environment.Name, v.Environment.Platform)
 		for _, im := range v.Images {
-			if im.Playbook != "" {
-				fmt.Fprintf(out, "Image %s: build %s from %s; reuse only after cache verification\n", im.Name, im.Playbook, im.Base.ID)
+			if im.BuildProgram() != "" {
+				fmt.Fprintf(out, "Image %s: build %s from %s; reuse only after cache verification\n", im.Name, im.BuildProgram(), im.Base.ID)
 			} else {
 				fmt.Fprintf(out, "Image %s: use native base %s\n", im.Name, im.Base.ID)
 			}

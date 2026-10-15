@@ -1,0 +1,29 @@
+version: 3
+name: windows-iis
+description: Restore an IIS page and verify it from Windows and a Linux client.
+platforms: [aws]
+images:
+  iis:
+    base: windows-2022
+    os: windows
+    build:
+      script: images/iis.ps1
+      files: [images/iis.ps1]
+  client:
+    base: ubuntu-24.04
+    build:
+      playbook: images/client.yml
+      files: [images/client.yml]
+machines:
+  server:
+    image: iis
+    cpu: 2
+    memory: 4Gi
+    disk: 30Gi
+    access: [desktop, ssh]
+  client:
+    image: client
+    cpu: 1
+    memory: 1Gi
+    disk: 8Gi
+    access: [ssh]

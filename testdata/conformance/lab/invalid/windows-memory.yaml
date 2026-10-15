@@ -1,0 +1,17 @@
+# schema: accept
+# code: unsupported
+# field: machines.server.memory
+version: 3
+name: windows-example
+images:
+  windows:
+    base: windows-2022
+    os: windows
+    build: {script: build.ps1, files: [build.ps1]}
+machines:
+  server:
+    image: windows
+    cpu: 2
+    memory: 2Gi
+    disk: 30Gi
+    access: [desktop, ssh]

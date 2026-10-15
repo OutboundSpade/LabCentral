@@ -1,0 +1,17 @@
+# schema: accept
+# code: invalid
+# field: images.windows.base
+version: 3
+name: windows-example
+images:
+  windows:
+    base: ubuntu-24.04
+    os: windows
+    build: {script: build.ps1, files: [build.ps1]}
+machines:
+  server:
+    image: windows
+    cpu: 2
+    memory: 4Gi
+    disk: 30Gi
+    access: [desktop, ssh]

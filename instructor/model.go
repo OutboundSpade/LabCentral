@@ -20,11 +20,19 @@ type Practice struct {
 }
 type Step struct {
 	Machine        string   `json:"machine" yaml:"machine"`
-	Playbook       string   `json:"playbook" yaml:"playbook"`
+	Playbook       string   `json:"playbook,omitempty" yaml:"playbook,omitempty"`
 	Files          []string `json:"files,omitempty" yaml:"files,omitempty"`
 	Assets         []string `json:"assets,omitempty" yaml:"assets,omitempty"`
 	GuestHosts     []string `json:"guestHosts,omitempty" yaml:"guestHosts,omitempty"`
 	TimeoutSeconds int      `json:"timeoutSeconds,omitempty" yaml:"timeoutSeconds,omitempty"`
+	Script         string   `json:"script,omitempty" yaml:"script,omitempty"`
+}
+
+func (s Step) Program() string {
+	if s.Script != "" {
+		return s.Script
+	}
+	return s.Playbook
 }
 
 func (s Step) Timeout() time.Duration {

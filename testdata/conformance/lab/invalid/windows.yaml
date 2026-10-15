@@ -1,4 +1,5 @@
 # field: images.base.os
+# platform: proxmox
 # schema: accept
 # code: unsupported
 version: 3

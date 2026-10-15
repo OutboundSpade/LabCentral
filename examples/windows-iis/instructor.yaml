@@ -1,0 +1,65 @@
+version: 3
+visibility: {audience: students}
+practice: {desktopMachine: server}
+library:
+  category: Windows administration
+  difficulty: beginner
+  estimatedMinutes: 15
+  tags: [windows, iis, powershell]
+notes: Two independent IIS faults; each variant applies exactly one. Reset restores both.
+reset:
+  - {machine: server, script: reset.ps1}
+checks:
+  - id: windows-page
+    name: IIS serves the page locally
+    points: 10
+    steps:
+      - {machine: server, script: check.ps1}
+  - id: client-page
+    name: The Linux client receives the page
+    points: 10
+    steps:
+      - {machine: client, playbook: check-client.yml, guestHosts: [server]}
+breaks:
+  - id: stopped-service
+    name: Stopped IIS service
+    description: The web service has stopped.
+    walkthrough: Start-Service W3SVC
+    steps:
+      - {machine: server, script: stop-service.ps1}
+  - id: stopped-site
+    name: Stopped IIS site
+    description: The default web site has stopped.
+    walkthrough: Import-Module WebAdministration; Start-WebSite -Name 'Default Web Site'
+    steps:
+      - {machine: server, script: stop-site.ps1}
+stages:
+  - id: service-local
+    title: Restore the web service
+    instructions: Open elevated PowerShell on the server desktop and restore IIS. Verify the local page.
+    break: stopped-service
+    completion: {check: windows-page}
+  - id: service-client
+    title: Verify the service from Linux
+    instructions: Connect to the client using SSH and use curl to request http://server/index.html.
+    break: stopped-service
+    completion: {check: client-page}
+  - id: site-local
+    title: Restore the web site
+    instructions: The service is running. Inspect the default IIS site and restore the local page.
+    break: stopped-site
+    completion: {check: windows-page}
+  - id: site-client
+    title: Verify the site from Linux
+    instructions: Verify that the Linux client can request http://server/index.html.
+    break: stopped-site
+    completion: {check: client-page}
+scenarios:
+  - id: iis-outage
+    title: An IIS outage
+    description: Diagnose one of two small IIS faults and verify the repair from both operating systems.
+    difficulty: beginner
+    estimatedMinutes: 15
+    variants:
+      - {id: service, compatible: true, breaks: [stopped-service], stages: [service-local, service-client]}
+      - {id: site, compatible: true, breaks: [stopped-site], stages: [site-local, site-client]}

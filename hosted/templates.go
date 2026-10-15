@@ -41,7 +41,7 @@ func (s *Service) templateKeys(ctx context.Context, id string) ([]string, error)
 		return nil, err
 	}
 	for _, im := range p.Images {
-		if im.Playbook != "" {
+		if im.BuildProgram() != "" {
 			keys = append(keys, im.CacheKey)
 		}
 	}
@@ -301,7 +301,7 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 		// Save the current plan, rather than stale keys from an earlier build.
 		keys = nil
 		for _, im := range p.Images {
-			if im.Playbook != "" {
+			if im.BuildProgram() != "" {
 				keys = append(keys, im.CacheKey)
 			}
 		}

@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var extensionPattern = regexp.MustCompile(`^[a-z0-9]+(\.[a-z0-9-]+)+$`)
@@ -83,11 +84,8 @@ func validateV3(l Lab) error {
 		if v.OS != "" && !Contains([]string{"linux", "windows"}, v.OS) {
 			return problem(Invalid, f+".os", "expected linux or windows")
 		}
-		if v.Build != nil && v.Build.Playbook == "" {
-			return problem(Invalid, f+".build.playbook", "playbook is required")
-		}
-		if v.Build != nil && v.Build.Files != nil && len(v.Build.Files) == 0 {
-			return problem(Invalid, f+".build.files", "explicit selection must include the playbook")
+		if err := validateImageBuild(v, f); err != nil {
+			return err
 		}
 		if err := ext(f+".extensions", v.Extensions); err != nil {
 			return err
@@ -223,4 +221,35 @@ func imageSourceDigest(s Source, n, platform string) string {
 		Files      []File
 		Extensions Extensions
 	}{im, files, lab.Extensions})
+}
+
+func validateImageBuild(v Image, f string) error {
+	if v.Build != nil {
+		if v.Build.Playbook != "" && v.Build.Script != "" {
+			return problem(Invalid, f+".build.script", "script and playbook are mutually exclusive")
+		}
+		if OSFamily(v.OS) == "windows" {
+			if v.Build.Playbook != "" {
+				return problem(Invalid, f+".build.playbook", "Windows builds require a PowerShell script")
+			}
+			if v.Build.Script == "" {
+				return problem(Invalid, f+".build.script", "Windows builds require a PowerShell script")
+			}
+		} else {
+			if v.Build.Script != "" {
+				return problem(Invalid, f+".build.script", "Linux builds require a playbook in this phase")
+			}
+			if v.Build.Playbook == "" {
+				return problem(Invalid, f+".build.playbook", "playbook is required")
+			}
+		}
+		if v.Build.Script != "" && !strings.HasSuffix(v.Build.Script, ".ps1") {
+			return problem(Invalid, f+".build.script", "expected a .ps1 script")
+		}
+		if v.Build.Files != nil && len(v.Build.Files) == 0 {
+			return problem(Invalid, f+".build.files", "explicit selection must include the build program")
+		}
+	}
+
+	return nil
 }

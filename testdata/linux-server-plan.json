@@ -1,0 +1,161 @@
+{
+  "version": 2,
+  "source": {
+    "lab": {
+      "version": 3,
+      "name": "example",
+      "images": {
+        "base": {
+          "base": "ubuntu-24.04",
+          "platform": {}
+        }
+      },
+      "machines": {
+        "one": {
+          "image": "base",
+          "cpu": 2,
+          "memory": "2Gi",
+          "disk": "20Gi",
+          "access": [
+            "ssh"
+          ],
+          "hostnamePeers": "all",
+          "platform": {}
+        }
+      }
+    },
+    "files": [
+      {
+        "path": "lab.yaml",
+        "content": "dmVyc2lvbjogMwpuYW1lOiBleGFtcGxlCmltYWdlczoKICBiYXNlOgogICAgYmFzZTogdWJ1bnR1LTI0LjA0Cm1hY2hpbmVzOgogIG9uZToKICAgIGltYWdlOiBiYXNlCiAgICBjcHU6IDIKICAgIG1lbW9yeTogMkdpCiAgICBkaXNrOiAyMEdpCiAgICBhY2Nlc3M6IFtzc2hdCg=="
+      }
+    ],
+    "digest": "4612191ba397fa45e9bab4e34dfe522879701b7215dfb2c850e554336e1d6447"
+  },
+  "environment": {
+    "version": 2,
+    "name": "test",
+    "platform": "aws",
+    "operatorCIDRs": [
+      "192.0.2.1/32"
+    ],
+    "bases": {
+      "ubuntu-24.04": {
+        "id": "ami-example",
+        "user": "ubuntu",
+        "diskGiB": 8,
+        "identity": "ami-example"
+      }
+    },
+    "aws": {
+      "region": "us-east-1",
+      "zone": "us-east-1a",
+      "account": "123456789012",
+      "types": [
+        {
+          "name": "t3.medium",
+          "cpu": 2,
+          "memoryMiB": 4096
+        }
+      ]
+    },
+    "proxmox": {
+      "url": "",
+      "tokenID": "",
+      "tokenEnv": "",
+      "node": "",
+      "storage": "",
+      "pool": "",
+      "bridge": "",
+      "vmidStart": 0,
+      "vmidEnd": 0,
+      "vlanStart": 0,
+      "vlanEnd": 0,
+      "cidr": "",
+      "verifiedIsolation": false
+    },
+    "build": {
+      "packer": "",
+      "packerSHA256": "",
+      "pluginDirectory": "",
+      "toolchainID": "",
+      "ansibleVersion": "",
+      "timeoutSeconds": 0
+    }
+  },
+  "environmentDigest": "b544c1e4ab6e35a0802596f99a0a60504bfe1b1883fba934309376c3f10278ff",
+  "images": [
+    {
+      "name": "base",
+      "base": {
+        "id": "ami-example",
+        "user": "ubuntu",
+        "diskGiB": 8,
+        "identity": "ami-example"
+      },
+      "cacheKey": "e27b4f5ff51562a3163d379677f76a7aa8e12f596e6ff1550d62c8a9f299c996",
+      "desktop": false,
+      "diskGiB": 20
+    }
+  ],
+  "machines": [
+    {
+      "hosts": [
+        {
+          "name": "one",
+          "address": "10.77.0.11"
+        }
+      ],
+      "name": "one",
+      "spec": {
+        "image": "base",
+        "cpu": 2,
+        "memory": "2Gi",
+        "disk": "20Gi",
+        "access": [
+          "ssh"
+        ],
+        "hostnamePeers": "all",
+        "platform": {}
+      },
+      "instanceType": "t3.medium",
+      "allocatedCPU": 2,
+      "allocatedMemoryMiB": 4096,
+      "diskGiB": 20,
+      "address": "10.77.0.11",
+      "nics": [
+        {
+          "network": "lab",
+          "cidr": "10.77.0.0/24",
+          "address": "10.77.0.11",
+          "gateway": "10.77.0.1",
+          "routes": [
+            {
+              "network": "",
+              "cidr": "10.77.255.0/28",
+              "via": "10.77.0.1",
+              "router": "",
+              "routerNIC": 0
+            }
+          ]
+        }
+      ],
+      "resolver": "10.77.0.2"
+    }
+  ],
+  "notices": [
+    "Instances and native images remain billable until removed; no background cleanup service is installed.",
+    "Builds may access package repositories; runtime Internet egress defaults to none.",
+    "Public IPv4 is billed. AWS DNS and metadata are not filtered by security groups; this is not an air gap."
+  ],
+  "networks": [
+    {
+      "name": "lab",
+      "cidr": "10.77.0.0/24",
+      "gateway": "10.77.0.1",
+      "egress": "none"
+    }
+  ],
+  "vpcCIDR": "10.77.0.0/16",
+  "edgeCIDR": "10.77.255.0/28"
+}

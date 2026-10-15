@@ -79,8 +79,15 @@ func TestConformance(t *testing.T) {
 				}
 				b, goErr := Parse(raw)
 				if goErr == nil {
-					b.Files = base.Files
-					goErr = b.Validate(src)
+					caseSource, caseBase := src, base
+					if strings.Contains(string(raw), "# windows: true") {
+						caseSource, caseBase, e = LoadTemplate("../examples/windows-iis", true)
+						if e != nil {
+							t.Fatal(e)
+						}
+					}
+					b.Files = caseBase.Files
+					goErr = b.Validate(caseSource)
 				}
 				if kind == "valid" {
 					if schemaErr != nil || goErr != nil {

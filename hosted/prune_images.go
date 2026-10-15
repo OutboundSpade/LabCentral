@@ -56,7 +56,7 @@ func (s *Service) protectedRevisionKeys(ctx context.Context, id string) ([]strin
 		return nil, err
 	}
 	for _, im := range p.Images {
-		if im.Playbook != "" && !slices.Contains(keys, im.CacheKey) {
+		if im.BuildProgram() != "" && !slices.Contains(keys, im.CacheKey) {
 			keys = append(keys, im.CacheKey)
 		}
 	}

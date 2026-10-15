@@ -1,0 +1,10 @@
+- name: Prepare the Linux observer
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install curl
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: true

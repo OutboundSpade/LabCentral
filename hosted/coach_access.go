@@ -223,7 +223,7 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 			return err
 		}
 		defer dialer.Close()
-		client, err := dialer.Dial(ctx, res.Address, "lab", key, m.HostPublicKey)
+		client, err := dialer.Dial(ctx, res.Address, m.SSHUser(), key, m.HostPublicKey)
 		if err != nil {
 			return err
 		}
