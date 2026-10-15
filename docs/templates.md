@@ -12,7 +12,8 @@ This guide covers everything an author needs. The fastest way to start is to cop
 - [Quick start](#quick-start)
 - [Directory layout](#directory-layout)
 - [lab.yaml: machines and images](#labyaml-machines-and-images)
-- [Image playbooks](#image-playbooks)
+- [Image builds](#image-builds)
+- [Windows machines](#windows-machines)
 - [README.md: the student handover](#readmemd-the-student-handover)
 - [instructor.yaml: teaching material](#instructoryaml-teaching-material)
 - [Guest programs](#guest-programs)
@@ -61,27 +62,18 @@ then commit it to your template repository and import it from **Admin → Templa
 
 ## Directory layout
 
-```text
-my-lab/
-├── lab.yaml            # machines, networks and image builds (students can see this)
-├── README.md           # student handover, shown on the template's page
-├── images/             # image playbooks and files they install
-│   ├── web.yml
-│   └── workstation.yml
-├── instructor.yaml     # private: stages, answers, checks, breaks, scenarios
-└── instructor/         # private: playbooks for checks, breaks and reset
-    ├── check-service.yml
-    ├── reset.yml
-    └── stop-web.yml
-```
+A template is one directory, for example `templates/my-lab/`:
 
-Who sees what:
-
-| Path | Students | Image builds | Instructors |
+| Path | What it holds | Students see it | Used by image builds |
 | --- | --- | --- | --- |
-| `lab.yaml`, `images/`, other files | Yes (downloadable) | Yes | Yes |
-| `README.md` | Yes | No | Yes |
-| `instructor.yaml`, `instructor/` | Never | Never | Yes |
+| `lab.yaml` | Machines, networks and image builds | Yes (downloadable) | Yes |
+| `images/` | Build playbooks or scripts and the files they install | Yes (downloadable) | Only files listed in `build.files` |
+| `README.md` | The student handover, shown on the template's page | Yes | Only if listed in `build.files` |
+| `instructor.yaml` | Stages, answers, checks, breaks and scenarios | Never | Never |
+| `instructor/` | Programs for checks, breaks and reset | Never | Never |
+
+Any other files you add are portable source, like `images/`. The `images/` and
+`instructor/` names are conventions; paths are whatever your files reference.
 
 LabCentral removes `instructor.yaml` and `instructor/` before building images or
 giving students anything. Put answers, solutions and break programs only there.
@@ -124,9 +116,11 @@ summary shown on library cards.
 
 - `base` names a base image. The operator's environment binds it to a pinned AMI or
   Proxmox template, so templates never contain cloud image IDs.
-- `build.playbook` runs inside a temporary build machine. Omit `build` to use the base
-  unchanged (fine for SSH-only machines). Desktop machines need a build, because
-  LabCentral installs the platform's desktop software during it.
+- `build.playbook` (Linux) or `build.script` (Windows, see
+  [Windows machines](#windows-machines)) runs inside a temporary build machine; use
+  exactly one. Omit `build` to use the base unchanged (fine for SSH-only machines).
+  Desktop machines need a build, because LabCentral installs the platform's desktop
+  software during it.
 - `build.files` lists the source files copied into the build. Only these files affect
   the image's identity, so editing the README or instructor material does not trigger
   a rebuild. Always list them; when omitted, every portable file is used.
@@ -247,10 +241,10 @@ extensions:
   org.example.course: {unit: 3, track: blue-team}
 ```
 
-## Image playbooks
+## Image builds
 
-Image playbooks are ordinary Ansible playbooks that run **inside** the build machine,
-never on the operator's computer:
+Linux images are built by ordinary Ansible playbooks that run **inside** the build
+machine, never on the operator's computer:
 
 ```yaml
 - name: Build the company web server
@@ -274,6 +268,40 @@ never on the operator's computer:
   playbooks.
 - Keep a pristine copy of anything your reset needs to restore (for example under
   `/usr/local/share/<lab>/`), because breaks and students change the live copy.
+
+## Windows machines
+
+Windows Server 2022 machines run on AWS. Declare the image's OS and build it with a
+PowerShell script instead of a playbook:
+
+```yaml
+platforms: [aws]
+images:
+  iis:
+    base: windows-2022          # the operator binds this to a Windows AMI
+    os: windows
+    build: {script: images/iis.ps1, files: [images/iis.ps1]}
+machines:
+  server:
+    image: iis
+    cpu: 2
+    memory: 4Gi
+    disk: 30Gi
+    access: [desktop, ssh]
+```
+
+- The build script runs inside the temporary Windows build machine, from
+  `C:\ProgramData\LabCentral\build\` where the selected files are copied (keeping their
+  relative paths). `$env:LABCENTRAL_INPUTS` names a JSON file with the lab's inputs.
+  Start scripts with `$ErrorActionPreference = 'Stop'` so any error fails the build.
+- Windows machines need at least 4 GiB of memory and a 30 GiB disk, have exactly one
+  NIC, cannot be routers (`forwarding`), and have names of at most 15 characters.
+- `access: [desktop, ssh]` gives students one desktop console and PowerShell over SSH.
+  Only one person can use a Windows desktop at a time.
+- Private programs for Windows machines are PowerShell scripts too; see
+  [Guest programs](#guest-programs). A lab can mix Windows and Linux machines.
+
+[examples/windows-iis](../examples/windows-iis/README.md) is a complete small example.
 
 ## README.md: the student handover
 
@@ -327,8 +355,9 @@ reserved.
 
 ## Guest programs
 
-Checks, breaks and reset are lists of **steps**. Each step runs one private playbook
-from `instructor/` on one machine:
+Checks, breaks and reset are lists of **steps**. Each step runs one private program
+from `instructor/` on one machine: a `playbook` for Linux machines or a `script`
+(PowerShell) for Windows machines.
 
 ```yaml
 steps:
@@ -338,6 +367,8 @@ steps:
     assets: [images/site.conf]        # optional: portable files from the lab source
     guestHosts: [workstation]         # optional: other machines' addresses and SSH host keys
     timeoutSeconds: 120               # optional: 10–600, default 90
+  - machine: server                   # a Windows machine
+    script: check.ps1                 # a PowerShell script under instructor/
 ```
 
 How a step runs:
@@ -345,9 +376,12 @@ How a step runs:
 1. LabCentral connects to the machine over its private management path and copies
    the playbook, `files`, `assets` (under `template/`) and generated context (under
    `labcentral/`) into a fresh private temporary directory.
-2. It runs `ansible-playbook` locally inside the guest, as root, with that directory
-   as the working directory. Only one guest program runs on a machine at a time.
-3. The step **passes** when the playbook succeeds and **fails** when a task fails.
+2. It runs the program inside the guest with that directory as the working directory:
+   `ansible-playbook` as root on Linux, or the script on Windows with
+   `$env:LABCENTRAL_STEP_DIR` pointing at the directory. Only one guest program runs on
+   a machine at a time.
+3. The step **passes** when the program succeeds and **fails** when a playbook task
+   fails or a script exits with a nonzero code.
    Anything else (a playbook syntax error, a timeout, a lost connection) is an
    **unknown** outcome: a check reports it as unavailable, and a break or reset is
    never assumed to have failed. Run `ansible-playbook --syntax-check` on your
@@ -489,6 +523,16 @@ visible machines to set explicit `hostnamePeers` that exclude hidden machines, a
 not file contents, so also review what each visible image installs.
 
 ## Validate, test and publish
+
+```mermaid
+flowchart LR
+    Write[Write or copy<br/>a template] --> Validate[labcentral validate<br/>--template]
+    Validate --> Plan[labcentral plan<br/>against an environment]
+    Plan --> Test[Deploy in a test lab;<br/>try every stage and break]
+    Test --> Push[Commit and push<br/>to templates/]
+    Push --> Refresh[Admin → Templates:<br/>Refresh, Build images]
+    Refresh --> Use[Practice and meetings]
+```
 
 1. **Validate.** `labcentral validate --template DIR` checks both files, every
    referenced path and every cross-reference, with the same rules the hosted importer

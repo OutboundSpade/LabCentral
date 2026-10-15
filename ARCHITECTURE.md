@@ -1,841 +1,736 @@
 # LabCentral architecture
 
-This living design document describes implemented boundaries and contracts. Proposals
-and qualification limits are identified separately. There is no v1 source or protocol
-compatibility.
+This document describes how LabCentral is built: its components and boundaries, the
+contracts between them, and how it stays safe when operations are interrupted. It is
+kept current with the code. Planned work is listed separately under
+[Roadmap](#roadmap), and [Qualification status](#qualification-status) records what
+has been verified on real platforms.
 
-## Overview and boundaries
+- [Overview](#overview)
+- [Lab source format](#lab-source-format)
+- [Environments, plans and images](#environments-plans-and-images)
+- [Platforms](#platforms)
+- [Access to machines](#access-to-machines)
+- [Durability and recovery](#durability-and-recovery)
+- [Hosted service](#hosted-service)
+- [Qualification status](#qualification-status)
+- [Roadmap](#roadmap)
 
-LabCentral combines a portable Go library, optional CLI, provider processes and a hosted
-application. Operators use Linux amd64 with Ubuntu 24.04 amd64 guests and AWS
-Windows Server 2022 guests (AWS CLI/library live qualification; hosted Windows identity acceptance pending). AWS EC2 and Proxmox are library platforms; hosted provisioning requires AWS.
+## Overview
 
 ```mermaid
 flowchart TD
-    Source[Portable author source] --> Library[Go library]
-    Environment[Private operator environment] --> Library
-    CLI[CLI] --> Library
-    Hosted[Hosted service: identity, HTTP and jobs] --> Library
+    Source[Lab source<br/>lab.yaml, playbooks, scripts] --> Library[Go library]
+    Environment[Operator environment<br/>targets, bases, toolchain] --> Library
+    CLI[labcentral CLI] --> Library
+    Hosted[labcentral-server<br/>identity, HTTP, jobs] --> Library
     Web[Static SvelteKit UI] --> Hosted
-    Library --> State[SQLite intent journal and private credentials]
-    Library -->|Typed v2 gRPC over Unix socket| Provider[Provider process]
-    Provider --> Journal[Provider recovery journals]
-    Provider --> APIs[Native platform APIs]
+    Library --> State[(SQLite intent journal<br/>and private keys)]
+    Library -->|typed gRPC over a private Unix socket| Provider[labcentral-provider]
+    Provider --> Journals[(Provider recovery journals)]
+    Provider --> APIs[AWS EC2 / Proxmox APIs]
     Provider --> Packer[Pinned Packer]
-    Packer --> BuildGuest[Build guest: author Ansible or PowerShell]
-    APIs --> Guests[Owned lab guests]
-    Library -->|Pinned SSH and desktop transports| Guests
+    Packer --> BuildGuest[Build guest runs author<br/>Ansible or PowerShell]
+    APIs --> Guests[Lab machines]
+    Library -->|pinned SSH and desktop relays| Guests
 ```
 
-The library accepts contexts, returns typed results and errors, and emits structured
-progress. It does not prompt, print, open browsers or make hosted identity decisions.
-The CLI supplies presentation, confirmation and local defaults. Portable types in
-[model.go](model.go) depend on no provider SDK. AWS SDK use stays in `platform/aws`;
-Proxmox uses a bounded HTTPS API client in `platform/proxmox`.
+| Component | Responsibility |
+| --- | --- |
+| Library (root package) | Validates source, plans, builds images, deploys, recovers and destroys labs. Accepts contexts, returns typed results and errors, emits structured progress. Never prompts, prints or opens browsers. |
+| CLI (`internal/cli`) | Presentation, confirmations and local defaults on top of the library. |
+| Provider (`labcentral-provider`, `platform/*`) | Native AWS and Proxmox calls, Packer runs and provider recovery journals. One executable serves both platforms. |
+| `instructor` | Private teaching material: strict decoding, validation and guest payloads. No identity, HTTP, storage or provider dependencies. |
+| `hosted` | Product policy: users, sessions, meetings, attempts, jobs and desktop authorization. |
+| `web` | The static UI served by the hosted service. |
 
-The provider never opens the library database. It owns native recovery journals and
-receives explicit commands, principals and expiry/retention options. One separate
-executable currently serves both platforms. Providers are trusted operator code, not a
-sandbox; author code runs only inside guests.
+Rules that hold across the codebase:
 
-The [process protocol](api/plugin/v2/platform.proto) is generated from typed Go
-structures, has version 2 envelopes and bounded messages, and rejects unsupported
-versions. New fields append without renumbering existing fields. Adapter-specific opaque
-state is recovery data, never an author-supplied portable manifest. `instructor` owns
-private teaching definitions without identity, HTTP, storage or provider dependencies.
-`hosted` owns product policy, and `web` owns its static UI.
+- **Author code runs only in guests.** Playbooks, PowerShell scripts, checks and breaks
+  never execute on the operator's machine or the hosted server.
+- **Credentials stay with the operator.** Provider credentials live in the operator's
+  environment and the provider process, never in lab source or public APIs.
+- **Portable types are provider-neutral.** [model.go](model.go) depends on no provider
+  SDK. The AWS SDK is used only in `platform/aws`; Proxmox uses a bounded HTTPS client
+  in `platform/proxmox`.
+- **The provider never opens the library database.** It receives explicit commands,
+  principals and expiry options, and keeps its own journals. Providers are trusted
+  operator code, not a sandbox.
+- **Unknown outcomes stay recoverable.** A timeout never proves failure; intent is
+  saved before every native effect (see [Durability and recovery](#durability-and-recovery)).
 
-## Lab source format v3
+The [provider protocol](api/plugin/v2/platform.proto) is generated from typed Go
+structures. It uses version 2 envelopes and bounded messages and rejects unsupported
+versions. New fields are appended without renumbering. Adapter-specific opaque state
+is recovery data, never author input.
 
-A shared directory contains `lab.yaml`, image playbooks/PowerShell scripts and supporting files. The
-environment binds logical base names. Sharing uses Git or local directories, without a
-registry, inheritance, loop expansion or author Packer extension. Ansible expressions
-execute inside build guests.
+## Lab source format
+
+A lab is a directory with `lab.yaml`, image build programs and supporting files,
+shared through Git or plain directories. There is no registry, inheritance, loop
+expansion or author-supplied Packer configuration. The author guide is
+[docs/templates.md](docs/templates.md); this section covers the rules behind it.
 
 ### Concepts and defaults
 
-Version 3 declares images, named machines, networks, NIC host offsets, OS families,
-access methods, typed inputs and optional platform requests. Omission means one network
-named `lab`, one NIC per machine, Linux and egress `none`. An optional `platforms`
-restriction selects AWS, Proxmox or both.
+Format version 3 declares images, named machines, networks, NIC host offsets, guest OS
+families, access methods, typed inputs and optional platform requests. Omitting a field
+means: one network named `lab`, one NIC per machine, Linux guests and no Internet
+egress. An optional `platforms` list restricts a lab to AWS, Proxmox or both.
 
-Images name an environment base and optionally a build with exactly one of
-`build.playbook` (Linux) or `build.script` ending in `.ps1` (Windows), plus
-`build.files`. Cross-OS programs are rejected with field paths in this phase. An
-image without a build can use its bound base directly for SSH access. Desktop images
-require a build that installs platform access components. Explicit file selections must
-include the build program and reject duplicate or unknown paths; omission includes the
-portable source files.
+- **Images** name an environment base and optionally a build with exactly one program:
+  `build.playbook` (Ansible, Linux) or `build.script` (a `.ps1` file, Windows).
+  `build.files` selects the source files the build may use; the selection must include
+  the program and may not repeat or invent paths. Without a build, the bound base is
+  used directly (enough for SSH-only machines). Desktop images need a build so the
+  platform can install its desktop components.
+- **Machines** have an image, CPU, memory and disk (`Mi`/`Gi`; disks cannot shrink a
+  base) and declare `ssh` and/or `desktop` access.
+- **Addresses** are host offsets 4–250, unique per network. Explicit offsets are
+  reserved first; the rest are assigned from 11 in machine-name order.
+- **Name resolution:** `hostnamePeers` defaults to all peers, accepts a list, or `[]` for
+  localhost only. It changes the initial hosts file, not firewall policy.
+- **Inputs** are `string`, `integer` or `boolean`, with matching scalar defaults and
+  optional descriptions. Required inputs cannot have defaults. CLI values are converted
+  to the declared type and undeclared values fail. Inputs are recorded in provenance, so
+  they are never secret.
 
-Machines specify an image, CPU, memory, disk and declared `ssh`/`desktop` access. Memory
-and disk use positive `Mi` or `Gi` sizes; disks cannot shrink a bound base. Explicit
-addresses are usable host offsets, unique within their network. Planning reserves them
-first, then assigns remaining offsets from 11 in machine-name order. `hostnamePeers`
-defaults to all peers, accepts selected names, or accepts `[]` for localhost only. This
-changes initial name resolution, not firewall policy.
+### Networks
 
-Networks are isolated L3 segments. A machine with `forwarding: true` and NICs on several
-networks joins them; the planner computes deterministic static routes along router
-chains and rejects ambiguous joins (two routers for one network pair) and cycles. A
-machine's first NIC is its management address. Peer host names resolve to the address on
-the first network both machines share, in the requester's NIC order, or to the peer's
-first-NIC address. Each machine's single default route uses its first NIC on an
-egress-enabled network; other NICs carry connected and planned static routes.
+Networks are isolated layer-3 segments. A machine with `forwarding: true` and NICs on
+several networks joins them:
 
-Inputs have `string`, `integer` or `boolean` types, matching scalar defaults and
-optional descriptions. Required inputs cannot have defaults; optional absent values
-without defaults are omitted. CLI strings are converted to declared types, and
-undeclared values fail. Inputs are retained in provenance, not secret storage.
+- The planner computes deterministic static routes along chains of routers. Two routers
+  joining the same pair of networks, or a cycle, is rejected.
+- A machine's first NIC is its management address (SSH, desktops, checks).
+- A peer's hostname resolves to its address on the first network both machines share
+  (in the requester's NIC order), otherwise to the peer's first-NIC address.
+- Each machine has one default route, through its first NIC on an Internet-enabled
+  network. Other NICs carry connected and planned static routes.
+- Author CIDRs must be private IPv4 /16–/28 ranges. Only AWS implements them.
 
-### Validation phases and capabilities
+Internet egress needs both the author's `egress: internet` on a network and the
+operator's `aws.allowEgress` or `proxmox.allowEgress` (both off by default). Proxmox also
+needs an operator VLAN gateway that provides NAT. A rejection names both the author field
+and the operator setting, and plans disclose enabled egress and its filtering limits.
 
-Validation separates structural correctness, source references, implemented
-capabilities, operator permission and native readiness:
+### Validation
 
-1. Strict YAML decoding rejects unknown or duplicate fields, non-string mapping keys,
-   aliases, anchors and multiple documents. Snapshots reject symlinks and unsafe paths,
-   with bounded file counts and bytes.
-2. Portable validation checks references, typed inputs, file selections, names, private
-   IPv4 CIDRs and usable unique offsets. The source digest binds the parsed lab to
-   retained file bytes.
-3. Planning checks static platform capabilities before environment bindings or
-   allocation, then resolves bases, capacity and operator policy.
-4. Before mutation, the engine revalidates the plan and checks the environment. Adapters
-   repeat capability and option checks before native calls. Source validation also
-   crosses the process boundary before image builds.
-5. Builds and deployment verify native ownership, readiness and access identities;
-   captured images are qualified before publication.
+```mermaid
+flowchart LR
+    A[Strict YAML decoding] --> B[Portable validation]
+    B --> C[Capability check]
+    C --> D[Plan against environment]
+    D --> E[Revalidate before mutation]
+    E --> F[Native readiness and<br/>image qualification]
+```
 
-Both platforms implement Linux guests, multiple networks and NICs (AWS up to eight each,
-Proxmox up to four), forwarding routers and `none`/`internet` egress. Author CIDRs are
-AWS-only. AWS also implements Windows with the restrictions below; unsupported
-combinations fail before provisioning. Structural
-validation accepts private IPv4 /16–/28 CIDRs and usable unique offsets 4–250; format
-support does not imply adapter support.
-
-Internet egress also requires `environment.aws.allowEgress` or
-`environment.proxmox.allowEgress`, both false by default. Proxmox additionally requires
-an operator VLAN gateway providing NAT. Rejection identifies both the author field and
-operator setting. Plans disclose enabled egress and its filtering limits.
-[capabilities.go](capabilities.go) is the implemented capability contract.
+1. **Strict decoding** rejects unknown or duplicate fields, non-string keys, anchors,
+   aliases and multiple documents. Source snapshots reject symlinks, hidden files and
+   unsafe paths, and bound file counts and sizes.
+2. **Portable validation** checks references, inputs, file selections, names, CIDRs and
+   offsets. The source digest binds the parsed lab to the exact file bytes.
+3. **Capabilities** are checked before any environment binding or allocation, against
+   [capabilities.go](capabilities.go), the implemented capability contract.
+4. **Planning** resolves bases, capacity and operator policy.
+5. **Before mutation** the engine revalidates the plan and checks the environment;
+   adapters repeat capability and option checks before native calls, and source
+   validation crosses the process boundary again before image builds.
+6. **Builds and deployments** verify native ownership, readiness and access identities,
+   and captured images are qualified before they are published.
 
 | Capability | AWS | Proxmox |
 | --- | --- | --- |
-| Guest OS | Linux, Windows Server 2022 | Linux; Windows rejected before binding/provisioning |
-| Networks / Linux NICs | 8 / 8 (subject to ENI limits) | 4 / 4 |
-| Windows NICs | `MaxWindowsNICs = 1` | 0 |
-| Windows forwarding | Rejected; routers remain Linux | Rejected |
-| Windows capacity | At least 4 GiB memory for machines, builds and qualification; base disk ≥30 GiB | Unsupported |
+| Guest OS | Linux; Windows Server 2022 | Linux (Windows is rejected before binding) |
+| Networks / NICs per Linux machine | 8 / 8, within the instance type's ENI limit | 4 / 4 |
+| Windows NICs and forwarding | 1 NIC; never a router | — |
+| Author CIDRs | Yes | No |
+| Internet egress | Per network, NAT on the lab gateway | Per network, operator VLAN gateway |
 
-Windows computer names are limited to 15 characters. Image OS must match its
-base's OS; environment bases default to Linux. Windows bindings require a pinned
-AMI ID/identity and `user: Administrator`. Operators resolve the official regional
-SSM parameter `/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base`
-once and retain its AMI ID outside source. Windows build capacity must be declared
-in the environment's type allowlist. Runtime guest routes are created in both the
-active and persistent Windows stores; an existing conflicting next hop fails
-bootstrap instead of being overwritten.
+Format support does not imply adapter support: anything an adapter does not implement
+fails before provisioning.
 
+### Windows guests
+
+Windows machines run on AWS only:
+
+- The image declares `os: windows` and builds with `build.script` (PowerShell). Image
+  OS must match the base's OS; environment bases default to Linux.
+- Machines need at least 4 GiB of memory (also for builds and qualification), exactly
+  one NIC and a base disk of at least 30 GiB. Computer names are at most 15 characters.
+  Windows machines cannot forward.
+- The base binds a pinned AMI and `user: Administrator`. Operators resolve
+  `/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base` once and keep
+  the AMI ID in their environment, never the mutable parameter.
 
 ### Platform options and extensions
 
-Image and machine `platform.aws`/`platform.proxmox` requests refine the portable core
-without changing topology, access or security posture. The environment permits requests.
-Strict decoding checks both blocks; realization ignores the other platform.
+Author `platform.aws` and `platform.proxmox` blocks refine how a platform realizes an
+image or machine. They never change topology, access or security posture. Both blocks
+are strictly decoded; each platform ignores the other's.
 
-| Platform | Implemented requests | Operator constraint |
+| Target | Requests | Operator constraint |
 | --- | --- | --- |
-| AWS image | `buildInstanceType` | Type must be in `aws.types`; omission uses the build environment |
-| AWS machine | `instanceType`, gp3 `volume`, `cpuCredits` | Allowlisted type satisfying requested CPU/memory; credits require a burstable family |
-| Proxmox machine | `cpuType`, `nicModel`, `memoryBalloon` | CPU type requires `proxmox.cpuTypes`; omission inherits the clone setting |
-| Proxmox image | No additional options | Firmware and disk layout belong to the base binding |
+| AWS image | `buildInstanceType` | Must be in `aws.types`; otherwise the build environment's type is used |
+| AWS machine | `instanceType`, gp3 `volume`, `cpuCredits` | Allowlisted type that fits the CPU/memory request; credits only on burstable families |
+| Proxmox machine | `cpuType`, `nicModel`, `memoryBalloon` | CPU type must be in `proxmox.cpuTypes`; otherwise the clone's setting is kept |
+| Proxmox image | none | Firmware and disk layout belong to the base binding |
 
-AWS gp3 requests accept 3000–16000 IOPS and 125–1000 MiB/s throughput, enforce IOPS ≤
-500 × disk GiB and throughput ≤ IOPS/4, and otherwise retain native defaults. Credits
-select `standard` or `unlimited` for supported burstable families. Proxmox NIC models
-are virtio, e1000, e1000e, vmxnet3 or rtl8139. Disabling ballooning writes zero;
-enabling it targets allocated memory. Allowlisting CPU type `host` permits nested
-virtualization. Unimplemented option paths fail capability checks.
+gp3 volumes accept 3000–16000 IOPS (at most 500 × disk GiB) and 125–1000 MiB/s
+(at most IOPS ÷ 4). Proxmox NIC models are virtio, e1000, e1000e, vmxnet3 or rtl8139.
+Disabling ballooning writes zero; enabling it targets the allocated memory. Allowing CPU
+type `host` permits nested virtualization.
 
-Namespaced extensions retain canonical JSON without interpretation, with a combined 64
-KiB limit across the portable manifest. Builds receive lab/image extensions in generated
-`labcentral_extensions` variables. Extensions do not supply provider credentials or
-bypass typed validation.
+`extensions` are namespaced keys with arbitrary JSON values, stored as canonical JSON
+without interpretation (64 KiB per manifest). Builds receive lab and image extensions as
+`labcentral_extensions`. Extensions never carry provider credentials or bypass typed
+validation.
 
-### Schemas, conformance and versioning
+### Schemas and versioning
 
-Go YAML tags and annotations generate [schemas/lab-v3.json](schemas/lab-v3.json) through
-`go run ./tools/schema`; synchronization tests reject stale output. Conformance checks
-strict YAML, JSON Schema 2020-12 and Go validation/planning, separating structural,
-reference and capability failures. YAML checks precede JSON conversion to preserve
-alias/duplicate-key rejection.
+`go run ./tools/schema` generates [schemas/lab-v3.json](schemas/lab-v3.json) and
+[schemas/instructor-v3.json](schemas/instructor-v3.json) from the Go types, and tests
+reject stale output. A conformance corpus is checked by strict YAML decoding, JSON
+Schema 2020-12 and Go validation and planning, keeping structural, reference and
+capability failures distinct. YAML checks run before JSON conversion so aliases and
+duplicate keys are still caught.
 
-Author format v3 replaces v2 without an author-source reader. Compatible changes add
-optional fields or supported values; changed meaning requires a new format version.
-Author, protocol and record versions are independent. Protocol and portable records
-remain version 2; historical hosted state uses separate read/cleanup paths.
+Format 3 replaced format 2 without a reader for older author source. Compatible changes
+only add optional fields or values; a change in meaning needs a new format version.
+Author format, protocol and record versions are independent (protocol and portable
+records are at version 2). Older hosted records have separate read and cleanup paths.
 
-## Environments, planning and image builds
+## Environments, plans and images
 
-Environment files contain target identifiers, credential references, logical base
-bindings, network requirements and toolchain pins. They stay outside tracked source. AWS
-binds account/region/zone and an instance-type allowlist; Proxmox binds a node, storage,
-pool, exclusive VMID range and isolated VLAN range. One state root exclusively owns its
-allocation namespace.
+### Environment files
 
-Plans bind source, effective inputs, environment, base identities and build policy. AWS
-chooses a smallest fitting allowlisted instance unless an explicit permitted type
-replaces that choice; reported capacity reflects the selected type. Proxmox reserves
-disjoint VMIDs and per-VLAN /24s. Deployment copies machine entries before adding native
-images, addresses and keys, preserving the caller's plan across independent instances.
+An environment file holds target identifiers, credential references, base bindings,
+network requirements and toolchain pins. It stays outside tracked source.
 
-### Cache identity and toolchain
+- **AWS:** account, region, zone and an instance-type allowlist.
+- **Proxmox:** node, storage, pool, an exclusive VMID range and an isolated VLAN range.
 
-Image keys include the planned image, the build-relevant part of the environment (target
-identity, toolchain, selected base binding and build networking), effective inputs,
-source identity and desktop build policy. Runtime networking, operator CIDRs, egress
-permission, gateway settings, machine allowlists and the desktop profile do not affect
-image keys. Explicit `build.files` binds selected file bytes, the image
-definition and lab extensions. Without a selection, the source declaration is normalized
-to exclude machine platform options and foreign platform image options; other source
-file bytes remain exact. Image options change image keys; machine runtime platform
-options do not. Retained journals keep saved keys and identities across planner changes.
-Cached images must pass native identity/existence checks before reuse. Mutable package
-repositories prevent byte-identical rebuild guarantees.
+One state root exclusively owns its allocation namespace.
 
-Builds pin amazon 1.8.1, proxmox 1.2.3 and ansible 1.1.4 plugins. The environment pins
-Packer checksums, toolchain identity, ansible-core and timeout. Fixed bootstrap installs
-guest-local Ansible; author values stay out of host shell commands. Infrastructure
-credentials remain in operator/provider/Packer processes; staging and logs are private.
+### Plans
 
-Windows Packer builds use SSH/Administrator with SFTP and platform-owned
-`<powershell>` EC2Launch v2 user data, never WinRM or author code on the operator. The controlled hostname reboot completes before
-OpenSSH installation/key setup can expose the build communicator, preventing
-Packer provisioning from overlapping that first reboot.
-The build key is installed in `administrators_authorized_keys` with SYSTEM and
-Administrators-only ACLs. Windows builds do not attach EC2 Ed25519 key pairs;
-their interrupted instances are discovered by atomic owner/role tags and verified
-before cleanup. Generated and supplied SSH host private keys both receive
-SYSTEM/Administrators-only ACLs with the Administrators group as owner before
-SYSTEM starts sshd; the individual generator account is not retained as owner. Linux retains its existing key-pair path. Source selection is copied into
-`C:\ProgramData\LabCentral\build\`; `$env:LABCENTRAL_INPUTS` names typed JSON.
-Platform code installs the Windows DCV MSI pinned by operator environment
-`build.windowsDCVURL`/`build.windowsDCVSHA256` before author PowerShell.
-Planning and provider requests require valid HTTPS/checksum fields only for
-Windows desktop builds, with field-path errors before provisioning. The MSI also needs a valid
-Authenticode signature. Platform settings use DCV's SYSTEM user registry hive
-(`HKEY_USERS\S-1-5-18`), verified from the pinned MSI metadata. Installation
-disables automatic sessions/server startup, configures the service, and performs
-a platform driver reboot before author execution. README and the Windows example document Amazon's DCV download
-for 2025.0-20103. The operator URL and checksum participate only in Windows desktop policy. Linux plan and image-key golden fixtures retain the preceding
-implementation's exact serialized bytes.
+A plan binds the source, effective inputs, environment, base identities and build
+policy. On AWS the planner picks the smallest allowlisted instance type that fits,
+unless an allowed explicit type is requested. Proxmox reserves disjoint VMIDs and one
+VLAN and /24 per network. Deployment copies the plan's machine entries before adding
+native images, addresses and keys, so one plan can deploy independent instances.
 
-After author execution, platform code removes build files, inputs, management
-keys and DCV/SSH identities, then invokes EC2Launch v2 sysprep with shutdown.
-Packer waits for the stopped guest before capture. The final Windows sysprep provisioner alone
-accepts the pinned guest/OpenSSH shutdown status 2300218, alongside zero. It
-does not accept this status during installation or author execution; native
-stopped-state capture and boot qualification remain mandatory. Windows AMI qualification uses
-an owned disposable gateway and guest and checks the readiness marker, sshd and
-DCV service when declared. Qualification receipts and cleanup confirmation use
-the existing recovery journal. Windows execution and real AWS acceptance remain
-unqualified by local generation, parser and fake-provider tests.
+### Image identity
 
+An image's cache key includes:
 
-Packer emits native images without disk conversion or mandatory nested virtualization:
+- the planned image and its build program;
+- the build-relevant part of the environment: target identity, toolchain, the selected
+  base binding and build networking;
+- effective inputs, the source identity and the desktop build policy.
 
-- [amazon-ebs](https://developer.hashicorp.com/packer/integrations/hashicorp/amazon/latest/components/builder/ebs)
-- [proxmox-clone](https://developer.hashicorp.com/packer/integrations/hashicorp/proxmox/latest/components/builder/clone)
-- Guest-local [ansible-local](https://developer.hashicorp.com/packer/integrations/hashicorp/ansible/latest/components/provisioner/ansible-local)
+Runtime networking, operator CIDRs, egress permission, gateway settings, machine
+allowlists and the desktop licensing profile do **not** affect keys. With explicit
+`build.files`, only the selected files' bytes, the image definition and lab extensions
+count. Without a selection, every source file counts, with machine platform options and
+the other platform's image options normalized away. Image options change keys; machine
+runtime options do not. Saved journals keep their original keys across planner changes,
+and a cached image must pass native identity and existence checks before reuse. Package
+repositories change over time, so rebuilds are not byte-identical.
 
-### Build qualification and publication
+### Builds
 
-Every build reserves ownership and native identifiers before mutation. Tags,
-descriptions, explicit VMIDs, image names and keypair identities support discovery after
-interruption. A captured image remains unpublished until a disposable guest passes
-SSH/cloud-init readiness, declared desktop checks and confirmed cleanup. AWS desktop
-validation creates a virtual session and observes a running X display. An empty status
-response remains unknown and is polled without creating another session. Validation
-checkpoints survive cleanup interruption. Retrying failed validation can reuse the
-captured image only after confirmed guest cleanup, with the prior receipt archived and a
-fresh validation owner/intent. Desktop policy revisions participate in cache identity
-without changing unchanged server-image policy. Fixed staging cleanup and final
-sanitization remove source staging before capture.
+```mermaid
+sequenceDiagram
+    participant E as Engine
+    participant P as Provider
+    participant K as Packer
+    participant G as Build guest
+    E->>E: Save build intent and owner identifiers
+    E->>P: Build image
+    P->>K: Run pinned Packer
+    K->>G: Bootstrap (platform-owned)
+    K->>G: Copy selected files, run author program
+    K->>G: Sanitize (remove staging, keys, identities)
+    K-->>P: Captured image (unpublished)
+    P->>P: Boot a disposable guest and check readiness
+    P-->>E: Qualified image, cleanup confirmed
+    E->>E: Publish image for reuse
+```
 
-Proxmox clone builds preserve the base root disk. The environment must provide
-sufficient base disk space and a working guest agent before Packer IP discovery.
-Deployment can grow disks. The library never modifies the bound base.
+- **Toolchain:** Packer with the amazon 1.8.1, proxmox 1.2.3 and ansible 1.1.4
+  plugins. The environment pins the Packer checksum, toolchain identity, ansible-core
+  version and timeout. Packer emits native images directly
+  ([amazon-ebs](https://developer.hashicorp.com/packer/integrations/hashicorp/amazon/latest/components/builder/ebs),
+  [proxmox-clone](https://developer.hashicorp.com/packer/integrations/hashicorp/proxmox/latest/components/builder/clone)),
+  with no disk conversion or nested virtualization.
+- **Linux builds** install a pinned guest-local Ansible and run the playbook with
+  [ansible-local](https://developer.hashicorp.com/packer/integrations/hashicorp/ansible/latest/components/provisioner/ansible-local).
+  Author values never reach host shell commands.
+- **Windows builds** use SSH as Administrator (never WinRM) with platform-owned
+  EC2Launch v2 user data. The hostname reboot completes before OpenSSH and the build
+  key are set up, so provisioning cannot overlap it. Selected files are copied to
+  `C:\ProgramData\LabCentral\build\` and `$env:LABCENTRAL_INPUTS` names the typed inputs
+  file. For desktop images, the platform installs the DCV MSI pinned by
+  `build.windowsDCVURL` and `build.windowsDCVSHA256` (checksum and Authenticode
+  signature verified) before the author script. Afterwards it removes build files,
+  inputs, keys and DCV/SSH identities, then runs EC2Launch sysprep with shutdown. Only
+  that final step accepts OpenSSH's shutdown status 2300218.
+- **Proxmox builds** clone the base and keep its root disk; the base needs enough disk
+  and a working guest agent. Deployment can grow disks. The library never modifies a
+  bound base.
 
-`EngineOptions` defaults to three image builds, four machine creates and four deletions
-per operation; limits accept 1–32, with zero selecting defaults. Waits check
-cancellation before native calls. CLI flags/private JSON expose these limits; saved
-paths are absolute and mutation approval cannot be saved.
+**Qualification and publication.** Every build reserves ownership and native
+identifiers before mutation (tags, descriptions, explicit VMIDs, image names, key
+identities), so an interrupted build can be found again. A captured image stays
+unpublished until a disposable guest passes SSH/cloud-init readiness (Windows: the
+readiness marker and sshd) and, for desktops, a desktop check, and its cleanup is
+confirmed. AWS Linux desktop validation creates a virtual session and observes a running
+X display; an empty status response stays unknown and is polled without creating
+another session. Validation checkpoints survive cleanup interruption, and a failed
+validation can reuse the captured image only after confirmed guest cleanup, with a fresh
+validation owner.
 
-## Platforms and networking
+`EngineOptions` default to three image builds, four machine creates and four deletions
+per operation (1–32 each). Waits check cancellation before native calls.
+
+## Platforms
 
 ### AWS
 
-Each new lab owns one VPC in one availability zone. Without author CIDRs it is
-`10.77.0.0/16`: networks receive `10.77.<n>.0/24` in sorted name order and the gateway's
-edge subnet is `10.77.255.0/28`. Author CIDRs must be private, non-overlapping and fit
-one /16 together with the default allocations; that /16 becomes the VPC and the edge
-subnet takes its highest free /28. Up to eight networks and eight NICs per machine are
-allowed, subject to the instance type's ENI limit (`aws.types[].maxNICs` or
-`DescribeInstanceTypes`). The edge route table reaches an Internet gateway. Each lab
-subnet has its own route table: local routes, routes to remote networks through the
-local router ENI (more specific than VPC-local routing; guests also install explicit
-routes in case AWS rejects them), and a default route to the gateway ENI only when
-Internet egress is requested and permitted. Router ENIs disable source/destination
-checks.
+```mermaid
+flowchart TB
+    Operator[Operator] -->|SSH from operator CIDRs| GW
+    subgraph VPC["Lab VPC 10.77.0.0/16"]
+      subgraph Edge["Edge subnet 10.77.255.0/28"]
+        GW["Gateway<br/>(the lab's only public IPv4)"]
+      end
+      subgraph A["Network A 10.77.0.0/24"]
+        M1[Machine]
+      end
+      R{{"Router<br/>NICs in A and B"}}
+      subgraph B["Network B 10.77.1.0/24"]
+        M2[Machine]
+      end
+    end
+    GW -->|jump SSH, desktop :8443| M1
+    GW -->|jump SSH| M2
+    M1 --- R --- M2
+    GW -->|NAT, only for networks with egress| Internet[Internet]
+```
 
-One platform-owned gateway, outside author inventory, holds the lab's only public IPv4
-address. It defaults to base `ubuntu-24.04` and type `t3.micro`, with validated
-base/type compatibility, one edge NIC, source/destination checks disabled, required
-IMDSv2 with hop limit 1, an encrypted root disk and no instance profile. The engine
-generates and pins its host key before creation.
+**Layout.** Each lab owns one VPC in one availability zone. By default it is
+`10.77.0.0/16`; networks get `10.77.<n>.0/24` in name order and the gateway's edge
+subnet is `10.77.255.0/28`. With author CIDRs, the /16 containing them becomes the VPC
+and the edge subnet takes its highest free /28. Each network has its own subnet, route
+table and security group:
 
-Gateway cloud-init allows operator SSH and local TCP forwarding, disables password,
-agent and X11 forwarding and tunnels, and loads nftables before enabling IPv4
-forwarding. Forwarding defaults to DROP. Only opted-in network sources reach non-private
-destinations with masquerade. RFC1918, link-local, CGNAT and access to the gateway
-itself are blocked; return traffic is allowed. Readiness requires pinned SSH and
-confirmed cloud-init completion. The routing model follows [AWS NAT instance
+- Routes to remote networks go through the local router's ENI (more specific than VPC
+  routing; guests also install explicit routes). Router ENIs disable source/destination
+  checks.
+- A default route to the gateway exists only for networks whose egress is requested
+  and allowed.
+- Network security groups allow same-network traffic and routed sources only from
+  networks that can reach them. In multi-network labs a management group on first NICs
+  admits ports 22 and 8443 from the gateway only.
+- Lab machines never get public addresses, and operator CIDRs are never added to their
+  management ingress.
+
+**Gateway.** One platform-owned gateway per lab, outside the author's inventory, holds
+the lab's only public IPv4 address (default `ubuntu-24.04` on `t3.micro`). It has one
+edge NIC, IMDSv2 with hop limit 1, an encrypted root disk and no instance profile; its
+host key is generated and pinned before creation. Its cloud-init allows operator SSH and
+local port forwarding only (no passwords, agent or X11 forwarding, or tunnels) and
+loads nftables before enabling forwarding. Forwarding defaults to drop; only opted-in
+networks reach non-private destinations, with masquerade. RFC 1918, link-local, CGNAT
+and the gateway itself are blocked. Readiness needs pinned SSH and confirmed cloud-init
+completion. The routing follows [AWS NAT instance
 requirements](https://docs.aws.amazon.com/vpc/latest/userguide/work-with-nat-instances.html).
 
-The gateway security group admits operator-CIDR SSH and lab forwarding. Each network has
-its own security group that allows same-network traffic and routed sources only from
-networks that can reach it. In multi-network labs a separate management group, attached
-only to first NICs, admits ports 22/8443 from the gateway group.
-General IPv4 egress is allowed only for opted-in networks. Lab machines disable public
-IP assignment and use private management addresses. Operator CIDRs are not added to
-their management ingress.
+**Desktop licensing.** Desktop machines get an instance profile whose only permission
+is reading the regional DCV license bucket
+([DCV licensing](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html)),
+and their networks get an S3 gateway endpoint restricted to that bucket. Other machines
+have no instance profile.
 
-Desktop profiles have only the inline regional DCV-license `s3:GetObject` permission and
-no managed policies; other machines have no instance profile. Desktop networks attach an
-S3 gateway endpoint restricted to the licensing bucket. Build networking is separately
-operator-owned and validated. Captured-image qualification uses an owned disposable
-gateway. See [DCV
-licensing](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html).
+**Windows guests** share the same ENIs, security groups, routes, gateway and egress
+rules. Platform-owned EC2Launch v2 user data:
 
-Windows guests use these same private ENIs, security groups, routes, gateway and
-egress rules. Platform-owned EC2Launch user data installs/verifies the built-in
-OpenSSH Server capability, sets PowerShell as its default shell and provisions
-per-allocation management and pinned SSH host keys. It applies lab-network Windows
-firewall rules while limiting added management 22/8443 ingress to the gateway's
-private address, keeps all firewall profiles enabled, installs peer inventory in
-the Windows hosts file and applies planned guest routes. Rename records one
-controlled reboot before a readiness marker is written. Pinned jump SSH polls that
-marker, sshd and, for desktops, dcvserver; timeout retains an unknown create.
-Build networks need Windows Update access for capability installation; captured
-images retain OpenSSH for isolated runtime networks.
+- installs or verifies the built-in OpenSSH Server, makes PowerShell its default shell
+  and installs the per-allocation management key and pinned host key, with
+  SYSTEM/Administrators-only ACLs;
+- keeps every Windows Firewall profile on, opens lab-network rules and limits added
+  management ports 22/8443 to the gateway's private address;
+- writes the hosts file and planned routes (active and persistent stores; a
+  conflicting existing route fails bootstrap rather than being overwritten);
+- renames the computer with one controlled reboot, then writes a readiness marker.
 
-Retained pre-gateway records keep their original management path. A durable gateway plan
-distinguishes new deployments; recovery never adds a gateway to an old record. Both
-resource shapes remain discoverable and removable. AWS DNS and metadata are special
-cases outside ordinary security-group filtering; this is not an air gap. Trusted
-operators remain responsible for role contents and later network changes. See
-[security-group
-behavior](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html).
+Readiness polls the marker, sshd and (for desktops) dcvserver over pinned jump SSH; a
+timeout leaves the create unknown. Build networks need Windows Update access for the
+OpenSSH capability; captured images keep it for isolated labs.
+
+**Limits of isolation.** AWS DNS and instance metadata are outside ordinary
+security-group filtering, so this is not an air gap ([security-group
+behavior](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html)).
+Records created before gateways existed keep their original management path; recovery
+never adds a gateway to an old record.
 
 ### Proxmox
 
-Proxmox uses a configured node/storage/pool, exclusive VMIDs, existing isolated VLANs
-and a VLAN-aware bridge. Each lab network reserves its own VLAN atomically in the
-allocation journal and a separate /24 from the operator pool; up to four networks and
-four NICs per machine are allowed, and author CIDRs are rejected. Machines configure
-`net0..netN` and `ipconfig0..ipconfigN`, with a gateway only on the first egress NIC;
-generated netplan routes are installed and verified through the guest agent after boot.
-VM rules default to DROP and restrict traffic by NIC to same-network and routed-source
-CIDRs, with operator SSH only on the first NIC. The operator's router must drop traffic
-between lab VLANs so that segments connect only through declared guest routers. No
-gateway VM is provisioned: operator routing already reaches each VLAN. Internet-enabled
-VLANs require operator-provided gateway NAT.
+- **Resources.** A configured node, storage and pool, an exclusive VMID range, and
+  isolated VLANs on a VLAN-aware bridge. Each lab network atomically reserves its own
+  VLAN and a /24 from the operator's pool. Up to four networks and four NICs per
+  machine; author CIDRs are rejected.
+- **Machines** configure `net0..netN` and `ipconfig0..ipconfigN`, with a gateway only on
+  the first egress NIC. Netplan routes are installed and verified through the guest
+  agent after boot.
+- **Firewall.** VM rules default to drop and allow, per NIC, same-network and routed
+  sources, with operator SSH only on the first NIC. Outbound rules keep intra-lab traffic,
+  then drop private, link-local, CGNAT, operator and management addresses before allowing
+  other IPv4 destinations; IPv6 forwarding is denied. Because the API prepends rules, the
+  adapter inserts them in reverse order and enables general Internet access last, so an
+  interrupted reconciliation stays closed
+  ([firewall rule API](https://github.com/proxmox/pve-firewall/blob/master/src/PVE/API2/Firewall/Rules.pm)).
+- **Operator responsibilities.** No gateway VM is created: the operator's routing must
+  already reach each VLAN, must drop traffic between lab VLANs, and must provide NAT for
+  Internet-enabled VLANs. A disabled cluster firewall fails preflight. The adapter checks
+  VLAN awareness but never changes bridges, routing or global firewall policy, and cannot
+  verify physical isolation, which is why the environment requires
+  `verifiedIsolation: true`. HTTPS verifies the server unless the environment explicitly
+  opts out ([Proxmox firewall](https://pve.proxmox.com/wiki/Firewall)).
 
-Outbound rules preserve intra-lab traffic, then drop private, link-local, CGNAT,
-operator ranges and resolved management addresses before permitting other IPv4
-destinations. IPv6 Internet forwarding is denied. Management resolution must succeed
-before guest mutations, and operators must keep those addresses stable. The adapter
-inserts rules in reverse order because POST prepends them; general Internet acceptance
-remains disabled until preceding drops are installed. Interrupted reconciliation
-therefore remains closed. See the [firewall rule
-API](https://github.com/proxmox/pve-firewall/blob/master/src/PVE/API2/Firewall/Rules.pm).
+## Access to machines
 
-A disabled cluster firewall fails preflight. The adapter checks VLAN awareness; physical
-isolation and routes need external verification. It never changes host bridges, routing
-or global firewall policy. HTTPS verifies server identity unless the environment
-explicitly opts out. See
-[Proxmox firewall documentation](https://pve.proxmox.com/wiki/Firewall).
+`MachineDialer` is the only way to reach a guest. For new AWS labs it verifies the
+gateway's SSH host key, opens a `direct-tcpip` channel to the private machine, then
+verifies a second SSH handshake against that machine's pinned key. Proxmox and older AWS
+records dial directly. A failed connection never falls back to a different path, and
+agent forwarding is never used. Readiness checks, guest programs, coach terminals and
+DCV certificate fetches all share the dialer. Jobs reuse pinned connections; desktops
+reuse the gateway connection to reach port 8443. A new channel may reconnect after an
+outage with the same pins, but a command is never replayed.
 
-## Access and revocation
+### Desktops
 
-`MachineDialer` derives management from the saved gateway resource. On new AWS labs it
-verifies gateway SSH, opens `direct-tcpip` to the private machine, then verifies a
-second SSH handshake against the machine's pin. Proxmox and retained AWS records use
-direct dialing. Connection failure never chooses a direct fallback. No agent forwarding
-is used. Readiness, SSH, guest programs, coach access and DCV certificate fetch share
-the dialer. Jobs reuse pinned connections; desktops reuse gateway SSH/TLS channels to
-private :8443. New channels may reconnect with the same pin after outages; existing
-commands never replay. SSH preserves resize and exit status. Names are mapped at first
-boot.
+| Platform | Transport | Sessions |
+| --- | --- | --- |
+| AWS Linux | Amazon DCV, system authentication | One virtual session per access; the temporary guest account owns it |
+| AWS Windows | Amazon DCV, system authentication | One console session, `console`, owned by local `lab` |
+| Proxmox | Bundled [noVNC 1.6.0](https://github.com/novnc/noVNC/tree/v1.6.0) over an encrypted console connection | VM console |
 
-### Desktop transports
+- **Accounts.** Every desktop access creates temporary guest credentials, disclosed only
+  in explicit access output. Linux accounts carry an ownership marker in their comment
+  (after a "Student" display name) so cleanup touches only accounts it created. On
+  Windows, bootstrap creates a disabled administrative `lab` account; access sets its
+  credential and enables it, and an ownership marker plus pinned SID prevent taking over
+  a replacement account. Windows has one console, so overlapping desktop owners are
+  rejected.
+- **Certificates.** DCV certificates are fetched over verified SSH and pinned end to end
+  by the relay ([certificate
+  handling](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-cert.html)). Image
+  capture removes generated certificates so each guest gets its own.
+- **Readiness.** Linux waits for a running X display; Windows waits for a running
+  console with the expected owner. An unknown status never creates a replacement session.
+- **Relays.** CLI relays listen on loopback and require a single-use launch token, an
+  authenticated cookie, exact Host and Origin checks and an expiry.
+- **Revocation** closes transports and the session, terminates the user's processes and
+  removes the account (or locks it, when the caller asked to retain the workspace). On
+  Windows it disables the account, logs off the console and cleans or keeps the profile.
+  Crash recovery uses durable access intent.
 
-AWS Linux uses DCV system authentication and named per-access virtual sessions. The session
-owner and desktop process user are the temporary guest account. DCV TLS certificates are
-fetched through verified SSH and pinned end to end by the relay; image capture removes
-generated certificates so each guest gets its own identity. See [certificate
-handling](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-cert.html) and
-[virtual-session
-users](https://docs.aws.amazon.com/dcv/latest/adminguide/managing-sessions-start.html).
+## Durability and recovery
 
-Windows uses DCV system authentication and one console session named `console`
-owned by local `lab`. Bootstrap creates the disabled administrative account;
-authorized access creates its temporary credential and enables it. This follows
-the existing credential-on-access flow rather than inventing a deploy-time secret.
-A durable access-owner marker and pinned local account SID prevent takeover or
-mutation of a replacement account. Windows
-cannot provide simultaneous per-user virtual workspaces. Readiness requires an
-observed running console with the expected owner/type, without Linux's X-display
-requirement. Unknown status never creates a replacement session. The existing
-DCV relay and hosted Web SDK use the certificate fetched over pinned SSH from
-SYSTEM’s `NICE\dcv\private` directory. Capture removes that directory’s certificate
-and private key; Windows desktop image policy version 2 invalidates earlier
-captures. PowerShell 5.1 session JSON explicitly enumerates both empty and populated
-arrays, and account ownership is normalized by SID.
-Revocation verifies ownership, disables the account, closes the observed console,
-logs off the local Windows session and terminates remaining processes; profile
-retention follows access policy. Repeated cleanup reconciles confirmed absence.
+State is a SQLite database (WAL, FULL synchronization) with snapshots, plans,
+provenance, allocations, operation records and resource references. SSH private keys
+are separate private files. Providers keep their own mutation journals (fsync and atomic
+rename). Back up journals and keys together, and fence the original process before a
+restored one starts.
 
-Proxmox uses bundled noVNC 1.6.0 with an encrypted upstream console connection. Provider
-management tokens stay in the provider process. Both platforms create temporary guest
-login accounts and disclose credentials only in explicit access output. The Proxmox
-console and DCV virtual sessions have different behavior. See
-[noVNC source and licensing](https://github.com/novnc/noVNC/tree/v1.6.0).
+### Intent and locks
 
-CLI relays listen on loopback and require a single-use launch token, authenticated
-cookie, exact Host/Origin checks and expiry. Closing access closes transports and
-removes the temporary guest session/account. DCV revocation terminates remaining user
-processes and verifies session absence. Process-crash recovery uses durable access
-intent. CLI workspaces are disposable by default; hosted callers can request retention
-with explicit principal and expiry options.
+- Native create intent is saved before every call, with idempotency keys where the
+  platform supports them. After a lost response, recovery looks for the exact recorded
+  owner. Ambiguous results keep their allocations and recovery intent.
+- An authorization rejection and an uncertain transport failure are different outcomes;
+  the second is never retried as if it had been rejected.
+- Cache-key file locks coordinate build, reuse, abandonment and removal across clients.
+  Deployment builds or reuses images first, then takes the image locks in sorted order
+  and a short allocation fence to save references. Image removal uses the same fence to
+  check for references.
+- Deployment, recovery and destruction take an exclusive lifecycle lock per instance.
+  Desktop operations and SSH callbacks share it and take an exclusive lock per machine,
+  so unrelated machines in one lab can be worked on at once.
+- Cleanup intent is saved before fences are released for native I/O, and reservations
+  are released only after absence is confirmed.
 
-## Durability, recovery and cleanup
+### Order of operations
 
-SQLite uses WAL and FULL synchronization. State retains snapshots, plans, provenance,
-allocations, operation records and resource references. SSH private keys are separate
-private files. Providers own adjacent mutation journals using fsync and atomic rename.
-Backups must preserve both journals and credentials, with the original mutator fenced
-before any restored worker starts.
+```mermaid
+flowchart LR
+    subgraph Deploy
+      direction LR
+      N[Networks] --> G[Gateway] --> M[Machines]
+    end
+    subgraph Destroy
+      direction LR
+      U[Reconcile uncertain creates] --> DM[Delete machines] --> DG[Delete gateway] --> DN[Delete networks]
+    end
+```
 
-### Intent and fences
+- Deployment creates networks, then the gateway, then machines (no gateway on Proxmox or
+  older AWS records). Successful siblings are saved even if another fails, and recovery
+  resumes the original operation and instance ID.
+- Destruction first reconciles uncertain creates, then deletes in reverse order:
+  machines (concurrently), the gateway once every machine is confirmed absent, then
+  networks. Cross-group security rules are removed before either group.
+- Deletion checks recorded IDs and ownership, never names alone. Route reconciliation
+  verifies table ownership, accepts an existing matching route and rejects a
+  conflicting one.
+- Guest-session cleanup is tried first, but an unreachable guest cannot block
+  termination. Access records survive until machines are confirmed removed.
+- Image removal is a separate operation. It refuses images that retained labs still use
+  and includes AMI snapshots or Proxmox template disks. Failed or unknown cleanup stays
+  recoverable and blocks reuse of the affected cache key.
 
-Native create intent is saved before calls, with idempotency keys where supported. After
-response loss, recovery discovers exact recorded ownership. A timeout never proves
-failure or absence. Ambiguous or missing results retain allocations and recovery intent.
-Authorization rejection and uncertain transport failure are separate outcomes; the
-latter cannot be retried as a confirmed rejection. Cache-key file locks coordinate
-build, reuse, abandonment and removal across library clients. Native builds do not hold
-the allocation lock. Deployment first builds/reuses images, then takes sorted image
-locks and a short allocation fence to save image references and reservations. Removal
-uses the same image fence to check retained references. Cleanup intent is persisted
-before releasing fences for native I/O; reservations are released only after confirmed
-absence.
-
-Deployment, recovery and destruction take an exclusive instance lifecycle lock. Desktop
-open/close and bounded SSH callbacks share the lifecycle guard and take an exclusive
-machine lock, allowing work on unrelated machines in one lab. File locks coordinate
-clients/processes; waiting is cancellable. Provider owner/name fences prevent
-same-resource create, discovery and cleanup journals from overlapping. Status reads and
-unrelated labs remain available during native work.
-
-### Recovery and deletion order
-
-Deployment creates network → gateway → machines; Proxmox and retained direct AWS records
-omit the gateway. Successful siblings are saved even if another fails. Recovery resumes
-the original operation and instance ID. Destruction reconciles uncertain creates before
-deleting in reverse dependency order. Machines can be removed concurrently. Gateway
-removal waits for all machines to be confirmed absent; network removal waits for the
-gateway. Native results are materialized during destruction if a crash preceded the
-instance-record update. AWS networking subresources have independent intents, and
-cross-group rules are removed before either security group. Deletion checks recorded IDs
-and ownership, never names alone. Route reconciliation verifies table ownership/VPC,
-accepts an existing matching route and rejects a conflicting route.
-
-Guest-session cleanup is attempted first, but an unreachable guest cannot block owned VM
-termination. Access records survive until VMs and dependencies are confirmed removed.
-Image removal is separate, protects retained instance references and includes AMI
-snapshots or Proxmox template disks. Failed or unknown cleanup remains recoverable and
-blocks affected cache reuse.
-
-The CLI has no scheduler. Hosted deadlines persist and overdue cleanup is queued on
-restart, but an offline operator or hosted control process can leave billable resources
-active. Cross-operator allocation locking is unsupported. State deletion or corruption
-lies outside automatic recovery guarantees; uncertain mutations without authoritative
-discovery require operator investigation.
+The CLI has no scheduler: resources keep running until destroyed. The hosted service
+persists deadlines and queues overdue cleanup on restart, but an offline control process
+can still leave billable resources running. Allocation is not coordinated across
+operators. Lost or corrupted state is outside automatic recovery; uncertain mutations
+without authoritative discovery need an operator to investigate.
 
 ## Hosted service
 
-The `hosted` package owns users, OIDC sessions, meetings, teams, memberships, template
-revisions, attempts, jobs and desktop authorization. It uses the public library rather
-than putting HTTP policy into portable declarations. Protected operator configuration
-and credentials stay outside source and public APIs.
+The `hosted` package uses the public library and adds identity, HTTP policy, jobs and
+the product's records. Operator configuration and credentials stay outside source and
+public APIs.
 
 ### Identity and authorization
 
-OIDC uses authorization code, PKCE, state and nonce, verifying issuer, audience,
-signature and expiry. Membership and administrator policy maps groups to
-operator-configured `memberGroup` and `adminGroup` names. Administrator membership also
-admits the user. Group names are installation policy, outside portable declarations.
+- OIDC authorization code flow with PKCE, state and nonce; issuer, audience, signature
+  and expiry are verified. An explicit HTTPS backchannel can route server-to-provider
+  requests while keeping canonical issuer checks.
+- Group membership maps to the configured `memberGroup` and `adminGroup`; admins are
+  also members.
+- Sessions are opaque IDs in secure, HTTP-only host cookies; tokens stay server-side.
+  Writes require an exact Origin and a CSRF token.
+- Group authorization is refreshed from userinfo every four minutes (at most four
+  refreshes at once). Desktop authorization is rechecked every 20 seconds and fails
+  closed. Diagnostics report fixed categories, never tokens or response bodies.
 
-An explicit HTTPS backchannel can route machine requests to the identity provider while
-preserving canonical issuer verification and browser URLs. Secure HTTP-only host cookies
-contain opaque session IDs; tokens stay server-side. Exact-origin and CSRF-token checks
-protect writes.
+### Persistence
 
-Userinfo refreshes group authorization every four minutes. Refresh and persistence have
-a bounded context independent of browser cancellation, and at most four refreshes
-contact the identity provider concurrently. Diagnostics expose fixed categories, phases
-and HTTP status, never tokens or identity response bodies. Desktop policy checks run
-every 20 seconds and fail closed on revocation or unverifiable identity, cancelling
-transports while durable cleanup proceeds.
+SQLite has one writer using `BEGIN IMMEDIATE` transactions and four read-only readers.
+Quota, seat, import and enqueue decisions stay on the writer. Request bodies are read
+before a transaction starts, and responses are buffered until commit, so a slow client
+cannot hold the writer or see success before persistence.
 
-### Persistence and historical records
+Older hosted records keep their saved identities, progress, source pins and cleanup
+references. They can be read and cleaned up, but new attempts and guest actions require
+format 3 revisions. Cleanup always uses saved image keys, never freshly planned ones; an
+older revision without saved keys owns no current image and is not counted as sharing
+one.
 
-Hosted SQLite has one writer using `BEGIN IMMEDIATE` transactions and four read-only,
-query-only WAL readers with FULL synchronization. Compound quota, seat, import and
-enqueue decisions stay on the writer. Bounded request bodies are read before transaction
-admission; mutation responses are buffered until commit, so slow clients cannot retain
-the writer or receive success before persistence.
+### Jobs and budgets
 
-User intent locks are cancellable and reference counted. Desktop maps have a separate
-mutex for short memory operations; durable reads and cleanup enqueueing happen outside
-it. Desktop opening/closing generations persist intent before native calls, release user
-locks during I/O and revalidate before publishing a relay. Stale cleanup snapshots
-cannot close a newer generation. Historical hosted records retain their saved
-identities, progress, release gates, source pins and cleanup references. Read
-projections support older instructor records without rewriting pinned source. New
-attempts and guest actions require v3 revisions; historical programs cannot resume
-through scheduled or interrupted work. Cleanup uses original instance IDs and saved
-image keys, never freshly planned keys. Missing historical image keys block unsafe
-removal.
-
-### Jobs, scheduler and budgets
-
-One process holds the durable scheduler fence. Resource claims coordinate
-cache-key/template work, meetings, teams, allocations and machines. Ending holds
-exclusive meeting claims. Preparation claims only unfinished teams and releases each
-after its readiness checkpoint; retries preserve already-ready teams. Unrelated queued
-jobs can bypass blocked dependencies.
-
-Observational jobs share team/allocation claims and exclusively claim their target
-machines. Resets, breaks and lifecycle work exclude the whole team/allocation. Steps
-remain sequential under a guest lock, with pinned SSH reuse per job. Enqueue and
-completion wake dispatch; a five-second tick provides fallback.
+One process holds the durable scheduler fence. Resource claims coordinate templates,
+meetings, teams, allocations and machines, so unrelated work proceeds while blocked jobs
+wait. Observational jobs (checks) share team claims but take their target machine
+exclusively; resets, breaks and lifecycle work exclude the whole team. Enqueue and
+completion wake the dispatcher, with a five-second fallback tick.
 
 | Budget | Default | Scope |
 | --- | ---: | --- |
-| Bulk jobs | 3 | Build, preparation, refresh and image removal |
-| Image-build jobs | 2 | Subset of bulk capacity |
-| Guest jobs | 12 | Checks and exercises, independent of bulk slots |
-| Cleanup jobs | 1 reserved | Meeting destruction or authorization cleanup |
-| Provisioning | 3 | Shared team and personal preparation gate |
-| Aggregate native operations | 8 | Native effects including gateway/machine lifecycle and builds |
-| Aggregate SSH operations | 24 | Guest steps, terminals, desktops and provider readiness |
-| Job timeout | 120 minutes | Allocation deadlines can interrupt sooner |
+| Bulk jobs | 3 | Builds, preparations, refreshes and image removal |
+| Image-build jobs | 2 | Part of the bulk budget |
+| Guest jobs | 12 | Checks and breaks, separate from bulk work |
+| Cleanup jobs | 1 reserved | Meeting destruction and authorization cleanup |
+| Provisioning | 3 | Team and personal preparations |
+| Native operations | 8 | Machine and gateway lifecycle and builds, across jobs |
+| SSH operations | 24 | Guest steps, terminals, desktops and readiness, across jobs |
+| Job timeout | 120 min | Allocation deadlines can stop jobs sooner |
 
-Startup worker/engine concurrency accepts 1–32, aggregate limits 1–64 and job timeout
-1–1440 minutes; zero selects defaults. Builds cannot exceed bulk capacity. Cleanup
-bypasses provisioning admission. Shared aggregate admission precedes machine guards to
-preserve lock ordering. Static policy/config inspection needs no provider, OIDC or
-secret output.
-
-Meeting ending cancels overlapping work while unrelated builds continue. Ending and
-authorization cleanup use bounded eight-record pools, persist each result and join
-errors. Failures cannot hide later cleanup; unknown intent stays retryable. Activity
-separates actionable failures from retained ended/superseded history.
+Worker and engine limits accept 1–32, aggregate budgets 1–64 and the timeout 1–1440
+minutes. Ending a meeting cancels overlapping work but leaves unrelated builds running.
+Cleanup runs in bounded pools, records each result, and keeps unknown outcomes
+retryable.
 
 ### Meetings, teams and checks
 
-Meetings pin a template revision and deadline. Defaults are five teams, six seats per
-team and four hours. API/UI bounds are 1–100 teams, 1–100 seats and 1–8 hours;
-extensions cannot exceed eight total hours. Larger allowed values are policy bounds, not
-a claim of qualified classroom capacity.
+- A meeting pins one template revision and a deadline. Defaults are five teams, six
+  seats and four hours; bounds are 1–100 teams, 1–100 seats and 1–8 hours (extensions
+  included). These are policy limits, not tested class sizes.
+- Switching teams reserves the destination seat in a transaction, blocks access while
+  switching, and commits only after the old desktop is revoked.
+- Each team keeps its exact instance ID and readiness. One failed preparation does not
+  cancel the others, and retries preserve ready teams.
+- A meeting break runs the pinned reset, then the break. Durable intent prevents an
+  older job from reapplying effects. An interrupted break stays unknown and needs an
+  explicit reset. A reset is an authored targeted repair, not a VM restore.
+- Checks run once or on a 60–3600-second schedule that starts paused, stops at the
+  meeting's end and never replays missed ticks. Results are pass, fail or unavailable;
+  unconfirmed execution is unavailable, never a failure. The scoreboard shows current
+  service health, not accumulated scores.
 
-Transactions reserve destination seats before a team switch. Access is blocked while
-switching; guest revocation must succeed before membership commits. User locks serialize
-switching with launch. Each team retains its exact instance ID, readiness or failure.
-One failed preparation does not cancel peers; retries reconcile failed teams and
-preserve ready instances. Personal practice is independent.
+### Templates and images
 
-Instructors can view stages, solutions and walkthroughs without mutating guests.
-Break/reset/check actions are explicit. A meeting break runs its pinned reset before the
-selected break. Durable intent and latest-operation checks prevent superseded jobs from
-reapplying effects. Interrupted or failed mutation states remain unknown and require an
-explicit reset; observational checks can run again. A reset is an authored targeted
-repair, not a complete VM restore.
+The template repository is fetched with a read-only deploy key and pinned GitHub host
+keys. The importer finds `templates/*/lab.yaml`, pins the commit, validates the portable
+and private source, and snapshots it. Each template is imported in its own transaction,
+and a failing directory is reported to admins without blocking the others. A revision's
+identity is the repository commit plus the directory, so any new commit imports new
+revisions; meetings and attempts keep their pins.
 
-Checks can run once or on a persisted 60–3600-second schedule. Schedules start paused,
-stop at meeting end and resume without replaying missed ticks. Check intent, jobs,
-current results and next due time commit together. Active work is deduplicated; busy
-teams wait for a later tick. Results are pass, fail or unavailable with weighted points.
-Unconfirmed guest execution is unavailable, never a confirmed service failure. The admin
-scoreboard is current service health, not accumulated competition scoring.
+Image operations save cache keys and operation identity before any effect. Removing a
+revision's images blocks new meetings on it, keeps images shared with other built
+revisions and images used by retained labs, and cleans unpublished builds. Uncertain
+cleanup blocks rebuilding until reconciled.
 
-### Template import and images
+"Remove unused images" (`POST /api/admin/images/prune`, admin and CSRF) queues a durable
+`prune-images` job. It keeps images needed by each template's latest revision, open
+meetings, unfinished personal practice (including pending cleanup) and builds in
+progress, and removes the rest, including orphaned keys left by rebuilds. Each image
+gets an outcome: removed, skipped because a retained lab uses it, or unknown and
+retryable. Revision readiness is then reconciled with the remaining images.
 
-The configured template repository is fetched using a read-only deploy key and verified
-GitHub host keys. Import discovers `templates/*/lab.yaml`, pins its commit, validates
-portable/private source and snapshots it. Directory failures are isolated and reported
-to administrators. Each valid revision and bundle commits in one SQLite transaction;
-reimport preserves image and cleanup state.
+### Instructor material and guest programs
 
-Imports retain commit metadata and repository heads; meetings/attempts keep their pins.
-Image counts and jobs use local journals. `imagesBuilt` is informational: admission
-revalidates native readiness, while catalog reads never contact providers. Image
-operations save cache keys and operation identity before effects. Removal blocks new
-meetings on that revision, protects retained labs and images shared with another built
-revision, and cleans both published and unpublished attempts through the library.
-Uncertain cleanup disables rebuilding until reconciled; superseded jobs cannot remove
-later rebuilt images. Source snapshots remain for rebuilds. The standard author library
-is under [templates](templates/README.md); the author guide is
-[docs/templates.md](docs/templates.md).
+`instructor` decodes `instructor.yaml` strictly (field paths and line numbers),
+validates it against the portable source and builds guest payloads. `LoadTemplate`
+excludes private material without changing author files.
 
-The admin view includes `imageSummary: {images, unusedImages}` when inventory is
-available. Admin/CSRF-protected `POST /api/admin/images/prune` queues a durable bulk
-`prune-images` job. It keeps saved/current planned keys for template heads, non-ended
-meetings and personal allocations (including pending cleanup), plus building images.
-Candidates come from engine records, including orphaned rebuild keys. Frozen candidate
-keys have write claims; other image keys, revisions and the repository have read claims.
-Allocation decisions honor persisted removal reservations. Per-image outcomes report
-confirmed removal, referenced-instance skips and retryable unknown outcomes; cleanup
-intent remains until engine confirmation. Revision readiness is reconciled with remaining
-images before reservations are released; historical revisions remain listed.
+- **Visibility.** `visibility.audience` is `students` or `coaches`; only coach templates
+  may hide machines. Coach revisions are excluded from student catalogs, views, practice
+  and downloads, and missing privacy metadata fails closed. Hidden-machine templates
+  require visible images to list their build files (excluding `lab.yaml` and private
+  programs) and visible machines to use explicit `hostnamePeers`. Validation checks
+  structure, not file contents.
+- **Steps.** Checks, breaks and resets are ordered guest steps. Each step delivers its
+  program (an Ansible playbook for Linux machines, a PowerShell script for Windows),
+  plus `files`, `assets` (under `template/`), `labcentral/hosts.json` for `guestHosts`
+  and `labcentral/context.json`. Reserved paths and payload collisions fail import.
+- **Execution.** A fixed launcher stages the files in a private temporary directory and
+  runs the program under a per-machine lock, with a timeout (default 90 seconds,
+  10–600). On Linux it runs Ansible as root. On Windows the payload arrives as base64
+  JSON on stdin, the script runs inside a kill-on-close job object with
+  `$env:LABCENTRAL_STEP_DIR` set, and output is bounded. A failed task or nonzero exit
+  is a failure; a timeout, lock, transport or launcher problem is an unknown outcome.
+  There is no generic remote-command API.
+- **Stages** have instructions, an optional prompt and solution, an optional linked
+  `break`, and exactly one completion: an answer (1–10 accepted values, explicit case
+  policy, compared as normalized digests in constant time), a check, or an instructor.
+- **Disclosure.** Public responses include only permitted instructions, topology (with
+  each machine's OS), summaries and the user's own progress. Accepted answers, private
+  programs, selected variants and credentials are never sent. A solution is revealed only
+  by an explicit request and does not advance progress. Markdown rendering disables raw
+  HTML. Guest administrators can inspect programs that run on their machine; guest
+  files are not a secrecy boundary.
 
-### Instructor format v3 and disclosure
+### Practice attempts and scenarios
 
-The independent `instructor` package owns strict decoding, field-path/line errors,
-template validation and payload assembly. `LoadTemplate` excludes private material
-without changing author files; CLI `--template` also requires README.md. Go generates
-[schemas/instructor-v3.json](schemas/instructor-v3.json) with synchronized schema/Go
-conformance. Only v3 author manifests are accepted.
+Creating an attempt requires authentication, CSRF and a random request ID. A per-user
+lock and transaction save the stage snapshot, answer key and private guest definitions
+before anything is provisioned. Repeating a request returns the same attempt. Baseline
+attempts exclude break-linked stages and instructor checkpoints.
 
-`visibility.audience` explicitly chooses students or coaches; only coach audiences may
-hide machines. `practice.desktopMachine` names a visible desktop-enabled guest when
-stages or scenarios exist. Coach revisions are excluded from student catalogs, direct
-views, practice and downloads; missing/inconsistent privacy metadata fails closed.
-Student meeting inventories omit hidden guests; admin inventories retain the complete
-topology.
+A scenario attempt picks a variant at random (never the student's previous one for the
+same scenario) and saves it privately before any effect:
 
-Hidden-machine templates require visible-image file selections excluding
-lab.yaml/private programs and `hostnamePeers` excluding hidden guests. Visible payloads
-cannot select hidden identities or files used only by hidden images. Validation checks
-structure, not contents; disclosure qualification requires native image inspection.
+```mermaid
+stateDiagram-v2
+    [*] --> Reserved: quota, instance ID and job saved
+    Reserved --> Preparing: provision machines
+    Preparing --> Applying: reset once, apply every break
+    Applying --> Applied: confirmed
+    Applied --> Ready: readiness checks pass
+    Applying --> Unknown: interrupted
+    Unknown --> Ending: stop and confirmed cleanup
+    Ready --> Ending: stop or expiry
+    Ending --> [*]: cleanup confirmed
+```
 
-Checks and `breaks` contain ordered guest steps and optional private extensions. Breaks
-require a nonempty reset. Every step delivers its OS-matched playbook or PowerShell script; `files` selects private
-helpers, `assets` selects portable files under `template/`, and `guestHosts` selects
-public addresses/host keys under `labcentral/hosts.json`. Generated
-`labcentral/context.json` carries machine and lab/template/owner extensions. Reserved
-paths, duplicate destinations and file/directory collisions fail import.
+Retries never pick a new variant, confirmed checkpoints resume without replay, and an
+interrupted `applying` refuses to apply again: the student stops it and starts a new
+attempt. Scenarios run only in hosted cloud workspaces; baseline attempts can also be
+downloaded and run with the CLI on the student's own environment.
 
-Step timeouts default to 90 seconds and accept 10–600, bounding the guest subprocess,
-SSH wrapper and aggregate deadline. Fixed launchers stage pinned files and run Ansible
-or PowerShell only in verified guests under a guest lock. The Windows fixed program
-receives a base64 JSON payload over SSH stdin (avoiding Windows command-line size
-limits), uses an exclusive lock-file handle and a private per-run temporary directory,
-and passes `$env:LABCENTRAL_STEP_DIR`. A kill-on-close Windows job object owns the
-complete author process tree before its execution gate opens. Timeout or bounded
-output overflow kills the job and cleans staging; normal nonzero exits map to check
-failure, while launcher/transport/lock/timeout failures remain unknown. The
-encoded SSH command propagates its child exit code through the Windows PowerShell
-default shell and suppresses module progress records so structured output stays valid. Stage checks,
-meeting checks, breaks, resets and scenario preparation select by the pinned machine
-OS. `guestHosts`/context JSON and file/asset paths retain Linux's contract. Expired steps have unknown outcomes;
-uncertain scenario mutation requires cleanup. There is no generic remote-command job API
-or author execution on the control host. Guest administrators can inspect transferred
-programs and effects; guest files are not a secrecy boundary.
+**Quota.** Personal workspaces need built images and the pinned desktop machine. One
+allocation per student may be active, including one pending cleanup, and meetings do
+not end it. `weeklyCloudMinutes` (default 180) counts from reservation through
+confirmed destruction, split across weeks that reset Monday 00:00 UTC. Expiry removes
+desktop access immediately; confirmed cleanup deletes workspace files, while progress
+is kept.
 
-Stages own instructions, optional prompts/solutions and exactly one `completion`: an
-answer with 1–10 accepted values and explicit case policy, a pinned `check`, or
-`instructor: true`. Answers trim whitespace, optionally fold Unicode case and compare
-all normalized digests in constant time. Stages can link a `break`. Optional library
-metadata supplies category, difficulty, duration and unique tags.
+Ready action stages are checked automatically on a jittered 20-second cadence, slowing
+to 60 seconds after five idle minutes. Only a confirmed pass advances progress.
 
-Public DTOs expose only permitted instructions, topology (including each machine's
-explicit `linux`/`windows` OS), summaries and owned progress.
-Accepted answers, private programs, selected variant/break IDs and credentials are
-excluded. Solution text is revealed only by an explicit authorized request for a
-current/completed released stage; reveal does not advance progress. Portable downloads
-exclude instructor material and contain source plus student instructions. Markdown
-rendering disables raw HTML.
+### Desktops and the coach terminal
 
-### Practice attempts, scenarios and quota
+- **Launch.** Hosted desktop launches bypass the job queue but keep machine locks and
+  aggregate budgets. A one-use ticket (valid one minute) is exchanged on a separate
+  desktop origin for a host-only cookie bound to the session, user, team or allocation,
+  instance and expiry. Every request is authorized, and open WebSockets close on
+  revocation. If another open of the same desktop is still starting, the server asks the
+  browser to retry (`Retry-After`) instead of failing.
+- **DCV client.** The pinned DCV Web SDK uses the transient credentials, so there is no
+  second sign-in. Workspace identities are deterministic, so homes survive reconnects.
+  Linux sessions start with `--gl off` after reading CPU graphics libraries
+  ([startup guidance](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html)).
+  "Connected" requires the first rendered frame. The display scales to keep the whole
+  workspace visible; clipboard uses SDK channels and is never stored. DCV's 60-minute
+  idle timeout disconnects the client; deadlines destroy the machines.
+- **Lesson panel.** Practice desktops show the lesson beside the display. Requests carry
+  the run rendered into that window and require the desktop Origin, JSON and a custom
+  header, so a changed cookie cannot redirect answers to another run.
+- **Coach terminal.** Admins open an SSH terminal to any ready team's machine (hidden
+  machines included) at `/admin/terminal/`. The WebSocket checks Origin, admin session
+  and a CSRF first message, then binds library-owned instance and host identities;
+  browsers never supply addresses or credentials. Channels last at most ten minutes,
+  hold the machine lock, use a guest PTY with resize, and reconnect with a fresh shell
+  that never replays input. Output cannot control navigation, clipboard or titles.
+- **Isolation.** Teammates share guest administration, so their workspaces are not
+  security boundaries.
 
-Attempt creation requires authentication, CSRF and a random request ID. A per-user lock
-and transaction save the owned stage snapshot, answer key and private guest definitions
-before provisioning. Repeating the same request returns the same attempt; changing its
-meaning is rejected. Baseline attempts exclude break-linked stages and instructor
-checkpoints. Each attempt has independent progress, and all reads/actions enforce
-ownership.
+### Web UI
 
-Scenario declarations contain at most twelve scenarios with 2–32 distinct variants. Each
-variant certifies `compatible: true`, selects 1–8 existing breaks in execution order and
-1–20 self-paced stages, and covers each break with an action recovery stage. Unknown
-references, duplicate combinations, missing resets/checks and coach-only scenarios fail
-import. Authors qualify compatibility: programs cannot reset or undo another selected
-break. The service does not generate guest attacks.
-
-Creation randomly selects a variant, excluding that student's immediately previous
-choice for the same template/scenario, and commits it privately before effects. Retries
-never rerandomize. After exact-instance/source validation, preparation saves `applying`,
-resets once and applies all breaks, then saves `applied` before readiness. Confirmed
-checkpoints resume without replay; interrupted `applying` refuses reapplication. Stop,
-confirmed cleanup and a new attempt resolve uncertain mutation. Scenario preparation
-requires hosted execution; scenario downloads are denied, while baseline portable
-downloads remain available.
-
-Personal cloud starts require built images and the pinned practice desktop. One
-transaction saves quota reservation, a fresh exact instance ID and prepare job before
-effects. Recovery reuses that identity; ending retains cleanup intent and image
-references through uncertainty. One personal allocation may remain active per student,
-including pending cleanup. Meeting ending does not destroy it.
-
-`weeklyCloudMinutes` defaults to 180 per student per UTC week, resetting Monday. Usage
-runs from reservation through confirmed native destruction, including failed preparation
-and pending cleanup, apportioned across week boundaries and rounded up to seconds.
-Admission reserves remaining quota until the next week boundary. A reset cannot admit
-another run while prior cleanup is uncertain. Expiry removes desktop authorization
-immediately; confirmed cleanup deletes workspace files, while learning progress
-persists.
-
-Ready action stages are checked on a jittered 20-second base cadence, slowing to 60
-seconds after five inactive minutes. Explicit checks deduplicate active work. Only a
-confirmed pass advances progress; saving a pass rechecks allocation expiry and the
-pinned stage. Historical instructor-paced lessons retain release gates. Local downloaded
-runs use student-owned AWS/Proxmox environments and cleanup; hosted cloud checks cannot
-verify those local guests.
-
-### Hosted desktops and coach terminal
-
-Desktop launches bypass hosted jobs but retain machine/lifecycle exclusion and aggregate
-admission. One-use tickets expire after one minute; a separate origin exchanges them for
-host-only cookies bound to session, user, team/allocation, instance and expiry. Every
-HTTP request is authorized, and established WebSockets close after revocation.
-Availability views report authorized relay state, not whether a browser is connected,
-and do not delete retained cleanup intent.
-
-The pinned official DCV Web SDK uses transient guest credentials without a second
-sign-in. Deterministic workspace identities retain homes across reconnects. Launches
-wait for an observed running X display. The shared startup helper reads CPU graphics
-libraries before session creation and uses `--gl off`; read failures and cancellation
-stop preparation. Retry occurs only after confirmed session absence; unknown outcomes
-remain errors. Browser Connected status requires the first rendered frame. See [DCV
-startup
-guidance](https://docs.aws.amazon.com/dcv/latest/adminguide/investigating-linux-virtual-session-creation-failure.html)
-and [SDK connection
-callbacks](https://docs.aws.amazon.com/dcv/latest/websdkguide/establish-connection.html).
-
-Display scaling keeps the entire remote workspace visible. Clipboard integration uses
-SDK channels and user gestures; Firefox/Safari have a text paste dialog. Clipboard data
-is neither persisted nor logged. DCV's default sixty-minute idle client timeout
-disconnects transport; allocation/meeting deadlines destroy VMs. Revocation closes
-sessions, kills processes and locks retained accounts. Shared guest administration means
-teammate workspaces are not security boundaries. See [browser clipboard
-behavior](https://docs.aws.amazon.com/dcv/latest/userguide/using-copy-paste.html) and
-[idle
-timeout](https://docs.aws.amazon.com/dcv/latest/adminguide/manage-disconnect.html).
-
-Personal desktop lesson requests bind the authenticated owner and the run rendered into
-that window. Writes require the exact desktop Origin, JSON content type and a custom
-header, preventing a changed cookie from redirecting answers to another run. The lesson
-panel uses local UI assets and contains no infrastructure secrets.
-
-Admin coach access selects a ready team's declared SSH machine, including hidden guests,
-and opens `/admin/terminal/` in a separate tab. A WebSocket checks app Origin, admin
-session, first-message CSRF, dimensions and pinned context, then binds library-owned
-instance/source/machine/host identities. Browsers cannot supply guest addresses or
-credentials. Authorization is rechecked while connected; revocation, meeting expiry and
-bounded keepalives close the channel.
-
-Channels last at most ten minutes and hold the selected machine/lifecycle guard. The
-bundled xterm.js terminal uses a guest PTY with resize and binary keyboard frames.
-Scrollback and renderer queues are bounded and not persisted. Transport recovery
-reauthorizes, opens a fresh shell, retains visible history and never replays input.
-Normal exit, explicit disconnect and lost authorization stop retries. Context changes
-discard queued output before it can repaint another session; terminal output cannot
-control navigation, clipboard or page titles.
-
-### UI structure
-
-The static SvelteKit UI uses daisyUI, Lucide, Instrument Sans and a local SVG mark. Nine
-prerendered routes cover home, template library, learning player, team choice, team lab
-and administration, including a legacy admin redirect and coach terminal. SSR runs
-during generation with no SPA fallback. Internal navigation preserves the authenticated
-layout; server login/logout uses full document navigation. Strict CSP serves scripts,
-styles and fonts locally. See
-[SvelteKit static generation](https://svelte.dev/docs/kit/adapter-static).
-
-Practice, Meeting and Admin adapt to phone bottom navigation. Admin tools cover teams,
-exercises, scoreboard and templates. Players combine stages/workspace controls, with
-lesson panels beside desktops. Layout includes safe areas, touch targets and keyboard
-focus clearance.
-
-Practice and Admin → Templates share one card per template's newest revision. Cards
-read public catalog content and use audience-specific availability or admin image
-status. An empty admin revision list still loads the catalog and reaches its empty
-state. Per-revision image actions and instructor notes live on the template detail
-page; its revision selector reaches older pins. Meeting creation opens a dialog from
-a built card or revision panel, retains that exact pin, and refuses submission if the
-admin view no longer considers it built or marks it for removal. The Meeting page
-links to template selection when no meeting is open.
-
-Admin views are scoped to user/CSRF session and clear on sign-out, identity/role changes
-or unauthorized reads. A two-second poll shares refreshes. Transient failures retain the
-last view; repeated failures show a separate stale warning. Late responses cannot
-populate another session. Active jobs remain visible beyond recent history. UI fixtures
-establish layout/flow only.
+The UI is static SvelteKit (daisyUI, Lucide icons, Instrument Sans), prerendered with
+no SPA fallback and served under a strict CSP with local scripts, styles and fonts.
+Practice, Meeting and Admin become a bottom navigation bar on phones. Practice and
+Admin → Templates share one card per template; meetings start from a template card or a
+revision's page. Admin data refreshes on a shared two-second poll that clears on
+sign-out or identity changes and shows a separate warning when updates fail repeatedly.
 
 ## Qualification status
 
-The table summarizes recorded prior evidence, not new live checks performed by editing
-this document. Evidence applies to its original source, environment and resource layout;
-unchanged inputs retain their passing evidence. Detailed records and installation
-identifiers belong outside tracked source.
+What has been verified on real platforms. Evidence applies to the source, environment
+and layout it was recorded with; detailed records stay outside this repository. Mocks,
+request capture, browser fixtures and local load models establish local behavior only.
 
-| Area | Real-platform evidence recorded | Remaining qualification |
+| Area | Verified on a real platform | Not yet verified |
 | --- | --- | --- |
-| AWS library lifecycle | Native builds, deployment, pinned SSH, desktops and interrupted cleanup | Full interruption, response-loss and stale-ownership matrix |
-| AWS private gateway/egress | Private guests, jump SSH/DCV, NAT, blocked private forwarding and confirmed cleanup | Cohort load, reboot behavior and broader cold/warm latency |
-| AWS platform options | Explicit type, gp3 performance and CPU credit requests checked natively | Wider option combinations; Proxmox options have local coverage only |
-| Hosted identity and meetings | Real OIDC, revocation, seat switching and retained desktop workspaces; twenty desktops across five teams on an earlier layout | Current-layout cohort qualification and configurable group policy |
-| Hosted practice/scenarios | Individual AWS attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts and full weekly quota exhaustion/reset |
-| Hosted coach/desktops | Native terminal input/resize/reconnect/revocation and cold/reboot desktop samples; one AWS meeting of 4 teams × 3 students (12 concurrent desktops, a break and checks on all teams) | Generalized launch latency and meetings larger than 4 × 3 |
-| Multiple networks and routers | AWS: two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot and complete cleanup | Interrupted multi-NIC recovery on AWS; all of it on Proxmox |
-| AWS Windows guests | 2026-10-15 AWS CLI/library: both mixed IIS images built and boot-qualified; Windows sysprep and native DCV certificate sanitization; fresh private deployment without recovery; pinned coach PTY and both student SSH paths; firewall, hosts and persistent routes; EC2-licensed DCV console with browser screenshot/OCR, reconnect and revoked-session refusal; both IIS break/check/repair/stage/scenario variants; native ACL, launcher failure/timeout/descendant/output/lock/cleanup and DCV JSON/certificate tests; SIGKILL during destroy followed by recovery; engine image removal and confirmed native inventory cleanup | Real hosted Windows OIDC/session and release acceptance, typed desktop input proof, cohorts, and the full interruption/response-loss/stale-ownership matrix remain unverified |
-| Proxmox | No complete live lifecycle qualification recorded | All examples, isolation, noVNC input/auth/revocation, options and egress |
-| Durability and scheduler | Local failure, persistence, response-loss, authorization and race coverage; prior hosted restore rehearsal | Full native failure matrix and configured aggregate capacity ceilings |
+| AWS library lifecycle | Image builds, deployment, pinned SSH, desktops, interrupted cleanup | Full interruption, response-loss and stale-ownership matrix |
+| AWS gateway and egress | Private guests, jump SSH and DCV, NAT, blocked private forwarding, cleanup | Reboot behavior; broader cold/warm latency |
+| AWS platform options | Explicit type, gp3 performance and CPU credits | Wider combinations |
+| Multiple networks and routers (AWS) | Two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot, cleanup | Interrupted multi-NIC recovery |
+| AWS Windows guests (CLI/library) | Mixed IIS lab: both images built and boot-qualified; sysprep and certificate sanitization; private deployment; coach and student SSH; firewall, hosts and routes; DCV console with browser rendering, reconnect and revocation; break/check/repair for every stage and scenario variant; recovery after a killed destroy; image removal with confirmed cleanup | Hosted Windows sign-in and release acceptance; typed desktop input; cohorts; full failure matrix |
+| Hosted identity and meetings | Real OIDC, revocation, seat switching, retained workspaces; a meeting of 4 teams × 3 students with 12 concurrent desktops, a break and checks on every team | Meetings larger than 4 × 3 |
+| Hosted practice and scenarios | Individual attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts; full weekly quota exhaustion |
+| Hosted desktops and coach terminal | Terminal input, resize, reconnect and revocation; cold and rebooted desktops; desktop browser launch | General launch latency |
+| Proxmox | Nothing end to end | Every example, isolation, noVNC, options and egress |
+| Durability and scheduling | Local failure, persistence, response-loss, authorization and race tests; a hosted restore rehearsal | Native failure matrix; configured capacity ceilings |
 
-Mocks, request capture, browser fixtures and fake-engine load measurements establish
-local behavior, not platform acceptance. Hosted AWS evidence does not establish Proxmox
-portability. Cross-platform release qualification needs native lifecycles and image
-removal/inventory reconciliation on both platforms.
+Not supported yet: Windows on Proxmox, Windows routers or multiple Windows NICs, Ansible
+targeting Windows, author CIDRs on Proxmox, hosted platforms other than AWS,
+multi-operator allocation, laptop hypervisors or Docker runners, a template registry and
+background cleanup for the CLI.
 
-Not yet supported: Windows on Proxmox, Windows forwarding/multiple NICs, Linux
-PowerShell builds or a Linux-controller Ansible path for Windows, author CIDRs on
-Proxmox, additional hosted
-platforms, multi-operator allocation, laptop hypervisors or Docker runners, a template
-registry and automatic CLI background cleanup. Meetings larger than 4 teams × 3
-students are not load-qualified.
+## Roadmap
 
-## Proposals and roadmap
+Design intentions, not contracts. Each needs failure tests and live qualification in an
+explicitly configured environment.
 
-These are design intentions, not implemented contracts. Further Windows work includes
-Proxmox bootstrap/firmware bindings, additional NICs and an optional disposable Linux
-controller for Ansible targeting Windows. Author code must still stay in guests.
-Firmware, machine type and disk controller remain base-binding responsibilities.
-Each expansion needs meaningful failure tests and live qualification in an explicitly
-configured environment. AWS Windows implementation and its qualification limits are
-described above, not proposed here.
-
-Registries, additional hosted platforms, broader classroom governance and EC2 Image
-Builder are deferred. Hosted policy must stay outside portable declarations.
+- **Proxmox qualification** end to end, starting from a fresh cluster.
+- **Windows:** Proxmox bootstrap and firmware bindings, more NICs, and an optional
+  disposable Linux controller for Ansible targeting Windows (author code still only in
+  guests).
+- Deferred: registries, additional hosted platforms, broader classroom governance and
+  EC2 Image Builder.

@@ -1,7 +1,9 @@
 # LabCentral v2
 
 Read README.md and ARCHITECTURE.md. Keep the current design in ARCHITECTURE.md; update
-it in place with implementation changes. No ADRs or duplicate status files.
+it in place with implementation changes. User guides live in `docs/` (templates,
+operators, hosted, development); keep them in sync with behavior. No ADRs or duplicate
+status files. Use Mermaid for diagrams.
 
 The Go library and CLI remain independent of hosted identity and HTTP policy. The hosted
 service lives in `hosted`; its UI is static SvelteKit under `web`. Do not copy v1
