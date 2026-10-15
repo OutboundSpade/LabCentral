@@ -21,9 +21,8 @@
     Search,
     Server,
     Shuffle,
-    Users,
   } from "@lucide/svelte";
-  import { api, APIError, session, refresh, date } from "$lib/api";
+  import { api, APIError, session, refresh, date, adminView } from "$lib/api";
   import { sessionScope, learnPath, kindLabel } from "$lib/learning";
   import {
     attempts as ownAttempts,
@@ -31,7 +30,7 @@
     baselineBlocked,
     baselineHint,
     scenarioBlocked,
-    desktopWorkstation,
+    availability,
     scenarios as scenarioList,
     difficultyLabel,
     minutes,
@@ -42,6 +41,9 @@
   import { render, prose } from "$lib/markdown";
   import Notice from "$lib/Notice.svelte";
   import AttemptButton from "$lib/AttemptButton.svelte";
+  import TemplateCard from "$lib/TemplateCard.svelte";
+  import RevisionAdmin from "$lib/RevisionAdmin.svelte";
+  import Status from "$lib/Status.svelte";
   let {
     catalog = null,
     catalogError = "",
@@ -234,6 +236,9 @@
     const title = revision.commitTitle || "Imported revision";
     return `${revision.commit.slice(0, 7)} · ${title.length > 26 ? `${title.slice(0, 25).trimEnd()}…` : title}`;
   }
+  const instructor = $derived(
+    $adminView?.templates.find((t) => t.id === template?.id)?.instructor,
+  );
   const scenarioTitle = (scenarioID?: string) =>
     scenarioList(template).find((s) => s.id === scenarioID)?.title ??
     "Randomized scenario";
@@ -282,17 +287,7 @@
                 · {date(template.committedAt, { dateStyle: "medium" })}{/if}
             </p>{/if}
         </div>
-        {#if $session?.user.admin}<div class="order-2 flex flex-wrap gap-2">
-            {#if template.imagesBuilt}<a
-                class="btn btn-sm min-h-11 lg:min-h-8"
-                href={`/admin/?template=${encodeURIComponent(template.id)}`}
-                ><Users size={15} />Prepare meeting</a
-              >
-            {:else}<a
-                class="btn btn-sm min-h-11 lg:min-h-8"
-                href="/admin/templates/"><Server size={15} />Build images</a
-              >{/if}
-          </div>{/if}
+        {#if $session?.user.admin}<div class="order-2"><RevisionAdmin id={template.id} /></div>{/if}
         <section
           aria-labelledby="template-environment-title"
           class="rounded-box border border-base-content/9 bg-base-200/70 order-4 p-4"
@@ -333,7 +328,7 @@
       <div class="order-3 min-w-0 space-y-10 lg:order-none">
         <section aria-labelledby="template-practice-title">
           <h3 id="template-practice-title" class="text-sm font-semibold">
-            Practice this revision
+            Practice
           </h3>
 
           <ul class="mt-4 grid gap-3 xl:grid-cols-2">
@@ -420,6 +415,24 @@
             {/each}
           </ul>
         </section>
+        {#if $session?.user.admin && instructor}<details
+            class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70"
+          >
+            <summary class="collapse-title flex min-h-11 items-center gap-2 text-sm font-medium"
+              ><LockKeyhole size={14} aria-hidden="true" />Instructor notes</summary
+            >
+            <div class="collapse-content text-sm">
+              {#if instructor.notes}<p class="whitespace-pre-line leading-relaxed">{instructor.notes}</p>{/if}
+              {#each instructor.breaks as item (item.name)}<div class="mt-4">
+                  <p class="font-medium">{item.name}</p>
+                  <p class="mt-1 whitespace-pre-line text-base-content/70">{item.walkthrough}</p>
+                </div>{/each}
+              {#if instructor.checks.length}<p class="mt-4 text-xs text-base-content/60">
+                  {instructor.checks.length}
+                  {instructor.checks.length === 1 ? "service check" : "service checks"}
+                </p>{/if}
+            </div>
+          </details>{/if}
         <section aria-labelledby="template-attempts-title">
           <h3 id="template-attempts-title" class="text-sm font-semibold">
             Your attempts on this revision
@@ -570,69 +583,16 @@
         </p>{/if}
       <ul class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {#each visible as t (t.id)}
-          {@const meta = t.library}
-          {@const count = scenarioList(t).length}
-          <li
-            class="card card-sm border border-base-content/9 bg-base-200/70 min-w-0 transition-colors hover:border-base-content/20"
-          >
-            <div class="card-body">
-              {#if meta?.category}<p class="grow-0 text-xs font-medium text-base-content/70">
-                  {meta.category}
-                </p>{/if}
-              <h2 class="card-title break-words text-base leading-snug">
-                <a class="hover:underline" href={path(t.id)}>{templateName(t.name)}</a>
-              </h2>
-              <p class="line-clamp-2 text-sm leading-relaxed text-base-content/70">
-                {t.description || "A pinned lab environment."}
-              </p>
-              {#if meta?.difficulty || meta?.estimatedMinutes || meta?.tags?.length || t.coachOnly}<div
-                  class="flex flex-wrap gap-1.5"
-                >
-                  {#if t.coachOnly}<span class="badge badge-sm badge-ghost">Coach-only</span>{/if}
-                  {#if meta?.difficulty}<span class="badge badge-sm badge-ghost"
-                      ><Gauge size={12} aria-hidden="true" />{difficultyLabel(meta.difficulty)}</span
-                    >{/if}
-                  {#if meta?.estimatedMinutes}<span class="badge badge-sm badge-ghost"
-                      ><Clock size={12} aria-hidden="true" />{minutes(meta.estimatedMinutes)}</span
-                    >{/if}
-                  {#each meta?.tags ?? [] as tag (tag)}<span class="badge badge-sm badge-ghost"
-                      >{tag}</span
-                    >{/each}
-                </div>{/if}
-              <div class="mt-auto space-y-1 pt-3 text-xs text-base-content/70">
-                <p>
-                  {t.machines.length}
-                  {t.machines.length === 1 ? "machine" : "machines"} · {t.stageCount}
-                  {t.stageCount === 1 ? "stage" : "stages"}
-                </p>
-                <p class="flex flex-wrap gap-x-3 gap-y-1">
-                  {#if practicable(t)}<span class="inline-flex items-center gap-1"
-                      ><ListChecks size={12} aria-hidden="true" />Baseline practice</span
-                    >{/if}
-                  {#if randomized(t)}<span class="inline-flex items-center gap-1"
-                      ><Shuffle size={12} aria-hidden="true" />{count}
-                      {count === 1 ? "scenario" : "scenarios"}</span
-                    >{/if}
-
-                </p>
-                <p>{t.coachOnly || (!practicable(t) && !randomized(t))
-                    ? "Preview only"
-                    : !desktopWorkstation(t)
-                      ? "Local only · no desktop"
-                      : !t.imagesBuilt
-                        ? "Local only · images not built"
-                        : "Workspace available"}</p>
-              </div>
-              <div class="card-actions justify-end pt-1">
-                <a
-                  class="btn btn-sm min-h-11 lg:min-h-8"
-                  href={path(t.id)}
-                  aria-label={`Explore ${templateName(t.name)} revision ${t.commit.slice(0, 7)}`}
-                  >Explore<ArrowRight size={15} /></a
-                >
-              </div>
-            </div>
-          </li>
+          {@const state = availability(t)}
+          <TemplateCard template={t} href={path(t.id)}>
+            {#snippet status()}<Status status={state.status} label={state.label} />{/snippet}
+            {#snippet actions()}<a
+                class="btn btn-sm min-h-11 lg:min-h-8"
+                href={path(t.id)}
+                aria-label={`Explore ${templateName(t.name)} revision ${t.commit.slice(0, 7)}`}
+                >Explore<ArrowRight size={15} /></a
+              >{/snippet}
+          </TemplateCard>
         {:else}<li class="py-10 text-center sm:col-span-2 xl:col-span-3">
             <BookOpen size={22} class="mx-auto text-base-content/60" aria-hidden="true" />
             <h2 class="mt-3 font-semibold">
@@ -641,7 +601,7 @@
             {#if !templates.length}<p class="mt-1 text-sm text-base-content/70">
                 {#if $session?.user.admin}Import revisions from <a
                     class="link"
-                    href="/admin/templates/">Lab templates</a
+                    href="/admin/templates/">Templates</a
                   >.{:else}Templates appear here once an instructor imports them.{/if}
               </p>{/if}
             {#if filtered}<button class="btn btn-sm min-h-11 mt-3" onclick={clear}

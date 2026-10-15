@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { templateName } from "$lib/display";
   import CoachConsole from "$lib/CoachConsole.svelte";
   import Activity from "$lib/Activity.svelte";
   import Scoreboard from "$lib/Scoreboard.svelte";
@@ -13,56 +12,16 @@
   import { goto } from "$app/navigation";
   import PageHeader from "$lib/PageHeader.svelte";
   import AdminNav from "$lib/AdminNav.svelte";
-  import { Play, Plus, Trash2 } from "@lucide/svelte";
+  import { LibraryBig, Play, Plus, Trash2, Users } from "@lucide/svelte";
+  import EmptyState from "$lib/EmptyState.svelte";
   import Guard from "$lib/Guard.svelte";
   import Notice from "$lib/Notice.svelte";
   import { api, adminView, refreshAdmin, date, session } from "$lib/api";
   let data = $derived($adminView);
   let error = $state("");
   let busy = $state(false);
-  let name = $state("Team practice");
-  let template = $state("");
-  let hours = $state(4);
-  let teamCount = $state(5);
-  let capacity = $state(6);
   let extension = $state(1);
   let success = $state("");
-  let createdID = $state("");
-  let selectionRequest = $state<string | null>(null);
-  let lostRevision = $state(false);
-  const requestedRevision = $derived(page.url.searchParams.get("template") ?? "");
-  const builtRevisions = $derived(
-    (data?.templates.filter((t) => t.built && !t.removing) ?? []).toSorted(
-      (a, b) =>
-        Date.parse(b.committedAt ?? b.importedAt ?? "") -
-        Date.parse(a.committedAt ?? a.importedAt ?? ""),
-    ),
-  );
-  const selectedRevision = $derived(builtRevisions.find((t) => t.id === template));
-  const revisionNotice = $derived(
-    !selectedRevision && data
-      ? lostRevision
-        ? "The selected revision is no longer available for a meeting. Explicitly choose an available built revision."
-        : requestedRevision
-          ? data.templates.some((t) => t.id === requestedRevision && !t.built && !t.removing)
-            ? "The requested revision needs its images built before a meeting can use it. Build this revision in template administration, or explicitly choose another built revision."
-            : "The requested revision is unavailable for a meeting. It may have been removed or be awaiting removal. Explicitly choose an available built revision."
-          : ""
-      : "",
-  );
-  $effect(() => {
-    if (!data) return;
-    if (selectionRequest !== requestedRevision) {
-      selectionRequest = requestedRevision;
-      lostRevision = false;
-      template = requestedRevision
-        ? builtRevisions.find((t) => t.id === requestedRevision)?.id ?? ""
-        : builtRevisions[0]?.id ?? "";
-    } else if (template && !selectedRevision) {
-      template = "";
-      lostRevision = true;
-    }
-  });
   const joined = $derived(data?.joinedStudents ?? 0);
   const seats = $derived(
     data?.teams.reduce((sum, t) => sum + t.capacity, 0) ?? 0,
@@ -139,11 +98,6 @@
       const result = await api<Meeting>(path, body);
       if (path === "/api/admin/extend")
         success = `Extended to ${date(result.expires)}.`;
-      if (path === "/api/admin/meeting") {
-        createdID = result.id;
-        success =
-          "Meeting created. Prepare labs now to make the teams available.";
-      }
       if (path === "/api/admin/jobs/retry")
         success = "Preparation recovery queued. Ready team labs are preserved.";
       confirmation?.close();
@@ -201,119 +155,18 @@
   {#if success}<p class="mb-4 text-sm text-success" role="status">{success}</p>{/if}
   {#if data}
     {#if !data.meeting || data.meeting.status === "ended"}
-      <PageHeader title="New meeting">{#snippet eyebrow()}Meeting{/snippet}</PageHeader>
+      <PageHeader title="Meeting" />
       <AdminNav />
       <div
         class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
       >
         <section class="min-w-0">
-          <form
-            class="rounded-box border border-base-content/9 bg-base-200/70 max-w-xl p-6"
-            onsubmit={(e) => {
-              e.preventDefault();
-              if (!selectedRevision) {
-                error = "Choose an available built template revision.";
-                return;
-              }
-              void run("/api/admin/meeting", {
-                name,
-                template,
-                hours,
-                teamCount,
-                capacity,
-              });
-            }}
-          >
-            <fieldset class="fieldset gap-1.5 p-0 text-sm" disabled={busy}>
-              <legend class="sr-only">Create a meeting</legend>
-              <label class="label" for="meeting-name">Name</label><input
-                class="input input-sm min-h-11 w-full"
-                id="meeting-name"
-                bind:value={name}
-                maxlength="100"
-                required
-              />
-              <label class="label mt-3" for="template"
-                >Built template revision</label
-              ><select
-                id="template"
-                class="select select-sm min-h-11 w-full"
-                bind:value={template}
-                required
-                aria-describedby={revisionNotice ? "revision-notice" : undefined}
-                ><option value="" disabled>Choose a built revision</option
-                >{#each builtRevisions as t}<option value={t.id}
-                    >{templateName(t.name)} · {t.name} · {t.commitTitle || "Imported revision"} · {t.commit.slice(
-                      0,
-                      7,
-                    )}</option
-                  >{/each}</select
-              >
-              {#if revisionNotice}<p id="revision-notice" class="mt-1 text-sm leading-relaxed text-warning" role="status">{revisionNotice} <a class="link" href="/admin/templates/">Templates</a></p>{/if}
-              {#if !builtRevisions.length}<p class="mt-1 text-sm text-base-content/70">
-                  No built revisions yet. <a class="link" href="/admin/templates/">Build a template</a> first.
-                </p>{/if}
-              <div class="mt-3 grid gap-4 sm:grid-cols-3">
-                <div>
-                  <label class="label mb-1.5" for="team-count"
-                    >Number of teams</label
-                  ><input
-                    id="team-count"
-                    class="input input-sm min-h-11 w-full"
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    bind:value={teamCount}
-                    required
-                    title="1–100 teams"
-                  />
-                </div>
-                <div>
-                  <label class="label mb-1.5" for="capacity"
-                    >Students per team</label
-                  ><input
-                    id="capacity"
-                    class="input input-sm min-h-11 w-full"
-                    type="number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    bind:value={capacity}
-                    required
-                    title="1–100 students"
-                  />
-                </div>
-                <div>
-                  <label class="label mb-1.5" for="duration"
-                    >Duration (hours)</label
-                  ><input
-                    id="duration"
-                    class="input input-sm min-h-11 w-full"
-                    type="number"
-                    min="1"
-                    max="8"
-                    step="1"
-                    bind:value={hours}
-                    required
-                    title="1–8 hours"
-                  />
-                </div>
-              </div>
-              <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-base-content/8 pt-5">
-                <button
-                  disabled={busy || !selectedRevision}
-                  class="btn btn-sm min-h-11 btn-primary"
-                  >{#if busy}<span class="loading loading-spinner loading-xs"
-                    ></span>{:else}<Plus size={16} />{/if}Create meeting</button
-                >
-                <p class="text-xs text-base-content/60">
-                  {(teamCount || 0) * (capacity || 0)} desktop places · deleted after {hours || 0}
-                  {hours === 1 ? "hour" : "hours"}
-                </p>
-              </div>
-            </fieldset>
-          </form>
+          <EmptyState icon={Users} title="No meeting running">
+            Start one from a template.
+            {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/admin/templates/"
+                ><LibraryBig size={15} />Choose a template</a
+              >{/snippet}
+          </EmptyState>
         </section>
         <aside class="min-w-0">
           <Activity {data} onchange={refreshAdmin} />
@@ -350,10 +203,7 @@
               class="btn btn-sm min-h-11 btn-primary lg:min-h-8"
               disabled={busy || preparing}
               onclick={() => confirm("prepare")}
-              ><Play size={15} />{createdID === data.meeting.id &&
-              data.meeting.status === "waiting"
-                ? "Prepare labs now"
-                : "Prepare labs"}</button
+              ><Play size={15} />Prepare labs</button
             >{/if}
           <button
             type="button"
@@ -406,6 +256,10 @@
           <a class="link" href="#activity-title">View activity</a>
         </p>{:else if preparing}<p class="-mt-4 mb-6 text-sm text-base-content/70">
           Preparing labs. Ready teams can already use theirs.
+        </p>{:else if data.meeting.status === "waiting" && !readyCount}<p
+          class="-mt-4 mb-6 text-sm text-base-content/70"
+        >
+          Prepare labs to open them to teams.
         </p>{/if}
       <div
         class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"

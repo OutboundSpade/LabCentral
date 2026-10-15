@@ -67,6 +67,15 @@ export function scenarioBlocked(t: LibraryTemplate) {
   return "";
 }
 
+// One availability line for library cards.
+export function availability(t: LibraryTemplate) {
+  if (t.coachOnly || (baselineBlocked(t) && !scenarios(t).length))
+    return { status: "preview", label: "Preview only" };
+  if (!desktopWorkstation(t) || !t.imagesBuilt)
+    return { status: "local", label: "Local only" };
+  return { status: "ready", label: "Workspace ready" };
+}
+
 export function difficultyLabel(value: string) {
   return value ? value[0].toUpperCase() + value.slice(1) : "";
 }
