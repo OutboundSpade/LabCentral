@@ -85,7 +85,7 @@ Provider credentials stay in the operator's environment and the provider process
 | Platform options | Instance type, gp3 volume, CPU credits, build instance type | CPU model, NIC model, memory ballooning |
 | Hosted service | Yes | Library and CLI only |
 | Multiple networks, NICs and routers | Up to 8 networks and 8 NICs per machine; author CIDRs | Up to 4 networks and 4 NICs per machine |
-| Windows Server 2022 guests | Implemented; local qualification only | Rejected at plan time |
+| Windows Server 2022 guests | CLI/library qualified on AWS; hosted OIDC pending | Rejected at plan time |
 
 Linux guests are Ubuntu 24.04 amd64; AWS also implements Windows Server 2022 amd64. The operator machine is Linux amd64. Multiple networks
 and routers have been verified on AWS; Proxmox support is implemented but not yet
@@ -213,9 +213,11 @@ build:
   windowsDCVSHA256: 593e2b78cd41b64fac255f303e48b1e7f73129969279ba2eae067e519f962067
 ```
 
- EC2Launch v2 generalizes and
-shuts down the guest before capture; captured AMIs are boot-qualified before
-publication. AWS Windows acceptance has **not** been recorded.
+EC2Launch v2 generalizes and shuts down the guest before capture; captured AMIs
+are boot-qualified before publication. The AWS CLI/library mixed IIS example has
+real Windows boot, jump SSH, DCV browser rendering/reconnect/revocation and
+both instructor fault variants verified. Hosted Windows OIDC/session acceptance
+remains unverified; see the qualification table in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Instructor v3 steps use `script: check.ps1` for Windows and `playbook` for Linux,
 with exactly one program. Files and assets retain their relative paths in a

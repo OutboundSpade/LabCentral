@@ -8,7 +8,7 @@ compatibility.
 
 LabCentral combines a portable Go library, optional CLI, provider processes and a hosted
 application. Operators use Linux amd64 with Ubuntu 24.04 amd64 guests and AWS
-Windows Server 2022 guests (local qualification only). AWS EC2 and Proxmox are library platforms; hosted provisioning requires AWS.
+Windows Server 2022 guests (AWS CLI/library live qualification; hosted Windows identity acceptance pending). AWS EC2 and Proxmox are library platforms; hosted provisioning requires AWS.
 
 ```mermaid
 flowchart TD
@@ -810,7 +810,7 @@ identifiers belong outside tracked source.
 | Hosted practice/scenarios | Individual AWS attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts and full weekly quota exhaustion/reset |
 | Hosted coach/desktops | Native terminal input/resize/reconnect/revocation and cold/reboot desktop samples | Generalized launch latency and classroom concurrency |
 | Multiple networks and routers | AWS: two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot and complete cleanup | Interrupted multi-NIC recovery on AWS; all of it on Proxmox |
-| AWS Windows guests | Local schema/planning, golden Linux compatibility, Packer generation/offline validation, PowerShell parsing, SSH payload/OS-selection and fake-EC2 recovery tests only | All Windows Server 2022 boot, sysprep, OpenSSH, firewall, DCV console/licensing, real OIDC/desktop sessions, interrupted lifecycle and image removal acceptance for `examples/windows-iis`; native launcher harness not run on this Linux host |
+| AWS Windows guests | 2026-10-15 AWS CLI/library: both mixed IIS images built and boot-qualified; Windows sysprep and native DCV certificate sanitization; fresh private deployment without recovery; pinned coach PTY and both student SSH paths; firewall, hosts and persistent routes; EC2-licensed DCV console with browser screenshot/OCR, reconnect and revoked-session refusal; both IIS break/check/repair/stage/scenario variants; native ACL, launcher failure/timeout/descendant/output/lock/cleanup and DCV JSON/certificate tests; SIGKILL during destroy followed by recovery; engine image removal and confirmed native inventory cleanup | Real hosted Windows OIDC/session and release acceptance, typed desktop input proof, cohorts, and the full interruption/response-loss/stale-ownership matrix remain unverified |
 | Proxmox | No complete live lifecycle qualification recorded | All examples, isolation, noVNC input/auth/revocation, options and egress |
 | Durability and scheduler | Local failure, persistence, response-loss, authorization and race coverage; prior hosted restore rehearsal | Full native failure matrix and configured aggregate capacity ceilings |
 
