@@ -33,14 +33,16 @@
       ansible.builtin.apt:
         name: firefox
         update_cache: true
-    - name: Create the desktop's system settings directory
+    # Per-user default: /etc/xdg/xfce4/helpers.rc belongs to the desktop packages
+    # installed after this playbook, so it must not be written here.
+    - name: Create the default desktop settings directory for new accounts
       ansible.builtin.file:
-        path: /etc/xdg/xfce4
+        path: /etc/skel/.config/xfce4
         state: directory
         mode: '0755'
-    - name: Make Firefox the desktop's web browser
+    - name: Make Firefox the desktop's web browser for new accounts
       ansible.builtin.copy:
-        dest: /etc/xdg/xfce4/helpers.rc
+        dest: /etc/skel/.config/xfce4/helpers.rc
         content: "WebBrowser=firefox\n"
         mode: '0644'
     - name: Write training welcome
