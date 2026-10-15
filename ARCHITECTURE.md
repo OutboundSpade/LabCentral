@@ -218,9 +218,8 @@ Platform code installs the version/URL/SHA-256-pinned Windows DCV MSI from
 Authenticode signature. Platform settings use DCV's SYSTEM user registry hive
 (`HKEY_USERS\S-1-5-18`), verified from the pinned MSI metadata. Installation
 disables automatic sessions/server startup, configures the service, and performs
-a platform driver reboot before author execution. The current pin uses the NI SP distribution mirror;
-the pinned MSI was inspected locally. Its pin participates only in Windows
-desktop policy. Linux plan and image-key golden fixtures retain the preceding
+a platform driver reboot before author execution. The pin is Amazon's DCV download
+for 2025.0-20103. It participates only in Windows desktop policy. Linux plan and image-key golden fixtures retain the preceding
 implementation's exact serialized bytes.
 
 After author execution, platform code removes build files, inputs, management

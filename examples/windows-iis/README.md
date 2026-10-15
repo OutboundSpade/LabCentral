@@ -28,11 +28,8 @@ Runtime Internet access is unnecessary for this example. Management remains
 private through the gateway; the Windows firewall stays enabled.
 
 The Windows DCV MSI URL and SHA-256 are recorded in `tools/toolchain.json` and
-checked in the guest, together with its Authenticode signature. This revision uses
-the [NI SP distribution mirror](https://cdn.ni-sp.com/) with its
-[published checksum](https://cdn.ni-sp.com/dcv-server-x64-Release.2025.0.msi.sha256sum).
-No software was downloaded from AWS to qualify this implementation. Updating the
-pin changes Windows desktop image keys only.
+checked in the guest, together with its Authenticode signature. The pin is Amazon's
+DCV 2025.0-20103 server MSI. Updating the pin changes Windows desktop image keys only.
 
 Local tests establish code behavior only. Windows boot, EC2Launch reboot/sysprep,
 DCV console display, licensing and real session revocation remain unqualified
