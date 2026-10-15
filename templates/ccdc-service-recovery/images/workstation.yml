@@ -8,6 +8,41 @@
         name: [curl, tcpdump, jq, mousepad, openssh-client]
         state: present
         update_cache: true
+    - name: Create the APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+    - name: Install Mozilla's repository key
+      ansible.builtin.get_url:
+        url: https://packages.mozilla.org/apt/repo-signing-key.gpg
+        checksum: sha256:3ecc63922b7795eb23fdc449ff9396f9114cb3cf186d6f5b53ad4cc3ebfbb11f
+        dest: /etc/apt/keyrings/packages.mozilla.org.asc
+        mode: '0644'
+    - name: Use Mozilla's native Firefox packages
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/mozilla.list
+        content: "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main\n"
+        mode: '0644'
+    - name: Prefer Mozilla's package over the Ubuntu snap transition package
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/mozilla
+        content: "Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n"
+        mode: '0644'
+    - name: Install Firefox
+      ansible.builtin.apt:
+        name: firefox
+        update_cache: true
+    - name: Create the desktop's system settings directory
+      ansible.builtin.file:
+        path: /etc/xdg/xfce4
+        state: directory
+        mode: '0755'
+    - name: Make Firefox the desktop's web browser
+      ansible.builtin.copy:
+        dest: /etc/xdg/xfce4/helpers.rc
+        content: "WebBrowser=firefox\n"
+        mode: '0644'
     - name: Write training welcome
       ansible.builtin.copy:
         dest: /etc/motd
