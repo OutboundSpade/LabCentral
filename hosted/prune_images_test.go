@@ -115,10 +115,13 @@ func TestPruneImagesSelectionHistoryAndPrivateProgress(t *testing.T) {
 	imageRevision(t, s, "cleanup", "cleanup-image")
 	imageRevision(t, s, "ended", "ended-image")
 	imageRevision(t, s, "queued-build", "queued-image")
-	for _, key := range []string{"new-web", "new-workstation", "meeting-image", "active-image", "pending-image", "cleanup-image", "ended-image", "orphan-from-rebuild", "building-image", "queued-image"} {
+	for _, key := range []string{"new-web", "new-workstation", "meeting-image", "active-image", "pending-image", "cleanup-image", "ended-image", "orphan-from-rebuild", "queued-image"} {
 		e.images = append(e.images, lc.ImageRecord{Key: key, Name: key})
 	}
-	e.builds = []lc.Command{{Image: lc.PlannedImage{CacheKey: "building-image"}}}
+	// An unfinished build has no published image yet. Finished builds keep their
+	// records until removal and must not protect their images (regression: every
+	// published image was protected because every build record was).
+	e.builds = []lc.Command{{Image: lc.PlannedImage{CacheKey: "building-image"}}, {Image: lc.PlannedImage{CacheKey: "ended-image"}}, {Image: lc.PlannedImage{CacheKey: "orphan-from-rebuild"}}}
 	if err := s.Store.Put(ctx, "meeting", "current", Meeting{ID: "m", Template: "meeting", Status: "ending"}); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +141,7 @@ func TestPruneImagesSelectionHistoryAndPrivateProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	summary, _, err := s.imageInventory(ctx)
-	if err != nil || summary.Images != 12 || summary.UnusedImages != 4 {
+	if err != nil || summary.Images != 11 || summary.UnusedImages != 4 {
 		t.Fatal(summary, err)
 	}
 	response := request(s, "GET", "/api/admin", "", "", "")

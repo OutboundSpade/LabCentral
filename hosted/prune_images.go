@@ -129,12 +129,24 @@ func (s *Service) neededImageKeys(ctx context.Context) (map[string]bool, error) 
 			keys[k] = true
 		}
 	}
+	// Build records outlive successful builds and are only removed with their image.
+	// Protect a build only while it has no published image yet.
 	builds, err := s.Engine.Builds(ctx)
 	if err != nil {
 		return nil, err
 	}
+	images, err := s.Engine.Images(ctx)
+	if err != nil {
+		return nil, err
+	}
+	published := map[string]bool{}
+	for _, im := range images {
+		published[im.Key] = true
+	}
 	for _, b := range builds {
-		keys[b.Image.CacheKey] = true
+		if !published[b.Image.CacheKey] {
+			keys[b.Image.CacheKey] = true
+		}
 	}
 	return keys, nil
 }
