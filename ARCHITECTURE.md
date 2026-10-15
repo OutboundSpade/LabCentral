@@ -712,7 +712,7 @@ identifiers belong outside tracked source.
 | AWS platform options | Explicit type, gp3 performance and CPU credit requests checked natively | Wider option combinations; Proxmox options have local coverage only |
 | Hosted identity and meetings | Real OIDC, revocation, seat switching and retained desktop workspaces; twenty desktops across five teams on an earlier layout | Current-layout cohort qualification and configurable group policy |
 | Hosted practice/scenarios | Individual AWS attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts and full weekly quota exhaustion/reset |
-| Hosted coach/desktops | Native terminal input/resize/reconnect/revocation and cold/reboot desktop samples | Generalized launch latency and classroom concurrency |
+| Hosted coach/desktops | Native terminal input/resize/reconnect/revocation and cold/reboot desktop samples; one AWS meeting of 4 teams × 3 students (12 concurrent desktops, a break and checks on all teams) | Generalized launch latency and meetings larger than 4 × 3 |
 | Multiple networks and routers | AWS: two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot and complete cleanup | Interrupted multi-NIC recovery on AWS; all of it on Proxmox |
 | Proxmox | No complete live lifecycle qualification recorded | All examples, isolation, noVNC input/auth/revocation, options and egress |
 | Durability and scheduler | Local failure, persistence, response-loss, authorization and race coverage; prior hosted restore rehearsal | Full native failure matrix and configured aggregate capacity ceilings |
@@ -724,8 +724,8 @@ removal/inventory reconciliation on both platforms.
 
 Not yet supported: Windows execution, author CIDRs on Proxmox, additional hosted
 platforms, multi-operator allocation, laptop hypervisors or Docker runners, a template
-registry and automatic CLI background cleanup. Larger admitted meeting sizes are not
-load-qualified.
+registry and automatic CLI background cleanup. Meetings larger than 4 teams × 3
+students are not load-qualified.
 
 ## Proposals and roadmap
 
