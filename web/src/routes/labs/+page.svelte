@@ -171,10 +171,10 @@
           {#if run.error}<p class="mt-1 break-words text-error">{run.error}</p>{/if}
         </div>
         <div class="flex flex-wrap gap-2">
-          <a class="btn btn-outline btn-sm min-h-11 lg:min-h-8" href={learnPath(run.labID)}>Open lab</a>
+          <a class="btn btn-sm min-h-11 lg:min-h-8" href={learnPath(run.labID)}>Open lab</a>
           {#if run.status !== "ending"}<button
               type="button"
-              class="btn btn-sm btn-error min-h-11 lg:min-h-8"
+              class="btn btn-sm btn-error btn-soft min-h-11 lg:min-h-8"
               disabled={busy}
               onclick={() => {
                 error = "";
@@ -230,7 +230,7 @@
                   aria-label={`Template revision for ${lab.title}`}>Template revision</a
                 >
                 <a
-                  class={["btn btn-sm min-h-11 lg:min-h-8", done ? "btn-outline" : "btn-primary"]}
+                  class={["btn btn-sm min-h-11 lg:min-h-8", done ? "" : "btn-primary"]}
                   href={learnPath(lab.id)}
                   aria-label={`${verb} ${templateName(lab.title)}, started ${date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}`}
                   >{verb}<ArrowRight size={15} /></a
@@ -245,14 +245,14 @@
             <p class="mt-1 text-sm text-base-content/70">
               Start baseline practice or a scenario from a template.
             </p>
-            <a class="btn btn-outline btn-sm min-h-11 mt-4" href="/labs/">Browse templates<ArrowRight size={15} /></a>
+            <a class="btn btn-sm min-h-11 mt-4" href="/labs/">Browse templates<ArrowRight size={15} /></a>
           </li>
         {/each}
       </ul>
     </section>
   {:else if failure}
     <Notice message={failure} />
-    <button class="btn btn-outline btn-sm min-h-11" onclick={() => load()}
+    <button class="btn btn-sm min-h-11" onclick={() => load()}
       ><RotateCw size={15} />Retry</button
     >
   {:else}
@@ -273,7 +273,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11" disabled={busy}>Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={busy}>Cancel</button>
       </form>
       <button class="btn btn-sm btn-error min-h-11" disabled={busy} onclick={stop}
         >{#if busy}<span class="loading loading-spinner loading-xs"></span>{/if}Stop

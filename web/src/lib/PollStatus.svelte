@@ -8,7 +8,7 @@
     <TriangleAlert size={18} aria-hidden="true" /><span>{$adminPollError}</span>
     <button
       type="button"
-      class="btn btn-outline btn-sm min-h-11"
+      class="btn btn-sm min-h-11"
       onclick={() => refreshAdmin().catch(() => {})}
       ><RotateCw size={15} />Retry update</button
     >

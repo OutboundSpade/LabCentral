@@ -16,7 +16,7 @@
     workspace…
   </div>
 {:else if $loadError && !$session}<Notice message={$loadError} /><button
-    class="btn btn-outline btn-sm min-h-11"
+    class="btn btn-sm min-h-11"
     onclick={refresh}><RotateCw size={15} />Retry</button
   >
 {:else if !$session}<EmptyState icon={LogIn} title="Sign in to continue">

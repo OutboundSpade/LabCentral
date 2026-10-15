@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    ChevronRight,
     Server,
     Clock,
     ExternalLink,
@@ -84,7 +85,7 @@
         : "Workspace files are no longer available."}
       {#snippet actions()}<a href="/labs/" class="btn btn-sm min-h-11 btn-primary"
           >Practice</a
-        ><a href="/teams/" class="btn btn-sm btn-outline min-h-11">Back to teams</a
+        ><a href="/teams/" class="btn btn-sm min-h-11">Back to teams</a
         >{/snippet}
     </EmptyState>
   {:else if !$session?.lab.team}
@@ -93,14 +94,14 @@
       Join a team to get your meeting desktop.
       {#snippet actions()}<a href="/teams/" class="btn btn-sm min-h-11 btn-primary"
           >Choose a team</a
-        ><a href="/labs/" class="btn btn-sm min-h-11 btn-outline"
+        ><a href="/labs/" class="btn btn-sm min-h-11"
           >Practice</a
         >{/snippet}
     </EmptyState>
   {:else}
     <PageHeader title={$session.lab.team.name}>
       {#snippet eyebrow()}{$session?.meeting?.name ?? "Your lab"}{/snippet}
-      <a href="/teams/" class="btn btn-sm btn-outline min-h-11 lg:min-h-8 text-base-content/70"
+      <a href="/teams/" class="btn btn-sm min-h-11 lg:min-h-8 text-base-content/70"
         >Switch team</a
       >
     </PageHeader>
@@ -151,15 +152,15 @@
                 : "Desktop closed"}
             </p>
             <button
-              class="btn btn-sm btn-outline min-h-11 lg:min-h-8 text-base-content/70"
+              class="btn btn-sm min-h-11 lg:min-h-8 text-base-content/70"
               disabled={busy || !$session.lab.desktopActive}
               title="Closes your session. Files remain until the meeting ends."
               onclick={close}><Unplug size={13} />Disconnect desktop</button
             >
           </div>{/if}
-          <details class="mt-3 text-sm">
-            <summary class="flex min-h-11 cursor-pointer items-center text-xs text-base-content/70 hover:text-base-content lg:min-h-8"
-              >Using your desktop</summary
+          <details class="group mt-3 text-sm">
+            <summary class="flex min-h-11 cursor-pointer list-none items-center gap-1 text-xs text-base-content/70 hover:text-base-content lg:min-h-8 [&::-webkit-details-marker]:hidden"
+              ><ChevronRight size={14} aria-hidden="true" class="transition-transform group-open:rotate-90" />Using your desktop</summary
             >
             <ul class="mt-2 [list-style-type:disc] space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
               <li>After 60 idle minutes the desktop disconnects; reopen it to resume.</li>

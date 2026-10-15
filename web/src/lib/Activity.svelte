@@ -190,7 +190,7 @@
               : job.error}
           </p>{/if}
         {#if job.status === "failed" && job.retryable}<button
-            class="btn btn-outline btn-sm min-h-11 mt-3 lg:min-h-8"
+            class="btn btn-sm min-h-11 mt-3 lg:min-h-8"
             disabled={!!retrying}
             onclick={() => retry(job)}
             >{#if retrying === job.id}<span
@@ -216,7 +216,7 @@
         Showing {visible.length} of {matching.length}
       </p>
       {#if visible.length < matching.length}<button
-          class="btn btn-sm btn-outline min-h-11"
+          class="btn btn-sm min-h-11"
           onclick={() => (recentLimit += 12)}>Show more</button
         >{/if}
     </div>{/if}

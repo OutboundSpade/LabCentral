@@ -93,7 +93,7 @@
 
 <svelte:head><title>Templates · LabCentral</title></svelte:head>
 <PageHeader title="Templates">
-  {#if $session?.user.admin}<a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href="/labs/"
+  {#if $session?.user.admin}<a class="btn btn-sm min-h-11 lg:min-h-8" href="/labs/"
       ><LibraryBig size={15} />Student library</a
     ><button
       class="btn btn-sm btn-primary min-h-11 lg:min-h-8"
@@ -111,7 +111,7 @@
   {#if data}
     <div class="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" aria-live="polite">
       {#if data.imageSummary}<p>{data.imageSummary.images} images · {data.imageSummary.unusedImages} unused</p>
-        <button class="btn btn-sm btn-error min-h-11 lg:min-h-8" disabled={busy || pruning || pruneAttention || !data.imageSummary.unusedImages} title={pruneAttention ? "Retry cleanup in Live activity" : undefined}
+        <button class="btn btn-sm btn-error btn-soft min-h-11 lg:min-h-8" disabled={busy || pruning || pruneAttention || !data.imageSummary.unusedImages} title={pruneAttention ? "Retry cleanup in Live activity" : undefined}
           onclick={() => { selected = null; action = "prune-images"; pruneCount = data?.imageSummary?.unusedImages ?? 0; error = ""; confirmation.showModal(); }}>
           <Trash2 size={15} />{pruning ? "Removing unused images…" : "Remove unused images"}
         </button>
@@ -292,7 +292,7 @@
                   </p>{/if}
                 <div class="mt-3 flex flex-wrap gap-2">
                   <a
-                    class="btn btn-sm min-h-11 btn-outline lg:min-h-8"
+                    class="btn btn-sm min-h-11 lg:min-h-8"
                     href={`/labs/?template=${encodeURIComponent(template.id)}`}
                     aria-label={`Open ${template.name} revision ${template.commit.slice(0, 7)} in the library`}
                     ><LibraryBig size={15} />Open in library</a
@@ -300,7 +300,6 @@
                   {#if !template.built && !template.removing}<button
                       class="btn btn-sm min-h-11 lg:min-h-8"
                       class:btn-primary={template.latest}
-                      class:btn-outline={!template.latest}
                       disabled={busy || working}
                       onclick={() => confirm(template, "build")}
                       ><Hammer size={15} />{job?.kind === "build" &&
@@ -311,7 +310,7 @@
                           : "Build images"}</button
                     >{/if}
                   {#if template.imagesReady > 0 || template.buildsPending > 0 || template.removing || (job?.kind === "build" && job.status === "failed")}<button
-                      class="btn btn-sm min-h-11 btn-error lg:min-h-8"
+                      class="btn btn-sm min-h-11 btn-error btn-soft lg:min-h-8"
                       disabled={busy || working || !!template.removalBlocked}
                       onclick={() => confirm(template, "remove-images")}
                       ><Trash2 size={15} />{template.removing
@@ -339,7 +338,7 @@
         </ul>
         {#if earlier}<button
             type="button"
-            class="btn btn-sm min-h-11 btn-outline mt-3"
+            class="btn btn-sm min-h-11 mt-3"
             aria-expanded={history}
             onclick={() => (history = !history)}
             ><History size={15} />{history
@@ -386,7 +385,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11">Cancel</button>
+        <button class="btn btn-sm min-h-11">Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11"

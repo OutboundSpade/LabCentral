@@ -246,8 +246,8 @@
     {@const scenarioReason = scenarioBlocked(template)}
     {@const busyRun = attemptBlocked(catalog?.run)}
     <PageHeader title={templateName(template.name)} description={template.description}>
-      {#snippet eyebrow()}<a class="link link-hover" href={listPath()}>Practice</a>{#if meta?.category} · {meta.category}{/if}{/snippet}
-      <a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href={listPath()}><ArrowLeft size={15} />All templates</a>
+      {#snippet eyebrow()}<a class="link link-hover" href={listPath()}>Practice</a>{#if meta?.category}{" · "}{meta.category}{/if}{/snippet}
+      <a class="btn btn-sm min-h-11 lg:min-h-8" href={listPath()}><ArrowLeft size={15} />All templates</a>
     </PageHeader>
     <div class="grid items-start gap-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10">
       <aside class="contents lg:block lg:min-w-0 lg:space-y-6">
@@ -284,12 +284,12 @@
         </div>
         {#if $session?.user.admin}<div class="order-2 flex flex-wrap gap-2">
             {#if template.imagesBuilt}<a
-                class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
+                class="btn btn-sm min-h-11 lg:min-h-8"
                 href={`/admin/?template=${encodeURIComponent(template.id)}`}
                 ><Users size={15} />Prepare meeting</a
               >
             {:else}<a
-                class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
+                class="btn btn-sm min-h-11 lg:min-h-8"
                 href="/admin/templates/"><Server size={15} />Build images</a
               >{/if}
           </div>{/if}
@@ -430,7 +430,7 @@
           {#if !catalog && catalogError}<p class="mt-2 text-sm text-warning" role="status">
               Your attempts could not be loaded ({catalogError}).
             </p>
-            {#if retryCatalog}<button class="btn btn-outline btn-sm min-h-11 mt-3" onclick={retryCatalog}
+            {#if retryCatalog}<button class="btn btn-sm min-h-11 mt-3" onclick={retryCatalog}
                 ><RotateCw size={15} />Retry attempts</button
               >{/if}
           {:else if !catalog}<p class="mt-2 text-sm text-base-content/70" role="status">
@@ -452,7 +452,7 @@
                     </p>
                   </div>
                   <a
-                    class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
+                    class="btn btn-sm min-h-11 lg:min-h-8"
                     href={learnPath(lab.id)}
                     aria-label={`${done ? "Review" : "Continue"} ${lab.scenarioID ? scenarioTitle(lab.scenarioID) : "baseline practice"} attempt from ${date(lab.publishedAt, { dateStyle: "medium", timeStyle: "short" })}`}
                     >{done ? "Review" : "Continue"}<ArrowRight size={15} /></a
@@ -511,7 +511,7 @@
       </div>
     </div>
   {:else if detailFailure}<Notice message={detailFailure} /><button
-      class="btn btn-outline btn-sm min-h-11"
+      class="btn btn-sm min-h-11"
       onclick={() => detail(id)}><RotateCw size={15} />Retry template</button
     >
   {:else}<div role="status" class="space-y-4">
@@ -625,7 +625,7 @@
               </div>
               <div class="card-actions justify-end pt-1">
                 <a
-                  class="btn btn-outline btn-sm min-h-11 lg:min-h-8"
+                  class="btn btn-sm min-h-11 lg:min-h-8"
                   href={path(t.id)}
                   aria-label={`Explore ${templateName(t.name)} revision ${t.commit.slice(0, 7)}`}
                   >Explore<ArrowRight size={15} /></a
@@ -644,13 +644,13 @@
                     href="/admin/templates/">Lab templates</a
                   >.{:else}Templates appear here once an instructor imports them.{/if}
               </p>{/if}
-            {#if filtered}<button class="btn btn-sm btn-outline min-h-11 mt-3" onclick={clear}
+            {#if filtered}<button class="btn btn-sm min-h-11 mt-3" onclick={clear}
                 >Clear filters</button
               >{/if}
           </li>{/each}
       </ul>
     {:else if failure}<Notice message={failure} /><button
-        class="btn btn-outline btn-sm min-h-11"
+        class="btn btn-sm min-h-11"
         onclick={load}><RotateCw size={15} />Retry library</button
       >
     {:else}<div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="status">

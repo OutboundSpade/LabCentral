@@ -152,7 +152,7 @@
         </nav>
         {#if $session.user.admin && (running || failures)}<a
             href="/admin/#activity-title"
-            class="btn btn-sm btn-outline ml-auto min-h-11 gap-2 px-2.5 text-xs font-normal lg:ml-0 lg:min-h-8"
+            class="btn btn-sm ml-auto min-h-11 gap-2 px-2.5 text-xs font-normal lg:ml-0 lg:min-h-8"
             aria-label={`Live activity: ${running} running, ${failures} needing attention`}
             >{#if failures}<span class="size-2 rounded-full bg-error"></span
               >{failures} failed{:else}<span
@@ -165,14 +165,14 @@
         ><button
           onclick={logout}
           class={[
-            "btn btn-sm btn-outline btn-square min-h-11 min-w-11 lg:min-h-9 lg:min-w-9",
+            "btn btn-sm btn-ghost btn-square min-h-11 min-w-11 lg:min-h-9 lg:min-w-9",
             $session.user.admin && (running || failures) ? "" : "ml-auto lg:ml-0",
           ]}
           aria-label="Sign out"
           title="Sign out"><LogOut size={16} /></button
         >
       {:else if !$loading}<a
-          class="btn btn-sm min-h-11 btn-outline ml-auto lg:min-h-9"
+          class="btn btn-sm min-h-11 ml-auto lg:min-h-9"
           href="/auth/login"
           data-sveltekit-reload>Sign in <ArrowUpRight size={16} /></a
         >{/if}

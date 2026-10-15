@@ -123,7 +123,7 @@
                 >Your lab<ArrowRight size={15} /></a
               >
             {:else}<button
-                class="btn btn-outline btn-sm min-h-11 lg:min-h-8"
+                class="btn btn-sm min-h-11 lg:min-h-8"
                 disabled={!!pending || full}
                 onclick={() => choose(team.id)}
                 >{#if pending === team.id}<span
@@ -138,7 +138,7 @@
       </ul>
       {#if $session.membership.teamID}<div class="mt-3 flex justify-end">
           <button
-            class="btn btn-sm min-h-11 btn-outline text-base-content/70"
+            class="btn btn-sm min-h-11 text-base-content/70"
             disabled={!!pending}
             onclick={() => choose("")}><LogOut size={15} />Leave team</button
           >
@@ -162,7 +162,7 @@
         {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
             >Practice<ArrowRight size={15} /></a
           ><button
-            class="btn btn-sm btn-outline min-h-11"
+            class="btn btn-sm min-h-11"
             onclick={checkAgain}><RotateCw size={15} />Check again</button
           >{#if checked}<p
               class="basis-full text-xs text-base-content/60"
@@ -196,7 +196,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11" disabled={!!pending}>Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={!!pending}>Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11 btn-primary"

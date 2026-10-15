@@ -100,7 +100,7 @@ try {
     const bank=page.getByRole("listitem").filter({has:page.getByRole("link",{name:"Explore Branch services revision 1234567"})});
     for(const text of ["Incident response","Intermediate","1 h 30 min","ccdc","Baseline practice","1 scenario","2 machines · 4 stages"]) await bank.getByText(text,{exact:true}).waitFor();
     await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Network investigation/})}).getByText("Preview only",{exact:true}).waitFor();
-    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Dns recovery/})}).getByText("Local only · no desktop",{exact:true}).waitFor();
+    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore DNS recovery/})}).getByText("Local only · no desktop",{exact:true}).waitFor();
     await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Ubuntu basics/})}).getByText("Local only · images not built",{exact:true}).waitFor();
     assert(await fits(page),"library width");
     await shot(page,"library",width);
@@ -245,7 +245,7 @@ try {
     await shot(page,"template-unbuilt",width);
     await page.goto(app+"/labs/?template=dns");
     await page.getByText("Local only · no desktop",{exact:true}).waitFor();
-    assert(await page.getByRole("button",{name:"Start practice: Dns recovery"}).isEnabled(),"baseline stays available for local runs");
+    assert(await page.getByRole("button",{name:"Start practice: DNS recovery"}).isEnabled(),"baseline stays available for local runs");
     assert(await page.getByRole("button",{name:"New scenario: Resolver failure"}).isDisabled(),"built images alone do not make scenarios ready");
     await page.getByText("Unavailable · no desktop",{exact:true}).waitFor();
 

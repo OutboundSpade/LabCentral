@@ -111,13 +111,13 @@
       </h2>
       {#if data.breaks?.length}<div class="flex flex-wrap items-center gap-2">
         <button
-          class="btn btn-outline btn-sm min-h-11"
+          class="btn btn-sm min-h-11"
           disabled={busy || !available.length}
           onclick={() => (selected = available.map((t) => t.id))}
           ><Users size={16} />Select ready teams</button
         >
         <button
-          class="btn btn-sm min-h-11 btn-outline"
+          class="btn btn-sm min-h-11"
           disabled={busy || !selected.length}
           onclick={() => (selected = [])}>Clear selection</button
         >
@@ -214,7 +214,7 @@
                   {record.report || "In progress"}
                 </p>
                 {#if record.status === "failed" && data.jobs.some((j) => j.target === record.id && j.status === "failed")}<button
-                    class="btn btn-outline btn-sm min-h-11 mt-2"
+                    class="btn btn-sm min-h-11 mt-2"
                     disabled={busy || !available.some((t) => t.id === team.id)}
                     onclick={() => retry(record.id)}
                     ><RotateCcw size={14} />Retry recovery</button
@@ -250,17 +250,17 @@
           ><Play size={16} />{stages.length ? "Apply break to" : "Run on"} {chosen.length}
           {chosen.length === 1 ? "team" : "teams"}</button
         ><button
-          class="btn btn-outline btn-sm min-h-11"
+          class="btn btn-sm min-h-11"
           disabled={busy || !chosen.length}
           onclick={() => confirm("reset")}
           ><RotateCcw size={16} />{custom
             ? "Reset exercise baseline"
             : "Reset web server"}</button
         >{/if}{#if custom && template?.instructor?.checks.length}<button
-          class="btn btn-outline btn-sm min-h-11" title="Runs all pinned checks on every ready team" disabled={busy || !data.teams.some(t => t.status === "ready")} onclick={checkServices}
+          class="btn btn-sm min-h-11" title="Runs all pinned checks on every ready team" disabled={busy || !data.teams.some(t => t.status === "ready")} onclick={checkServices}
           ><Check size={16} />Check services</button
         >{/if}{#if !custom}<button
-            class="btn btn-sm min-h-11 btn-outline"
+            class="btn btn-sm min-h-11"
             disabled={busy || !chosen.length}
             onclick={() => run("check")}
             ><Check size={16} />Check recovery</button
@@ -313,7 +313,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11" disabled={busy}>Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11 btn-primary"

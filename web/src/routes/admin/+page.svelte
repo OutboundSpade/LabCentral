@@ -338,7 +338,7 @@
                   >{/each}</select
               ><button
                 type="button"
-                class="btn btn-outline btn-sm join-item min-h-11 lg:min-h-8"
+                class="btn btn-sm join-item min-h-11 lg:min-h-8"
                 disabled={busy}
                 onclick={() => run("/api/admin/extend", { hours: extension })}
                 ><Plus size={15} />Add time</button
@@ -357,7 +357,7 @@
             >{/if}
           <button
             type="button"
-            class="btn btn-sm min-h-11 btn-error lg:min-h-8"
+            class="btn btn-sm min-h-11 btn-error btn-soft lg:min-h-8"
             disabled={busy}
             onclick={() => confirm("end")}
             ><Trash2 size={15} />End meeting</button
@@ -474,7 +474,7 @@
                             {failureFor(team.name)}
                           </p>
                           {#if prepareFailure?.retryable}<button
-                              class="btn btn-outline btn-sm min-h-11 mt-2"
+                              class="btn btn-sm min-h-11 mt-2"
                               disabled={busy || preparing}
                               onclick={() =>
                                 run("/api/admin/jobs/retry", {
@@ -541,7 +541,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11" disabled={busy}>Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm min-h-11"

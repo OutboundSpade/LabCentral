@@ -399,21 +399,21 @@
       your attempts.
       {#snippet actions()}<a class="btn btn-sm btn-primary min-h-11" href="/labs/"
           >Browse templates<ArrowRight size={15} /></a
-        ><a class="btn btn-outline btn-sm min-h-11" href="/labs/?view=attempts">My attempts</a>{/snippet}
+        ><a class="btn btn-sm min-h-11" href="/labs/?view=attempts">My attempts</a>{/snippet}
     </EmptyState>
   {:else if missing}<EmptyState icon={BookOpen} title="This lab is unavailable">
       It may no longer be offered. Your saved progress is kept; any active
       workspace can still be stopped from the library.
-      {#snippet actions()}<a class="btn btn-outline btn-sm min-h-11" href="/labs/"
+      {#snippet actions()}<a class="btn btn-sm min-h-11" href="/labs/"
           ><ArrowLeft size={15} />Back to library</a
         >{/snippet}
     </EmptyState>
   {:else if view}
     <PageHeader title={view.lab.attempt ? templateName(view.lab.title) : view.lab.title} description={view.lab.description}>
-      {#snippet eyebrow()}<a class="link link-hover" href={view?.lab.attempt ? "/labs/?view=attempts" : "/labs/"}>{view?.lab.attempt ? "My attempts" : "Practice"}</a>{#if view?.lab.attempt} · <span>{randomized ? "Randomized scenario" : "Baseline practice"} attempt</span>{/if}{/snippet}
+      {#snippet eyebrow()}<a class="link link-hover" href={view?.lab.attempt ? "/labs/?view=attempts" : "/labs/"}>{view?.lab.attempt ? "My attempts" : "Practice"}</a>{#if view?.lab.attempt}{" · "}<span>{randomized ? "Randomized scenario" : "Baseline practice"} attempt</span>{/if}{/snippet}
       <div class="flex w-full items-center gap-3 sm:w-56">
         <progress
-          class="progress progress-primary h-1.5 flex-1"
+          class="progress progress-primary h-1.5 min-w-24 flex-1"
           value={completed}
           max={steps.length || 1}
           aria-label="Stages complete"
@@ -422,7 +422,7 @@
           >{completed} of {steps.length} stages complete</span
         >
       </div>
-      {#if view.lab.attempt}<a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}>Template revision</a>{/if}
+      {#if view.lab.attempt}<a class="btn btn-sm min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}>Template revision</a>{/if}
     </PageHeader>
     {#if scenario}<section
         aria-labelledby="scenario-title"
@@ -496,7 +496,7 @@
             >{/if}
           {#if ownRun.status !== "ending"}<button
               type="button"
-              class="btn btn-sm btn-error min-h-11 lg:min-h-8"
+              class="btn btn-sm btn-error btn-soft min-h-11 lg:min-h-8"
               disabled={!!busy}
               onclick={() => {
                 error = "";
@@ -528,7 +528,7 @@
           >
           {#if !randomized}<button
               type="button"
-              class="btn btn-sm btn-outline min-h-11 lg:min-h-8"
+              class="btn btn-sm min-h-11 lg:min-h-8"
               onclick={() => localDialog.showModal()}
               ><Laptop size={15} />Run locally</button
             >{/if}
@@ -591,7 +591,7 @@
                   blocked={attemptBlocked(view.run)}
                   describedby="repeat-help"
                 />
-                <a class="btn btn-sm btn-outline min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}
+                <a class="btn btn-sm min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}
                   >Template revision<ArrowRight size={15} /></a
                 >
                 {#if attemptBlocked(view.run)}<p id="repeat-help" class="basis-full text-xs text-base-content/70">
@@ -653,7 +653,7 @@
                   </p>
                   <button
                     type="button"
-                    class="btn btn-sm btn-outline min-h-11 mt-2 -ml-3"
+                    class="btn btn-sm min-h-11 mt-2 -ml-3"
                     onclick={() => choose(completed)}
                     ><ArrowLeft size={15} />Go to stage {completed + 1}</button
                   >
@@ -756,8 +756,8 @@
               </section>
               {#if step.hasSolution && shown <= completed}
                 <section class="mt-4" aria-label="Stage solution">
-                  {#if solution}<div class={[prose, "rounded-box border border-base-content/9 bg-base-200/70 p-5"]}>{@html render(solution)}</div><button class="btn btn-sm btn-outline min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
-                  {:else}<button type="button" class="btn btn-sm btn-outline min-h-11 -ml-3 text-base-content/70" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
+                  {#if solution}<div class={[prose, "rounded-box border border-base-content/9 bg-base-200/70 p-5"]}>{@html render(solution)}</div><button class="btn btn-sm min-h-11 mt-2 -ml-3" onclick={() => solution = ""}>Hide solution</button>
+                  {:else}<button type="button" class="btn btn-sm min-h-11 -ml-3 text-base-content/70" disabled={solutionBusy} onclick={revealSolution}>{#if solutionBusy}<span class="loading loading-spinner loading-xs"></span>{:else}<BookOpen size={15} />{/if}View solution</button>{/if}
                   {#if solutionError}<p class="mt-2 text-sm text-error" role="alert">{solutionError}</p>{/if}
                 </section>
               {/if}
@@ -767,14 +767,14 @@
             >
               <button
                 type="button"
-                class="btn btn-sm btn-outline min-h-11"
+                class="btn btn-sm min-h-11"
                 disabled={shown === 0}
                 onclick={() => choose(shown - 1)}
                 ><ArrowLeft size={15} />Previous stage</button
               >
               <button
                 type="button"
-                class="btn btn-sm btn-outline min-h-11"
+                class="btn btn-sm min-h-11"
                 disabled={shown >= steps.length - 1 || shown + 1 >= released}
                 onclick={() => choose(shown + 1)}
                 >Next stage<ArrowRight size={15} /></button
@@ -786,7 +786,7 @@
     {/if}
   {:else if failure}
     <Notice message={failure} />
-    <button class="btn btn-outline btn-sm min-h-11" onclick={() => load()}>Retry</button>
+    <button class="btn btn-sm min-h-11" onclick={() => load()}>Retry</button>
   {:else}
     <div role="status" class="space-y-3">
       <span class="sr-only">Loading lab…</span>
@@ -812,7 +812,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11" disabled={!!busy}>Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={!!busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm btn-primary min-h-11"
@@ -835,7 +835,7 @@
     <Notice message={error} />
     <div class="modal-action">
       <form method="dialog">
-        <button class="btn btn-outline btn-sm min-h-11" disabled={!!busy}>Cancel</button>
+        <button class="btn btn-sm min-h-11" disabled={!!busy}>Cancel</button>
       </form>
       <button
         class="btn btn-sm btn-error min-h-11"
@@ -868,7 +868,7 @@
         <p class="text-sm font-medium">Commands</p>
         <button
           type="button"
-          class="btn btn-sm btn-outline min-h-9"
+          class="btn btn-sm min-h-9"
           onclick={copyCommands}><Copy size={13} />Copy</button
         >
       </div>
@@ -881,7 +881,7 @@
       {#if copied}<p class="mt-1.5 text-xs" role="status">{copied}</p>{/if}
     </div>
     <div class="modal-action">
-      <form method="dialog"><button class="btn btn-outline btn-sm min-h-11">Close</button></form>
+      <form method="dialog"><button class="btn btn-sm min-h-11">Close</button></form>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>Close</button></form>

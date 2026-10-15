@@ -371,7 +371,7 @@
         </span>
         <button
           type="button"
-          class="btn btn-outline btn-sm min-h-11"
+          class="btn btn-sm min-h-11"
           disabled={!terminalReady}
           onpointerdown={keepFocus}
           aria-label="Copy selection"
@@ -382,12 +382,12 @@
         >
         {#if active}<button
             type="button"
-            class="btn btn-outline btn-sm min-h-11"
+            class="btn btn-sm min-h-11"
             onclick={() => connection?.disconnect()}><Unplug size={15} aria-hidden="true" />Disconnect</button
           >{/if}
         {#if view?.canReconnect && !["authorizing", "connecting", "connected"].includes(phase)}<button
             type="button"
-            class={["btn btn-sm min-h-11", active ? "btn-outline" : "btn-primary"]}
+            class={["btn btn-sm min-h-11", active ? "" : "btn-primary"]}
             aria-label={phase === "retrying" || phase === "offline" ? "Reconnect now" : "Reconnect"}
             onclick={() => {
               connection?.reconnect();
@@ -436,7 +436,7 @@
             ? `Stopped after ${RETRY_DELAYS.length} automatic retries. ${view?.message} Reconnect when the machine is available.`
             : view?.message}</span
         >
-        {#if phase === "denied" && !view?.canReconnect}<a href="/admin/" class="btn btn-outline btn-sm min-h-11"
+        {#if phase === "denied" && !view?.canReconnect}<a href="/admin/" class="btn btn-sm min-h-11"
             >Meeting admin</a
           >{/if}
       </div>
@@ -470,7 +470,7 @@
       <div class="join" role="group" aria-label="Send keys">
         <button
           type="button"
-          class="btn btn-outline btn-sm join-item min-h-11 px-2.5"
+          class="btn btn-sm join-item min-h-11 px-2.5"
           aria-label="Send Ctrl+C"
           disabled={phase !== "connected"}
           onpointerdown={keepFocus}
@@ -478,7 +478,7 @@
         >
         <button
           type="button"
-          class="btn btn-outline btn-sm join-item min-h-11 px-2.5"
+          class="btn btn-sm join-item min-h-11 px-2.5"
           aria-label="Send Escape"
           disabled={phase !== "connected"}
           onpointerdown={keepFocus}
@@ -486,7 +486,7 @@
         >
         <button
           type="button"
-          class="btn btn-outline btn-sm join-item min-h-11 px-2.5"
+          class="btn btn-sm join-item min-h-11 px-2.5"
           aria-label="Send Tab"
           disabled={phase !== "connected"}
           onpointerdown={keepFocus}
@@ -496,7 +496,7 @@
         <div class={["join", compact && "hidden"]} role="group" aria-label="Terminal text size">
           <button
             type="button"
-            class="btn btn-outline btn-sm join-item min-h-11 min-w-11 px-2"
+            class="btn btn-sm join-item min-h-11 min-w-11 px-2"
             aria-label="Smaller text"
             disabled={fontSize <= 10}
             onclick={() => setFont(fontSize - 1)}><AArrowDown size={16} aria-hidden="true" /></button
@@ -506,7 +506,7 @@
           >
           <button
             type="button"
-            class="btn btn-outline btn-sm join-item min-h-11 min-w-11 px-2"
+            class="btn btn-sm join-item min-h-11 min-w-11 px-2"
             aria-label="Larger text"
             disabled={fontSize >= 24}
             onclick={() => setFont(fontSize + 1)}><AArrowUp size={16} aria-hidden="true" /></button

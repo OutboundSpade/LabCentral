@@ -138,7 +138,7 @@
         >{:else}<button type="button" class="btn btn-sm btn-primary min-h-11" disabled
           ><SquareTerminal size={15} aria-hidden="true" />Open SSH</button
         >{/if}
-      {#if teamID && !loading && (error || !pinned)}<button type="button" class="btn btn-outline btn-sm min-h-11" onclick={load}
+      {#if teamID && !loading && (error || !pinned)}<button type="button" class="btn btn-sm min-h-11" onclick={load}
           ><RotateCw size={15} aria-hidden="true" />Refresh machines</button
         >{/if}
     </div>

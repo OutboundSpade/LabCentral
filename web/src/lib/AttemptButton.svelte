@@ -64,7 +64,7 @@
 
 <button
   type="button"
-  class={["btn btn-sm min-h-11 lg:min-h-8", primary ? "btn-primary" : "btn-outline", extra]}
+  class={["btn btn-sm min-h-11 lg:min-h-8", primary ? "btn-primary" : "", extra]}
   disabled={busy || !!blocked}
   aria-busy={busy}
   aria-label={name ? `${unknown ? "Retry: " : ""}${name}` : undefined}
