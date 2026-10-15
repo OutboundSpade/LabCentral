@@ -1,20 +1,18 @@
 # Branch service recovery
 
-You are the defender for a small branch office. Its Linux services machine hosts
-the branch website and a scheduled operations heartbeat. Keep both available and
-record the commands, symptoms and evidence used during recovery.
+You are the defender for a small branch office. Its Linux `services` machine hosts
+the branch website and a scheduled operations heartbeat. Keep both running, and
+record the commands, symptoms and evidence you use.
 
-Open your workstation desktop. Connect to the services machine with
-`ssh defender@services` with the synthetic training password `branch-practice`.
-This guest-only account has passwordless sudo. It is never an infrastructure
-credential; do not reuse the password outside this isolated training lab.
+- **Website:** `http://services/` (open it in Firefox on your workstation, or use
+  `curl`).
+- **Heartbeat:** the cron service writes a UTC timestamp to
+  `/var/lib/branch-operations/heartbeat` every minute.
+- **Sign in:** from your workstation terminal, `ssh defender@services` with the
+  password `branch-practice`. The account can use `sudo`.
 
-The website should respond at `http://services/`. The cron service should run,
-and `/var/lib/branch-operations/heartbeat` should receive a UTC timestamp every
-minute. Read the handover, inspect service state and journals, repair the problem,
-and verify your changes. Preserve evidence; restarting a service is only part of
-the investigation.
+This password exists only inside this isolated training lab. Never reuse it anywhere
+else.
 
-Baseline practice starts with healthy services. A randomized attempt prepares an
-authored combination of service failures on fresh guests. Your attempt and its
-progress are saved independently; starting another attempt does not erase them.
+Inspect service state and journals, repair the problem, and verify your fix.
+Preserve evidence: restarting a service is only part of the investigation.
