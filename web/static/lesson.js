@@ -15,6 +15,28 @@
 /** @typedef {import('../src/lib/types').LearningCheck} LearningCheck */
 
 const POLL = 5000;
+
+// Mirrors templateName in src/lib/display.ts (this static module cannot import it):
+// "ccdc-service-recovery · Baseline practice" → "CCDC service recovery · Baseline practice".
+const ACRONYMS = new Set([
+  "ad", "api", "aws", "ccdc", "cdc", "cpu", "csv", "ctf", "dhcp", "dns", "ftp", "gpo",
+  "http", "https", "ids", "iis", "ip", "ips", "ir", "ldap", "nfs", "os", "pki", "rdp",
+  "siem", "smb", "smtp", "snmp", "sql", "ssh", "ssl", "tcp", "tls", "udp", "url", "vlan",
+  "vm", "vpn", "waf", "xss",
+]);
+/** @param {string} value */
+function templateName(value) {
+  const [name, ...context] = value.split(" · ");
+  const words = name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word, i) => {
+      const lower = word.toLowerCase();
+      if (ACRONYMS.has(lower)) return lower.toUpperCase();
+      return i === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word;
+    });
+  return [words.join(" "), ...context].join(" · ");
+}
 /** The practice allocation this desktop window was rendered for; empty for meetings. */
 const RUN = document.body?.dataset.practiceRun ?? "";
 const MISMATCH = "This desktop window no longer matches your cloud lab. Reload it from LabCentral to continue.";
@@ -832,9 +854,7 @@ function mount(initial, viewport, closed = "") {
     }
 
     eyebrow.textContent = `${v.lab.mode === "instructor" ? "Instructor-led" : "Self-paced"} lesson`;
-    const [name, ...context] = v.lab.title.split(" · ");
-    const words = name.replace(/[-_]+/g, " ");
-    title.textContent = v.lab.attempt ? [words.charAt(0).toUpperCase() + words.slice(1), ...context].join(" · ") : v.lab.title;
+    title.textContent = v.lab.attempt ? templateName(v.lab.title) : v.lab.title;
     count.textContent = finished
       ? `All ${total} stages complete`
       : `Stage ${completed + 1} of ${total} · ${completed} complete`;

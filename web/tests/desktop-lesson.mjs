@@ -149,9 +149,10 @@ function practice(steps, options = {}) {
     lab: {
       id: state.labID,
       template: "revision",
-      title: state.labID === "web" ? "Web recovery" : "Mail recovery",
+      title: state.attemptTitle ?? (state.labID === "web" ? "Web recovery" : "Mail recovery"),
+      ...(state.attemptTitle ? { attempt: true } : {}),
       description: "Bring the bank website back.",
-      mode: "instructor",
+      mode: state.attemptTitle ? "self-paced" : "instructor",
       estimatedMinutes: 45,
       stepCount: steps.length,
       publishedAt: now(),
@@ -522,6 +523,19 @@ try {
     const seen = lesson.gets();
     await page.clock.runFor(11000);
     assert.equal(lesson.gets(), seen, "polling continued after the identity changed");
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+
+  // Practice attempt titles use display names, keeping acronyms uppercase.
+  {
+    const lesson = practice(steps, { attemptTitle: "ccdc-service-recovery · Baseline practice" });
+    const { context, page, errors } = await desktop(1366, (route, request, url) =>
+      lesson.route(route, request, url, () => assert.fail("unexpected write")),
+    );
+    const panel = page.locator("#lesson-panel");
+    await panel.getByRole("heading", { name: "CCDC service recovery · Baseline practice", exact: true }).waitFor();
+    await panel.getByText("Self-paced lesson", { exact: true }).waitFor();
     assert.deepEqual(errors, []);
     await context.close();
   }

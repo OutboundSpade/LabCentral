@@ -167,8 +167,7 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	defer sshClient.Close()
 	username := dcvName(c)
 	password := random()
-	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
-	script := "set -eu; if id " + username + " >/dev/null 2>&1; then test \"$(getent passwd " + username + " | cut -d: -f5)\" = " + marker + "; else sudo useradd --create-home --shell /bin/bash --comment " + marker + " " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd; sudo dcv close-session " + username + " >/dev/null 2>&1 || true"
+	script := desktopAccountScript(username, password, c) + "; sudo dcv close-session " + username + " >/dev/null 2>&1 || true"
 	if _, e = remote.Run(ctx, sshClient, script); e != nil {
 		return nil, info, fmt.Errorf("DCV session creation failed: %w", e)
 	}
@@ -270,6 +269,29 @@ func closeDCV(ctx context.Context, c lc.Command) error {
 	defer closeClient()
 	return closeDCVClient(ctx, c, sshClient)
 }
+
+// desktopOwner returns the ownership marker of a temporary desktop account and the
+// account comment that carries it. The comment's first field is the full name that
+// desktops show (XFCE's panel shows it instead of the long account name); the marker
+// is its last field, so ownership is still compared exactly.
+func desktopOwner(c lc.Command) (marker, comment string) {
+	marker = fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
+	return marker, "Student,,,," + marker
+}
+
+// desktopAccountScript creates the temporary account, or reuses one this owner
+// created. Accounts made before the display name keep their bare marker until
+// ownership is verified, then gain the current comment.
+func desktopAccountScript(username, password string, c lc.Command) string {
+	marker, comment := desktopOwner(c)
+	return "set -eu; if id " + username + " >/dev/null 2>&1; then g=\"$(getent passwd " + username + " | cut -d: -f5)\"; if test \"$g\" = '" + marker + "'; then sudo usermod --comment '" + comment + "' " + username + "; else test \"$g\" = '" + comment + "'; fi; else sudo useradd --create-home --shell /bin/bash --comment '" + comment + "' " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd"
+}
+
+// desktopOwned succeeds only for an account this owner created, in either format.
+func desktopOwned(username string, c lc.Command) string {
+	marker, comment := desktopOwner(c)
+	return "{ g=\"$(getent passwd " + username + " | cut -d: -f5)\"; test \"$g\" = '" + comment + "' || test \"$g\" = '" + marker + "'; }"
+}
 func closeDCVClient(ctx context.Context, c lc.Command, sshClient *ssh.Client) error {
 	var e error
 	name := dcvName(c)
@@ -277,8 +299,7 @@ func closeDCVClient(ctx context.Context, c lc.Command, sshClient *ssh.Client) er
 	if c.Access.RetainWorkspace {
 		remove = "sudo usermod --lock " + name
 	}
-	marker := fmt.Sprintf("labcentral-%x", sha256.Sum256([]byte(c.Owner+":"+c.Operation)))
-	cleanup := "set -eu; if id " + name + " >/dev/null 2>&1; then test \"$(getent passwd " + name + " | cut -d: -f5)\" = " + marker + " || exit 1; fi; sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
+	cleanup := "set -eu; if id " + name + " >/dev/null 2>&1; then " + desktopOwned(name, c) + " || exit 1; fi; sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
 		"if id " + name + " >/dev/null 2>&1; then " +
 		"uid=$(id -u " + name + "); " +
 		"sudo loginctl terminate-user \"$uid\" >/dev/null 2>&1 || true; " +
