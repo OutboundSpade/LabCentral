@@ -1,0 +1,15 @@
+# A break changes only what it is about, and confirms it took effect.
+- name: Stop the web service
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Stop nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: stopped
+    - name: Confirm nginx is stopped
+      ansible.builtin.command: systemctl is-active nginx
+      register: state
+      changed_when: false
+      failed_when: state.stdout != 'inactive'

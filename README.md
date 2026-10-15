@@ -122,7 +122,8 @@ binaries together. `labcentral help COMMAND` shows usage and examples for each c
 
 ## Writing a lab
 
-A lab is a directory containing `lab.yaml` and the files it references.
+A lab is a directory containing `lab.yaml` and the files it references. Images are
+built by ordinary Ansible playbooks that run inside temporary build machines.
 
 ```yaml
 version: 3
@@ -131,13 +132,10 @@ description: Investigate a web server from an analyst workstation.
 images:
   workstation:
     base: ubuntu-24.04
-    build:
-      playbook: images/workstation.yml
+    build: {playbook: images/workstation.yml, files: [images/workstation.yml]}
   server:
     base: ubuntu-24.04
-    build:
-      playbook: images/server.yml
-      files: [images/server.yml, images/site.conf]
+    build: {playbook: images/server.yml, files: [images/server.yml, images/site.conf]}
 machines:
   workstation:
     image: workstation
@@ -153,173 +151,17 @@ machines:
     access: [ssh]
 ```
 
-More complete examples are in [examples/](examples/README.md) and
-[templates/](templates/README.md). The full contract is the generated schema
-[schemas/lab-v3.json](schemas/lab-v3.json).
+**[Writing lab templates](docs/templates.md)** is the complete guide: images,
+machines, networks and Internet access, inputs, platform options and extensions, plus
+the hosted template additions (student handover, stages, checks, breaks and
+scenarios). Start from [examples/starter-template](examples/starter-template/); more
+labs are in [examples/](examples/README.md) and [templates/](templates/README.md). The
+contracts are the generated schemas [schemas/lab-v3.json](schemas/lab-v3.json) and
+[schemas/instructor-v3.json](schemas/instructor-v3.json).
 
-### Images
-
-- `base` names a base image that the operator's environment binds to a pinned AMI or
-  Proxmox template.
-- `build.playbook` runs inside a temporary build machine. Omit `build` to use the base
-  unchanged (SSH-only machines). Desktop machines need a build so the platform's
-  desktop components can be installed.
-- `build.files` limits which source files are copied into the build. It also limits
-  which files affect the image's cache identity, so editing unrelated files (such as a
-  README) does not trigger a rebuild. When omitted, the whole source is used.
-- Runtime settings (networks, NICs, platform machine options) and operator settings that
-  don't affect builds (egress permission, gateway, allowlists, operator ranges) never
-  cause a rebuild.
-- Ansible expressions run inside the build guest; LabCentral passes inputs and
-  extensions as Ansible variables.
-
-### Machines
-
-- `cpu`, `memory` and `disk` are minimums. On AWS the planner picks the smallest
-  allowed instance type that fits.
-- `access` is any of `ssh` and `desktop`.
-- `hostnamePeers` controls which machines appear in each guest's `/etc/hosts`:
-  `all` (the default), a list of names, or `[]` for none.
-
-### Networks and Internet access
-
-Without a `networks` section, a lab has one private IPv4 network named `lab` and every
-machine has one NIC on it. Machines can pin a host address with
-`nics: [{network: lab, address: 20}]` (offsets 4–250); the others are numbered from
-11 in name order.
-
-Networks are isolated from each other. To connect two networks, add a machine with a
-NIC on each and `forwarding: true`:
-
-```yaml
-version: 3
-name: routed-investigation
-networks:
-  clients: {egress: internet}
-  servers: {}
-images:
-  ubuntu: {base: ubuntu-24.04}
-machines:
-  client:
-    image: ubuntu
-    cpu: 2
-    memory: 2Gi
-    disk: 20Gi
-    nics: [{network: clients}]
-    access: [ssh]
-  router:
-    image: ubuntu
-    cpu: 2
-    memory: 2Gi
-    disk: 20Gi
-    forwarding: true
-    nics: [{network: clients, address: 10}, {network: servers, address: 10}]
-    access: [ssh]
-  server:
-    image: ubuntu
-    cpu: 2
-    memory: 2Gi
-    disk: 20Gi
-    nics: [{network: servers}]
-    access: [ssh]
-```
-
-- A machine's first NIC is its management address for SSH, desktops and checks.
-- A peer's hostname resolves to its address on the first network the two machines
-  share, or to its first-NIC address if they share none.
-- The planner computes static routes through routers, including chains of routers.
-  Two routers joining the same pair of networks, or a cycle, is rejected.
-- A machine's single default route uses its first NIC on an Internet-enabled network.
-- On AWS, a network can set its own `cidr` (private and non-overlapping). All networks
-  must fit in one /16 with room for the gateway's /28. Proxmox assigns network ranges
-  itself and rejects author CIDRs.
-
-Internet access is off by default. A network can request it:
-
-```yaml
-networks:
-  lab:
-    egress: internet
-```
-
-The operator must also allow egress in the environment (`aws.allowEgress` or
-`proxmox.allowEgress`). Egress is general Internet access, with private, link-local
-and carrier-grade NAT ranges blocked; it is not a URL allowlist. Image builds have
-their own network and are not affected by this setting.
-
-### Inputs
-
-Inputs are typed values passed to playbooks as Ansible variables:
-
-```yaml
-inputs:
-  welcome_message: {type: string, default: Welcome!, description: Shown on the home page}
-  worker_count: {type: integer, default: 2}
-  debug: {type: boolean, required: true}
-```
-
-Types are `string`, `integer` and `boolean`. Inputs are recorded in plans and build
-provenance, so never use them for secrets.
-
-### Platform options
-
-Authors can request platform-specific settings. They refine how a platform realizes a
-machine but never change its topology, reachability or access. A platform ignores the
-other platform's block, and the operator's environment decides what is allowed.
-
-```yaml
-images:
-  server:
-    base: ubuntu-24.04
-    build: {playbook: images/server.yml}
-    platform:
-      aws: {buildInstanceType: t3.large}
-machines:
-  server:
-    image: server
-    cpu: 2
-    memory: 4Gi
-    disk: 32Gi
-    platform:
-      aws:
-        instanceType: t3.large
-        volume: {type: gp3, iops: 4000, throughput: 500}
-        cpuCredits: standard
-      proxmox: {cpuType: host, nicModel: virtio, memoryBalloon: false}
-```
-
-| Option | Allowed values |
-| --- | --- |
-| `machines.*.platform.aws.instanceType` | A type from `environment.aws.types` that satisfies the CPU and memory request |
-| `machines.*.platform.aws.volume` | `type: gp3`; `iops` 3000–16000 (at most 500 × disk GiB); `throughput` 125–1000 MiB/s (at most IOPS ÷ 4) |
-| `machines.*.platform.aws.cpuCredits` | `standard` or `unlimited`, burstable types only |
-| `images.*.platform.aws.buildInstanceType` | A type from `environment.aws.types`, used for the build and its validation machine |
-| `machines.*.platform.proxmox.cpuType` | A CPU model listed in `environment.proxmox.cpuTypes` (allowing `host` enables nested virtualization) |
-| `machines.*.platform.proxmox.nicModel` | `virtio`, `e1000`, `e1000e`, `vmxnet3` or `rtl8139` |
-| `machines.*.platform.proxmox.memoryBalloon` | `true` or `false` |
-
-`platforms: [aws]` at the top level restricts a lab to the listed platforms.
-
-### Extensions
-
-`extensions` holds your own data on the lab, networks, images and machines. Keys must
-be namespaced (`org.example.scoring`) and values can be any JSON, up to 64 KiB per lab.
-LabCentral stores them unchanged and passes lab and image extensions to image builds
-as `labcentral_extensions`. It never interprets them, and they are not a place for
-secrets.
-
-```yaml
-extensions:
-  org.example.course: {unit: 3, track: blue-team}
-```
-
-### Validation
-
-`labcentral validate DIR` checks the source strictly: unknown or duplicate keys, YAML
-anchors, multiple documents, unsafe paths, symlinks, hidden files and missing files
-are all errors, reported with a field path such as `machines.server.nics[0].address`.
-Features a platform does not support yet are rejected during `plan`, before anything
-is created.
+`labcentral validate DIR` checks the source strictly and reports errors with a field
+path such as `machines.server.nics[0].address`. Features a platform does not support
+yet are rejected during `plan`, before anything is created.
 
 ## Configuring an environment
 
@@ -496,39 +338,8 @@ repository you configure. Each template is a directory containing:
 
 Private material is removed before images are built and never reaches student responses
 or downloads. `labcentral validate --template DIR` checks a template exactly as the
-importer will; the contract is [schemas/instructor-v3.json](schemas/instructor-v3.json)
-and [templates/README.md](templates/README.md) walks through a complete example.
-
-A minimal `instructor.yaml`:
-
-```yaml
-version: 3
-visibility: {audience: students}
-practice: {desktopMachine: workstation}
-library:
-  category: Linux
-  difficulty: beginner
-  estimatedMinutes: 30
-  tags: [services]
-checks:
-  - id: web
-    name: Website available
-    points: 50
-    steps:
-      - {machine: server, playbook: check-web.yml}
-stages:
-  - id: find-init
-    title: Identify the service manager
-    instructions: Run `ps -p 1 -o comm=` on the server.
-    prompt: Which service manager runs as process 1?
-    completion:
-      answer: {accepted: [systemd], caseSensitive: false}
-    solution: Process 1 is `systemd`.
-  - id: verify-web
-    title: Verify the website
-    instructions: Make sure the website on the server is reachable.
-    completion: {check: web}
-```
+importer will. See [Writing lab templates](docs/templates.md) for the full format and
+[examples/starter-template](examples/starter-template/) for a complete example.
 
 Each import validates every template on its own. A broken template is reported to
 administrators with the failing field and does not block the others.
@@ -633,8 +444,9 @@ rules for humans and coding agents are in [AGENTS.md](AGENTS.md).
 ## Further reading
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): design, boundaries and qualification status
-- [examples/README.md](examples/README.md): small labs to start from
-- [templates/README.md](templates/README.md): writing hosted templates
+- [docs/templates.md](docs/templates.md): writing lab templates
+- [examples/README.md](examples/README.md): small labs and the starter template
+- [templates/README.md](templates/README.md): the standard template library
 - [schemas/](schemas/): generated JSON Schemas for `lab.yaml` and `instructor.yaml`
 
 ## License

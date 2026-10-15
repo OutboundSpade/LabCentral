@@ -1,0 +1,10 @@
+- name: Build the analyst workstation
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install investigation tools
+      ansible.builtin.apt:
+        name: [curl, jq, mousepad, openssh-client]
+        state: present
+        update_cache: true

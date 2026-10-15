@@ -1,0 +1,99 @@
+# Private teaching material. LabCentral removes this file and instructor/ before
+# building images or giving students anything, so answers and break programs live here.
+version: 3
+visibility:
+  audience: students          # or "coaches" for instructor-only templates
+practice:
+  desktopMachine: workstation # the machine whose desktop students open
+library:
+  category: Getting started
+  difficulty: beginner
+  estimatedMinutes: 20
+  tags: [Linux, web, nginx]
+notes: |
+  Students recover one small website. The two breaks are independent: either can be
+  applied alone or together, and neither undoes the other. Reset restores the service
+  and the homepage without touching student files or logs.
+
+# Runs once before breaks are applied (meetings and scenario attempts).
+reset:
+  - {machine: web, playbook: reset.yml}
+
+# Checks run inside a guest; a check passes when its playbook succeeds.
+checks:
+  - id: service
+    name: Web service running
+    points: 50
+    steps:
+      - {machine: web, playbook: check-service.yml}
+  - id: homepage
+    name: Correct homepage
+    points: 50
+    steps:
+      - {machine: web, playbook: check-homepage.yml}
+
+# Breaks are the problems instructors apply in meetings and scenarios select at random.
+breaks:
+  - id: stop-web
+    name: Web service stopped
+    description: Stops nginx without changing its configuration.
+    walkthrough: Run systemctl status nginx and journalctl -u nginx, then start nginx and
+      check http://web/ from the workstation.
+    steps:
+      - {machine: web, playbook: stop-web.yml}
+  - id: deface-homepage
+    name: Homepage replaced
+    description: Replaces the homepage with a maintenance notice.
+    walkthrough: Compare /var/www/html/index.html with /var/backups/www/index.html and
+      restore the backup.
+    steps:
+      - {machine: web, playbook: deface-homepage.yml}
+
+# Stages are what students work through, one at a time.
+stages:
+  - id: find-server
+    title: Read the handover
+    instructions: Read the handover, open the workstation desktop and connect to the web
+      server with `ssh student@web`.
+    prompt: Which web server software is running on the web machine?
+    solution: Run `systemctl status nginx`; the server is nginx.
+    completion:
+      answer: {accepted: [nginx], caseSensitive: false}
+  - id: verify-site
+    title: Check the website
+    instructions: Open http://web/ in the workstation browser or run `curl http://web/`.
+    solution: The page says "Example Co. is open".
+    completion: {check: homepage}
+  - id: restore-service
+    title: Bring the website back
+    instructions: The website stopped answering. Find out why and bring it back without
+      reinstalling anything.
+    solution: "`systemctl status nginx` shows it is inactive. Start it with `sudo systemctl
+      start nginx` and confirm with `curl http://web/`."
+    break: stop-web
+    completion: {check: service}
+  - id: restore-homepage
+    title: Restore the homepage
+    instructions: Customers report a maintenance notice. Restore the real homepage.
+    solution: Copy /var/backups/www/index.html over /var/www/html/index.html.
+    break: deface-homepage
+    completion: {check: homepage}
+  - id: debrief
+    title: Explain what happened
+    instructions: Tell your instructor what failed, how you found it and how you fixed it.
+    completion: {instructor: true}
+
+# Scenarios apply a random combination of breaks to a fresh personal lab.
+scenarios:
+  - id: website-outage
+    title: Website outage
+    description: Something is wrong with the company website. Find it and fix it.
+    difficulty: beginner
+    estimatedMinutes: 20
+    variants:
+      - {id: stopped, compatible: true, breaks: [stop-web], stages: [restore-service]}
+      - {id: defaced, compatible: true, breaks: [deface-homepage], stages: [restore-homepage]}
+      - id: both
+        compatible: true
+        breaks: [stop-web, deface-homepage]
+        stages: [restore-service, restore-homepage]

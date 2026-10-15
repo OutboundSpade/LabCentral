@@ -1,0 +1,61 @@
+# Runs once inside a temporary build machine; the result becomes the web image.
+- name: Build the company web server
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Install the web server and tools
+      ansible.builtin.apt:
+        name: [nginx, curl, openssh-server, sudo]
+        state: present
+        update_cache: true
+    - name: Create the synthetic training account
+      ansible.builtin.user:
+        name: student
+        shell: /bin/bash
+        create_home: true
+        # Hash of the training-only password "starter-practice".
+        password: '$6$starterpractice$3CXdGERMXuWlZekm17js9AlHguIO4GRljad24moHas6vXXrvyEg9AAjJeCKzb5dxh5Q84xO9zHu47FJoadNYw0'
+    - name: Give the training account administrator rights inside the lab
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/student
+        mode: '0440'
+        content: 'student ALL=(ALL) NOPASSWD:ALL'
+        validate: /usr/sbin/visudo -cf %s
+    - name: Allow password SSH for the training account only
+      ansible.builtin.blockinfile:
+        path: /etc/ssh/sshd_config
+        insertafter: EOF
+        marker: '# {mark} STARTER TRAINING'
+        block: |
+          Match User student
+              PasswordAuthentication yes
+          Match all
+    - name: Validate the SSH configuration
+      ansible.builtin.command: /usr/sbin/sshd -t
+      changed_when: false
+    - name: Install the company homepage
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        mode: '0644'
+        content: |
+          <!doctype html><html lang="en"><title>Example Co.</title>
+          <h1>Example Co. is open</h1><p>Orders ship within one business day.</p></html>
+    - name: Create backup directories
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: directory
+        mode: '0755'
+      loop: [/var/backups/www, /usr/local/share/starter-template]
+    - name: Keep a backup copy students can find, and a pristine copy for resets
+      ansible.builtin.copy:
+        src: /var/www/html/index.html
+        remote_src: true
+        dest: '{{ item }}/index.html'
+        mode: '0644'
+      loop: [/var/backups/www, /usr/local/share/starter-template]
+    - name: Enable the web server
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started

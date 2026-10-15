@@ -1,0 +1,18 @@
+# Restore the healthy baseline. Must be safe to run any number of times.
+- name: Restore the website baseline
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Restore the original homepage
+      ansible.builtin.copy:
+        src: /usr/local/share/starter-template/index.html
+        remote_src: true
+        dest: /var/www/html/index.html
+        mode: '0644'
+    - name: Start and enable nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        masked: false
+        enabled: true
+        state: started

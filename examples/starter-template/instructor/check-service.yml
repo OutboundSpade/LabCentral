@@ -1,0 +1,12 @@
+- name: Check that the web service answers
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Require an active nginx
+      ansible.builtin.command: systemctl is-active nginx
+      changed_when: false
+    - name: Require an HTTP response
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        status_code: 200

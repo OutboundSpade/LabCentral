@@ -1,0 +1,12 @@
+- name: Replace the homepage
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Write a maintenance notice
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        mode: '0644'
+        content: |
+          <!doctype html><html lang="en"><title>Maintenance</title>
+          <h1>Down for maintenance</h1></html>

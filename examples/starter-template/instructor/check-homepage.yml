@@ -1,0 +1,13 @@
+# Reads the file, so this check is independent of whether nginx is running.
+- name: Check the homepage content
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: Read the homepage
+      ansible.builtin.slurp:
+        src: /var/www/html/index.html
+      register: page
+    - name: Require the real homepage
+      ansible.builtin.assert:
+        that: "'Example Co. is open' in (page.content | b64decode)"

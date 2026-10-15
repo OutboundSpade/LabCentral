@@ -512,7 +512,8 @@ meetings on that revision, protects retained labs and images shared with another
 revision, and cleans both published and unpublished attempts through the library.
 Uncertain cleanup disables rebuilding until reconciled; superseded jobs cannot remove
 later rebuilt images. Source snapshots remain for rebuilds. The standard author library
-is under [templates](templates/README.md).
+is under [templates](templates/README.md); the author guide is
+[docs/templates.md](docs/templates.md).
 
 The admin view includes `imageSummary: {images, unusedImages}` when inventory is
 available. Admin/CSRF-protected `POST /api/admin/images/prune` queues a durable bulk

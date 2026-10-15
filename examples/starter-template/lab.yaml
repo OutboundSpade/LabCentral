@@ -1,0 +1,26 @@
+# Portable lab source: what machines exist and how their images are built.
+# Students can download this file; never put answers or secrets here.
+version: 3
+name: starter-template
+description: Keep a small company website online and find out why it stopped.
+images:
+  web:
+    base: ubuntu-24.04
+    # Only the listed files are copied into the build and affect the image's identity.
+    build: {playbook: images/web.yml, files: [images/web.yml]}
+  workstation:
+    base: ubuntu-24.04
+    build: {playbook: images/workstation.yml, files: [images/workstation.yml]}
+machines:
+  web:
+    image: web
+    cpu: 2
+    memory: 2Gi
+    disk: 20Gi
+    access: [ssh]
+  workstation:
+    image: workstation
+    cpu: 2
+    memory: 4Gi
+    disk: 20Gi
+    access: [ssh, desktop]
