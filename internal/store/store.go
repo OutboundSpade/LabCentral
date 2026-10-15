@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
@@ -67,10 +66,10 @@ func (s *Store) Lock() (func(), error) {
 
 // LockKey coordinates a resource across independent library clients/processes.
 func (s *Store) LockKey(key string) (func(), error) {
-	return s.lockKey(key, syscall.LOCK_EX)
+	return s.lockKey(key, false)
 }
 
-func (s *Store) lockKey(key string, mode int) (func(), error) {
+func (s *Store) lockKey(key string, shared bool) (func(), error) {
 	name := fmt.Sprintf("lock-%x", sha256.Sum256([]byte(key)))
 	if key == "mutation" {
 		name = "mutation.lock"
@@ -79,11 +78,11 @@ func (s *Store) lockKey(key string, mode int) (func(), error) {
 	if e != nil {
 		return nil, e
 	}
-	if e = syscall.Flock(int(f.Fd()), mode|syscall.LOCK_NB); e != nil {
+	if e = tryLockFile(f, shared); e != nil {
 		f.Close()
 		return nil, fmt.Errorf("another mutation is running: %w", e)
 	}
-	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
+	return func() { unlockFile(f); f.Close() }, nil
 }
 func (s *Store) Put(ctx context.Context, kind, id string, v any) error {
 	b, e := json.Marshal(v)
@@ -221,25 +220,25 @@ func (s *Store) ReleaseValue(ctx context.Context, scope, owner string, value int
 
 // LockKeyContext queues contending access requests while preserving cancellation.
 func (s *Store) LockKeyContext(ctx context.Context, key string) (func(), error) {
-	return s.lockKeyContext(ctx, key, syscall.LOCK_EX)
+	return s.lockKeyContext(ctx, key, false)
 }
 
 // LockKeySharedContext permits concurrent operations while excluding lifecycle
 // mutations that acquire LockKey or LockKeyContext for the same resource.
 func (s *Store) LockKeySharedContext(ctx context.Context, key string) (func(), error) {
-	return s.lockKeyContext(ctx, key, syscall.LOCK_SH)
+	return s.lockKeyContext(ctx, key, true)
 }
 
-func (s *Store) lockKeyContext(ctx context.Context, key string, mode int) (func(), error) {
+func (s *Store) lockKeyContext(ctx context.Context, key string, shared bool) (func(), error) {
 	for {
 		if e := ctx.Err(); e != nil {
 			return nil, e
 		}
-		unlock, e := s.lockKey(key, mode)
+		unlock, e := s.lockKey(key, shared)
 		if e == nil {
 			return unlock, nil
 		}
-		if !errors.Is(e, syscall.EWOULDBLOCK) {
+		if !errors.Is(e, errLockHeld) {
 			return nil, e
 		}
 		timer := time.NewTimer(25 * time.Millisecond)

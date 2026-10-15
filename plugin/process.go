@@ -49,7 +49,7 @@ func Start(ctx context.Context, binary, state string) (*Process, error) {
 	}
 	socket := filepath.Join(dir, "rpc.sock")
 	cmd := exec.Command(abs, "--socket", socket, "--state", state)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
+	stopWithParent(cmd)
 	log, e := os.OpenFile(filepath.Join(state, "plugin.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if e != nil {
 		os.RemoveAll(dir)

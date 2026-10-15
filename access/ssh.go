@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"syscall"
 )
 
 func Shell(ctx context.Context, e *lc.Engine, instance, machine string, in *os.File, out, errOut io.Writer) (int, error) {
@@ -53,7 +52,7 @@ func Shell(ctx context.Context, e *lc.Engine, instance, machine string, in *os.F
 			return 0, err
 		}
 		resize := make(chan os.Signal, 1)
-		signal.Notify(resize, syscall.SIGWINCH)
+		notifyResize(resize)
 		defer signal.Stop(resize)
 		done := make(chan struct{})
 		defer close(done)

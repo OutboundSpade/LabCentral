@@ -16,7 +16,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -327,13 +326,7 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 				cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+c.Environment.Proxmox.CAFile)
 			}
 		}
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
-		cmd.Cancel = func() error {
-			if cmd.Process == nil {
-				return nil
-			}
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		}
+		stopWithGroup(cmd)
 		cmd.WaitDelay = 10 * time.Second
 		log, err := os.OpenFile(filepath.Join(dir, "packer.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if err != nil {
