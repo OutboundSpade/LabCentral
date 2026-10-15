@@ -473,9 +473,11 @@ retained lab.
   attempt applies a random combination and checks the matching recovery stages.
 - **Personal cloud labs** with a weekly time allowance per student (three hours by
   default), or a download to run the lab on your own infrastructure with the CLI.
-- **Team meetings.** Administrators prepare one lab per team, students join a team and
-  open individual desktops, and instructors apply breaks, run scheduled service checks
-  with a scoreboard, and open an SSH terminal to any team machine in the browser.
+- **Team meetings.** Administrators start a meeting from a built template in
+  Admin → Templates or on the template's page, then prepare one lab per team. Students
+  join a team and open individual desktops, and instructors apply breaks, run scheduled
+  service checks with a scoreboard, and open an SSH terminal to any team machine in the
+  browser.
 
 Sign-in uses OpenID Connect. Users in the configured member group can practice and
 join teams; users in the admin group can manage templates and meetings.
