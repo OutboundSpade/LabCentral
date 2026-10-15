@@ -100,6 +100,10 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 	// Sysprep closes the SSH connection as the instance shuts down.
 	var last map[string]any
 	_ = json.Unmarshal(cfg.Provisioners[len(cfg.Provisioners)-1], &last)
+	// This pinned Windows/OpenSSH combination reports 2300218 when sysprep's
+	// shutdown ends the SSH process. Accept it only here: amazon-ebs still waits
+	// for native stopped state, and the captured image must pass boot qualification.
+	last["valid_exit_codes"] = []int{0, 2300218}
 	last["skip_clean"] = true
 	cfg.Provisioners[len(cfg.Provisioners)-1] = raw(last)
 	return cfg, nil

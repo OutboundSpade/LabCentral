@@ -230,7 +230,10 @@ implementation's exact serialized bytes.
 
 After author execution, platform code removes build files, inputs, management
 keys and DCV/SSH identities, then invokes EC2Launch v2 sysprep with shutdown.
-Packer waits for the stopped guest before capture. Windows AMI qualification uses
+Packer waits for the stopped guest before capture. The final Windows sysprep provisioner alone
+accepts the pinned guest/OpenSSH shutdown status 2300218, alongside zero. It
+does not accept this status during installation or author execution; native
+stopped-state capture and boot qualification remain mandatory. Windows AMI qualification uses
 an owned disposable gateway and guest and checks the readiness marker, sshd and
 DCV service when declared. Qualification receipts and cleanup confirmation use
 the existing recovery journal. Windows execution and real AWS acceptance remain

@@ -159,3 +159,35 @@ func TestWindowsPackerOfflinePluginValidation(t *testing.T) {
 		t.Fatalf("offline Packer plugin validation: %s: %v", output, err)
 	}
 }
+
+func TestWindowsShutdownStatusIsRestrictedToFinalSysprep(t *testing.T) {
+	c, dir := windowsFixture(t, true)
+	cfg, err := Generate(c, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var builder map[string]any
+	if err = json.Unmarshal(cfg.Builders[0], &builder); err != nil {
+		t.Fatal(err)
+	}
+	if builder["disable_stop_instance"] != true || builder["skip_create_ami"] == true {
+		t.Fatal("shutdown status bypasses native stopped capture")
+	}
+	for i, p := range cfg.Provisioners {
+		var provisioner map[string]any
+		if err = json.Unmarshal(p, &provisioner); err != nil {
+			t.Fatal(err)
+		}
+		codes, exists := provisioner["valid_exit_codes"]
+		if i != len(cfg.Provisioners)-1 {
+			if exists {
+				t.Fatal("shutdown status accepted during installation or author execution")
+			}
+			continue
+		}
+		values, ok := codes.([]any)
+		if !ok || len(values) != 2 || values[0] != float64(0) || values[1] != float64(2300218) || !strings.Contains(string(p), "sysprep --shutdown --block") {
+			t.Fatal("final generalization does not handle the observed Windows shutdown status")
+		}
+	}
+}
