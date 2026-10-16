@@ -152,15 +152,42 @@ mixed Windows and Linux lab.
 
 ## Proxmox
 
-Run the CLI on a Linux amd64 operator machine that can reach both the Proxmox API
-and DHCP addresses on the management/build bridge. API-only access through a VPN is
-insufficient for SSH and image builds. Use a local operator VM when needed.
+LabCentral sets up a fresh Proxmox VE 9 host for you with one command. Each lab then
+runs on an internal bridge with no physical ports, behind its own small gateway VM, so
+you don't need to route lab VLANs, run NAT or change the cluster firewall.
 
-1. Install the CLI, Packer and pinned plugins as above, plus `xorriso` (for example,
-   `sudo apt-get install xorriso`). Use Proxmox VE 9 with directory storage and a
-   trusted API certificate, or provide `--ca-file`.
-2. Supply an administrator API token **once**, through an environment variable. Keep
-   it outside shell history and logs:
+```mermaid
+flowchart LR
+    Operator[Operator machine] -->|Proxmox API| API[Proxmox host]
+    Operator -->|pinned SSH| GW
+    subgraph Mgmt["Management bridge (your LAN, DHCP)"]
+      GW[Lab gateway]
+    end
+    subgraph Labs["Internal lab bridge (no physical ports)"]
+      N1["Lab network<br/>VLAN, .1 = gateway"]
+      N2["Lab network<br/>VLAN"]
+    end
+    GW --- N1
+    GW --- N2
+    GW -->|NAT, only if egress is allowed| Internet[Internet]
+    API -->|noVNC desktop| N1
+```
+
+**Before you start**, run the CLI on a Linux amd64 machine that can reach the Proxmox
+API *and* addresses on the management bridge (where gateways and build machines get
+DHCP addresses). A VPN that only reaches the API is not enough; a small operator VM on
+the same network works well. Install the CLI, Packer and the pinned plugins (see
+[Build toolchain](#build-toolchain)), plus `xorriso`:
+
+```sh
+sudo apt-get install xorriso
+```
+
+You need Proxmox VE 9 with directory storage and a trusted API certificate (or pass
+`--ca-file`).
+
+1. **Run setup with an administrator token.** The admin token is used once and never
+   stored:
 
    ```sh
    read -rsp 'Admin token secret: ' LABCENTRAL_PROXMOX_ADMIN_TOKEN; echo
@@ -169,13 +196,19 @@ insufficient for SSH and image builds. Use a local operator VM when needed.
      --url https://pve.example.invalid:8006 --admin-token-id 'admin@pve!setup'
    ```
 
-   Review the exact plan and confirm, or use `--yes` for automation. Setup detects the
-   node, directory storage and management bridge, reserves free VMID/VLAN/CIDR ranges,
-   creates a dedicated pool, user, scoped runtime role, read-only inventory role and token,
-   and builds a pinned Ubuntu 24.04 base with a verified QEMU guest agent. It boots a
-   temporary NoCloud seed to install the agent **inside the guest**, checks it after
-   a restart, sanitizes it and converts it to a template. No host shell or snippets are needed.
-3. Export the runtime token from the generated 0600 file and check the environment:
+   Setup shows its plan and asks for confirmation (`--yes` skips it). It:
+
+   - detects the node, directory storage and management bridge;
+   - picks free VMID, VLAN and address ranges;
+   - creates a pool, a dedicated user with a scoped role and a read-only inventory
+     role, and a runtime API token;
+   - creates the internal lab bridge, applying only that network change;
+   - builds a pinned Ubuntu 24.04 base template, installing the QEMU guest agent inside
+     a temporary guest (no host shell access or snippets needed);
+   - writes the environment file, the token file (mode 0600) and private ownership
+     receipts next to it. Keep them together.
+
+2. **Switch to the runtime token and check:**
 
    ```sh
    export LABCENTRAL_PROXMOX_TOKEN="$(cat ~/.config/labcentral/proxmox.yaml.token)"
@@ -183,72 +216,51 @@ insufficient for SSH and image builds. Use a local operator VM when needed.
    labcentral environment check --environment ~/.config/labcentral/proxmox.yaml
    ```
 
-Setup writes the environment and private ownership/recovery receipts beside it. Keep
-these together. Rerunning the same command verifies ownership and reuses completed
-steps. If Packer/plugins were installed afterwards, rerun setup to pin their checksums.
-`--node`, `--storage`, `--management-bridge`, `--lab-bridge`, `--pool`, `--vmid-start`,
-`--vlan-start`, `--cidr` and `--operator-cidr` override detection. Setup refuses existing
-unowned resources, overlapping visible allocations and unrelated pending network
-changes. Lab VLANs use tags 2–4094; VLAN 1 stays reserved for the native bridge.
-Mutations are scoped to its pool, storage, node and bridges. A separate read-only
-`VM.Audit` grant on `/vms` lets recovery distinguish absence from lost pool access;
-Proxmox removes VM-specific permissions when deleting a guest. Setup applies network
-configuration only after verifying that the diff contains its own internal bridge
-change. Storage content changes are included in the plan.
-`--insecure-skip-tls-verify` is for explicitly configured test endpoints only.
+Then deploy labs as usual (see [Run labs](#run-labs)).
 
-```mermaid
-flowchart LR
-    Operator[Operator on management network] -->|pinned SSH| Gateway
-    API[Proxmox API] -->|noVNC| Desktop
-    Management[Management bridge<br/>DHCP and Internet] --- Gateway[Per-lab gateway<br/>1 CPU, 768 MiB]
-    subgraph Internal[Internal VLAN-aware lab bridge — no physical ports or host IP]
-      A[Lab A: VLAN 100<br/>guests and desktop] --- Router[Author router]
-      Router --- B[Lab A: VLAN 101<br/>guests]
-      C[Lab B: VLAN 102<br/>guests]
-      A --- Desktop[Guest desktop]
-    end
-    Gateway ---|.1 on each lab VLAN| A
-    Gateway --- B
-    Management --- G2[Lab B gateway]
-    G2 --- C
-    Gateway -->|NAT only when enabled<br/>private destinations blocked| Internet
-```
+**Re-running setup** is safe: it verifies ownership and reuses finished steps. Rerun it
+if you install Packer or its plugins later, so their checksums get pinned. Override
+detection with `--node`, `--storage`, `--management-bridge`, `--lab-bridge`, `--pool`,
+`--vmid-start`, `--vlan-start`, `--cidr` and `--operator-cidr`. Setup refuses to touch
+resources it doesn't own, overlapping allocations, or unrelated pending network
+changes. `--insecure-skip-tls-verify` is for test endpoints only.
 
-The internal `proxmox.labBridge` has no physical ports, host address or uplink;
-LabCentral verifies that structural boundary. Each lab has its own gateway, outside the
-author's inventory, with DHCP on `proxmox.managementBridge` and `.1` on each lab VLAN.
-All guest SSH uses the gateway with both host keys pinned. Gateway nftables drops
-forwarding by default and blocks RFC 1918, link-local, CGNAT, the management subnet,
-operator addresses and gateway destinations.
-No operator routing to VLANs, external NAT gateway or cluster firewall change is needed.
-Guest NIC firewall rules remain defense in depth if the cluster firewall is enabled.
-Desktops use the Proxmox API console.
+**How labs are laid out:**
 
-Set `proxmox.allowEgress: true` to allow author-requested Internet egress per network.
-Gateway rules bind source ranges to their VLAN NICs. Only opted-in networks get a
-guest default route and NAT; external DNS uses public
-resolvers. `proxmox.cpuTypes` allowlists CPU models. `proxmox.gatewayBase` defaults to
-`ubuntu-24.04`. For static management addresses instead of DHCP, set
-`proxmox.managementAddresses: {cidr: 192.0.2.0/24, gateway: 192.0.2.1, dns: [1.1.1.1]}`
-and reserve that pool exclusively for LabCentral (the gateway must be below offset 4).
-`build.bridge` still needs DHCP, Internet and direct operator SSH reachability.
+- Each lab network gets its own VLAN (tags 2–4094) and /24 on the internal bridge,
+  which has no physical ports, host address or uplink; LabCentral checks this.
+- Each lab gets a gateway VM (1 CPU, 768 MiB) outside the author's inventory, with a
+  DHCP address on the management bridge and `.1` on each lab VLAN. All guest SSH goes
+  through it with both host keys pinned.
+- The gateway drops forwarding by default and blocks private ranges (including your
+  LAN), link-local, CGNAT, operator addresses and itself, so labs cannot reach your
+  network.
+- With `proxmox.allowEgress: true`, networks that request Internet access get a default
+  route and NAT through the gateway; other networks get neither.
+- Desktops use the Proxmox console (noVNC) through the API.
 
-To start clean, destroy labs and remove built images, then supply the admin token again:
+**Other settings:**
+
+- `proxmox.cpuTypes` lists CPU models authors may request.
+- `proxmox.gatewayBase` defaults to `ubuntu-24.04`.
+- For static management addresses instead of DHCP, set
+  `proxmox.managementAddresses: {cidr: 192.0.2.0/24, gateway: 192.0.2.1, dns: [1.1.1.1]}`
+  and reserve that range for LabCentral.
+- `build.bridge` (DHCP and Internet) is where image builds run; your operator machine
+  must reach it too.
+
+**To remove everything setup created**, destroy your labs and remove their images, then:
 
 ```sh
 labcentral environment teardown proxmox ~/.config/labcentral/proxmox.yaml \
   --admin-token-id 'admin@pve!setup'
 ```
 
-Teardown checks ownership and refuses guests still using the pool or bridge. It removes
-only setup's base, seed/import files, bridge, ACLs, user/token, roles and pool, and restores
-storage content settings only if they have not changed elsewhere. Private receipts stay
-local for recovery. An interrupted mutation remains unknown until its exact owned
-resource is found or its deletion is confirmed; retain the receipt and rerun.
-
-See [qualification status](../ARCHITECTURE.md#qualification-status) for live evidence
-and remaining acceptance work.
+Teardown checks ownership, refuses while guests still use the pool or bridge, and
+removes only what setup created (base template, seed and import files, bridge,
+permissions, user and token, roles and pool). It restores storage content settings only
+if nobody changed them since. An interrupted step stays unknown until its exact resource
+is found or its deletion is confirmed; keep the receipts and rerun.
 
 ## Run labs
 
