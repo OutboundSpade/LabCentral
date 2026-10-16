@@ -300,7 +300,8 @@ labcentral image remove IMAGE_KEY
 - `access … desktop` prints a one-use URL on `127.0.0.1` and temporary guest
   credentials. Keep the command running while you use the desktop; Ctrl-C closes the
   session and removes the temporary account. To use a browser on another computer,
-  forward the port over SSH rather than exposing it.
+  forward the port over SSH rather than exposing it. If a Windows console opens blank
+  or locked, use **Desktop → Send Ctrl+Alt+Del** in the DCV client.
 - `labcentral config init` creates `~/.config/labcentral/config.json` (mode 0600) for
   default paths and concurrency limits. Flags override it, and it can never enable
   `--yes`.

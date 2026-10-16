@@ -874,11 +874,11 @@ request capture, browser fixtures and local load models establish local behavior
 
 | Area | Verified on a real platform | Not yet verified |
 | --- | --- | --- |
-| AWS library lifecycle | Image builds and disposable qualification, deployment, pinned SSH and Linux desktops; recovery after native create/delete and guest response loss, killed controllers, a second client, foreign parent/child ownership and out-of-band deletion | Full native interruption, response-loss and stale-ownership matrix; new builder capture-receipt and publication races |
+| AWS library lifecycle | Image builds and disposable qualification, deployment, pinned SSH and Linux desktops; cached desktop reuse and reopen with a fresh generation after provider expiry; recovery after native create/delete and guest response loss, killed controllers, a second client, foreign parent/child ownership and out-of-band deletion | Full native interruption, response-loss and stale-ownership matrix; new builder capture-receipt and publication races |
 | AWS gateway and egress | Private guests, jump SSH and DCV, NAT, blocked private forwarding, cleanup | Reboot behavior; broader cold/warm latency |
 | AWS platform options | Explicit type, gp3 performance and CPU credits | Wider combinations |
 | Multiple networks and routers (AWS) | Two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot, cleanup; response-loss recovery during NIC configuration and detached-NIC cleanup, including changed child ownership | Wider native fault combinations |
-| AWS Windows guests (CLI/library) | Mixed IIS lab: both images built and boot-qualified; sysprep and certificate sanitization; private deployment; coach and student SSH; firewall, hosts and routes; DCV console with browser rendering, reconnect and revocation; break/check/repair for every stage and scenario variant; recovery after a killed destroy; image removal with confirmed cleanup | Hosted Windows sign-in and release acceptance; typed desktop input; cohorts; full failure matrix |
+| AWS Windows guests (CLI/library) | Mixed IIS lab: both images built and boot-qualified; sysprep and certificate sanitization; private deployment; coach and student SSH; firewall, hosts and routes; DCV console with browser rendering, reconnect and revocation; generation-fenced grant/revoke programs executed on Windows, with recovery after real grant/revoke response loss; break/check/repair for every stage and scenario variant; recovery after a killed destroy; image removal with confirmed cleanup | Hosted Windows sign-in and release acceptance; typed desktop input; cohorts; full failure matrix |
 | Hosted identity and meetings | Real OIDC, revocation, seat switching, retained workspaces; a meeting of 4 teams × 3 students with 12 concurrent desktops, a break and checks on every team | Meetings larger than 4 × 3 |
 | Hosted practice and scenarios | Individual attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts; full weekly quota exhaustion |
 | Hosted Windows | None for this hosted implementation; local conflict, authorization, ordering, restart, race, OS-budget, capability and fake OpenSSH tests only | Real OIDC; typed Windows desktop input; shared holder conflict/take-over/take-back; coach PowerShell; lesson panel; retained reopen; scoreboard; cleanup and image removal; cohorts |
@@ -891,12 +891,14 @@ request capture, browser fixtures and local load models establish local behavior
 The expanded local matrices cover library intents and reservations, provider mutation
 boundaries, builder create/capture journals, guest lease fencing and cleanup inventories.
 The live subsets exercise distinct recovery paths but do not establish the full matrix.
-Windows access has fake-provider process coverage and compiled native guest tests; the
-new Windows lease implementation still needs execution on a real Windows guest. Windows
-builds affected by the known EC2Launch/SSH restart race remain blocked, and do not count
-as Windows failure-matrix qualification. Native capture-receipt and publication race
-qualification also remains outstanding. Detailed cell mappings and live limitations are
-recorded in the private operator evidence.
+The Windows lease tests execute the actual generated grant/revoke commands on a real
+guest, including retirement before a replacement grant begins. A fresh image passed the
+restart gate, capture and disposable qualification; its desktop rendered in the browser
+after the console secure-attention action, and grant/revoke response loss recovered with
+native account/session absence confirmed. Linux provider expiry and fresh-generation
+reopen also passed live. Native capture-receipt and publication race qualification
+remains outstanding. Detailed cell mappings and live limitations are recorded in the
+private operator evidence.
 
 Not supported yet: Windows on Proxmox, Windows routers or multiple Windows NICs, Ansible
 targeting Windows, author CIDRs on Proxmox, hosted platforms other than AWS,
