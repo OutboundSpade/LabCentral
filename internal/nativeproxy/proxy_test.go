@@ -131,3 +131,33 @@ func TestFinalGuardDenialIsDefinitelyNotSubmitted(t *testing.T) {
 		t.Fatal("guard denial confused with lost response", res.StatusCode, calls.Load(), classified.Load())
 	}
 }
+
+func TestPrefixedProxmoxEndpointPreservesBasePath(t *testing.T) {
+	for _, prefix := range []string{"/pve", "/pve/", "/nested/pve"} {
+		t.Run(prefix, func(t *testing.T) {
+			expected := strings.TrimRight(prefix, "/") + "/api2/json/nodes/node/qemu/2000/config"
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != expected || r.URL.RawQuery != "digest=pinned" {
+					t.Errorf("wrong upstream path: %s", r.URL)
+				}
+				io.WriteString(w, `{"data":null}`)
+			}))
+			defer upstream.Close()
+			target, _ := url.Parse(upstream.URL + prefix)
+			endpoint, stop, err := Start(context.Background(), Config{Upstream: target, Protocol: "proxmox", Step: func(*http.Request, []byte) string { return "mutation" }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stop()
+			req, _ := http.NewRequest("PUT", endpoint+"/api2/json/nodes/node/qemu/2000/config?digest=pinned", strings.NewReader("description=owned"))
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != 200 {
+				t.Fatal(res.StatusCode)
+			}
+		})
+	}
+}

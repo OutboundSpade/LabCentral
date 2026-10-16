@@ -23,7 +23,7 @@ func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command,
 		return err
 	}
 	n.EdgeSubnet, err = doEC2(ctx, p.Journal, c.Operation+"/edge-subnet", func() (string, error) {
-		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &n.VPC, AvailabilityZone: &c.Environment.AWS.Zone, CidrBlock: &edgeCIDR, TagSpecifications: networkSpecs(t.ResourceTypeSubnet, c.Owner, "edge-subnet")})
+		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &n.VPC, AvailabilityZone: &c.Environment.AWS.Zone, CidrBlock: &edgeCIDR, TagSpecifications: networkSpecs(t.ResourceTypeSubnet, c.Owner, "edge-subnet")}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -45,7 +45,7 @@ func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command,
 		return err
 	}
 	n.EdgeRoute, err = doEC2(ctx, p.Journal, c.Operation+"/edge-route", func() (string, error) {
-		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &n.VPC, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, c.Owner, "edge-route")})
+		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &n.VPC, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, c.Owner, "edge-route")}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -85,7 +85,7 @@ func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command,
 		}
 	}
 	n.GatewaySG, err = doEC2(ctx, p.Journal, c.Operation+"/gateway-sg", func() (string, error) {
-		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &n.VPC, GroupName: aw.String("labcentral-" + c.Owner + "-edge"), Description: aw.String("LabCentral owned gateway"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, c.Owner, "edge-sg")})
+		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &n.VPC, GroupName: aw.String("labcentral-" + c.Owner + "-edge"), Description: aw.String("LabCentral owned gateway"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, c.Owner, "edge-sg")}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}

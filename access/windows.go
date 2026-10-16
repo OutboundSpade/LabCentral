@@ -41,11 +41,30 @@ func closeWindowsDCV(ctx context.Context, c lc.Command, client *ssh.Client) erro
 	if err != nil {
 		return err
 	}
+	_, err = guestRun(ctx, client, leaseCommand(c, "revoke", windowsDesktopRevokeProgram(c, exists)))
+	if err != nil {
+		return err
+	}
+	exists, _, err = dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("Windows DCV console removal unconfirmed")
+	}
+	return nil
+}
+
+func dcvWindowsState(ctx context.Context, client *ssh.Client) (bool, bool, error) {
+	return dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
+}
+
+func windowsDesktopRevokeProgram(c lc.Command, exists bool) string {
 	payload, _ := json.Marshal(struct {
 		Marker         string
 		Retain, Exists bool
 	}{dcvMarker(c), c.Access.RetainWorkspace, exists})
-	_, err = guestRun(ctx, client, leaseCommand(c, "revoke", windows.PayloadCommand(`
+	return windows.PayloadCommand(`
 $registry='HKLM:\SOFTWARE\LabCentral\Desktop'
 $owner=(Get-ItemProperty -Path $registry -Name Owner -ErrorAction SilentlyContinue).Owner
 if (!$owner) {exit 0}
@@ -88,20 +107,5 @@ Get-CimInstance Win32_Process | ForEach-Object {
 if (!$p.Retain) {
  Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid | Remove-CimInstance
 }
-`, payload)))
-	if err != nil {
-		return err
-	}
-	exists, _, err = dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
-	if err != nil {
-		return err
-	}
-	if exists {
-		return fmt.Errorf("Windows DCV console removal unconfirmed")
-	}
-	return nil
-}
-
-func dcvWindowsState(ctx context.Context, client *ssh.Client) (bool, bool, error) {
-	return dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
+`, payload)
 }

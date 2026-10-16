@@ -26,7 +26,7 @@ func doEC2[T any](ctx context.Context, j journal.Journal, key string, create fun
 	}
 	return journal.Do(ctx, j, key, func() (T, error) {
 		value, err := create()
-		if apiCode(err, "UnauthorizedOperation") || apiCode(err, "AuthFailure") || apiCode(err, "InvalidParameterValue") || apiCode(err, "InvalidParameterCombination") || apiCode(err, "MissingParameter") || apiCode(err, "RequestLimitExceeded") {
+		if rejectedEC2Error(err) {
 			err = journal.Rejected(err)
 		}
 		return value, err

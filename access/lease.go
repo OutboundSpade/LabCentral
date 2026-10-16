@@ -1,7 +1,6 @@
 package access
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -112,7 +111,10 @@ func leaseCommand(c lc.Command, mode, command string) string {
 		return command
 	}
 	if c.Machine.OS == "windows" {
-		script := fmt.Sprintf("$leaseOutput = & $env:ComSpec /d /s /c %s\n$leaseExit=$LASTEXITCODE\n$leaseOutput\nif ($leaseExit -ne 0) {exit $leaseExit}", psQuote(command))
+		script, err := windows.CommandProgram(command)
+		if err != nil {
+			return windows.Command("throw 'invalid platform PowerShell command'")
+		}
 		return windows.Command(windowsLease(c, mode, script))
 	}
 	return linuxLease(c, mode, command)

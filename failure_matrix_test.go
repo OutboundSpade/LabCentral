@@ -48,6 +48,12 @@ func (p *matrixProvider) Execute(ctx context.Context, c Command, o Observer) (Re
 		current, exists := p.inner.resources[key]
 		if exists && current.Owner != c.Owner {
 			err = errors.New("ownership_mismatch: access")
+		} else if c.Action == "access.read" {
+			result.Absent = !exists
+			if exists {
+				data, _ := json.Marshal(AccessInfo{ID: c.Operation, URL: "http://127.0.0.1:1", Expires: time.Now().Add(time.Hour)})
+				result.Resource.Data = data
+			}
 		} else if c.Action == "access.close" {
 			delete(p.inner.resources, key)
 			result.Absent = true

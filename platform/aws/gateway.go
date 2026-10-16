@@ -66,7 +66,7 @@ func (p *Provider) gateway(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			NetworkInterfaces:   []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), DeleteOnTermination: aw.Bool(true), SubnetId: &n.EdgeSubnet, Groups: []string{n.GatewaySG}, AssociatePublicIpAddress: aw.Bool(true)}},
 			BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: images.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(c.Machine.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}},
 			TagSpecifications:   append(append(specs(t.ResourceTypeInstance, c.Owner, "gateway"), specs(t.ResourceTypeVolume, c.Owner, "gateway")...), specs(t.ResourceTypeNetworkInterface, c.Owner, "gateway")...),
-		})
+		}, noCreateRetries)
 		if err != nil {
 			return "", err
 		}

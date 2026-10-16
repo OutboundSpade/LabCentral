@@ -80,17 +80,27 @@ func (e *Engine) OpenDesktopWithOptions(ctx context.Context, instance, machine s
 		if opts.Principal != "" {
 			operation = fmt.Sprintf("%x", sha256.Sum256([]byte(instance+"\x00"+machine+"\x00"+opts.Principal)))[:24]
 		}
-		// A failed grant/revoke must finish cleanup before a new generation can
-		// replace it. Successful cached launches keep their native generation.
+		// A saved successful grant is not proof that its provider cache survived or
+		// its guest generation has not expired. Reuse only a confirmed cached session.
 		opts.Generation = id()
 		var previous Command
 		if err = e.state.Get(ctx, "access", operation, &previous); err == nil {
-			if previous.Recovery || previous.Action == "access.close" {
-				if err = e.closeAccess(ctx, operation); err != nil {
+			if !previous.Recovery && previous.Action == "access.open" {
+				probe := previous
+				probe.Action = "access.read"
+				probe.ClientPrivateKey = key
+				result, err := e.execute(ctx, probe, e.observer)
+				if err != nil {
 					return err
 				}
-			} else {
-				opts.Generation = previous.Access.Generation
+				if !result.Absent {
+					return json.Unmarshal(result.Resource.Data, &info)
+				}
+			}
+			// Retirement and uncertain cleanup must finish before replacing the durable
+			// generation. Provider expiry uses the same fence as this cleanup.
+			if err = e.closeAccess(ctx, operation); err != nil {
+				return err
 			}
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err

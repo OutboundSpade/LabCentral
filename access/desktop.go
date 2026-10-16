@@ -34,52 +34,114 @@ type Info struct {
 	Expires  time.Time `json:"expires"`
 }
 type desktop struct {
-	relay *Relay
-	close func() error
-	ready func(context.Context) (bool, error)
-	info  Info
+	generation string
+	retired    bool
+	relay      *Relay
+	close      func() error
+	ready      func(context.Context) (bool, error)
+	info       Info
 }
 type Manager struct {
 	mu       sync.Mutex
 	sessions map[string]*desktop
+	locks    map[string]*sessionLock
 }
 
-func NewManager() *Manager { return &Manager{sessions: map[string]*desktop{}} }
+type sessionLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func NewManager() *Manager {
+	return &Manager{sessions: map[string]*desktop{}, locks: map[string]*sessionLock{}}
+}
+
+// Expiry participates in the same per-operation fence as explicit reads, grants
+// and revokes. Keep the cache entry until its cleanup has actually completed.
+func (m *Manager) lock(operation string) func() {
+	m.mu.Lock()
+	l := m.locks[operation]
+	if l == nil {
+		l = &sessionLock{}
+		m.locks[operation] = l
+	}
+	l.refs++
+	m.mu.Unlock()
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		m.mu.Lock()
+		l.refs--
+		if l.refs == 0 {
+			delete(m.locks, operation)
+		}
+		m.mu.Unlock()
+	}
+}
+func (m *Manager) retire(operation string, s *desktop) error {
+	s.retired = true
+	if err := s.close(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	if m.sessions[operation] == s {
+		delete(m.sessions, operation)
+	}
+	m.mu.Unlock()
+	return nil
+}
+func (m *Manager) expire(operation string, s *desktop) {
+	release := m.lock(operation)
+	defer release()
+	m.mu.Lock()
+	active := m.sessions[operation]
+	m.mu.Unlock()
+	if active == s {
+		_ = m.retire(operation, s)
+	}
+}
 func (m *Manager) Close() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	sessions := make(map[string]*desktop, len(m.sessions))
 	for k, s := range m.sessions {
-		_ = s.close()
-		delete(m.sessions, k)
+		sessions[k] = s
+	}
+	m.mu.Unlock()
+	for k, s := range sessions {
+		m.expire(k, s)
 	}
 }
 func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) {
 	if c.Prior.Owner != c.Owner || c.Prior.Name != c.Machine.Name {
 		return lc.Result{}, fmt.Errorf("ownership_mismatch: access")
 	}
-	if c.Action == "access.close" {
-		m.mu.Lock()
-		s := m.sessions[c.Operation]
-		delete(m.sessions, c.Operation)
-		m.mu.Unlock()
-		if s != nil {
-			return lc.Result{Absent: true}, s.close()
-		}
-		if c.Environment.Platform == "aws" {
-			return lc.Result{Absent: true}, closeDCV(ctx, c)
-		}
-		return lc.Result{Absent: true}, closeGuestUser(ctx, c)
-	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	if c.Action != "access.open" {
-		return lc.Result{}, fmt.Errorf("unsupported access action")
-	}
+	release := m.lock(c.Operation)
+	defer release()
 	m.mu.Lock()
 	existing := m.sessions[c.Operation]
 	m.mu.Unlock()
+	if existing != nil && existing.generation != c.Access.Generation {
+		return lc.Result{}, fmt.Errorf("ownership_mismatch: cached desktop generation")
+	}
+	if c.Action == "access.close" {
+		if existing != nil {
+			err := m.retire(c.Operation, existing)
+			return lc.Result{Absent: err == nil}, err
+		}
+		if c.Environment.Platform == "aws" {
+			err := closeDCV(ctx, c)
+			return lc.Result{Absent: err == nil}, err
+		}
+		err := closeGuestUser(ctx, c)
+		return lc.Result{Absent: err == nil}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if c.Action != "access.open" && c.Action != "access.read" {
+		return lc.Result{}, fmt.Errorf("unsupported access action")
+	}
 	if existing != nil {
-		ready := existing.info.Expires.After(time.Now())
+		ready := !existing.retired && existing.info.Expires.After(time.Now())
 		var err error
 		if ready && existing.ready != nil {
 			ready, err = existing.ready(ctx)
@@ -90,15 +152,16 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 		if ready {
 			return accessResult(c, existing.info), nil
 		}
-		if err = existing.close(); err != nil {
+		if err = m.retire(c.Operation, existing); err != nil {
 			return lc.Result{}, err
 		}
-		m.mu.Lock()
-		if m.sessions[c.Operation] == existing {
-			delete(m.sessions, c.Operation)
+		if c.Action == "access.read" {
+			return lc.Result{Absent: true}, nil
 		}
-		m.mu.Unlock()
 		return lc.Result{}, fmt.Errorf("recovery_required: previous desktop generation retired; recover access before reopening")
+	}
+	if c.Action == "access.read" {
+		return lc.Result{Absent: true}, nil
 	}
 	if c.Prior.Owner != c.Owner || c.Prior.Name != c.Machine.Name {
 		return lc.Result{}, fmt.Errorf("ownership_mismatch: access")
@@ -117,6 +180,7 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 	info.ID = c.Operation
 	info.Expires = accessExpiry(c)
 	s.info = info
+	s.generation = c.Access.Generation
 	m.mu.Lock()
 	m.sessions[c.Operation] = s
 	m.mu.Unlock()
@@ -124,17 +188,7 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 		timer := time.NewTimer(time.Until(info.Expires))
 		defer timer.Stop()
 		<-timer.C
-		m.mu.Lock()
-		active := m.sessions[c.Operation]
-		if active != s {
-			m.mu.Unlock()
-			return
-		}
-		delete(m.sessions, c.Operation)
-		m.mu.Unlock()
-		if active != nil {
-			_ = active.close()
-		}
+		m.expire(c.Operation, s)
 	}()
 	return accessResult(c, info), nil
 }

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/pscheck"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 )
 
 func linuxLeaseFixture(t *testing.T, c lc.Command, mode, program string) (*exec.Cmd, string) {
@@ -119,5 +121,27 @@ func TestDesktopLeaseRefusesForeignMarkerBeforeGuestMutation(t *testing.T) {
 	}
 	if _, err := os.Stat(changed); !os.IsNotExist(err) {
 		t.Fatal("foreign guest state mutated", err)
+	}
+}
+
+func TestWindowsLeaseComposesActualGrantAndRevokeCommands(t *testing.T) {
+	c := leaseFixtureCommand()
+	c.Machine.OS = "windows"
+	for _, item := range []struct{ mode, command, mutation string }{
+		{"begin", windowsDesktopProgram(c, "example-password"), "Enable-LocalUser"},
+		{"revoke", windowsDesktopRevokeProgram(c, true), "Disable-LocalUser"},
+	} {
+		t.Run(item.mode, func(t *testing.T) {
+			program, err := windows.CommandProgram(leaseCommand(c, item.mode, item.command))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(program, "ComSpec") || strings.Contains(program, "-EncodedCommand") || !strings.Contains(program, item.mutation) || !strings.Contains(program, "$leaseMutex") {
+				t.Fatal("mutation was not composed directly inside its lease")
+			}
+			if os.Getenv("LABCENTRAL_TEST_POWERSHELL") != "" {
+				pscheck.Syntax(t, program)
+			}
+		})
 	}
 }

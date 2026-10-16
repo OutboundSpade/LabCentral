@@ -130,6 +130,7 @@ func Start(ctx context.Context, c Config) (string, func(), error) {
 			}
 		}
 		r.RequestURI = ""
+		r.URL.Path = strings.TrimRight(c.Upstream.Path, "/") + r.URL.Path
 		r.URL.Scheme = c.Upstream.Scheme
 		r.URL.Host = c.Upstream.Host
 		r.Host = c.Upstream.Host

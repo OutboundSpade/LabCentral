@@ -67,7 +67,7 @@ func (g *buildGuard) registerMutation(body []byte) (buildMutation, bool, error) 
 	requests = append(requests, request)
 	return request, true, g.p.Journal.Save(g.c.Owner+"/build-mutations", requests)
 }
-func rejectedBuildReply(reply nativeproxy.Reply) bool {
+func rejectedBuildReply(action string, reply nativeproxy.Reply) bool {
 	var result struct {
 		Errors []struct {
 			Code string `xml:"Code"`
@@ -77,8 +77,7 @@ func rejectedBuildReply(reply nativeproxy.Reply) bool {
 		return false
 	}
 	for _, e := range result.Errors {
-		switch e.Code {
-		case "UnauthorizedOperation", "AuthFailure", "InvalidParameterValue", "InvalidParameterCombination", "MissingParameter", "RequestLimitExceeded", "InvalidAMIName.Duplicate":
+		if definiteEC2Rejection(action, e.Code) {
 			return true
 		}
 	}
@@ -172,7 +171,7 @@ func (g *buildGuard) do(ctx context.Context, r *http.Request, body []byte, perfo
 		}
 		if reply.Status >= 400 {
 			failure := &buildNativeReplyError{reply}
-			if rejectedBuildReply(reply) {
+			if rejectedBuildReply(request.Action, reply) {
 				return buildMutationResult{}, journal.Rejected(failure)
 			}
 			return buildMutationResult{}, failure

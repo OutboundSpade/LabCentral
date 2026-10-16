@@ -32,6 +32,8 @@ func (p *desktopFenceProvider) Execute(ctx context.Context, c Command, o Observe
 		}
 		b, err := json.Marshal(AccessInfo{ID: c.Operation, URL: "http://127.0.0.1:1", Expires: time.Now().Add(time.Hour)})
 		return Result{Resource: Resource{Data: b}}, err
+	case "access.read":
+		return Result{Absent: true}, nil
 	case "access.close":
 		if c.Access.Principal == "unknown-close" {
 			return Result{}, errors.New("unconfirmed guest cleanup")
@@ -234,5 +236,68 @@ func TestDesktopLaunchFencesSameMachineAndLifecycleAcrossClients(t *testing.T) {
 	}
 	if err = second.Destroy(ctx, inst.ID); err != nil {
 		t.Fatal("native launch or cancelled waits leaked lifecycle guard", err)
+	}
+}
+
+// The provider cache can retire independently of the saved successful open.
+type expiringDesktopProvider struct {
+	*fakeProvider
+	cached     *Command
+	tombstones map[string]bool
+	opens      []string
+}
+
+func (p *expiringDesktopProvider) Execute(ctx context.Context, c Command, o Observer) (Result, error) {
+	switch c.Action {
+	case "access.open":
+		if p.tombstones[c.Access.Generation] {
+			return Result{}, errors.New("generation was revoked")
+		}
+		p.opens = append(p.opens, c.Access.Generation)
+		saved := c
+		p.cached = &saved
+		data, _ := json.Marshal(AccessInfo{ID: c.Operation, URL: "http://127.0.0.1:1", Expires: time.Now().Add(time.Hour)})
+		return Result{Resource: Resource{Data: data}}, nil
+	case "access.read":
+		if p.cached == nil {
+			return Result{Absent: true}, nil
+		}
+		data, _ := json.Marshal(AccessInfo{ID: c.Operation, URL: "http://127.0.0.1:1", Expires: time.Now().Add(time.Hour)})
+		return Result{Resource: Resource{Data: data}}, nil
+	case "access.close":
+		p.tombstones[c.Access.Generation] = true
+		p.cached = nil
+		return Result{Absent: true}, nil
+	}
+	return p.fakeProvider.Execute(ctx, c, o)
+}
+func TestDesktopReopenAfterProviderExpiryAllocatesFreshGeneration(t *testing.T) {
+	first, _, inst, _ := desktopFenceFixture(t)
+	p := &expiringDesktopProvider{fakeProvider: freshFake(), tombstones: map[string]bool{}}
+	first.provider = p
+	ctx := context.Background()
+	opts := AccessOptions{Principal: "example-principal"}
+	info, err := first.OpenDesktopWithOptions(ctx, inst.ID, "workstation", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := p.cached.Access.Generation
+	if _, err = first.OpenDesktopWithOptions(ctx, inst.ID, "workstation", opts); err != nil || len(p.opens) != 1 {
+		t.Fatal("confirmed cache was not reused", err, p.opens)
+	}
+	p.tombstones[old] = true
+	p.cached = nil
+	if _, err = first.OpenDesktopWithOptions(ctx, inst.ID, "workstation", opts); err != nil {
+		t.Fatal("reopen after autonomous expiry", err)
+	}
+	if len(p.opens) != 2 || p.opens[1] == old || !p.tombstones[old] {
+		t.Fatal("retired generation reused", p.opens)
+	}
+	var saved Command
+	if err = first.state.Get(ctx, "access", info.ID, &saved); err != nil || saved.Access.Generation != p.opens[1] || saved.Recovery {
+		t.Fatal(saved, err)
+	}
+	if err = first.CloseAccess(ctx, info.ID); err != nil {
+		t.Fatal(err)
 	}
 }

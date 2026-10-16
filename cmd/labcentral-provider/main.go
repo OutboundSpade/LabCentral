@@ -24,7 +24,7 @@ type router struct {
 }
 
 func (r *router) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
-	if c.Action == "access.open" || c.Action == "access.close" {
+	if c.Action == "access.open" || c.Action == "access.close" || c.Action == "access.read" {
 		return r.access.Execute(faultinject.WithOperation(ctx, c.Environment.Platform, c.Action), c)
 	}
 	switch c.Environment.Platform {

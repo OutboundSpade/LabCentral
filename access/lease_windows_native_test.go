@@ -14,15 +14,16 @@ import (
 // desktop. This tests the real registry/mutex wrapper, not a PowerShell mock.
 func TestWindowsDesktopLeaseNative(t *testing.T) {
 	c := leaseFixtureCommand()
+	c.Machine.OS = "windows"
 	run := func(mode, script string) (string, error) {
-		command := windows.Command(windowsLease(c, mode, script))
-		out, err := exec.Command("cmd.exe", "/d", "/s", "/c", command).CombinedOutput()
+		command := leaseCommand(c, mode, windows.Command(script))
+		out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command).CombinedOutput()
 		return string(out), err
 	}
 	marker := dcvMarker(c)
 	defer func() {
 		script := `$path='HKLM:\SOFTWARE\LabCentral\DesktopLease'; if ((Get-ItemProperty $path -Name Owner -ErrorAction SilentlyContinue).Owner -eq '` + marker + `') {Remove-Item -Recurse -Force $path}`
-		_, _ = exec.Command("cmd.exe", "/d", "/s", "/c", windows.Command(script)).CombinedOutput()
+		_, _ = exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", windows.Command(script)).CombinedOutput()
 	}()
 	if out, err := run("revoke", "Write-Output 'absence recorded'"); err != nil {
 		t.Fatal(err, out)

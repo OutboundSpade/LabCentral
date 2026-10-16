@@ -57,10 +57,12 @@ func client(ctx context.Context, e lc.Environment) (*ec2.Client, *sts.Client, er
 	if err != nil {
 		return nil, nil, err
 	}
-	// Non-idempotent creates must reach the journal after their first uncertain
-	// response, before any SDK replay. Recovery performs authoritative discovery.
-	return ec2.NewFromConfig(c, func(o *ec2.Options) { o.RetryMaxAttempts = 1 }, faultOptions), sts.NewFromConfig(c), nil
+	// Reads and idempotent operations retain bounded SDK retry handling. Guarded
+	// creates override it per request, before journal reconciliation.
+	return ec2.NewFromConfig(c, func(o *ec2.Options) { o.RetryMaxAttempts = 3 }, faultOptions), sts.NewFromConfig(c), nil
 }
+func noCreateRetries(o *ec2.Options) { o.RetryMaxAttempts = 1 }
+
 func filters(owner, role string) []t.Filter {
 	f := []t.Filter{{Name: aw.String("tag:labcentral:owner"), Values: []string{owner}}, {Name: aw.String("tag:labcentral:version"), Values: []string{"2"}}}
 	if role != "" {
@@ -246,7 +248,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	owner, key := c.Owner, c.Operation
 	ns := networkState{}
 	vpc, err := doEC2(ctx, p.Journal, key+"/vpc", func() (string, error) {
-		r, e := a.CreateVpc(ctx, &ec2.CreateVpcInput{CidrBlock: &vpcCIDR, TagSpecifications: specs(t.ResourceTypeVpc, owner, "network")})
+		r, e := a.CreateVpc(ctx, &ec2.CreateVpcInput{CidrBlock: &vpcCIDR, TagSpecifications: specs(t.ResourceTypeVpc, owner, "network")}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -272,7 +274,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	igw, err := doEC2(ctx, p.Journal, key+"/gateway", func() (string, error) {
-		r, e := a.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{TagSpecifications: specs(t.ResourceTypeInternetGateway, owner, "network")})
+		r, e := a.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{TagSpecifications: specs(t.ResourceTypeInternetGateway, owner, "network")}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -312,7 +314,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	management := ns.SG
 	if len(ns.Segments) > 1 {
 		management, err = doEC2(ctx, p.Journal, key+"/management-sg", func() (string, error) {
-			r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner + "-management"), Description: aw.String("First NIC management"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, owner, "management-sg")})
+			r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner + "-management"), Description: aw.String("First NIC management"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, owner, "management-sg")}, noCreateRetries)
 			if e != nil {
 				return "", e
 			}
@@ -361,7 +363,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			Resource  string
 		}{{"Allow", "*", "s3:GetObject", "arn:aws:s3:::dcv-license." + c.Environment.AWS.Region + "/*"}}})
 		ep, err := doEC2(ctx, p.Journal, key+"/endpoint", func() (string, error) {
-			r, e := a.CreateVpcEndpoint(ctx, &ec2.CreateVpcEndpointInput{VpcId: &vpc, VpcEndpointType: t.VpcEndpointTypeGateway, ServiceName: aw.String("com.amazonaws." + c.Environment.AWS.Region + ".s3"), RouteTableIds: tables, PolicyDocument: aw.String(string(policy)), ClientToken: aw.String(owner + "-s3"), TagSpecifications: specs(t.ResourceTypeVpcEndpoint, owner, "network")})
+			r, e := a.CreateVpcEndpoint(ctx, &ec2.CreateVpcEndpointInput{VpcId: &vpc, VpcEndpointType: t.VpcEndpointTypeGateway, ServiceName: aw.String("com.amazonaws." + c.Environment.AWS.Region + ".s3"), RouteTableIds: tables, PolicyDocument: aw.String(string(policy)), ClientToken: aw.String(owner + "-s3"), TagSpecifications: specs(t.ResourceTypeVpcEndpoint, owner, "network")}, noCreateRetries)
 			if e != nil {
 				return "", e
 			}
@@ -413,7 +415,7 @@ func (p *Provider) networkSegment(ctx context.Context, a *ec2.Client, c lc.Comma
 		subComponent, routeComponent, sgComponent = subKey, routeKey, sgKey
 	}
 	subnet, err := doEC2(ctx, p.Journal, key+"/"+subKey, func() (string, error) {
-		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &vpc, AvailabilityZone: aw.String(c.Environment.AWS.Zone), CidrBlock: &planned.CIDR, TagSpecifications: networkSpecs(t.ResourceTypeSubnet, owner, subComponent)})
+		r, e := a.CreateSubnet(ctx, &ec2.CreateSubnetInput{VpcId: &vpc, AvailabilityZone: aw.String(c.Environment.AWS.Zone), CidrBlock: &planned.CIDR, TagSpecifications: networkSpecs(t.ResourceTypeSubnet, owner, subComponent)}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -433,7 +435,7 @@ func (p *Provider) networkSegment(ctx context.Context, a *ec2.Client, c lc.Comma
 	}
 
 	route, err := doEC2(ctx, p.Journal, key+"/"+routeKey, func() (string, error) {
-		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, owner, routeComponent)})
+		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, owner, routeComponent)}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -469,7 +471,7 @@ func (p *Provider) networkSegment(ctx context.Context, a *ec2.Client, c lc.Comma
 		}
 	}
 	sg, err := doEC2(ctx, p.Journal, key+"/"+sgKey, func() (string, error) {
-		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner + suffix), Description: aw.String("LabCentral v2 owned lab"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, owner, sgComponent)})
+		r, e := a.CreateSecurityGroup(ctx, &ec2.CreateSecurityGroupInput{VpcId: &vpc, GroupName: aw.String("labcentral-" + owner + suffix), Description: aw.String("LabCentral v2 owned lab"), TagSpecifications: networkSpecs(t.ResourceTypeSecurityGroup, owner, sgComponent)}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}
@@ -658,7 +660,7 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		in.IamInstanceProfile = &t.IamInstanceProfileSpecification{Name: aw.String(c.Environment.AWS.DesktopProfile)}
 	}
 	instance, err := doEC2(ctx, p.Journal, c.Operation+"/instance", func() (string, error) {
-		out, err := a.RunInstances(ctx, in)
+		out, err := a.RunInstances(ctx, in, noCreateRetries)
 		if err != nil {
 			return "", err
 		}
@@ -1110,7 +1112,7 @@ func (p *Provider) PrepareBuild(ctx context.Context, c lc.Command, publicKey str
 	}
 	name := "labcentral-" + c.Owner
 	_, err = doEC2(ctx, p.Journal, c.Operation+"/build-key", func() (string, error) {
-		r, e := a.ImportKeyPair(ctx, &ec2.ImportKeyPairInput{KeyName: &name, PublicKeyMaterial: []byte(publicKey), TagSpecifications: specs(t.ResourceTypeKeyPair, c.Owner, "build-key")})
+		r, e := a.ImportKeyPair(ctx, &ec2.ImportKeyPairInput{KeyName: &name, PublicKeyMaterial: []byte(publicKey), TagSpecifications: specs(t.ResourceTypeKeyPair, c.Owner, "build-key")}, noCreateRetries)
 		if e != nil {
 			return "", e
 		}

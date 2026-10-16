@@ -108,3 +108,67 @@ func TestRetiredCachedDesktopCannotReuseItsRevokedGeneration(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderExpiryFencesReplacementUntilCleanupCompletes(t *testing.T) {
+	m := NewManager()
+	entered, finish := make(chan struct{}), make(chan struct{})
+	old := &desktop{generation: strings.Repeat("a", 24), info: Info{Expires: time.Now().Add(-time.Second)}, close: func() error { close(entered); <-finish; return nil }}
+	m.sessions["operation"] = old
+	expiryDone := make(chan struct{})
+	go func() { m.expire("operation", old); close(expiryDone) }()
+	<-entered
+	m.mu.Lock()
+	retained := m.sessions["operation"] == old
+	m.mu.Unlock()
+	if !retained {
+		t.Fatal("expiry erased cache before guest cleanup")
+	}
+	c := lc.Command{Action: "access.read", Operation: "operation", Owner: "owner", Prior: lc.Resource{Owner: "owner", Name: "desktop"}, Machine: lc.PlannedMachine{Name: "desktop"}, Access: lc.AccessOptions{Generation: old.generation}}
+	done := make(chan lc.Result, 1)
+	go func() {
+		r, err := m.Execute(context.Background(), c)
+		if err != nil {
+			t.Error(err)
+		}
+		done <- r
+	}()
+	select {
+	case <-done:
+		t.Fatal("replacement probe crossed in-flight retirement")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(finish)
+	<-expiryDone
+	if r := <-done; !r.Absent {
+		t.Fatal("retired cache still reusable")
+	}
+	// A delayed expiry callback cannot revoke a new generation at the same key.
+	current := &desktop{generation: strings.Repeat("b", 24), info: Info{Expires: time.Now().Add(time.Hour)}, close: func() error { t.Error("old expiry revoked replacement"); return nil }}
+	m.sessions["operation"] = current
+	m.expire("operation", old)
+	c.Access.Generation = current.generation
+	if r, err := m.Execute(context.Background(), c); err != nil || r.Absent {
+		t.Fatal(r, err)
+	}
+}
+
+func TestFailedProviderExpiryCleanupRemainsRecoverable(t *testing.T) {
+	m := NewManager()
+	calls := 0
+	old := &desktop{generation: strings.Repeat("a", 24), info: Info{Expires: time.Now().Add(-time.Second)}, close: func() error {
+		calls++
+		if calls == 1 {
+			return errors.New("unknown cleanup")
+		}
+		return nil
+	}}
+	m.sessions["operation"] = old
+	m.expire("operation", old)
+	if m.sessions["operation"] != old || !old.retired {
+		t.Fatal("failed retirement lost intent")
+	}
+	c := lc.Command{Action: "access.read", Operation: "operation", Owner: "owner", Prior: lc.Resource{Owner: "owner", Name: "desktop"}, Machine: lc.PlannedMachine{Name: "desktop"}, Access: lc.AccessOptions{Generation: old.generation}}
+	if r, err := m.Execute(context.Background(), c); err != nil || !r.Absent || calls != 2 {
+		t.Fatal(r, err, calls)
+	}
+}

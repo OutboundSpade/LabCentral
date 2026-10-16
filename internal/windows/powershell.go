@@ -5,6 +5,8 @@ package windows
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
+	"strings"
 	"unicode/utf16"
 )
 
@@ -22,6 +24,27 @@ func ProcessCommand(program string) string {
 		binary.LittleEndian.PutUint16(b[i*2:], v)
 	}
 	return "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + base64.StdEncoding.EncodeToString(b)
+}
+
+// CommandProgram composes platform-generated commands in the same PowerShell
+// process. In particular, a guest lease must cover the mutation itself, without
+// a child shell surviving after the mutex holder dies.
+func CommandProgram(command string) (string, error) {
+	const prefix = "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
+	const suffix = "; exit $LASTEXITCODE"
+	if !strings.HasPrefix(command, prefix) || !strings.HasSuffix(command, suffix) {
+		return "", fmt.Errorf("not a platform PowerShell command")
+	}
+	encoded := strings.TrimSuffix(strings.TrimPrefix(command, prefix), suffix)
+	b, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(b)%2 != 0 {
+		return "", fmt.Errorf("invalid platform PowerShell encoding")
+	}
+	u := make([]uint16, len(b)/2)
+	for i := range u {
+		u[i] = binary.LittleEndian.Uint16(b[2*i:])
+	}
+	return string(utf16.Decode(u)), nil
 }
 
 func PayloadCommand(program string, payload []byte) string {
