@@ -11,8 +11,8 @@ const copy=document.getElementById('clipboard');
 const paste=document.getElementById('paste');
 const dialog=document.getElementById('paste-dialog');
 const text=document.getElementById('paste-text');
-let rfb,clipboard='';
-const ended=async()=>{copy.disabled=true;paste.disabled=true;dialog.close();text.value='';clipboard='';for(let i=0;i<24;i++){try{const response=await fetch('/status',{cache:'no-store'});if(!response.ok)break;const state=await response.json();if(state.takenOverBy){status.textContent=state.takenOverBy+' took over this desktop. Return to your lab to take it back.';return}if(state.code==='available')break}catch{break}await new Promise(done=>setTimeout(done,5000))}};
+let rfb,login,clipboard='';
+const ended=async()=>{login?.remove();copy.disabled=true;paste.disabled=true;dialog.close();text.value='';clipboard='';for(let i=0;i<24;i++){try{const response=await fetch('/status',{cache:'no-store'});if(!response.ok)break;const state=await response.json();if(state.takenOverBy){status.textContent=state.takenOverBy+' took over this desktop. Return to your lab to take it back.';return}if(state.code==='available')break}catch{break}await new Promise(done=>setTimeout(done,5000))}};
 document.getElementById('fullscreen').onclick=()=>viewport.requestFullscreen?.();
 paste.onclick=()=>{text.value='';dialog.showModal();text.focus()};
 // noVNC's clipboard channel is text-only and depends on the guest clipboard agent.
@@ -30,7 +30,7 @@ try{
  rfb.addEventListener('disconnect',()=>{status.textContent='Disconnected. Return to your lab to reconnect.';ended()});
  rfb.addEventListener('securityfailure',()=>{status.textContent='Console connection failed. Return to your lab to reconnect.'});
  rfb.addEventListener('clipboard',event=>{clipboard=event.detail.text});
- const login=document.createElement('button');login.textContent='Console login';login.className='btn btn-sm min-h-11';
+ login=document.createElement('button');login.textContent='Console login';login.type='button';
  const info=document.createElement('dialog');info.className='modal';
  const box=document.createElement('div');box.className='modal-box space-y-3';
  const title=document.createElement('h2');title.id='console-login-title';info.setAttribute('aria-labelledby',title.id);title.textContent='Guest console login';title.className='font-semibold';
