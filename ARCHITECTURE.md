@@ -646,7 +646,10 @@ completion wake the dispatcher, with a five-second fallback tick.
 Worker concurrency and engine limits accept 1–32, aggregate budgets 1–64 and job/prepare timeouts 1–1440
 minutes. Ending a meeting cancels overlapping work but leaves unrelated builds running.
 Cleanup runs in bounded pools, records each result, and keeps unknown outcomes
-retryable.
+retryable. Access sweeps skip in-flight desktop operations without failing the job;
+retained inactive records and closing intents (including those beside a live relay)
+are re-enqueued by the 20-second policy check. Sweeps never immediately re-enqueue
+busy work. Native unknown outcomes still fail visibly and retain cleanup intent.
 
 ### Meetings, teams and checks
 
@@ -886,8 +889,11 @@ to 60 seconds after five idle minutes. Only a confirmed pass advances progress.
   machines included) at `/admin/terminal/`. The WebSocket checks Origin, admin session
   and a CSRF first message, then binds library-owned instance and host identities;
   browsers never supply addresses or credentials. Channels last at most ten minutes,
-  hold the machine lock, use a guest PTY with resize, and reconnect with a fresh shell
-  that never replays input. Output cannot control navigation, clipboard or titles.
+  hold a shared instance lifecycle guard through `WithSSHSession`, use a guest PTY
+  with resize, and reconnect with a fresh shell that never replays input. Guest steps
+  retain their exclusive machine lock and can run beside a terminal; recovery and
+  destruction wait for both. Windows keeps its exclusive guest file lock, gated job
+  object and bounded output unchanged. Output cannot control navigation, clipboard or titles.
 - **Isolation.** Teammates share guest administration, so their workspaces are not
   security boundaries.
 
@@ -915,7 +921,7 @@ request capture, browser fixtures and local load models establish local behavior
 | AWS Windows guests (CLI/library) | Mixed IIS lab: both images built and boot-qualified; sysprep and certificate sanitization; private deployment; coach and student SSH; firewall, hosts and routes; DCV console with browser rendering, reconnect and revocation; generation-fenced grant/revoke programs executed on Windows, with recovery after real grant/revoke response loss; break/check/repair for every stage and scenario variant; recovery after a killed destroy; image removal with confirmed cleanup | Cohorts; full failure matrix |
 | Hosted identity and meetings | Real OIDC, revocation, seat switching, retained workspaces; meetings of 4 teams × 3 students and 6 teams × 6 students: 36 concurrent desktops, one break and checks across all six teams | Meetings larger than 6 × 6 |
 | Hosted practice and scenarios | Individual attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts; full weekly quota exhaustion |
-| Hosted Windows | Real OIDC with a coach and two students: coach-only template import and build (retry recovered a failed build), coach practice with keyboard input typed into Notepad and confirmed by a guest check, lesson panel, close and reopen keeping saved files, a randomized scenario repaired from the desktop through UAC with Windows and Linux checks; a team sharing one console: refusal, take over, take back, coach take over and the displaced-tab notice; coach PowerShell terminal; break, checks and reset; meeting end, cleanup and image removal | Guest steps while a coach terminal is open on that Windows machine end as unknown; cohorts; full failure matrix |
+| Hosted Windows | Real OIDC with a coach and two students: coach-only template import and build (retry recovered a failed build), coach practice with keyboard input typed into Notepad and confirmed by a guest check, lesson panel, close and reopen keeping saved files, a randomized scenario repaired from the desktop through UAC with Windows and Linux checks; a team sharing one console: refusal, take over, take back, coach take over and the displaced-tab notice; coach PowerShell terminal; break, checks and reset; meeting end, cleanup and image removal; isolated AWS Windows SSH harness verifies guest steps beside an open coach terminal and native launcher failure, timeout, lock and output bounds | Cohorts; full failure matrix |
 | Hosted desktops and coach terminal | Terminal input, resize, reconnect and revocation; cold and rebooted desktops; desktop browser launch | General launch latency |
 | Proxmox setup and lifecycle | PVE 9.2 with directory storage: clean setup, guest-agent cold restart, idempotent rerun, environment check, the single/web-database/workstation examples, image removal and teardown; killed deploy/build/destroy, native clone/template/delete response loss, concurrent clients and changed ownership; confirmed disk cleanup after a native VM deletion reported only a disk-free warning | Full native response-loss, stale-ownership and interruption matrix; capture-receipt and publication races; other storage and firmware combinations |
 | Proxmox networking | Single, web/database and two-network router labs; pinned jump SSH, requester-specific names, one-sided Internet egress, blocked LAN/gateway destinations after forced defaults, concurrent-lab L2 isolation; gateway reboot and policy restoration | Static management pools; four-network layouts |

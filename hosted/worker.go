@@ -113,7 +113,14 @@ func (s *Service) recoverAccess(ctx context.Context) error {
 		if err := json.Unmarshal(records[n], &record); err != nil {
 			return err
 		}
-		return s.cleanupDesktop(ctx, record.ID, true)
+		err := s.cleanupDesktop(ctx, record.ID, true)
+		if err == errDesktopBusy {
+			// The record and closing intent remain durable. The policy loop
+			// checks inactive desktops every 20 seconds and queues another sweep;
+			// do not immediately enqueue here and spin on an in-flight operation.
+			return nil
+		}
+		return err
 	})
 }
 func (s *Service) runJob(ctx context.Context, j Job) error {

@@ -242,7 +242,7 @@ Meeting → Coach machine access**. Practice attempts belong to one person, so t
 doesn't apply there.
 
 **Coach terminal.** Opens PowerShell as `Administrator`. The terminal keeps its initial
-size on Windows.
+size on Windows. Breaks, resets and checks can run while the terminal stays open.
 
 **Time and cost.** Expect about an hour for a first Windows image build and several
 minutes for a Windows desktop to start (the opening and preparation limits below are
@@ -291,6 +291,9 @@ concurrent desktops has been verified with the defaults: desktops opened at once
 
 ## Operations
 
+- **Desktop cleanup.** Busy desktop operations are retried automatically by the
+  periodic cleanup sweep (every 20 seconds), without a failed Admin job. Unconfirmed
+  native cleanup still appears as a failed job and retains its cleanup intent.
 - **Backups.** Back up the state root, including its WAL files and provider journals,
   while the server is stopped.
 - **One server per state root.** Never run two servers against the same state.

@@ -380,6 +380,9 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 	_, _ = s.Store.DB.ExecContext(ctx, `DELETE FROM objects WHERE kind IN ('desktop-cookie','desktop-displaced') AND julianday(json_extract(body,'$.Expires'))<=julianday(?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	records, _ := s.Store.List(ctx, "desktop")
 	cleanup := false
+	// A failed reconnect can retain an active relay while its native grant is
+	// unconfirmed. Retry closing intent even when that relay is still alive.
+	_ = s.Store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM objects op JOIN objects d ON d.kind='desktop' AND d.id=op.id WHERE op.kind='desktop-operation' AND json_extract(op.body,'$.Status')='closing')`).Scan(&cleanup)
 	s.desktopMu.Lock()
 	for _, b := range records {
 		var a accessRecord

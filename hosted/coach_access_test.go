@@ -6,14 +6,17 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"golang.org/x/crypto/ssh"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,7 +33,7 @@ type coachTransportEngine struct {
 	wait     bool
 }
 
-func (e *coachTransportEngine) WithSSHMaterial(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
+func (e *coachTransportEngine) WithSSHSession(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
 	e.calls.Add(1)
 	if e.entered != nil {
 		e.entered <- machine
@@ -264,6 +267,19 @@ func testCoachSSHRelay(t *testing.T, osFamily string) {
 								request.Reply(true, nil)
 							case "window-change":
 								windows <- request.Payload
+							case "exec":
+								var command struct{ Command string }
+								if ssh.Unmarshal(request.Payload, &command) != nil || !strings.HasPrefix(command.Command, "powershell.exe ") {
+									t.Error("wrong step command")
+								}
+								request.Reply(true, nil)
+								input, err := io.ReadAll(channel)
+								decoded, decodeErr := base64.StdEncoding.DecodeString(string(input))
+								if err != nil || decodeErr != nil || !bytes.Contains(decoded, []byte(`"script":"probe.ps1"`)) {
+									t.Error("step stdin payload lost", err, decodeErr)
+								}
+								channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
+								return
 							case "shell":
 								request.Reply(true, nil)
 								go func() {
@@ -350,6 +366,13 @@ func testCoachSSHRelay(t *testing.T, osFamily string) {
 		kind, output, err = connection.Read(ctx)
 		if err != nil || kind != websocket.MessageBinary || !bytes.Contains(output, []byte("Coach SSH fixture ready")) {
 			t.Fatal("SSH output unavailable", string(output), err)
+		}
+		if osFamily == "windows" {
+			bundle := InstructorBundle{Version: 3, Files: []lc.File{{Path: "probe.ps1", Content: []byte("exit 0")}}}
+			step := GuestPlaybook{Machine: machine, Script: "probe.ps1", TimeoutSeconds: 10}
+			if err = s.runGuestPlaybooks(ctx, Team{InstanceID: teams[1].InstanceID}, src, bundle, []GuestPlaybook{step}); err != nil {
+				t.Fatal("step beside Windows coach PTY", err)
+			}
 		}
 		if err = connection.Write(ctx, websocket.MessageBinary, []byte("hello\r")); err != nil {
 			t.Fatal(err)
@@ -448,10 +471,23 @@ type pinnedCoachEngine struct {
 	key         []byte
 	host        string
 	os, address string
+	sessions    atomic.Int32
 }
 
+func (e *pinnedCoachEngine) WithSSHSession(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
+	e.sessions.Add(1)
+	defer e.sessions.Add(-1)
+	return e.withMaterial(ctx, instance, machine, fn)
+}
 func (e *pinnedCoachEngine) WithSSHMaterial(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
-	return fn(lc.Instance{ID: instance, Status: "ready", Plan: lc.Plan{Source: e.src}}, lc.PlannedMachine{Name: machine, Address: "10.77.0.10", HostPublicKey: e.host, OS: e.os}, lc.Resource{Kind: "machine", Name: machine, Owner: instance, Address: e.address, PrivateAddress: "10.77.0.10"}, e.key)
+	if e.sessions.Load() == 0 {
+		return fmt.Errorf("expected an open interactive session beside the step")
+	}
+	return e.withMaterial(ctx, instance, machine, fn)
+}
+func (e *pinnedCoachEngine) withMaterial(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
+	m := lc.PlannedMachine{Name: machine, Spec: e.src.Lab.Machines[machine], Address: "10.77.0.10", HostPublicKey: e.host, OS: e.os}
+	return fn(lc.Instance{ID: instance, Status: "ready", Plan: lc.Plan{Source: e.src, Machines: []lc.PlannedMachine{m}}}, m, lc.Resource{Kind: "machine", Name: machine, Owner: instance, Address: e.address, PrivateAddress: m.Address}, e.key)
 }
 
 func TestCoachGuestBindsPrivateAddressAndOwnership(t *testing.T) {

@@ -322,3 +322,86 @@ func TestProxmoxRetainedDesktopGrantAndRevoke(t *testing.T) {
 		t.Fatal("generation not revoked", err)
 	}
 }
+
+func TestInteractiveSSHAllowsSameMachineStepAndRetainsLifecycleGuard(t *testing.T) {
+	first, second, inst, _ := desktopFenceFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- first.WithSSHSession(ctx, inst.ID, "web", func(i Instance, m PlannedMachine, r Resource, key []byte) error {
+			if i.ID != inst.ID || m.Name != "web" || r.Name != "web" || len(key) == 0 {
+				return errors.New("unpinned SSH material")
+			}
+			close(entered)
+			select {
+			case <-release:
+				return errors.New("terminal ended")
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}()
+	defer func() { cancel(); <-done }()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("terminal did not start")
+	}
+	// Use a second engine on the same state root: these are process-wide file
+	// locks, not just hosted in-memory admission or an SSH fixture's behavior.
+	stepCtx, stop := context.WithTimeout(ctx, time.Second)
+	err := second.WithSSHMaterial(stepCtx, inst.ID, "web", func(Instance, PlannedMachine, Resource, []byte) error { return nil })
+	stop()
+	if err != nil {
+		t.Fatal("terminal blocked same-machine step", err)
+	}
+	waitCtx, stop := context.WithTimeout(ctx, 40*time.Millisecond)
+	err = second.Destroy(waitCtx, inst.ID)
+	stop()
+	if err == nil {
+		t.Fatal("destruction overlapped an interactive session")
+	}
+	if _, err = second.Recover(ctx, inst.ID); err == nil {
+		t.Fatal("recovery overlapped an interactive session")
+	}
+	close(release)
+	// Acquiring the exclusive lifecycle guard waits for callback and fence release.
+	if err = second.Destroy(ctx, inst.ID); err != nil {
+		t.Fatal("terminal retained lifecycle guard", err)
+	}
+}
+
+func TestInteractiveSSHRejectsUndeclaredAndUnreadyAccess(t *testing.T) {
+	first, _, inst, _ := desktopFenceFixture(t)
+	ctx := context.Background()
+	called := false
+	run := func() error {
+		return first.WithSSHSession(ctx, inst.ID, "web", func(Instance, PlannedMachine, Resource, []byte) error { called = true; return nil })
+	}
+	for n := range inst.Plan.Machines {
+		if inst.Plan.Machines[n].Name == "web" {
+			inst.Plan.Machines[n].Spec.Access = nil
+		}
+	}
+	if err := first.state.Put(ctx, "instance", inst.ID, inst); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err == nil || called {
+		t.Fatal("undeclared SSH access admitted", err)
+	}
+	for n := range inst.Plan.Machines {
+		if inst.Plan.Machines[n].Name == "web" {
+			inst.Plan.Machines[n].Spec.Access = []string{"ssh"}
+		}
+	}
+	inst.Status = "ending"
+	if err := first.state.Put(ctx, "instance", inst.ID, inst); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err == nil || called {
+		t.Fatal("unready instance admitted", err)
+	}
+}

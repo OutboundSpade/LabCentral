@@ -931,15 +931,32 @@ func (e *Engine) RemoveImage(ctx context.Context, key string) error {
 // bounded caller-owned SSH operation. Credentials must stay local.
 func (e *Engine) WithSSHMaterial(ctx context.Context, instance, machine string, fn func(Instance, PlannedMachine, Resource, []byte) error) error {
 	return e.withMachineLock(ctx, instance, machine, func() error {
-		i, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
-		if err != nil {
-			return err
-		}
-		if !Contains(m.Spec.Access, "ssh") {
-			return problem(Unsupported, machine, "SSH access is not declared")
-		}
-		return fn(i, m, r, key)
+		return e.useSSHMaterial(ctx, instance, machine, fn)
 	})
+}
+
+// WithSSHSession holds the shared instance lifecycle guard for an interactive
+// SSH session. It permits concurrent machine operations, including guest steps;
+// callers must bound and close their session before returning. Credentials stay
+// local. Use WithSSHMaterial for operations that need machine serialization.
+func (e *Engine) WithSSHSession(ctx context.Context, instance, machine string, fn func(Instance, PlannedMachine, Resource, []byte) error) error {
+	unlock, err := e.state.LockKeySharedContext(ctx, "instance:"+instance)
+	if err != nil {
+		return problem(Busy, "instance", err.Error())
+	}
+	defer unlock()
+	return e.useSSHMaterial(ctx, instance, machine, fn)
+}
+
+func (e *Engine) useSSHMaterial(ctx context.Context, instance, machine string, fn func(Instance, PlannedMachine, Resource, []byte) error) error {
+	i, m, r, key, err := e.SSHMaterial(ctx, instance, machine)
+	if err != nil {
+		return err
+	}
+	if !Contains(m.Spec.Access, "ssh") {
+		return problem(Unsupported, machine, "SSH access is not declared")
+	}
+	return fn(i, m, r, key)
 }
 
 // SSHMaterial returns credentials only through an explicit access request.

@@ -120,7 +120,7 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 	}
 	name := r.PathValue("machine")
 	spec, ok := src.Lab.Machines[name]
-	engine, supported := s.Engine.(exerciseSSH)
+	engine, supported := s.Engine.(terminalSSH)
 	if !ok || !lc.Contains(spec.Access, "ssh") || !supported {
 		writeError(w, 404, "Machine SSH access is unavailable.")
 		return
@@ -213,7 +213,7 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 		return
 	}
 	defer release()
-	err = engine.WithSSHMaterial(ctx, team.InstanceID, name, func(inst lc.Instance, m lc.PlannedMachine, res lc.Resource, key []byte) error {
+	err = engine.WithSSHSession(ctx, team.InstanceID, name, func(inst lc.Instance, m lc.PlannedMachine, res lc.Resource, key []byte) error {
 		if !s.coachAuthorized(ctx, v, team, meeting) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) || lc.OSFamily(m.OS) != lc.OSFamily(src.Lab.Images[spec.Image].OS) {
 			cancel(errCoachRevoked)
 			return errCoachRevoked
