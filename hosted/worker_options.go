@@ -72,6 +72,9 @@ func (o WorkerOptions) Validate() error {
 // ValidateConfig checks static service policy without contacting identity or
 // infrastructure. Credential validity and native capacity require live checks.
 func ValidateConfig(c Config) error {
+	if err := c.Capacity.Validate(); err != nil {
+		return err
+	}
 	if err := validateIdentityGroups(c); err != nil {
 		return err
 	}

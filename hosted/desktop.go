@@ -20,6 +20,7 @@ type accessRecord struct {
 	ID, UserID, SessionID, TeamID, InstanceID string
 	Expires                                   time.Time
 	Machine, OS, UserName                     string
+	Platform                                  string
 	Coach                                     bool
 }
 type desktopSession struct {
@@ -52,7 +53,7 @@ func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 503, "Pinned machine unavailable.")
 		return
 	}
-	record := accessRecord{ID: id, UserID: v.User.ID, SessionID: v.ID, TeamID: team.ID, InstanceID: team.InstanceID, Expires: expiry, Machine: machine, OS: os, UserName: v.User.Name, Coach: r.PathValue("id") != "" && v.User.Admin}
+	record := accessRecord{ID: id, UserID: v.User.ID, SessionID: v.ID, TeamID: team.ID, InstanceID: team.InstanceID, Expires: expiry, Machine: machine, OS: os, Platform: s.env.Platform, UserName: v.User.Name, Coach: r.PathValue("id") != "" && v.User.Admin}
 	if key := record.consoleKey(); key != "" {
 		unlock, err := s.lockConsole(r.Context(), key)
 		if err != nil {
@@ -173,7 +174,7 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		s.acceptLaunch(w, r)
 		return
 	}
-	if origin := r.Header.Get("Origin"); origin != "" && origin != s.Config.DesktopOrigin {
+	if origin := r.Header.Get("Origin"); (origin != "" || r.URL.Path == "/websocket") && origin != s.Config.DesktopOrigin {
 		http.Error(w, "invalid origin", 403)
 		return
 	}
@@ -226,6 +227,9 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 			practiceID = strings.TrimPrefix(d.record.TeamID, "practice:")
 		}
 		page := strings.NewReplacer("{{origin}}", html.EscapeString(s.Config.Origin), "{{practiceRun}}", html.EscapeString(practiceID)).Replace(desktopHTML)
+		if d.record.Platform == "proxmox" {
+			page = strings.Replace(page, `<link rel="stylesheet" href="/desktop.css">`, `<link rel="stylesheet" href="/lesson-ui.css"><link rel="stylesheet" href="/desktop.css">`, 1)
+		}
 		_, _ = w.Write([]byte(page))
 		return
 	}
@@ -236,7 +240,11 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/client.js" {
 		w.Header().Set("Content-Type", "text/javascript")
-		_, _ = w.Write([]byte(desktopJS))
+		client := desktopJS
+		if d.record.Platform == "proxmox" {
+			client = novncJS
+		}
+		_, _ = w.Write([]byte(client))
 		return
 	}
 	if r.URL.Path == "/credentials" {
@@ -248,7 +256,15 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/dcvjs/") {
+		if d.record.Platform == "proxmox" || s.Config.SDKRoot == "" {
+			http.NotFound(w, r)
+			return
+		}
 		http.StripPrefix("/dcvjs/", http.FileServer(http.Dir(s.Config.SDKRoot))).ServeHTTP(w, r)
+		return
+	}
+	if d.record.Platform == "proxmox" && r.URL.Path != "/websocket" && !strings.HasPrefix(r.URL.Path, "/vendor/") {
+		http.NotFound(w, r)
 		return
 	}
 	ctx, cancel := context.WithCancel(r.Context())

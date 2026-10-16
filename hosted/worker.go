@@ -217,6 +217,9 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 	if e != nil {
 		return e
 	}
+	if e = s.Store.atomic(ctx, func(ctx context.Context) error { return s.checkCapacity(ctx, SiteCapacity{}) }); e != nil {
+		return e
+	}
 	// Independent failures do not cancel peers. Only meeting expiry, end or
 	// worker shutdown cancels the shared context. Bound native API concurrency.
 	parallelTeams := s.Config.Worker.Effective().MaxProvisioningConcurrency

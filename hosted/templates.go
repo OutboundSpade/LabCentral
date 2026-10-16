@@ -203,7 +203,11 @@ func (s *Service) queueTemplateDecision(ctx context.Context, kind, id string) (J
 		return Job{}, fmt.Errorf("Template revision not found.")
 	}
 	if kind == "build" {
-		if _, err := s.plan(ctx, id); err != nil {
+		plan, err := s.plan(ctx, id)
+		if err != nil {
+			return Job{}, err
+		}
+		if err = s.reserveBuildCapacity(ctx, id, plan); err != nil {
 			return Job{}, err
 		}
 		if err := s.actionableRevision(ctx, id); err != nil {
@@ -316,8 +320,14 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 		if err = s.Store.Put(ctx, "template-images", t.ID, keys); err != nil {
 			return err
 		}
+		if err = s.reserveBuildCapacity(ctx, t.ID, p); err != nil {
+			return err
+		}
 		if _, err = s.Engine.BuildWithRecovery(ctx, p); err != nil {
 			return fmt.Errorf("Image build did not finish. Choose Retry build to reconcile the previous attempt and continue; ready images are kept. If cleanup remains unconfirmed, ask the operator to resolve native build resources, then retry. Details: %w", err)
+		}
+		if err = s.Store.Delete(ctx, "capacity-build", t.ID); err != nil {
+			return err
 		}
 		now := time.Now().UTC()
 		t.Built = true
@@ -398,6 +408,9 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 			}
 		}
 		if err = errors.Join(failures...); err != nil {
+			return err
+		}
+		if err = s.Store.Delete(ctx, "capacity-build", t.ID); err != nil {
 			return err
 		}
 		now := time.Now().UTC()

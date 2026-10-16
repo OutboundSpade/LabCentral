@@ -35,8 +35,8 @@ func ValidateHostedEnvironment(env lc.Environment) error {
 	if err := lc.ValidateEnvironment(env); err != nil {
 		return err
 	}
-	if env.Platform != "aws" {
-		return fmt.Errorf("hosted deployment currently requires AWS")
+	if env.Platform != "aws" && env.Platform != "proxmox" {
+		return fmt.Errorf("hosted deployment requires AWS or Proxmox")
 	}
 	if env.Build.WindowsDCVURL != "" || env.Build.WindowsDCVSHA256 != "" {
 		return lc.ValidateWindowsDCV(env.Build)

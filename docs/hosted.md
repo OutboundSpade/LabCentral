@@ -3,12 +3,13 @@
 `labcentral-server` turns LabCentral into a web application for a team or class:
 students practice in their own cloud workspaces, and instructors run team meetings
 with in-browser desktops, breaks, checks and a scoreboard. Hosted provisioning
-currently requires AWS.
+supports independent AWS and Proxmox installations.
 
 - [What it does](#what-it-does)
 - [The template repository](#the-template-repository)
 - [Requirements](#requirements)
 - [Configuration](#configuration)
+- [Running on Proxmox](#running-on-proxmox)
 - [Limits](#limits)
 - [Operations](#operations)
 
@@ -36,8 +37,8 @@ flowchart LR
 - **Personal workspaces** with a weekly cloud allowance per student (three hours by
   default), or a download to run the lab on your own infrastructure with the CLI.
 - **Team meetings.** Admins start a meeting from a built template, then prepare one lab
-  per team. Students join a team and open desktops (one holder per Windows machine, individual
-  sessions on Linux); instructors apply breaks,
+  per team. Students join a team and open desktops (one holder per AWS Windows or Proxmox console, individual
+  DCV sessions on AWS Linux); instructors apply breaks,
   run scheduled service checks with a scoreboard, and open an SSH terminal to any team
   machine in the browser.
 - **Image cleanup.** Admin → Templates shows image counts, and "Remove unused images"
@@ -86,8 +87,9 @@ On one Linux host:
 - the `labcentral-server` and `labcentral-provider` binaries and the Packer toolchain;
 - the built web UI (`npm --prefix web ci && npm --prefix web run build`, then point
   `webRoot` at `web/build`);
-- the Amazon DCV Web Client SDK (`dcvjs-esm` directory) for browser desktops;
-- an AWS environment file, as for the CLI (see [Running labs with the CLI](operators.md));
+- for AWS desktops, the Amazon DCV Web Client SDK (`dcvjs-esm` directory);
+  Proxmox uses bundled noVNC and does not need `sdkRoot`;
+- an AWS or Proxmox environment file, as for the CLI (see [Running labs with the CLI](operators.md));
 - an OIDC client with redirect URL `https://APP_ORIGIN/auth/callback`;
 - a read-only SSH deploy key for the template repository (a GitHub SSH URL such as
   `git@github.com:example/lab-templates.git`) and a `known_hosts` file;
@@ -126,6 +128,92 @@ labcentral-server --config /path/to/service.json --check-config   # validate, pr
 labcentral-server --config /path/to/service.json --listen 127.0.0.1:8080
 ```
 
+## Running on Proxmox
+
+Use a **new Ubuntu 24.04 amd64 VM on the management LAN**, with its own state,
+OIDC client and app/desktop DNS names. It has no connection to an AWS installation.
+The VM must reach the Proxmox API, gateway management addresses and build guests;
+a VPN reaching only the API is insufficient. Allow outbound HTTPS for packages,
+Packer and GitHub SSH for template imports. Give the server disk room for build
+sources, journals and backups. Keep host names, tokens and deploy keys outside source.
+
+1. **Build the bundle** on a Linux development machine with Go 1.27.1 and Node 22.12+
+   (`./tools/package-server.sh`), or download the server archive from a release.
+   Copy it to the new VM. Install dependencies and unpack:
+
+   ```sh
+   sudo apt-get update
+   sudo apt-get install -y git curl ca-certificates unzip xorriso caddy
+   sudo useradd --system --create-home --home-dir /var/lib/labcentral --shell /bin/bash labcentral
+   sudo install -d /opt/labcentral
+   sudo tar -xzf labcentral-server-linux-amd64.tar.gz -C /opt/labcentral
+   sudo install -d -m 0750 -o labcentral -g labcentral /etc/labcentral
+   ```
+
+2. **Set up the environment** as the service user, following
+   [Proxmox setup](operators.md#proxmox) and [Build toolchain](operators.md#build-toolchain).
+   Use `/etc/labcentral/proxmox.yaml`; install Packer in `/usr/local/bin` and its pinned
+   plugins under `/var/lib/labcentral/packer-plugins`. Export `PACKER_PLUGIN_PATH` to
+   that directory during setup. Run `sudo -u labcentral -H bash` for these steps.
+   Keep setup receipts and the token beside the environment. Check the environment
+   from this VM. The admin token is needed only for setup/teardown; never put it in
+   the service configuration.
+
+3. **Configure** `/etc/labcentral/service.json` using the example above, with
+   `environment: /etc/labcentral/proxmox.yaml`, `webRoot: /opt/labcentral/web`,
+   `root: /var/lib/labcentral/state`, the two installation origins and your OIDC
+   client. Omit `sdkRoot`. Set a ceiling, for example:
+   `"capacity": {"vCPU": 12, "memoryMiB": 24576}`. Reserve host resources separately
+   for the server VM, Proxmox and other workloads. Copy the read-only deploy key
+   and verified GitHub host keys to the configured paths. Protect configuration,
+   environment, deploy key and `known_hosts` with service ownership and mode 0600.
+   Create root-owned `/etc/labcentral/provider.env` (0600), containing:
+
+   ```ini
+   LABCENTRAL_PROXMOX_TOKEN=the-runtime-token-secret
+   PACKER_PLUGIN_PATH=/var/lib/labcentral/packer-plugins
+   ```
+
+   Use the token variable named in the environment's `proxmox.tokenEnv`. Do not
+   enable request-body/access logging on the desktop origin: launch POSTs are secrets.
+
+4. **TLS and startup.** Point both names at this VM in local DNS. Copy
+   `deploy/Caddyfile` to `/etc/caddy/Caddyfile` and replace its example names.
+   For a closed LAN, `tls internal` uses [Caddy's internal CA](https://caddyserver.com/docs/caddyfile/directives/tls).
+   Distribute only its root certificate from
+   `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt` to clients
+   (including browser trust stores). Keep its private key on the VM.
+   For public certificates on private addresses, use a Caddy build with your
+   [DNS provider module](https://caddyserver.com/docs/automatic-https#dns-challenge)
+   and replace `tls internal` with `tls { dns PROVIDER ... }`; keep the provider's
+   narrowly scoped DNS credential in a protected Caddy systemd environment file.
+   DNS challenge needs public authoritative DNS and outbound ACME access, but no
+   inbound public port forwarding. Use split DNS to resolve the app locally.
+
+   ```sh
+   sudo install -m 0644 /opt/labcentral/deploy/labcentral-server.service /etc/systemd/system/
+   sudo caddy validate --config /etc/caddy/Caddyfile
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now labcentral-server
+   sudo systemctl restart caddy
+   sudo systemctl status labcentral-server --no-pager
+   ```
+
+   Register `https://labs.example.org/auth/callback` with OIDC. If OIDC uses a
+   private CA, install that CA into the VM's system trust store too. Then sign in,
+   refresh the template repository, build a revision and try practice before a meeting.
+
+**Console desktops.** Every Proxmox VM has one shared screen. The normal holder,
+conflict, **Take over** and **Take back** controls apply to students and coaches.
+Use **Console login** in the desktop toolbar to see the temporary guest username and
+password, then sign in at the guest greeter. These are guest credentials; the native
+VNC ticket and API token stay on the server. Closing or revoking access terminates the
+guest session and locks the account; saved files remain until the lab is destroyed. Reopen
+from the app for a fresh authenticated connection. Full screen and viewport resizing
+are available; clipboard text depends on the guest supporting QEMU's clipboard channel
+and may be unavailable on standard console images. The lesson panel works beside the
+console during practice. AWS Linux keeps its per-user DCV sessions.
+
 ## Windows templates
 
 Templates can include Windows Server 2022 machines (AWS only). Add to the service's
@@ -163,7 +251,20 @@ doesn't stop the lab's machines.
 
 ## Limits
 
-All limits are optional; omitted or zero values use the defaults.
+`capacity` is an optional site ceiling: set **both** `vCPU` and `memoryMiB`, or omit
+both to disable it. Admissions count every team's allocation (including waiting
+meetings), queued/active/failed/ending practice, retained engine allocations and each
+lab's gateway. They stay reserved until cleanup is confirmed. Creation/preparation
+and practice refuse before provisioning with the required and available capacity.
+Builds also reserve temporary capacity: on Proxmox, 3 vCPU / 4864 MiB per parallel
+image for its builder or qualifier plus gateway. Failed builds retain this reservation
+until retry succeeds or image cleanup confirms absence. Allow headroom or lower
+`engine.maxImageBuildConcurrency`. This is a reservation policy, not native free-RAM
+measurement; installations must use an exclusive allocation namespace. Weekly student
+minutes apply independently on both platforms. On AWS, include the gateway instance
+type in `aws.types` when enabling a capacity ceiling.
+
+Other limits are optional; omitted or zero values use the defaults.
 
 | Setting | Default | Meaning |
 | --- | ---: | --- |

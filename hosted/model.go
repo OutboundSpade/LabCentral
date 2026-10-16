@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	Capacity           SiteCapacity     `json:"capacity,omitempty"`
 	MemberGroup        string           `json:"memberGroup"`
 	AdminGroup         string           `json:"adminGroup"`
 	Aggregate          AggregateOptions `json:"aggregate,omitempty"`

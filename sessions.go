@@ -73,8 +73,8 @@ func (e *Engine) OpenDesktopWithOptions(ctx context.Context, instance, machine s
 		if i.Status != "ready" {
 			return problem(Busy, "instance", "lab is not ready")
 		}
-		if opts.RetainWorkspace && i.Plan.Environment.Platform != "aws" {
-			return problem(Unsupported, "access", "retained desktop workspaces currently require AWS")
+		if opts.RetainWorkspace && i.Plan.Environment.Platform != "aws" && i.Plan.Environment.Platform != "proxmox" {
+			return problem(Unsupported, "access", "retained desktop workspaces require AWS or Proxmox")
 		}
 		operation := id()
 		if opts.Principal != "" {

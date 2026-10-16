@@ -78,14 +78,27 @@ func run() error {
 			Desktop            hosted.DesktopOptions   `json:"desktop"`
 			WeeklyCloudMinutes int                     `json:"weeklyCloudMinutes"`
 			Note               string                  `json:"note"`
-			Gateway            lc.AWSGatewayConfig     `json:"awsGateway"`
+			Gateway            *lc.AWSGatewayConfig    `json:"awsGateway,omitempty"`
+			Platform           string                  `json:"platform"`
+			Capacity           hosted.SiteCapacity     `json:"capacity"`
 			AllowEgress        bool                    `json:"allowEgress"`
 		}{c.MemberGroup, c.AdminGroup, c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), c.Desktop.Effective(), func() int {
 			if c.WeeklyCloudMinutes == 0 {
 				return 180
 			}
 			return c.WeeklyCloudMinutes
-		}(), "Static policy and environment validated; identity and native capacity were not checked.", env.AWS.Gateway.Effective(), env.AWS.AllowEgress})
+		}(), "Static policy and environment validated; identity and native capacity were not checked.", func() *lc.AWSGatewayConfig {
+			if env.Platform != "aws" {
+				return nil
+			}
+			gateway := env.AWS.Gateway.Effective()
+			return &gateway
+		}(), env.Platform, c.Capacity, func() bool {
+			if env.Platform == "proxmox" {
+				return env.Proxmox.AllowEgress
+			}
+			return env.AWS.AllowEgress
+		}()})
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

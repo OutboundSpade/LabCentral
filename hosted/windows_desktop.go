@@ -36,7 +36,7 @@ type DesktopConflict struct {
 }
 
 func (a accessRecord) consoleKey() string {
-	if a.OS != "windows" || strings.HasPrefix(a.TeamID, "practice:") {
+	if (a.OS != "windows" && a.Platform != "proxmox") || strings.HasPrefix(a.TeamID, "practice:") {
 		return ""
 	}
 	return digest(a.InstanceID + "\x00" + a.Machine)
@@ -97,12 +97,12 @@ func (s *Service) claimConsole(ctx context.Context, a accessRecord, takeover boo
 		return nil, nil
 	}
 	if !takeover {
-		conflict := &DesktopConflict{Error: "The Windows desktop is held by " + holder.Name + ".", Code: "desktop_held", HolderName: holder.Name}
+		conflict := &DesktopConflict{Error: "The desktop is held by " + holder.Name + ".", Code: "desktop_held", HolderName: holder.Name}
 		var displaced desktopHandoff
 		if err := s.Store.Get(ctx, "desktop-displaced", a.ID, &displaced); err == nil {
 			conflict.Code = "desktop_taken_over"
 			conflict.TakenOverBy = displaced.ByName
-			conflict.Error = "The Windows desktop was taken over by " + displaced.ByName + "."
+			conflict.Error = "The desktop was taken over by " + displaced.ByName + "."
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -205,7 +205,7 @@ func (s *Service) desktopStatus(w http.ResponseWriter, r *http.Request, v Sessio
 		writeError(w, 503, "Pinned machine unavailable.")
 		return
 	}
-	a := accessRecord{ID: digest(team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24], UserID: v.User.ID, TeamID: team.ID, InstanceID: team.InstanceID, Machine: machine, OS: os}
+	a := accessRecord{ID: digest(team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24], UserID: v.User.ID, TeamID: team.ID, InstanceID: team.InstanceID, Machine: machine, OS: os, Platform: s.env.Platform}
 	state, err := s.desktopState(r.Context(), a)
 	if err != nil {
 		writeError(w, 503, "Desktop state is unavailable.")
@@ -232,7 +232,7 @@ func (s *Service) desktopCookieStatus(w http.ResponseWriter, r *http.Request, co
 		return true
 	}
 	if state.TakenOverBy != "" {
-		writeJSON(w, 409, DesktopConflict{Error: "The Windows desktop was taken over by " + state.TakenOverBy + ".", Code: "desktop_taken_over", TakenOverBy: state.TakenOverBy})
+		writeJSON(w, 409, DesktopConflict{Error: "The desktop was taken over by " + state.TakenOverBy + ".", Code: "desktop_taken_over", TakenOverBy: state.TakenOverBy})
 		return true
 	}
 	return false
