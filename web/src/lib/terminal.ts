@@ -51,7 +51,9 @@ export function parseInventory(value: unknown): TerminalInventory | null {
   for (const m of v.machines as unknown[]) {
     const item = m as Record<string, unknown> | null;
     if (!item || !identifier(item.name) || typeof item.status !== "string" || typeof item.desktop !== "boolean") return null;
-    machines.push({ name: item.name, status: item.status, desktop: item.desktop });
+    const os = item.os ?? "linux";
+    if (os !== "linux" && os !== "windows") return null;
+    machines.push({ name: item.name, status: item.status, desktop: item.desktop, os });
   }
   return {
     teamID: v.teamID as string,

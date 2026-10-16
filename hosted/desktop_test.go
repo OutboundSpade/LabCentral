@@ -29,6 +29,7 @@ func TestReconnectRechecksNativeSessionAndReplacesOnlyChangedRelay(t *testing.T)
 	ctx := context.Background()
 	teams := setupMeeting(t, s.Store)
 	_ = s.Store.Put(ctx, "template", "", Template{})
+	_ = s.Store.Put(ctx, "source", "", lc.Source{Lab: lc.Lab{Images: map[string]lc.Image{"desktop": {}}, Machines: map[string]lc.Machine{"workstation": {Image: "desktop"}}}})
 	_ = s.Store.Put(ctx, "template-instructor", "", InstructorBundle{Practice: &instructor.Practice{DesktopMachine: "workstation"}})
 	if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[0].ID, "meeting"); err != nil {
 		t.Fatal(err)
@@ -42,7 +43,7 @@ func TestReconnectRechecksNativeSessionAndReplacesOnlyChangedRelay(t *testing.T)
 	id := digest("instance\x00workstation\x00" + v.User.ID)[:24]
 	dc, cancel := context.WithCancel(ctx)
 	defer cancel()
-	original := &desktopSession{record: accessRecord{id, v.User.ID, v.ID, teams[0].ID, "instance", v.Expires}, info: lc.AccessInfo{ID: id, URL: "http://127.0.0.1:1/launch?token=old", Expires: v.Expires}, ctx: dc, cancel: cancel}
+	original := &desktopSession{record: accessRecord{ID: id, UserID: v.User.ID, SessionID: v.ID, TeamID: teams[0].ID, InstanceID: "instance", Expires: v.Expires}, info: lc.AccessInfo{ID: id, URL: "http://127.0.0.1:1/launch?token=old", Expires: v.Expires}, ctx: dc, cancel: cancel}
 	s.desktops[id] = original
 	engine := &reconnectEngine{Engine: s.Engine, info: original.info}
 	s.Engine = engine

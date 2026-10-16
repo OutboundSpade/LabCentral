@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { RotateCw, SquareArrowOutUpRight, SquareTerminal } from "@lucide/svelte";
+  import { Monitor, RotateCw, SquareArrowOutUpRight, SquareTerminal } from "@lucide/svelte";
   import { api, APIError, session } from "$lib/api";
   import Notice from "$lib/Notice.svelte";
+  import { launchDesktop } from "$lib/launch";
   import { parseInventory, terminalURL, type TerminalInventory } from "$lib/terminal";
   import type { AdminView } from "$lib/types";
 
@@ -11,6 +12,9 @@
   let inventory = $state<TerminalInventory | null>(null);
   let error = $state("");
   let loading = $state(false);
+  let opening = $state(false);
+  // Set when the team's Windows desktop is in use: the coach may take it over.
+  let held = $state("");
   let sequence = 0;
   let scope = "";
   const ready = $derived(data.teams.filter((t) => t.status === "ready"));
@@ -45,14 +49,36 @@
       sequence++;
       teamID = "";
       machine = "";
+      held = "";
       inventory = null;
       error = "";
       loading = false;
     }
   });
 
+  async function openDesktop(takeover: boolean) {
+    const team = teamID;
+    if (!team) return;
+    opening = true;
+    error = "";
+    try {
+      await launchDesktop(
+        `/api/admin/teams/${encodeURIComponent(team)}/desktop${takeover ? "/takeover" : ""}`,
+        "Starting the team desktop. Windows can take a few minutes…",
+      );
+      held = "";
+    } catch (e) {
+      if (e instanceof APIError && e.status === 409 && e.code.startsWith("desktop_"))
+        held = String(e.body.holderName ?? e.body.takenOverBy ?? "A student");
+      else error = (e as Error).message;
+    } finally {
+      opening = false;
+    }
+  }
+
   async function load() {
     const version = ++sequence;
+    held = "";
     inventory = null;
     machine = "";
     error = "";
@@ -92,7 +118,7 @@
     <SquareTerminal size={16} aria-hidden="true" class="text-primary" />Coach machine access
   </h2>
   <p id="coach-ssh-hint" class="mt-1 text-xs leading-relaxed text-base-content/70">
-    Opens a terminal in a new tab.
+    Opens a terminal or the team's desktop in a new tab.
   </p>
   {#if data.jobs.some((j) => ["check", "exercise"].includes(j.kind) && ["queued", "running"].includes(j.status))}<p class="mt-2 text-xs text-warning" role="status">Close the terminal before checks or resets use this machine.</p>{/if}
   <Notice message={error} />
@@ -138,9 +164,30 @@
         >{:else}<button type="button" class="btn btn-sm btn-primary min-h-11" disabled
           ><SquareTerminal size={15} aria-hidden="true" />Open SSH</button
         >{/if}
+      <button
+        type="button"
+        class="btn btn-sm min-h-11"
+        disabled={!teamID || opening}
+        aria-busy={opening}
+        onclick={() => openDesktop(false)}
+        >{#if opening}<span class="loading loading-spinner loading-xs"></span>{:else}<Monitor
+            size={15}
+            aria-hidden="true"
+          />{/if}Open desktop</button
+      >
       {#if teamID && !loading && (error || !pinned)}<button type="button" class="btn btn-sm min-h-11" onclick={load}
           ><RotateCw size={15} aria-hidden="true" />Refresh machines</button
         >{/if}
     </div>
   </div>
+  {#if held && teamID}<div class="mt-3 rounded-box border border-warning/30 bg-warning/8 p-3" role="status">
+      <p class="text-xs leading-relaxed">
+        {held} is using this team's Windows desktop. Taking over disconnects them; saved files stay.
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm btn-warning min-h-11 lg:min-h-8" disabled={opening} onclick={() => openDesktop(true)}
+          >Take over</button
+        ><button type="button" class="btn btn-sm btn-ghost min-h-11 lg:min-h-8" onclick={() => (held = "")}>Cancel</button>
+      </div>
+    </div>{/if}
 </section>

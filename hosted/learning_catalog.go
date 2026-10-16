@@ -13,6 +13,7 @@ import (
 // Read progress only by keys derived from this authenticated user and the exact
 // published IDs, in bounded batches rather than one query per publication.
 func (s *Store) learningCatalogLabs(ctx context.Context, user string) ([]LearningLab, error) {
+	coach := s.coachUser(ctx, user)
 	rows, err := s.DB.QueryContext(ctx, `SELECT p.body,`+policyJSON+`,`+cachedPolicyJSON+`,b.id IS NOT NULL,t.id IS NOT NULL FROM objects p LEFT JOIN objects t ON t.kind='template' AND t.id=json_extract(p.body,'$.template') LEFT JOIN objects b ON b.kind='template-instructor' AND b.id=t.id WHERE p.kind='learning-publication' ORDER BY p.id`)
 	if err != nil {
 		return nil, err
@@ -46,7 +47,7 @@ func (s *Store) learningCatalogLabs(ctx context.Context, user string) ([]Learnin
 				err = policyErr
 				break
 			}
-			if policy.Visibility.Audience == "coaches" {
+			if policy.Visibility.Audience == "coaches" && !(coach && publication.OwnerID == user) {
 				continue
 			}
 			publication.StepCount = len(publication.Steps)

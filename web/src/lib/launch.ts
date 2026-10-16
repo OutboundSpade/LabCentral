@@ -13,9 +13,10 @@ export async function launchDesktop(path: string, waiting: string) {
   tab.document.title = "Starting your desktop · LabCentral";
   tab.document.body.textContent = waiting;
   try {
-    // Another open of the same desktop may still be in flight (a cold desktop takes
-    // about half a minute). Keep the tab and retry while the server asks for it.
-    const deadline = Date.now() + 120_000;
+    // Another open of the same desktop may still be in flight (a cold Linux desktop
+    // takes about half a minute, Windows several). Keep the tab and retry while the
+    // server asks for it.
+    const deadline = Date.now() + 300_000;
     let result: Launch;
     for (;;) {
       try {

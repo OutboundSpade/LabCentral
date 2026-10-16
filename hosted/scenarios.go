@@ -59,7 +59,11 @@ type templateAttempt struct {
 var attemptRequestPattern = regexp.MustCompile(`^[a-f0-9]{24}$`)
 
 func (s *Service) ownedPublication(ctx context.Context, id, user string) (LearningPublication, error) {
-	p, err := s.publication(ctx, id)
+	var p LearningPublication
+	err := s.Store.Get(ctx, "learning-publication", id, &p)
+	if err == nil && (!p.Published || s.templateAudience(ctx, p.Template, p.OwnerID == user && s.coachForUser(ctx, user)) != nil) {
+		err = fmt.Errorf("This lab is unavailable.")
+	}
 	if err == nil && p.OwnerID != "" && p.OwnerID != user {
 		err = fmt.Errorf("This lab is unavailable.")
 	}
@@ -88,7 +92,7 @@ func (s *Service) createTemplateAttemptDecision(w http.ResponseWriter, r *http.R
 		return
 	}
 	templateID := r.PathValue("id")
-	if s.studentTemplate(r.Context(), templateID) != nil {
+	if s.templateAudience(r.Context(), templateID, v.User.Admin) != nil {
 		writeError(w, 404, "This template revision is unavailable.")
 		return
 	}

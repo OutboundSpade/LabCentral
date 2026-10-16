@@ -105,10 +105,15 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 		} else if err != nil {
 			return nil, err
 		}
+		t.Problem = s.revisionProblem(ctx, t.ID)
 		keys, e := s.templateKeys(ctx, t.ID)
 		if e != nil {
 			if errors.Is(e, errRetainedRevision) {
 				t.RemovalBlocked = "Saved image identities are unavailable for this historical revision."
+				continue
+			}
+			if t.Problem != "" {
+				t.RemovalBlocked = "Resolve the environment capability problem before image cleanup."
 				continue
 			}
 			if !errors.Is(e, sql.ErrNoRows) {
@@ -198,6 +203,9 @@ func (s *Service) queueTemplateDecision(ctx context.Context, kind, id string) (J
 		return Job{}, fmt.Errorf("Template revision not found.")
 	}
 	if kind == "build" {
+		if _, err := s.plan(ctx, id); err != nil {
+			return Job{}, err
+		}
 		if err := s.actionableRevision(ctx, id); err != nil {
 			return Job{}, err
 		}

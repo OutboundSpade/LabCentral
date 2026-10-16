@@ -13,13 +13,27 @@
   import Status from "$lib/Status.svelte";
   import Deadline from "$lib/Deadline.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
-  import { session, api, refresh } from "$lib/api";
+  import { session, api, refresh, APIError } from "$lib/api";
   import { launchDesktop } from "$lib/launch";
   import { render, prose } from "$lib/markdown";
   let error = $state("");
   let busy = $state(false);
   let handover = $derived(render($session?.lab.handover ?? ""));
   let readyNotice = $state(false);
+  let confirmTakeover = $state(false);
+  // A Windows console has one screen: one teammate holds it at a time.
+  const desktop = $derived($session?.lab.desktopState ?? null);
+  const windows = $derived(
+    ($session?.lab.machines ?? []).some((m) => m.desktop && m.os === "windows"),
+  );
+  const holder = $derived(
+    desktop?.code === "held"
+      ? (desktop.holderName ?? "A teammate")
+      : desktop?.code === "desktop_taken_over"
+        ? (desktop.takenOverBy ?? "A teammate")
+        : "",
+  );
+  const handingOver = $derived(desktop?.code === "desktop_outcome_unknown");
   let observedTeam = $state("");
   let previousStatus = $state("");
   $effect(() => {
@@ -39,17 +53,22 @@
     if (team?.status !== "ready") readyNotice = false;
     previousStatus = team?.status ?? "";
   });
-  async function open() {
+  async function open(takeover = false) {
     readyNotice = false;
+    confirmTakeover = false;
     busy = true;
     error = "";
     try {
       await launchDesktop(
-        "/api/access",
-        "Starting your desktop. This can take a minute…",
+        takeover ? "/api/access/takeover" : "/api/access",
+        windows
+          ? "Starting the Windows desktop. This can take a few minutes…"
+          : "Starting your desktop. This can take a minute…",
       );
     } catch (e) {
-      error = (e as Error).message;
+      // Someone else took the console meanwhile; the refreshed state offers take over.
+      if (!(e instanceof APIError && e.status === 409 && e.code.startsWith("desktop_")))
+        error = (e as Error).message;
     } finally {
       await refresh();
       busy = false;
@@ -117,31 +136,63 @@
           {#if $session.meeting}<div class="mt-2"><Deadline
               expires={$session.meeting.expires}
             /></div>{/if}
-          <button
+          {#if holder && $session.lab.team.status === "ready"}<p class="mt-4 text-sm leading-relaxed" role="status">
+              {desktop?.code === "held"
+                ? `${holder} is using the Windows desktop.`
+                : `${holder} took over the Windows desktop.`}
+              <span class="text-base-content/70">It has one screen, so one teammate uses it at a time.</span>
+            </p>
+            {#if confirmTakeover}<div class="mt-3 rounded-box border border-warning/30 bg-warning/8 p-3">
+                <p class="text-xs leading-relaxed">
+                  {holder} will be disconnected. Saved files stay; unsaved work in open programs is lost.
+                </p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button class="btn btn-sm btn-warning min-h-11 lg:min-h-8" disabled={busy} onclick={() => open(true)}
+                    ><ExternalLink size={15} />Take over</button
+                  ><button class="btn btn-sm btn-ghost min-h-11 lg:min-h-8" onclick={() => (confirmTakeover = false)}
+                    >Cancel</button
+                  >
+                </div>
+              </div>{:else}<button
+                class="btn mt-3 min-h-11 w-full"
+                disabled={busy || !desktop?.canTakeOver}
+                aria-busy={busy}
+                onclick={() => (confirmTakeover = true)}
+                >{#if busy}<span class="loading loading-spinner loading-xs"></span>{/if}{desktop?.code === "held"
+                  ? "Take over…"
+                  : "Take back…"}</button
+              >{/if}
+          {:else}<button
             class={[
               "btn btn-primary mt-4 min-h-11 w-full",
               readyNotice
                 ? "ring-2 ring-primary ring-offset-2 ring-offset-base-100"
                 : "",
             ]}
-            disabled={busy || $session.lab.team.status !== "ready"}
+            disabled={busy || handingOver || $session.lab.team.status !== "ready"}
             aria-busy={busy}
             aria-describedby="desktop-help"
-            onclick={open}
+            onclick={() => open()}
             >{#if busy}<span class="loading loading-spinner loading-xs"
               ></span>{:else}<ExternalLink size={15} />{/if}Open desktop</button
           >
           <p id="desktop-help" class="mt-2.5 text-xs leading-relaxed text-base-content/70">
             {busy
-              ? "Starting your desktop…"
-              : $session.lab.team.status === "failed"
-                ? "Your lab needs administrator attention. Your team membership is saved."
-                : $session.lab.team.status !== "ready"
-                  ? "Your lab is being prepared."
-                  : readyNotice
-                    ? "Your lab is ready."
-                    : "Opens in a new tab."}
-          </p>
+              ? windows
+                ? "Starting the Windows desktop…"
+                : "Starting your desktop…"
+              : handingOver
+                ? "The desktop is being handed over. Try again in a moment."
+                : $session.lab.team.status === "failed"
+                  ? "Your lab needs administrator attention. Your team membership is saved."
+                  : $session.lab.team.status !== "ready"
+                    ? "Your lab is being prepared."
+                    : readyNotice
+                      ? "Your lab is ready."
+                      : windows
+                        ? "Opens in a new tab. Your team shares this Windows desktop."
+                        : "Opens in a new tab."}
+          </p>{/if}
           {#if $session.lab.desktopActive}<div class="mt-4 flex items-center justify-between gap-2 border-t border-base-content/8 pt-3">
             <p class="flex items-center gap-2 text-xs whitespace-nowrap text-base-content/70" role="status">
               <span
@@ -164,7 +215,9 @@
             >
             <ul class="mt-2 [list-style-type:disc] space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
               <li>After 60 idle minutes the desktop disconnects; reopen it to resume.</li>
-              <li>Paste inside the desktop with Ctrl+V (⌘V); terminals use Ctrl+Shift+V.</li>
+              {#if windows}<li>Your team shares one Windows screen. Taking over disconnects whoever is using it; saved files stay.</li>
+                <li>Paste inside the desktop with Ctrl+V (⌘V).</li>
+              {:else}<li>Paste inside the desktop with Ctrl+V (⌘V); terminals use Ctrl+Shift+V.</li>{/if}
               <li><strong>Copy from desktop</strong> needs clipboard permission.</li>
               <li>In Firefox or Safari, use <strong>Paste to desktop</strong> for text.</li>
             </ul>
@@ -178,7 +231,9 @@
               >
                 <Server size={14} class="text-base-content/50" aria-hidden="true" /><span
                   class="flex-1 truncate">{machine.name}</span
-                ><Status status={machine.status} />
+                >{#if machine.os === "windows"}<span class="badge badge-ghost badge-sm">Windows</span>{/if}<Status
+                  status={machine.status}
+                />
               </li>{:else}<li class="text-sm text-base-content/70">Preparing machines…</li>{/each}
           </ul>
           <h2 class="text-xs font-medium text-base-content/70 mt-5">Teammates</h2>

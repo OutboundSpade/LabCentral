@@ -59,7 +59,6 @@ func TestScenarioManifestRejectsIncompatibleAndUnverifiableCombinations(t *testi
 		"duplicate combination": func(b *InstructorBundle) { b.Scenarios[0].Variants[1].Breaks = []string{"service-break"} },
 		"single variant":        func(b *InstructorBundle) { b.Scenarios[0].Variants = b.Scenarios[0].Variants[:1] },
 		"version one":           func(b *InstructorBundle) { b.Version = 1 },
-		"coach only":            func(b *InstructorBundle) { b.Visibility.Audience = "coaches" },
 		"no reset":              func(b *InstructorBundle) { b.Reset = nil },
 		"invalid difficulty":    func(b *InstructorBundle) { b.Library.Difficulty = "impossible" },
 		"duplicate tags":        func(b *InstructorBundle) { b.Library.Tags = []string{"Linux", "Linux"} },

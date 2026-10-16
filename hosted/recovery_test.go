@@ -152,6 +152,7 @@ func TestRetryRequiresAdminAndCSRFAndKeepsCleanupAttention(t *testing.T) {
 
 func TestTemplateRetryReservesOnceWithoutReenteringMutex(t *testing.T) {
 	s, _ := templateFixture(t)
+	buildableRevisionFixture(t, s, "old")
 	ctx := context.Background()
 	j, err := s.queueTemplateOperation(ctx, "build", "old")
 	if err != nil {

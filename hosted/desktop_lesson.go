@@ -1,6 +1,7 @@
 package hosted
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,6 +62,7 @@ func (s *Service) desktopLesson(w http.ResponseWriter, r *http.Request, d *deskt
 		writeError(w, 403, "Your sign-in could not be verified.")
 		return
 	}
+	r = r.WithContext(context.WithValue(r.Context(), verifiedUserKey{}, v.User))
 	r.SetPathValue("id", run.LabID)
 	if r.URL.Path == "/lesson" && r.Method == "GET" {
 		if err = s.touchLearning(r.Context(), v.User.ID, run.LabID); err != nil {

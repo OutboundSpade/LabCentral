@@ -40,10 +40,9 @@ export function attemptBlocked(run: PracticeRun | null | undefined) {
   return run && run.status !== "ended" ? runBlocked : "";
 }
 
-// Baseline practice uses the revision's self-paced stages; coach-only revisions
-// and revisions without eligible stages cannot start one.
+// Baseline practice uses the revision's self-paced stages. Coach-only revisions are
+// listed only for coaches, who may practice them privately.
 export function baselineBlocked(t: LibraryTemplate) {
-  if (t.coachOnly) return "Coach-only revisions are previews for instructors.";
   if (!t.practiceStageIDs?.length)
     return "This revision has no self-paced stages.";
   return "";
@@ -59,7 +58,6 @@ export function baselineHint(t: LibraryTemplate) {
 
 // Randomized scenarios run only in a cloud workspace.
 export function scenarioBlocked(t: LibraryTemplate) {
-  if (t.coachOnly) return "Coach-only revisions are previews for instructors.";
   if (!desktopWorkstation(t))
     return "Unavailable · no desktop";
   if (!t.imagesBuilt)
@@ -69,7 +67,7 @@ export function scenarioBlocked(t: LibraryTemplate) {
 
 // One availability line for library cards.
 export function availability(t: LibraryTemplate) {
-  if (t.coachOnly || (baselineBlocked(t) && !scenarios(t).length))
+  if (baselineBlocked(t) && !scenarios(t).length)
     return { status: "preview", label: "Preview only" };
   if (!desktopWorkstation(t) || !t.imagesBuilt)
     return { status: "local", label: "Local only" };

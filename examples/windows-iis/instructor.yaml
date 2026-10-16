@@ -34,6 +34,10 @@ breaks:
     steps:
       - {machine: server, script: stop-site.ps1}
 stages:
+  - id: healthy-page
+    title: Verify the healthy IIS page
+    instructions: Open the server desktop and visit http://localhost/index.html. Verify the healthy page before exploring the lab.
+    completion: {check: windows-page}
   - id: service-local
     title: Restore the web service
     instructions: Open elevated PowerShell on the server desktop and restore IIS. Verify the local page.

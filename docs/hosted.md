@@ -36,7 +36,8 @@ flowchart LR
 - **Personal workspaces** with a weekly cloud allowance per student (three hours by
   default), or a download to run the lab on your own infrastructure with the CLI.
 - **Team meetings.** Admins start a meeting from a built template, then prepare one lab
-  per team. Students join a team and open their own desktops; instructors apply breaks,
+  per team. Students join a team and open desktops (one holder per Windows machine, individual
+  sessions on Linux); instructors apply breaks,
   run scheduled service checks with a scoreboard, and open an SSH terminal to any team
   machine in the browser.
 - **Image cleanup.** Admin → Templates shows image counts, and "Remove unused images"
@@ -115,6 +116,41 @@ labcentral-server --config /path/to/service.json --check-config   # validate, pr
 labcentral-server --config /path/to/service.json --listen 127.0.0.1:8080
 ```
 
+## Windows templates
+
+Templates can include Windows Server 2022 machines (AWS only). Add to the service's
+environment file:
+
+- a Windows base, such as `bases.windows-2022`, with `os: windows`,
+  `user: Administrator`, `diskGiB: 30` and the same AMI ID in `id` and `identity`.
+  Resolve `/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base` once
+  and bind the ID, never the parameter path;
+- the DCV installer pins `build.windowsDCVURL` and `build.windowsDCVSHA256` (see
+  [Windows guests](operators.md#windows-guests)); the build network needs Windows Update
+  access to install OpenSSH;
+- an instance type with at least 4 GiB in `aws.types`, such as
+  `{name: t3.medium, cpu: 2, memoryMiB: 4096}`, selected for builds with
+  `build.instanceType` or the image's `platform.aws.buildInstanceType`.
+
+The service's AWS role must be allowed to launch that AMI and instance type. A template
+the environment can't support shows the reason in **Admin → Templates** and can't be
+built; Linux templates are unaffected.
+
+**One screen per Windows machine.** A Windows machine has a single console, so in a
+meeting one person uses a team's Windows desktop at a time. Teammates see who has it
+and can **Take over**, which disconnects that person first; saved files stay, but open
+programs close. Coaches can open or take over any team's desktop from **Admin →
+Meeting → Coach machine access**. Practice attempts belong to one person, so this
+doesn't apply there.
+
+**Coach terminal.** Opens PowerShell as `Administrator`. The terminal keeps its initial
+size on Windows.
+
+**Time and cost.** Expect about an hour for a first Windows image build and several
+minutes for a Windows desktop to start (the opening and preparation limits below are
+longer for Windows). Windows instances cost more than Linux ones, and closing a desktop
+doesn't stop the lab's machines.
+
 ## Limits
 
 All limits are optional; omitted or zero values use the defaults.
@@ -126,6 +162,10 @@ All limits are optional; omitted or zero values use the defaults.
 | `worker.maxBulkJobs` | 3 | Builds, preparations, template refreshes and image removals |
 | `worker.maxGuestJobs` | 12 | Guest checks and breaks, separate from bulk work |
 | `worker.maxImageBuildJobs` | 2 | Image builds within the bulk budget |
+| `worker.prepareTimeoutMinutes` | 30 | Per Linux allocation preparation (1–1440 minutes) |
+| `worker.windowsPrepareTimeoutMinutes` | 45 | Per Windows or mixed allocation preparation (1–1440 minutes) |
+| `desktop.openSeconds` | 90 | Hosted Linux desktop opening (1–3600 seconds) |
+| `desktop.windowsOpenSeconds` | 600 | Hosted Windows desktop opening (1–3600 seconds; provider ceiling 600) |
 | `worker.jobTimeoutMinutes` | 120 | Maximum job duration (1–1440) |
 | `engine.maxImageBuildConcurrency` | 3 | Parallel images within one build |
 | `engine.maxMachineConcurrency` | 4 | Parallel machine creates within one deployment |
@@ -133,7 +173,7 @@ All limits are optional; omitted or zero values use the defaults.
 | `aggregate.maxNativeOperations` | 8 | Machine creates and deletes across all jobs |
 | `aggregate.maxSSHSessions` | 24 | Guest SSH steps, coach terminals and desktop operations across all jobs |
 
-Worker and engine values accept 1–32 and aggregate budgets 1–64. Raising them does not
+Worker concurrency and engine values accept 1–32 and aggregate budgets 1–64. Raising them does not
 raise your cloud provider's quotas. A meeting of 4 teams × 3 students with 12
 concurrent desktops has been verified with the defaults.
 
