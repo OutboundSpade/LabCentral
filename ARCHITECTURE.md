@@ -272,10 +272,11 @@ sequenceDiagram
   `C:\ProgramData\LabCentral\build\` and `$env:LABCENTRAL_INPUTS` names the typed inputs
   file. For desktop images, the platform installs the DCV MSI pinned by
   `build.windowsDCVURL` and `build.windowsDCVSHA256` (checksum and Authenticode
-  signature verified) and reboots before the author script. The bootstrap reruns at
-  every boot and briefly stops sshd, and Packer's restart check ignores exit status, so
-  the check waits for the bootstrap's ready marker itself and a strict readiness step
-  follows before any author code. Afterwards it removes build files,
+  signature verified) and reboots before the author script. Packer's restart check
+  ignores exit status and counts a session cut by the shutdown as a pass, so a retried
+  gate waits for a newer boot and the bootstrap's ready marker before any author code.
+  The bootstrap reruns at every boot but leaves OpenSSH running after its first
+  complete run for the same payload. Afterwards it removes build files,
   inputs, keys and DCV/SSH identities, then runs EC2Launch sysprep with shutdown. Only
   that final step accepts OpenSSH's shutdown status 2300218.
 - **Proxmox builds** clone the base and keep its root disk; the base needs enough disk

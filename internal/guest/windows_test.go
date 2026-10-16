@@ -106,3 +106,33 @@ func TestWindowsRoutesUseTheDefaultPersistentCreationStore(t *testing.T) {
 		t.Fatal("persistent route creation missing")
 	}
 }
+
+// EC2Launch reruns the bootstrap at every boot. A rerun for the same payload must
+// not stop sshd: that cuts active sessions, which Packer reports as completed.
+func TestWindowsBootstrapRerunLeavesSSHDRunning(t *testing.T) {
+	data, err := WindowsBuildUserData("ssh-ed25519 public", []string{"192.0.2.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard := strings.Index(data, "if (!$rerun) {\n")
+	closing := "(Join-Path $ssh 'sshd_config')\n}\n"
+	end := strings.Index(data, closing) + len(closing)
+	for _, step := range []string{"Stop-Service sshd", "Add-WindowsCapability", `ssh-keygen.exe" -A`, "sshd_config"} {
+		at := strings.Index(data, step)
+		if guard < 0 || at < guard || at > end || strings.Count(data, step) != 1 {
+			t.Fatalf("%s runs outside the first-run guard", step)
+		}
+	}
+	marker := strings.Index(data, "Set-Content -Encoding ascii -Path $done -Value $digest")
+	if marker < strings.LastIndex(data, "Start-Service sshd") || marker > strings.Index(data, "'ready') | Out-Null") {
+		t.Fatal("completion marker is not written after sshd starts and before ready")
+	}
+	other, err := WindowsBuildUserData("ssh-ed25519 other", []string{"192.0.2.1/32"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := func(s string) string { i := strings.Index(s, "$digest='"); return s[i : i+75] }
+	if digest(data) == digest(other) {
+		t.Fatal("a different payload reuses the completion digest")
+	}
+}

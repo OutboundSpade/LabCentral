@@ -3,7 +3,6 @@ package build
 import (
 	"encoding/json"
 	"github.com/OutboundSpade/LabCentral/v2/internal/pscheck"
-	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,16 +59,18 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 				text := string(provisioner)
 				if strings.Contains(text, `"type":"windows-restart"`) {
 					restart = i
-					// Packer ignores the check's exit status, so the check must wait itself.
-					check, _ := json.Marshal(windows.Command(restartWait))
-					if !strings.Contains(text, string(check)) || !strings.Contains(restartWait, "while ((Get-Date) -lt $deadline)") {
-						t.Fatal("restart check does not wait for the per-boot bootstrap")
-					}
 				}
 				if restart >= 0 && gate < 0 && i > restart && strings.Contains(text, `"type":"powershell"`) {
 					gate = i
-					if !strings.Contains(text, `ready')) {exit 1}`) || !strings.Contains(text, "dcvserver") {
-						t.Fatal("first step after restart does not assert readiness")
+					// Packer counts sessions cut by the shutdown as completed, so the first step
+					// after the restart must wait for a newer boot and be retried.
+					var g struct {
+						MaxRetries int      `json:"max_retries"`
+						Inline     []string `json:"inline"`
+					}
+					_ = json.Unmarshal(provisioner, &g)
+					if g.MaxRetries < 1 || len(g.Inline) != 1 || g.Inline[0] != restartGate || !strings.Contains(restartGate, "LastBootUpTime") || !strings.Contains(restartGate, `LabCentral\ready`) {
+						t.Fatal("first step after restart does not wait for a newer boot and readiness")
 					}
 				}
 				if strings.Contains(text, "Get-FileHash") {
