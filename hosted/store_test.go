@@ -457,3 +457,55 @@ func TestMeetingExtensionRejectsOverflowBeforeArithmetic(t *testing.T) {
 		t.Fatal("invalid extension changed deadline")
 	}
 }
+
+type slowIdentity struct {
+	*testIdentity
+	calls *int
+}
+
+func (i slowIdentity) Refresh(context.Context, *oauth2.Token) (User, *oauth2.Token, error) {
+	*i.calls++
+	return User{}, nil, identityFailure("token", 0, context.DeadlineExceeded)
+}
+
+// A provider cold start or outage is not a revocation: the session survives,
+// refreshes back off, and only a long outage asks the user to retry.
+func TestTransientIdentityFailureKeepsTheSession(t *testing.T) {
+	s, v, _ := serviceFor(t)
+	ctx := context.Background()
+	v.Checked = time.Now().Add(-5 * time.Minute)
+	_ = s.Store.Put(ctx, "session", v.ID, v)
+	calls := 0
+	s.Identity = slowIdentity{&testIdentity{}, &calls}
+	for range 2 {
+		if w := request(s, "GET", "/api/me", "", "", ""); w.Code != 200 {
+			t.Fatal("recent session refused during a provider timeout", w.Code)
+		}
+	}
+	if calls != 1 {
+		t.Fatal("refresh did not back off after a transient failure", calls)
+	}
+	var kept Session
+	if e := s.Store.Get(ctx, "session", v.ID, &kept); e != nil || kept.IdentityRetry.IsZero() {
+		t.Fatal("session not kept with a retry time", e)
+	}
+	kept.Checked = time.Now().Add(-identityGrace - time.Minute)
+	kept.IdentityRetry = time.Time{}
+	_ = s.Store.Put(ctx, "session", v.ID, kept)
+	w := request(s, "GET", "/api/me", "", "", "")
+	if w.Code != 503 || w.Header().Get("Retry-After") == "" {
+		t.Fatal("long provider outage should ask the user to retry", w.Code)
+	}
+	if e := s.Store.Get(ctx, "session", v.ID, new(Session)); e != nil {
+		t.Fatal("session deleted during a provider outage", e)
+	}
+	s.Identity = &testIdentity{user: v.User}
+	kept.IdentityRetry = time.Time{}
+	_ = s.Store.Put(ctx, "session", v.ID, kept)
+	if w := request(s, "GET", "/api/me", "", "", ""); w.Code != 200 {
+		t.Fatal("session did not recover with the provider", w.Code)
+	}
+	if e := s.Store.Get(ctx, "session", v.ID, &kept); e != nil || !kept.IdentityRetry.IsZero() || time.Since(kept.Checked) > time.Minute {
+		t.Fatal("successful refresh did not clear the back-off", e)
+	}
+}

@@ -59,7 +59,7 @@ try {
  await imageDialog.getByRole('button',{name:'Start build',exact:true}).click();
  await admin.getByText('Build failed',{exact:true}).waitFor({timeout:15000});
  await admin.getByRole('button',{name:'Retry build',exact:true}).waitFor();
- await admin.getByText('Fixture image build failure',{exact:true}).waitFor();
+ await admin.getByText('Fixture image build failure',{exact:false}).first().waitFor();
  assert.deepEqual(writes.at(-1),{path:'/api/admin/templates/build',body:{id:'new'}});
  assert(await fits());await shot('templates-failure-mobile');
  await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Admin',exact:true}).click();

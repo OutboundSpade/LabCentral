@@ -44,6 +44,8 @@ type Session struct {
 	Token   *oauth2.Token `json:"token"`
 	Expires time.Time     `json:"expires"`
 	Checked time.Time     `json:"checked"`
+	// IdentityRetry delays the next refresh after a transient provider failure.
+	IdentityRetry time.Time `json:"identityRetry,omitempty"`
 }
 type Meeting struct {
 	ID       string    `json:"id"`

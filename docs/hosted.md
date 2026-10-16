@@ -44,7 +44,10 @@ flowchart LR
   removes images that no current template, meeting or workspace needs.
 
 Sign-in uses OpenID Connect. Users in the configured member group can practice and join
-teams; users in the admin group manage templates and meetings.
+teams; users in the admin group manage templates and meetings. Group membership is
+rechecked every few minutes. If the identity provider is slow or down, signed-in users
+stay signed in for up to 15 minutes; after that pages ask them to try again, and a
+revoked account is signed out as soon as the provider answers.
 
 ## The template repository
 
