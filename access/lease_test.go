@@ -145,3 +145,26 @@ func TestWindowsLeaseComposesActualGrantAndRevokeCommands(t *testing.T) {
 		})
 	}
 }
+
+func TestNeverStartedGenerationCanRecoverAfterRetiredPredecessor(t *testing.T) {
+	c := leaseFixtureCommand()
+	dir := t.TempDir()
+	account := filepath.Join(dir, "account")
+	if out, err := linuxLeaseIn(t, dir, c, "begin", "touch "+shellQuote(account)).CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	if out, err := linuxLeaseIn(t, dir, c, "revoke", "rm "+shellQuote(account)).CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	// Library saved its next generation, then the controller died before begin.
+	c.Access.Generation = strings.Repeat("b", 24)
+	if out, err := linuxLeaseIn(t, dir, c, "revoke", "test ! -e "+shellQuote(account)).CombinedOutput(); err != nil {
+		t.Fatal("retired predecessor blocked recovery", err, string(out))
+	}
+	if out, err := linuxLeaseIn(t, dir, c, "begin", "touch "+shellQuote(account)).CombinedOutput(); err == nil || !strings.Contains(string(out), "revoked") {
+		t.Fatal("late grant survived recovery", err, string(out))
+	}
+	if _, err := os.Stat(account); !os.IsNotExist(err) {
+		t.Fatal("late account leaked", err)
+	}
+}

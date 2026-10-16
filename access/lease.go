@@ -44,8 +44,11 @@ fi
 printf '%s' "$generation" > "$lease/current.new"; sync -f "$lease/current.new"; mv "$lease/current.new" "$lease/current"; sync -f "$lease"
 `
 	case "revoke":
+		// A persisted replacement may never have reached begin. Its predecessor
+		// can remain current after confirmed retirement; active generations must
+		// still fence cleanup from any other generation.
 		script += `: > "$lease/revoked/$generation"; sync -f "$lease/revoked/$generation"; sync -f "$lease/revoked"
-if test -n "$current"; then test "$current" = "$generation" || { echo 'ownership_mismatch: desktop access generation differs' >&2; exit 1; }; fi
+if test -n "$current"; then test "$current" = "$generation" || test -f "$lease/revoked/$current" || { echo 'ownership_mismatch: desktop access generation differs' >&2; exit 1; }; fi
 `
 	default:
 		script += `test "$current" = "$generation" && test ! -f "$lease/revoked/$generation" || { echo 'ownership_mismatch: desktop access generation differs or was revoked' >&2; exit 1; }
@@ -91,7 +94,7 @@ try {
 `
 	case "revoke":
 		script += ` New-ItemProperty -Force -LiteralPath $revoked -Name $leaseGeneration -PropertyType DWord -Value 1 | Out-Null
- if (($leaseOwner -and $leaseOwner -ne $leaseMarker) -or ($leaseCurrent -and $leaseCurrent -ne $leaseGeneration)) {throw 'ownership_mismatch: desktop access generation differs'}
+ if (($leaseOwner -and $leaseOwner -ne $leaseMarker) -or ($leaseCurrent -and $leaseCurrent -ne $leaseGeneration -and !(Get-ItemProperty -LiteralPath $revoked -Name $leaseCurrent -ErrorAction SilentlyContinue).$leaseCurrent)) {throw 'ownership_mismatch: desktop access generation differs'}
 `
 	default:
 		script += ` if ($leaseOwner -ne $leaseMarker -or $leaseCurrent -ne $leaseGeneration -or (Get-ItemProperty -LiteralPath $revoked -Name $leaseGeneration -ErrorAction SilentlyContinue).$leaseGeneration) {throw 'ownership_mismatch: desktop access generation differs or was revoked'}

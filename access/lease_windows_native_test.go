@@ -14,6 +14,9 @@ import (
 // Run only on an explicitly selected disposable Windows lab with no active
 // desktop. This tests the real registry/mutex wrapper, not a PowerShell mock.
 func TestWindowsDesktopLeaseNative(t *testing.T) {
+	if os.Getenv("LABCENTRAL_TEST_WINDOWS_LEASE") != "1" {
+		t.Skip("requires an explicitly selected disposable Windows guest")
+	}
 	c := leaseFixtureCommand()
 	c.Machine.OS = "windows"
 	run := func(mode, script string) (string, error) {
@@ -43,6 +46,13 @@ func TestWindowsDesktopLeaseNative(t *testing.T) {
 	c.Access.Generation = strings.Repeat("b", 24)
 	if out, err := run("revoke", "Write-Output 'new generation revoked'"); err != nil {
 		t.Fatal(err, out)
+	}
+	c.Access.Generation = strings.Repeat("c", 24)
+	if out, err := run("revoke", "Write-Output 'never-started generation revoked'"); err != nil {
+		t.Fatal("retired predecessor blocked recovery before grant submission", err, out)
+	}
+	if out, err := run("begin", "Write-Output 'late never-started grant'"); err == nil || !strings.Contains(out, "revoked") {
+		t.Fatal("never-started generation could grant after recovery", err, out)
 	}
 }
 
