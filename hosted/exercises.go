@@ -62,8 +62,10 @@ func (s *Service) startExercises(w http.ResponseWriter, r *http.Request, v Sessi
 
 // Selection, per-team exclusion, intent, and job creation commit together.
 func (s *Service) queueExercisesDecision(ctx context.Context, req BreakRequest, actor string) ([]BreakRun, error) {
-	if len(req.TeamIDs) < 1 || len(req.TeamIDs) > 5 {
-		return nil, fmt.Errorf("Choose an exercise and one to five ready teams.")
+	// Runs queue through the guest worker lane, so a request may cover every team a
+	// meeting can have.
+	if len(req.TeamIDs) < 1 || len(req.TeamIDs) > maxMeetingTeams {
+		return nil, fmt.Errorf("Choose an exercise and at least one ready team.")
 	}
 	m, err := s.Store.Meeting(ctx)
 	if err != nil {

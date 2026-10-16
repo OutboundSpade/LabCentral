@@ -31,8 +31,12 @@ func setupMeeting(t *testing.T, s *Store) []Team {
 }
 func setupMeetingCapacity(t *testing.T, s *Store, capacity int) []Team {
 	t.Helper()
+	return setupMeetingSize(t, s, 5, capacity)
+}
+func setupMeetingSize(t *testing.T, s *Store, count, capacity int) []Team {
+	t.Helper()
 	m := Meeting{ID: "meeting", Name: "Practice", Status: "ready", Expires: time.Now().Add(time.Hour)}
-	if e := s.CreateMeeting(context.Background(), m, 5, capacity); e != nil {
+	if e := s.CreateMeeting(context.Background(), m, count, capacity); e != nil {
 		t.Fatal(e)
 	}
 	teams, e := s.Teams(context.Background(), m.ID)

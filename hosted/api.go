@@ -239,7 +239,7 @@ func (s *Service) createMeetingDecision(w http.ResponseWriter, r *http.Request, 
 	if q.Capacity == 0 {
 		q.Capacity = 6
 	}
-	if !cleanName(q.Name) || q.Hours < 1 || q.Hours > 8 || q.TeamCount < 1 || q.TeamCount > 100 || q.Capacity < 1 || q.Capacity > 100 {
+	if !cleanName(q.Name) || q.Hours < 1 || q.Hours > 8 || q.TeamCount < 1 || q.TeamCount > maxMeetingTeams || q.Capacity < 1 || q.Capacity > 100 {
 		writeError(w, 400, "Use a name, one to eight hours, up to 100 teams, and up to 100 students per team.")
 		return
 	}
@@ -431,3 +431,6 @@ func (s *Service) prepareMeeting(w http.ResponseWriter, r *http.Request, v Sessi
 func (s *Service) endMeeting(w http.ResponseWriter, r *http.Request, v Session) {
 	s.coordinate(s.endMeetingDecision)(w, r, v)
 }
+
+// maxMeetingTeams bounds one meeting and any per-team request within it.
+const maxMeetingTeams = 100

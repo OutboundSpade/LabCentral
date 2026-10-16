@@ -184,8 +184,9 @@ All limits are optional; omitted or zero values use the defaults.
 | `aggregate.maxSSHSessions` | 24 | Guest SSH steps, coach terminals and desktop operations across all jobs |
 
 Worker concurrency and engine values accept 1–32 and aggregate budgets 1–64. Raising them does not
-raise your cloud provider's quotas. A meeting of 4 teams × 3 students with 12
-concurrent desktops has been verified with the defaults.
+raise your cloud provider's quotas. A meeting of 6 teams × 6 students with 36
+concurrent desktops has been verified with the defaults: desktops opened at once took
+6–41 seconds, because desktop operations share `aggregate.maxSSHSessions`.
 
 ## Operations
 

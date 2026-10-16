@@ -14,12 +14,15 @@ import (
 )
 
 func exerciseFixture(t *testing.T) (*Service, []Team) {
+	return exerciseFixtureTeams(t, 5)
+}
+func exerciseFixtureTeams(t *testing.T, count int) (*Service, []Team) {
 	s, v, _ := serviceFor(t)
 	v.User.Admin = true
 	if err := s.Store.Put(context.Background(), "session", v.ID, v); err != nil {
 		t.Fatal(err)
 	}
-	teams := setupMeeting(t, s.Store)
+	teams := setupMeetingSize(t, s.Store, count, 4)
 	if _, err := s.Store.DB.Exec(`UPDATE teams SET status='ready'`); err != nil {
 		t.Fatal(err)
 	}
@@ -306,5 +309,21 @@ func TestWorkerRestartDoesNotReplayInterruptedBreak(t *testing.T) {
 	blocked, attention, err := s.retryDisposition(ctx, j)
 	if err != nil || !attention || !strings.Contains(blocked, "explicit reset") {
 		t.Fatal(blocked, attention, err)
+	}
+}
+
+// A coach applies one break to every team of a larger meeting in one request.
+func TestExerciseCoversEveryTeamOfALargeMeeting(t *testing.T) {
+	s, teams := exerciseFixtureTeams(t, 6)
+	ids := make([]string, len(teams))
+	for i, team := range teams {
+		ids[i] = team.ID
+	}
+	runs, err := s.queueExercises(context.Background(), BreakRequest{"stop-web", ids}, "admin")
+	if err != nil || len(runs) != 6 {
+		t.Fatal(len(runs), err)
+	}
+	if _, err := s.queueExercises(context.Background(), BreakRequest{"reset", nil}, "admin"); err == nil {
+		t.Fatal("empty team selection accepted")
 	}
 }
