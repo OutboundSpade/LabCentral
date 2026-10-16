@@ -3,6 +3,7 @@ package hosted
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -62,6 +63,14 @@ func (s *Service) reserveDesktop(ctx context.Context, a accessRecord) (string, e
 		if e := s.Store.Put(ctx, "desktop", a.ID, a); e != nil {
 			return e
 		}
+		if a.consoleKey() != "" {
+			if err := s.Store.Put(ctx, "desktop-holder", a.consoleKey(), desktopHolder{Access: a, Name: a.UserName}); err != nil {
+				return err
+			}
+			if err := s.Store.Delete(ctx, "desktop-displaced", a.ID); err != nil {
+				return err
+			}
+		}
 		return s.Store.Put(ctx, "desktop-operation", a.ID, operation)
 	})
 	if err != nil {
@@ -98,7 +107,15 @@ func (s *Service) finishDesktop(ctx context.Context, a accessRecord, generation 
 		return "", errors.Join(errDesktopBusy, s.Store.Put(ctx, "desktop-operation", a.ID, operation))
 	}
 	operation.Status = "ready"
-	if err = s.Store.Put(ctx, "desktop-operation", a.ID, operation); err != nil {
+	if err = s.Store.atomic(ctx, func(ctx context.Context) error {
+		if err := s.Store.Put(ctx, "desktop-operation", a.ID, operation); err != nil {
+			return err
+		}
+		if a.consoleKey() != "" {
+			return s.Store.Put(ctx, "desktop-cookie", digest(next.cookie), a)
+		}
+		return nil
+	}); err != nil {
 		return "", err
 	}
 	ticket := randomID(32)
@@ -115,6 +132,22 @@ func (s *Service) finishDesktop(ctx context.Context, a accessRecord, generation 
 // inactiveOnly rechecks the current relay and record, so an old expiry snapshot
 // cannot close a freshly opened desktop with the same deterministic identity.
 func (s *Service) cleanupDesktop(ctx context.Context, id string, inactiveOnly bool) error {
+	var a accessRecord
+	if err := s.Store.Get(ctx, "desktop", id, &a); errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if key := a.consoleKey(); key != "" {
+		unlock, err := s.lockConsole(ctx, key)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
+	return s.cleanupDesktopLocked(ctx, id, inactiveOnly)
+}
+func (s *Service) cleanupDesktopLocked(ctx context.Context, id string, inactiveOnly bool) error {
 	var a accessRecord
 	if err := s.Store.Get(ctx, "desktop", id, &a); errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -208,6 +241,29 @@ func (s *Service) cleanupDesktop(ctx context.Context, id string, inactiveOnly bo
 		if err := s.Store.Delete(ctx, "desktop", id); err != nil {
 			return err
 		}
+		if key := a.consoleKey(); key != "" {
+			var holder desktopHolder
+			if err := s.Store.Get(ctx, "desktop-holder", key, &holder); err != nil {
+				return err
+			}
+			if holder.Access.ID != id {
+				return fmt.Errorf("console holder changed before cleanup")
+			}
+			var handoff desktopHandoff
+			if err := s.Store.Get(ctx, "desktop-handoff", id, &handoff); err == nil {
+				if err = s.Store.Put(ctx, "desktop-displaced", id, handoff); err != nil {
+					return err
+				}
+				if err = s.Store.Delete(ctx, "desktop-handoff", id); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if err := s.Store.Delete(ctx, "desktop-holder", key); err != nil {
+				return err
+			}
+		}
 		return s.Store.Delete(ctx, "desktop-operation", id)
 	})
 }
@@ -219,10 +275,87 @@ func (s *Service) recordCurrent(ctx context.Context, a accessRecord) bool {
 	if s.Store.Get(ctx, "session", a.SessionID, &v) != nil || v.User.ID != a.UserID || !v.Expires.After(time.Now()) || !a.Expires.After(time.Now()) {
 		return false
 	}
+	ctx = context.WithValue(ctx, verifiedUserKey{}, v.User)
 	if strings.HasPrefix(a.TeamID, "practice:") {
 		run, err := s.Store.practice(ctx, strings.TrimPrefix(a.TeamID, "practice:"))
 		return err == nil && run.UserID == a.UserID && run.InstanceID == a.InstanceID && run.Status == "ready" && run.Expires.After(time.Now()) && s.practiceDisclosure(ctx, run.LabID) == nil
 	}
+	if a.Coach {
+		if !v.User.Admin {
+			return false
+		}
+		team, _, _, err := s.coachTeam(ctx, a.TeamID)
+		return err == nil && team.InstanceID == a.InstanceID
+	}
 	team, _, err := s.readyTeam(ctx, a.UserID)
 	return err == nil && team.ID == a.TeamID && team.InstanceID == a.InstanceID
+}
+
+// Call only after the library confirms native instance absence. Unreachable
+// guest revocation no longer needs retry once its owning VM is gone. Match the
+// durable allocation ID, never a machine name, and fence concurrent finalizers.
+func (s *Service) forgetDestroyedDesktops(ctx context.Context, instance string) error {
+	records, err := s.Store.List(ctx, "desktop")
+	if err != nil {
+		return err
+	}
+	for _, raw := range records {
+		var a accessRecord
+		if err = json.Unmarshal(raw, &a); err != nil {
+			return err
+		}
+		if a.InstanceID != instance {
+			continue
+		}
+		err = func() error {
+			if key := a.consoleKey(); key != "" {
+				unlock, err := s.lockConsole(ctx, key)
+				if err != nil {
+					return err
+				}
+				defer unlock()
+			}
+			unlock, err := s.lockUser(ctx, a.UserID)
+			if err != nil {
+				return err
+			}
+			defer unlock()
+			s.desktopMu.Lock()
+			if d := s.desktops[a.ID]; d != nil {
+				d.cancel()
+				delete(s.desktops, a.ID)
+			}
+			s.desktopMu.Unlock()
+			return s.Store.atomic(ctx, func(ctx context.Context) error {
+				for _, kind := range []string{"desktop", "desktop-operation", "desktop-handoff", "desktop-displaced"} {
+					if err := s.Store.Delete(ctx, kind, a.ID); err != nil {
+						return err
+					}
+				}
+				if key := a.consoleKey(); key != "" {
+					var holder desktopHolder
+					if err := s.Store.Get(ctx, "desktop-holder", key, &holder); err == nil {
+						if holder.Access.ID != a.ID {
+							return fmt.Errorf("destroyed console holder mismatch")
+						}
+						return s.Store.Delete(ctx, "desktop-holder", key)
+					} else if !errors.Is(err, sql.ErrNoRows) {
+						return err
+					}
+				}
+				return nil
+			})
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return s.Store.atomic(ctx, func(ctx context.Context) error {
+		// Remove old displaced browsers' observations before deleting their index.
+		if _, err := s.Store.DB.ExecContext(ctx, `DELETE FROM objects WHERE kind='desktop-displaced' AND id IN (SELECT json_extract(body,'$.ID') FROM objects WHERE kind='desktop-cookie' AND json_extract(body,'$.InstanceID')=?)`, instance); err != nil {
+			return err
+		}
+		_, err := s.Store.DB.ExecContext(ctx, `DELETE FROM objects WHERE kind='desktop-cookie' AND json_extract(body,'$.InstanceID')=?`, instance)
+		return err
+	})
 }

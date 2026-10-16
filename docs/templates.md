@@ -301,7 +301,10 @@ machines:
 - Windows machines need at least 4 GiB of memory and a 30 GiB disk, have exactly one
   NIC, cannot be routers (`forwarding`), and have names of at most 15 characters.
 - `access: [desktop, ssh]` gives students one desktop console and PowerShell over SSH.
-  Only one person can use a Windows desktop at a time.
+  Only one person can use a Windows desktop at a time. In hosted meetings, teammates
+  explicitly take over the console after the current grant is revoked. Saved files
+  in the shared `lab` profile remain; running applications end during handoff.
+  Checks and reset must tolerate that shared workspace and preserve student files.
 - Private programs for Windows machines are PowerShell scripts too; see
   [Guest programs](#guest-programs). A lab can mix Windows and Linux machines.
 
@@ -519,6 +522,11 @@ description, never which breaks were chosen.
 Set `visibility.audience: coaches` for templates only instructors should see (for
 example, an incident with a controlled attacker machine). Coach templates can list
 `visibility.hiddenMachines`, which are not shown on the template's page.
+
+Coaches can make private personal attempts from coach-only revisions; students cannot
+browse or start these attempts. Hosted UI controls for coach-only practice are pending.
+Include at least one stage without a `break` for baseline practice (for example, a
+healthy-state check), alongside scenario recovery stages.
 
 Hidden machines must not leak into visible ones. Validation requires visible images to
 list `build.files` explicitly (excluding `lab.yaml` and hidden machines' playbooks),

@@ -59,7 +59,12 @@ func WindowsReady(ctx context.Context, run Run) (bool, error) {
 	_, ready, err := WindowsState(ctx, run)
 	return ready, err
 }
+
+// Windows logon and console initialization can take several minutes after boot.
 func StartWindows(ctx context.Context, run Run) error {
+	return startWindows(ctx, run, 5*time.Minute, 250*time.Millisecond)
+}
+func startWindows(ctx context.Context, run Run, budget, interval time.Duration) error {
 	exists, ready, err := WindowsState(ctx, run)
 	if err != nil {
 		return err
@@ -72,9 +77,9 @@ func StartWindows(ctx context.Context, run Run) error {
 			return err
 		}
 	}
-	wait, cancel := context.WithTimeout(ctx, 25*time.Second)
+	wait, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
-	tick := time.NewTicker(250 * time.Millisecond)
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
 		_, ready, err = WindowsState(wait, run)

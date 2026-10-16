@@ -63,8 +63,8 @@ func New(ctx context.Context, c Config, e Engine, budgets ...*BudgetedProvider) 
 	if err != nil {
 		return nil, err
 	}
-	if env.Platform != "aws" {
-		return nil, fmt.Errorf("hosted deployment currently requires AWS")
+	if err = ValidateHostedEnvironment(env); err != nil {
+		return nil, err
 	}
 	st, err := OpenStore(filepath.Join(c.Root, "hosted"))
 	if err != nil {
@@ -102,6 +102,11 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/learning", s.authorized(true, s.learningAdmin))
 	mux.HandleFunc("POST /api/team", s.authorized(false, s.join))
 	mux.HandleFunc("POST /api/access", s.authorized(false, s.launch))
+	mux.HandleFunc("POST /api/access/takeover", s.authorized(false, s.takeoverDesktop))
+	mux.HandleFunc("GET /api/access/status", s.authorized(false, s.desktopStatus))
+	mux.HandleFunc("POST /api/admin/teams/{id}/desktop", s.authorized(true, s.coachDesktop))
+	mux.HandleFunc("POST /api/admin/teams/{id}/desktop/takeover", s.authorized(true, s.takeoverDesktop))
+	mux.HandleFunc("GET /api/admin/teams/{id}/desktop/status", s.authorized(true, s.desktopStatus))
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
 	mux.HandleFunc("GET /api/admin/teams/{id}/machines", s.authorized(true, s.coachMachines))
 	mux.HandleFunc("GET /api/admin/teams/{id}/machines/{machine}/terminal", s.authorized(true, s.coachTerminal))
@@ -157,7 +162,7 @@ func (s *Service) authorized(admin bool, next endpoint) http.HandlerFunc {
 			writeError(w, 403, "Request verification failed. Reload the page and try again.")
 			return
 		}
-		next(w, r, session)
+		next(w, r.WithContext(context.WithValue(r.Context(), verifiedUserKey{}, session.User)), session)
 	}
 }
 func (s *Service) session(ctx context.Context, r *http.Request) (Session, error) {

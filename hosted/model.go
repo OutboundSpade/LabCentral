@@ -14,6 +14,7 @@ type Config struct {
 	AdminGroup         string           `json:"adminGroup"`
 	Aggregate          AggregateOptions `json:"aggregate,omitempty"`
 	Engine             lc.EngineOptions `json:"engine,omitempty"`
+	Desktop            DesktopOptions   `json:"desktop,omitempty"`
 	Worker             WorkerOptions    `json:"worker,omitempty"`
 	WeeklyCloudMinutes int              `json:"weeklyCloudMinutes,omitempty"`
 	Root               string           `json:"root"`
@@ -68,6 +69,7 @@ type Membership struct {
 	Switching   bool   `json:"switching"`
 }
 type Template struct {
+	Problem       string          `json:"problem,omitempty"`
 	Instructor    *InstructorView `json:"instructor,omitempty"`
 	Operation     *Job            `json:"operation,omitempty"`
 	BuildsPending int             `json:"buildsPending"`
@@ -108,6 +110,7 @@ type Job struct {
 	Created        time.Time           `json:"created"`
 }
 type Machine struct {
+	OS      string `json:"os" enum:"linux,windows"`
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Desktop bool   `json:"desktop"`
@@ -116,11 +119,12 @@ type Teammate struct {
 	Name string `json:"name"`
 }
 type LabView struct {
-	DesktopActive bool       `json:"desktopActive"`
-	Teammates     []Teammate `json:"teammates"`
-	Team          *Team      `json:"team"`
-	Machines      []Machine  `json:"machines"`
-	Handover      string     `json:"handover"`
+	DesktopState  *DesktopState `json:"desktopState,omitempty"`
+	DesktopActive bool          `json:"desktopActive"`
+	Teammates     []Teammate    `json:"teammates"`
+	Team          *Team         `json:"team"`
+	Machines      []Machine     `json:"machines"`
+	Handover      string        `json:"handover"`
 }
 type Overview struct {
 	User       User       `json:"user"`

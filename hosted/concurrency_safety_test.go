@@ -103,6 +103,9 @@ func desktopIntentFixture(t *testing.T) (*Service, Session, Team, *blockedDeskto
 	s, v, _ := serviceFor(t)
 	ctx := context.Background()
 	teams := setupMeeting(t, s.Store)
+	if err := s.Store.Put(ctx, "source", "", lc.Source{Lab: lc.Lab{Images: map[string]lc.Image{"desktop": {}}, Machines: map[string]lc.Machine{"workstation": {Image: "desktop"}}}}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.Store.DB.ExecContext(ctx, `UPDATE teams SET status='ready',instance_id='instance'`); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +128,7 @@ func TestCleanupSnapshotCannotRevokeFreshOpen(t *testing.T) {
 	s, v, team, e := desktopIntentFixture(t)
 	ctx := context.Background()
 	// An old expired record has the exact identity of the new launch.
-	old := accessRecord{e.info.ID, v.User.ID, v.ID, team.ID, team.InstanceID, time.Now().Add(-time.Minute)}
+	old := accessRecord{ID: e.info.ID, UserID: v.User.ID, SessionID: v.ID, TeamID: team.ID, InstanceID: team.InstanceID, Expires: time.Now().Add(-time.Minute)}
 	if err := s.Store.Put(ctx, "desktop", old.ID, old); err != nil {
 		t.Fatal(err)
 	}

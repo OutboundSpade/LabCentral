@@ -19,6 +19,8 @@ import (
 type accessRecord struct {
 	ID, UserID, SessionID, TeamID, InstanceID string
 	Expires                                   time.Time
+	Machine, OS, UserName                     string
+	Coach                                     bool
 }
 type desktopSession struct {
 	record  accessRecord
@@ -35,40 +37,55 @@ type launchTicket struct {
 }
 
 func (s *Service) launch(w http.ResponseWriter, r *http.Request, v Session) {
-	team, meeting, e := s.readyTeam(r.Context(), v.User.ID)
-	if e != nil {
-		writeError(w, 409, e.Error())
-		return
-	}
-	machine, e := s.desktopMachine(r.Context(), meeting.Template)
-	if e != nil {
-		writeError(w, 409, e.Error())
-		return
-	}
-	s.launchDesktop(w, r, v, team, meeting.Expires, machine)
+	s.meetingDesktop(w, r, v, false)
 }
 
 // Persist a generation before opening a native session. Membership and expiry
 // are revalidated after I/O; a concurrent revocation invalidates this generation.
-func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Session, team Team, expiry time.Time, machine string) {
+func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Session, team Team, expiry time.Time, machine string, takeover ...bool) {
 	if v.Expires.Before(expiry) {
 		expiry = v.Expires
 	}
 	id := digest(team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24]
-	record := accessRecord{id, v.User.ID, v.ID, team.ID, team.InstanceID, expiry}
+	os, err := s.desktopOS(r.Context(), team, machine)
+	if err != nil {
+		writeError(w, 503, "Pinned machine unavailable.")
+		return
+	}
+	record := accessRecord{ID: id, UserID: v.User.ID, SessionID: v.ID, TeamID: team.ID, InstanceID: team.InstanceID, Expires: expiry, Machine: machine, OS: os, UserName: v.User.Name, Coach: r.PathValue("id") != "" && v.User.Admin}
+	if key := record.consoleKey(); key != "" {
+		unlock, err := s.lockConsole(r.Context(), key)
+		if err != nil {
+			w.Header().Set("Retry-After", "3")
+			writeError(w, 503, "Desktop operation pending.")
+			return
+		}
+		defer unlock()
+		conflict, err := s.claimConsole(r.Context(), record, len(takeover) > 0 && takeover[0])
+		if err != nil {
+			_, _ = s.Store.Enqueue(r.Context(), "access-cleanup", "pending")
+			w.Header().Set("Retry-After", "3")
+			writeJSON(w, 503, DesktopConflict{Error: "Desktop revocation is unconfirmed. Retry shortly; saved files are retained.", Code: "desktop_outcome_unknown"})
+			return
+		}
+		if conflict != nil {
+			writeJSON(w, 409, conflict)
+			return
+		}
+	}
 	generation, err := s.reserveDesktop(r.Context(), record)
 	if err != nil {
 		_, _ = s.Store.Enqueue(r.Context(), "access-cleanup", "pending")
 		if errors.Is(err, errDesktopBusy) {
-			// Another open or close of this desktop is in flight (a cold desktop can
-			// take about half a minute); clients may retry the same request.
+			// Another open or close of this desktop is in flight (a Windows cold desktop can
+			// take several minutes); clients may retry the same request.
 			w.Header().Set("Retry-After", "3")
 		}
 		writeError(w, 503, "Your desktop is opening or closing. Retry shortly.")
 		return
 	}
 	// Release the per-user intent lock before provider and relay HTTP work.
-	openCtx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	openCtx, cancel := context.WithTimeout(r.Context(), s.desktopOpenTimeout(os))
 	defer cancel()
 	budgetCtx, release, err := s.sshContext(openCtx)
 	var info lc.AccessInfo
@@ -100,6 +117,7 @@ func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Sessio
 			next.cancel()
 		}
 		_, _ = s.Store.Enqueue(saveCtx, "access-cleanup", "pending")
+		w.Header().Set("Retry-After", "3")
 		writeError(w, 503, "Your desktop could not start. Retry shortly; your files are retained.")
 		return
 	}
@@ -173,6 +191,9 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.desktopMu.Unlock()
+	if (r.URL.Path == "/status" || d == nil || d.ctx.Err() != nil) && s.desktopCookieStatus(w, r, cookie.Value) {
+		return
+	}
 	if d == nil {
 		http.Error(w, "Desktop session ended. Return to your lab to reconnect.", 401)
 		return
@@ -223,7 +244,7 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 			Username  string `json:"username"`
 			Password  string `json:"password"`
 			SessionID string `json:"sessionID"`
-		}{d.info.Username, d.info.Password, d.info.Username})
+		}{d.info.Username, d.info.Password, desktopSessionID(d)})
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/dcvjs/") {
@@ -267,10 +288,18 @@ func (s *Service) desktopAuthorized(ctx context.Context, d *desktopSession) bool
 	if e != nil || v.User.ID != d.record.UserID {
 		return false
 	}
+	ctx = context.WithValue(ctx, verifiedUserKey{}, v.User)
 	if strings.HasPrefix(d.record.TeamID, "practice:") {
 		run, err := s.Store.practice(ctx, strings.TrimPrefix(d.record.TeamID, "practice:"))
 		publicationErr := s.practiceDisclosure(ctx, run.LabID)
 		return err == nil && publicationErr == nil && run.UserID == v.User.ID && run.InstanceID == d.record.InstanceID && run.Status == "ready" && run.Expires.After(time.Now())
+	}
+	if d.record.Coach {
+		if !v.User.Admin {
+			return false
+		}
+		team, _, _, err := s.coachTeam(ctx, d.record.TeamID)
+		return err == nil && team.InstanceID == d.record.InstanceID
 	}
 	team, _, e := s.readyTeam(ctx, d.record.UserID)
 	return e == nil && team.ID == d.record.TeamID && team.InstanceID == d.record.InstanceID
@@ -332,6 +361,7 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 	checks.Wait()
 	// Database admission may be busy. Relay and launch-ticket access must
 	// never retain their mutex while waiting for durable reads or enqueueing.
+	_, _ = s.Store.DB.ExecContext(ctx, `DELETE FROM objects WHERE kind IN ('desktop-cookie','desktop-displaced') AND julianday(json_extract(body,'$.Expires'))<=julianday(?)`, time.Now().UTC().Format(time.RFC3339Nano))
 	records, _ := s.Store.List(ctx, "desktop")
 	cleanup := false
 	s.desktopMu.Lock()

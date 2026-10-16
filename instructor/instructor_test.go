@@ -149,3 +149,23 @@ func TestWindowsPayloadCaseInsensitiveDestinations(t *testing.T) {
 		}
 	}
 }
+
+func TestCoachOnlyScenariosRetainValidation(t *testing.T) {
+	src, b, err := LoadTemplate("../examples/windows-iis", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Visibility.Audience = "coaches"
+	if err = b.Validate(src); err != nil {
+		t.Fatal("coach-only scenarios rejected", err)
+	}
+	b.Scenarios[0].Variants[0].Compatible = false
+	if err = b.Validate(src); err == nil {
+		t.Fatal("uncertified coach variant accepted")
+	}
+	b.Scenarios[0].Variants[0].Compatible = true
+	b.Reset = nil
+	if err = b.Validate(src); err == nil {
+		t.Fatal("coach scenarios without reset accepted")
+	}
+}

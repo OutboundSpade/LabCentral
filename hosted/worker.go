@@ -193,6 +193,9 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", t.Name, err)
 			}
+			if err = s.forgetDestroyedDesktops(ctx, t.InstanceID); err != nil {
+				return err
+			}
 			if err = os.Remove(filepath.Join(s.Config.Root, "exercise-keys", digest(t.InstanceID)+".pem")); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("%s exercise credential cleanup: %w", t.Name, err)
 			}
@@ -258,6 +261,8 @@ func (s *Service) meetingOperation(ctx context.Context, j Job) error {
 
 // Ready teams remain accessible while failed teams reconcile their original IDs.
 func (s *Service) prepareTeam(ctx context.Context, meeting string, t Team, plan lc.Plan) error {
+	ctx, cancel := context.WithTimeout(ctx, s.prepareTimeout(plan))
+	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return err
 	}

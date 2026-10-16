@@ -3,7 +3,6 @@ package hosted
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
@@ -16,9 +15,6 @@ func (s *Service) practiceTemplateReady(ctx context.Context, id string) error {
 		return err
 	}
 	if err := s.actionableRevision(ctx, id); err != nil {
-		return err
-	}
-	if err := s.studentTemplate(ctx, id); err != nil {
 		return err
 	}
 	var t Template
@@ -182,6 +178,9 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 	if p.OwnerID != "" && p.OwnerID != run.UserID {
 		return fmt.Errorf("practice allocation does not own its attempt")
 	}
+	if err = s.practiceDisclosure(ctx, run.LabID); err != nil {
+		return err
+	}
 	if err = s.practiceTemplateReady(ctx, p.Template); err != nil {
 		return err
 	}
@@ -203,6 +202,8 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 			return e
 		}
 	}
+	ctx, prepareCancel := context.WithTimeout(ctx, s.prepareTimeout(plan))
+	defer prepareCancel()
 	release, err := s.acquireProvisioning(ctx)
 	if err != nil {
 		return err
@@ -254,24 +255,8 @@ func (s *Service) destroyPractice(ctx context.Context, run practiceRecord) error
 	if err != nil {
 		return err
 	}
-	if err = s.revokePractice(ctx, run); err != nil {
-		// With confirmed VM absence, residual access intents can be removed even
-		// when the provider's guest-session journal cannot contact that VM.
-		records, listErr := s.Store.List(ctx, "desktop")
-		if listErr != nil {
-			return listErr
-		}
-		for _, raw := range records {
-			var a accessRecord
-			if e := json.Unmarshal(raw, &a); e != nil {
-				return e
-			}
-			if a.UserID == run.UserID && a.InstanceID == run.InstanceID {
-				if e := s.Store.Delete(ctx, "desktop", a.ID); e != nil {
-					return e
-				}
-			}
-		}
+	if err = s.forgetDestroyedDesktops(ctx, run.InstanceID); err != nil {
+		return err
 	}
 	// Destroy's successful return is the library's native absence confirmation.
 	// Unknown outcomes retain both identity and cleanup intent, and accrue quota.

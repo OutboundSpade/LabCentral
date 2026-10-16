@@ -230,7 +230,7 @@ func TestTemplateDesktopMachineAuthorization(t *testing.T) {
 	id := digest("instance\x00desk\x00" + v.User.ID)[:24]
 	dc, cancel := context.WithCancel(ctx)
 	defer cancel()
-	original := &desktopSession{record: accessRecord{id, v.User.ID, v.ID, teams[0].ID, "instance", v.Expires}, info: lc.AccessInfo{ID: id, URL: "http://127.0.0.1:1/launch?token=old", Expires: v.Expires}, ctx: dc, cancel: cancel}
+	original := &desktopSession{record: accessRecord{ID: id, UserID: v.User.ID, SessionID: v.ID, TeamID: teams[0].ID, InstanceID: "instance", Expires: v.Expires}, info: lc.AccessInfo{ID: id, URL: "http://127.0.0.1:1/launch?token=old", Expires: v.Expires}, ctx: dc, cancel: cancel}
 	s.desktops[id] = original
 	engine := &reconnectEngine{info: original.info}
 	s.Engine = engine

@@ -71,5 +71,36 @@ func (s *Service) practiceDisclosure(ctx context.Context, lab string) error {
 	if err := s.Store.Get(ctx, "learning-publication", lab, &p); err != nil {
 		return err
 	}
-	return s.studentTemplate(ctx, p.Template)
+	coach := false
+	if p.OwnerID != "" {
+		coach = s.coachForUser(ctx, p.OwnerID)
+	}
+	return s.templateAudience(ctx, p.Template, coach)
+}
+
+func (s *Service) templateAudience(ctx context.Context, id string, coach bool) error {
+	b, err := s.Store.instructorPolicy(ctx, id)
+	if err != nil || (b.Visibility.Audience == "coaches" && !coach) {
+		return fmt.Errorf("This lab is unavailable.")
+	}
+	return nil
+}
+
+// Last verified identity is persisted by login/refresh. Request paths refresh
+// their session first; background preparation never contacts OIDC under SQL locks.
+func (s *Store) coachUser(ctx context.Context, user string) bool {
+	if current, ok := ctx.Value(verifiedUserKey{}).(User); ok {
+		return current.ID == user && current.Admin
+	}
+	var u User
+	return s.Get(ctx, "user", user, &u) == nil && u.ID == user && u.Admin
+}
+
+type verifiedUserKey struct{}
+
+func (s *Service) coachForUser(ctx context.Context, user string) bool {
+	if current, ok := ctx.Value(verifiedUserKey{}).(User); ok {
+		return current.ID == user && current.Admin
+	}
+	return s.Store.coachUser(ctx, user)
 }

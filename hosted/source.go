@@ -209,7 +209,7 @@ func (s *Service) importSnapshot(ctx context.Context, root, commit string, commi
 		dir := filepath.Join(root, entry.Name())
 		src, b, err := instructor.LoadTemplate(dir, true)
 		if err == nil {
-			_, err = lc.PlanLab(src, s.env, nil)
+			_, err = s.planSource(src)
 		}
 		if err != nil {
 			report.Failures = append(report.Failures, TemplateImportFailure{entry.Name(), err.Error()})

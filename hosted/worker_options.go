@@ -11,11 +11,13 @@ import (
 // WorkerOptions are operator policy, read once at startup. Zero selects the
 // documented default; changing them requires a service restart.
 type WorkerOptions struct {
-	MaxProvisioningConcurrency int `json:"maxProvisioningConcurrency,omitempty"`
-	MaxBulkJobs                int `json:"maxBulkJobs,omitempty"`
-	MaxGuestJobs               int `json:"maxGuestJobs,omitempty"`
-	MaxImageBuildJobs          int `json:"maxImageBuildJobs,omitempty"`
-	JobTimeoutMinutes          int `json:"jobTimeoutMinutes,omitempty"`
+	PrepareTimeoutMinutes        int `json:"prepareTimeoutMinutes,omitempty"`
+	WindowsPrepareTimeoutMinutes int `json:"windowsPrepareTimeoutMinutes,omitempty"`
+	MaxProvisioningConcurrency   int `json:"maxProvisioningConcurrency,omitempty"`
+	MaxBulkJobs                  int `json:"maxBulkJobs,omitempty"`
+	MaxGuestJobs                 int `json:"maxGuestJobs,omitempty"`
+	MaxImageBuildJobs            int `json:"maxImageBuildJobs,omitempty"`
+	JobTimeoutMinutes            int `json:"jobTimeoutMinutes,omitempty"`
 }
 
 func (o WorkerOptions) Effective() WorkerOptions {
@@ -30,6 +32,12 @@ func (o WorkerOptions) Effective() WorkerOptions {
 	}
 	if o.MaxImageBuildJobs == 0 {
 		o.MaxImageBuildJobs = min(2, o.MaxBulkJobs)
+	}
+	if o.PrepareTimeoutMinutes == 0 {
+		o.PrepareTimeoutMinutes = 30
+	}
+	if o.WindowsPrepareTimeoutMinutes == 0 {
+		o.WindowsPrepareTimeoutMinutes = 45
 	}
 	if o.JobTimeoutMinutes == 0 {
 		o.JobTimeoutMinutes = 120
@@ -48,6 +56,8 @@ func (o WorkerOptions) Validate() error {
 		{"maxGuestJobs", o.MaxGuestJobs, 32},
 		{"maxImageBuildJobs", o.MaxImageBuildJobs, 32},
 		{"jobTimeoutMinutes", o.JobTimeoutMinutes, 1440},
+		{"prepareTimeoutMinutes", o.PrepareTimeoutMinutes, 1440},
+		{"windowsPrepareTimeoutMinutes", o.WindowsPrepareTimeoutMinutes, 1440},
 	} {
 		if v.value < 1 || v.value > v.maximum {
 			return fmt.Errorf("worker.%s must be 1–%d, or zero for the default", v.name, v.maximum)
@@ -70,6 +80,9 @@ func ValidateConfig(c Config) error {
 	}
 	if err := c.Engine.Validate(); err != nil {
 		return fmt.Errorf("engine: %w", err)
+	}
+	if err := c.Desktop.Validate(); err != nil {
+		return err
 	}
 	if err := c.Worker.Validate(); err != nil {
 		return err

@@ -70,7 +70,7 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 		}
 		return lc.Result{Absent: true}, closeGuestUser(ctx, c)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, desktopOpenBudget(c.Machine.OS))
 	defer cancel()
 	if c.Action != "access.open" {
 		return lc.Result{}, fmt.Errorf("unsupported access action")
@@ -226,7 +226,7 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		defer closeMu.Unlock()
 		_ = relay.Close()
 		transport.CloseIdleConnections()
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), desktopCloseBudget(c.Machine.OS))
 		defer cancel()
 		defer dialer.Close()
 		client, err := dialer.Dial(ctx, c.Prior.Address, c.Machine.SSHUser(), c.ClientPrivateKey, c.Machine.HostPublicKey)
@@ -284,7 +284,7 @@ func dcvProxy(target *url.URL, pin [sha256.Size]byte) (*httputil.ReverseProxy, *
 }
 
 func closeDCV(ctx context.Context, c lc.Command) error {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, desktopCloseBudget(c.Machine.OS))
 	defer cancel()
 	sshClient, closeClient, e := dialMachine(ctx, c)
 	if e != nil {
@@ -503,4 +503,17 @@ func dialMachine(ctx context.Context, c lc.Command) (*ssh.Client, func(), error)
 		return nil, nil, err
 	}
 	return client, func() { client.Close(); d.Close() }, nil
+}
+
+func desktopOpenBudget(os string) time.Duration {
+	if os == "windows" {
+		return 10 * time.Minute
+	}
+	return 2 * time.Minute
+}
+func desktopCloseBudget(os string) time.Duration {
+	if os == "windows" {
+		return 2 * time.Minute
+	}
+	return 20 * time.Second
 }

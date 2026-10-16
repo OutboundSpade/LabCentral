@@ -70,7 +70,7 @@ func (e *imageTestEngine) Build(_ context.Context, p lc.Plan) ([]lc.ImageRecord,
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, i := range p.Images {
-		if i.Playbook != "" {
+		if i.BuildProgram() != "" {
 			e.images = append(e.images, lc.ImageRecord{Key: i.CacheKey, Name: i.Name})
 		}
 	}
@@ -160,6 +160,7 @@ func TestTemplateRemovalAuthorizationAndReferences(t *testing.T) {
 }
 func TestImageCleanupPartialFailureReplayAndRebuildFence(t *testing.T) {
 	s, e := templateFixture(t)
+	buildableRevisionFixture(t, s, "old")
 	ctx := context.Background()
 	e.fail = "workstation"
 	j, err := s.queueTemplateOperation(ctx, "remove-images", "old")
@@ -331,5 +332,18 @@ func TestImageRemovalBlocksMeetingCreation(t *testing.T) {
 	w := request(s, "POST", "/api/admin/meeting", `{"name":"Practice","template":"old"}`, s.Config.Origin, "csrf")
 	if w.Code != 409 {
 		t.Fatal("meeting accepted images pending removal", w.Code)
+	}
+}
+
+func buildableRevisionFixture(t *testing.T, s *Service, id string) {
+	t.Helper()
+	other, _, _ := learningFixture(t)
+	s.env = other.env
+	var src lc.Source
+	if err := other.Store.Get(context.Background(), "source", "pinned", &src); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.Put(context.Background(), "source", id, src); err != nil {
+		t.Fatal(err)
 	}
 }

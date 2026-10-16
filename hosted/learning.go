@@ -102,6 +102,7 @@ type LearningCatalog struct {
 	Run   *PracticeRun  `json:"run"`
 }
 type LearningView struct {
+	Machines       []PublicTemplateMachine  `json:"machines"`
 	Lab            LearningLab              `json:"lab"`
 	Steps          []LearningStep           `json:"steps"`
 	Progress       LearningProgress         `json:"progress"`
@@ -203,7 +204,7 @@ func (s *Service) learningView(w http.ResponseWriter, r *http.Request, v Session
 		writeError(w, 404, err.Error())
 		return
 	}
-	out := LearningView{Steps: []LearningStep{}, ReleasedSteps: p.ReleasedSteps, LocalAvailable: true}
+	out := LearningView{Machines: []PublicTemplateMachine{}, Steps: []LearningStep{}, ReleasedSteps: p.ReleasedSteps, LocalAvailable: true}
 	if p.ScenarioID != "" {
 		var attempt templateAttempt
 		if s.Store.Get(r.Context(), "template-attempt", p.ID, &attempt) != nil || attempt.UserID != v.User.ID || attempt.ID != p.ID || attempt.Template != p.Template || attempt.ScenarioID != p.ScenarioID || attempt.Scenario == nil {
@@ -212,6 +213,14 @@ func (s *Service) learningView(w http.ResponseWriter, r *http.Request, v Session
 		}
 		out.Scenario = attempt.Scenario
 		out.LocalAvailable = false
+	}
+	templates, projectionErr := s.templateProjections(r.Context(), p.Template, v.User.Admin)
+	if projectionErr != nil {
+		writeError(w, 503, "Pinned machines are unavailable.")
+		return
+	}
+	if len(templates) == 1 {
+		out.Machines = templates[0].Machines
 	}
 	out.Progress, err = s.Store.learningProgress(r.Context(), v.User.ID, p.ID)
 	out.Lab = p.summary(out.Progress)
