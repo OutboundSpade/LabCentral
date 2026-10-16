@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   GO_VERSION: 1.27.1
 
@@ -25,6 +29,16 @@ jobs:
       - run: go test -race ./...
       - run: go test ./...
         working-directory: examples/consumer
+      - name: Generated files are current
+        run: |
+          go run ./tools/schema
+          go run ./tools/webapi
+          git diff --exit-code -- schemas web/src/lib/types.ts
+      - name: Examples validate
+        run: |
+          go build -o /tmp/labcentral ./cmd/labcentral
+          for lab in examples/*/lab.yaml; do /tmp/labcentral validate "$(dirname "$lab")"; done
+          /tmp/labcentral validate --template examples/starter-template
       - name: Cross-compile the CLI
         run: |
           for target in windows/amd64 darwin/arm64; do
