@@ -343,7 +343,9 @@ its native operation settles.
 revocation records a generation tombstone before cleanup, preventing delayed commands
 from reopening the retired access. Reopening a provider-expired desktop first confirms
 retirement and uses a fresh generation; a saved successful launch alone does not
-authorize reuse. A second client waits behind the instance/image
+authorize reuse. Recovery also retires a replacement grant that was saved but never
+reached the guest, without revoking a different active generation.
+A second client waits behind the instance/image
 and provider fences; stop the original controller before restoring state elsewhere.
 Image recovery qualifies a captured image on disposable guests, or cleans an incomplete
 attempt and asks for `image abandon` before a fresh build. Abandonment cannot release

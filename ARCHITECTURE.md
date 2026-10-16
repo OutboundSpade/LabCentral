@@ -568,8 +568,9 @@ flowchart LR
   generation is saved. Windows mutations run directly within the PowerShell mutex
   program, with one final encoded command and no intermediate command shell.
   Revocation durably tombstones the generation even if the account is absent, so a
-  delayed grant cannot recreate access after successful cleanup. Old generations
-  cannot revoke a newer grant. Account markers and native DCV session owners are
+  delayed grant cannot recreate access after successful cleanup. A replacement that
+  never reached the guest can be retired when its predecessor is already tombstoned;
+  a different active generation still fences cleanup. Account markers and native DCV session owners are
   checked before deletion. Uncertain guest cleanup retains its record.
 - Guest-session cleanup is tried first, but an unreachable guest cannot block
   termination. Access records survive until machines are confirmed removed.
