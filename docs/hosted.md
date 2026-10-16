@@ -118,100 +118,38 @@ labcentral-server --config /path/to/service.json --listen 127.0.0.1:8080
 
 ## Windows templates
 
-Hosted Windows uses the same AWS Server 2022 image and guest lifecycle as the CLI.
-Local authorization, persistence, race and fake SSH tests cover the hosted paths;
-real OIDC, Windows desktop input, shared-console handoffs and release acceptance
-remain pending. Do not treat those tests as live platform qualification.
+Templates can include Windows Server 2022 machines (AWS only). Add to the service's
+environment file:
 
-Before refreshing a Windows template, configure the service's **environment file**:
-
-- Bind the author's base name, for example `bases.windows-2022`, with `os: windows`,
-  `user: Administrator`, `diskGiB: 30`, and the same pinned AMI in `id` and `identity`.
+- a Windows base, such as `bases.windows-2022`, with `os: windows`,
+  `user: Administrator`, `diskGiB: 30` and the same AMI ID in `id` and `identity`.
   Resolve `/aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base` once
-  in the deployment region; never bind the mutable parameter path.
-- Set `build.windowsDCVURL` and `build.windowsDCVSHA256` to the pinned MSI values in
-  [Windows guests](operators.md#windows-guests). The build network needs Windows
-  Update access for OpenSSH. Both pins must be supplied together.
-- Include a Windows-capable type in `aws.types`, such as
-  `{name: t3.medium, cpu: 2, memoryMiB: 4096}`, and select it with
-  `build.instanceType` or the Windows image's `platform.aws.buildInstanceType`.
-  Keep the Linux base, Linux DCV pins and existing license-only desktop profile.
-- Allow the provider role to launch the pinned Windows base AMI and the selected
-  instance types. Windows needs no password-decryption, WinRM or guest SSM access;
-  it uses pinned OpenSSH through the existing lab gateway. Parameter resolution is
-  an operator action, separate from the service's runtime permissions.
+  and bind the ID, never the parameter path;
+- the DCV installer pins `build.windowsDCVURL` and `build.windowsDCVSHA256` (see
+  [Windows guests](operators.md#windows-guests)); the build network needs Windows Update
+  access to install OpenSSH;
+- an instance type with at least 4 GiB in `aws.types`, such as
+  `{name: t3.medium, cpu: 2, memoryMiB: 4096}`, selected for builds with
+  `build.instanceType` or the image's `platform.aws.buildInstanceType`.
 
-A Linux-only service remains valid. Missing Windows bases, mismatched OS bindings,
-installer pins and insufficient instance capacity appear in the existing **Admin →
-Templates** problem panel before a build can be queued. Current revision views also
-expose `problem` if configuration changes after import. Cleanup continues to use saved
-image keys; an incompatible environment never licenses guessing which images to remove.
+The service's AWS role must be allowed to launch that AMI and instance type. A template
+the environment can't support shows the reason in **Admin → Templates** and can't be
+built; Linux templates are unaffected.
 
-Coaches (users in `adminGroup`) can create their own explore/baseline/scenario attempts
-from coach-only templates. These attempts stay private to their owner; losing coach
-privileges blocks access and guest work, while Stop and cleanup remain available.
-The UI controls for starting coach-only attempts still need to be enabled.
+**One screen per Windows machine.** A Windows machine has a single console, so in a
+meeting one person uses a team's Windows desktop at a time. Teammates see who has it
+and can **Take over**, which disconnects that person first; saved files stay, but open
+programs close. Coaches can open or take over any team's desktop from **Admin →
+Meeting → Coach machine access**. Practice attempts belong to one person, so this
+doesn't apply there.
 
-A team's Windows machine has one console, owned by local `lab`, and one hosted holder.
-An ordinary open returns HTTP 409 with `code: desktop_held` and `holderName` when a
-teammate holds it. Explicit take-over revokes the old grant, waits for provider
-confirmation, then opens the new one. Saved profile files are shared and preserved;
-logoff ends applications, so save work before handing over. Unknown revocation returns
-503 with `code: desktop_outcome_unknown` and `Retry-After`; the old holder stays in
-persistent state and no replacement grant is created until cleanup is confirmed.
-Concurrent take-overs serialize on that allocation and machine. Restart reconciles
-old access before another grant; it does not replay an interrupted requester's login.
+**Coach terminal.** Opens PowerShell as `Administrator`. The terminal keeps its initial
+size on Windows.
 
-The API contract for the remaining UI work is:
-
-| Action | Teammate | Coach/admin targeting the current meeting |
-| --- | --- | --- |
-| Open | `POST /api/access` | `POST /api/admin/teams/{id}/desktop` |
-| Explicit take-over | `POST /api/access/takeover` | `POST /api/admin/teams/{id}/desktop/takeover` |
-| Status | `GET /api/access/status` | `GET /api/admin/teams/{id}/desktop/status` |
-
-Writes use the existing Origin and CSRF checks. Team IDs on admin routes must belong
-to a ready team in the current meeting; normal members can only target their own
-current seat. Holder names are available only after these checks. `LabView.desktopState`
-also carries the current state on `/api/me`. Status reports `available`, `held`, `owned`,
-`desktop_taken_over` (with `takenOverBy`), or `desktop_outcome_unknown`; `canTakeOver`
-indicates another holder. The displaced desktop cookie can poll `/status` on the
-desktop origin, and a reconnect reports a typed taken-over response. Status and old
-cookies stop disclosing names after seat change, sign-out, expiry or role revocation.
-UI take-over controls, status polling and presentation are pending.
-
-Personal practice has one owner and needs no take-over. Closing and reopening a
-desktop on a live allocation preserves saved files; **Stop** destroys the allocation
-and retains learning progress only. Linux desktops retain individual guest sessions.
-Windows desktop authentication uses account `lab` and session ID `console`.
-The desktop lesson panel supports personal attempts on both operating systems;
-meeting learning remains in the application.
-
-The coach terminal connects as `Administrator` through Windows OpenSSH's PowerShell
-default shell. It retains pinned host keys, meeting authorization, cancellation and
-the ten-minute shell limit. Initial dimensions default to 100 columns × 30 rows;
-valid resize messages are accepted but Windows keeps the initial console size.
-Linux still receives window-change requests. The `lab` desktop account and the
-management `Administrator` account serve separate purposes.
-
-Windows cold boots and logon are slower. Defaults are 15 minutes for Windows guest
-readiness (Linux: 5), 5 minutes for the Windows console to become running (Linux: 25
-seconds), 10 minutes for hosted Windows desktop open (Linux: 90 seconds), and 2 minutes
-for Windows logoff/close (Linux: 20 seconds). The provider's open ceiling is 10 minutes
-on Windows and 2 on Linux. Preparation budgets are 45 minutes for mixed/Windows labs
-and 30 for Linux, further bounded by allocation expiry and `worker.jobTimeoutMinutes`.
-The EC2-running wait is 10 minutes and image qualification is 20 on Windows, 10 on
-Linux. Reverse-proxy launch timeouts must allow the configured open budget plus a
-possible two-minute revoke; 15 minutes covers the defaults. The current web launch
-retry window (two minutes) and terminal-ready wait (30 seconds) still need OS-aware
-UI handling. Never retry by creating a new desktop when status is unknown.
-
-Prior CLI qualification observed roughly an hour for a cold Windows image build,
-20 minutes for Linux and seven minutes for deployment; hosted timings remain
-unverified. Windows licensing and larger instance sizes add cost. Preparation,
-retained allocations, failed runs awaiting cleanup and image storage all consume
-resources; desktop Close does not stop billing for the lab. Set quotas accordingly
-and confirm instance and image cleanup after acceptance.
+**Time and cost.** Expect about an hour for a first Windows image build and several
+minutes for a Windows desktop to start (the opening and preparation limits below are
+longer for Windows). Windows instances cost more than Linux ones, and closing a desktop
+doesn't stop the lab's machines.
 
 ## Limits
 

@@ -684,7 +684,8 @@ observations store only a cookie digest and authorization record, never credenti
 Old launch tickets and relay transports become unusable before another grant. The
 Windows browser credential response pairs username `lab` with DCV session `console`.
 Machine OS is exposed in template, personal attempt, meeting and coach machine views.
-UI take-over controls and state rendering remain pending.
+The lab page offers a confirmed take over or take back, the desktop page names who
+took over, and coaches open or take over team desktops from the coach console.
 
 Coach terminals use pinned OpenSSH and `SSHUser()` (`Administrator` on Windows),
 request an initial PTY and launch the platform-configured PowerShell default shell.
@@ -699,7 +700,7 @@ allows 5 minutes, open 10 minutes and logoff cleanup 2 minutes; Linux remains at
 `worker.prepareTimeoutMinutes` / `worker.windowsPrepareTimeoutMinutes`. These budgets
 remain bounded by job and allocation deadlines. Unknown DCV state never creates a
 replacement session. Qualification budgets remain Linux 10 / Windows 20 minutes.
-See [hosted operations](docs/hosted.md#windows-templates) for proxy and UI timeout limits.
+Browser launches retry for up to five minutes while the server asks them to.
 
 ### Instructor material and guest programs
 
