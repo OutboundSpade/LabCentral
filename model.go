@@ -385,8 +385,10 @@ type Command struct {
 }
 type Result struct {
 	Resource Resource `json:"resource"`
-	Absent   bool     `json:"absent,omitempty"`
-	Message  string   `json:"message,omitempty"`
+	// Absent on image.build confirms recovery found no artifact and cleaned
+	// native build resources. Errors never confirm absence.
+	Absent  bool   `json:"absent,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 type Provider interface {
 	Execute(context.Context, Command, Observer) (Result, error)

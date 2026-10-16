@@ -498,6 +498,9 @@ restored one starts.
 - An authorization rejection and an uncertain transport failure are different outcomes;
   the second is never retried as if it had been rejected.
 - Cache-key file locks coordinate build, reuse, abandonment and removal across clients.
+  `BuildWithRecovery` holds one key's lock through reconciliation, abandonment after
+  confirmed absence and its replacement attempt; active builds finish before recovery
+  can inspect them. Unknown outcomes retain intent and allocations across retries/restarts.
   Deployment builds or reuses images first, then takes the image locks in sorted order
   and a short allocation fence to save references. Image removal uses the same fence to
   check for references.
@@ -633,8 +636,10 @@ revisions; meetings and attempts keep their pins.
 
 Image operations save cache keys and operation identity before any effect. Removing a
 revision's images blocks new meetings on it, keeps images shared with other built
-revisions and images used by retained labs, and cleans unpublished builds. Uncertain
-cleanup blocks rebuilding until reconciled.
+revisions and images used by retained labs, and cleans unpublished builds. Hosted builds,
+including **Retry build**, reconcile pending attempts and replace them only after
+confirmed cleanup, keeping already-built sibling images. Uncertain cleanup retains
+retryable intent and reports operator guidance in the failed template job.
 
 "Remove unused images" (`POST /api/admin/images/prune`, admin and CSRF) queues a durable
 `prune-images` job. It keeps images needed by each template's latest revision, open

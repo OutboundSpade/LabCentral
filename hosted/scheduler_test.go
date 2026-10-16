@@ -86,7 +86,7 @@ func TestGuestCapacitySurvivesBulkSaturationAndKeepsCleanupSlot(t *testing.T) {
 	}
 }
 
-func (e *scheduledEngine) Build(ctx context.Context, p lc.Plan) ([]lc.ImageRecord, error) {
+func (e *scheduledEngine) BuildWithRecovery(ctx context.Context, p lc.Plan) ([]lc.ImageRecord, error) {
 	e.started <- "build"
 	select {
 	case <-ctx.Done():

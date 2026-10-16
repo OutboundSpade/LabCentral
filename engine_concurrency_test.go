@@ -89,7 +89,7 @@ func TestImageFenceCoordinatesClientsAndCancellation(t *testing.T) {
 	}
 	waiting, stop := context.WithCancel(ctx)
 	stop()
-	if _, err := second.Build(waiting, plan); !errors.Is(err, context.Canceled) {
+	if _, err := second.BuildWithRecovery(waiting, plan); !errors.Is(err, context.Canceled) {
 		t.Fatal("image wait did not respect cancellation", err)
 	}
 	removeCtx, stopRemove := context.WithTimeout(ctx, 30*time.Millisecond)
@@ -101,7 +101,7 @@ func TestImageFenceCoordinatesClientsAndCancellation(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := second.Build(ctx, plan); err != nil {
+	if _, err := second.BuildWithRecovery(ctx, plan); err != nil {
 		t.Fatal(err)
 	}
 	provider.mu.Lock()
