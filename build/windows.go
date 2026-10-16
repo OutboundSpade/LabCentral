@@ -83,7 +83,12 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 			`Set-Service dcvserver -StartupType Automatic`, `Start-Service dcvserver`, `Remove-Item -Force 'C:\ProgramData\LabCentral\ready'`)
 		// Finish platform driver installation before the author uses Windows
 		// servicing. The EC2Launch bootstrap remains idempotent across this reboot.
-		cfg.Provisioners = append(cfg.Provisioners, raw(map[string]any{"type": "windows-restart", "restart_timeout": "20m", "restart_check_command": windows.Command(windows.Ready + windows.DesktopReady)}))
+		// Packer's restart check ignores the command's exit status, so the check itself
+		// waits for the per-boot bootstrap, which stops and restarts sshd. A dropped
+		// check connection is retried. The strict step below then fails the build if
+		// the guest still is not ready, before any author code runs.
+		cfg.Provisioners = append(cfg.Provisioners, raw(map[string]any{"type": "windows-restart", "restart_timeout": "20m", "restart_check_command": windows.Command(restartWait)}))
+		ps(windows.Ready + windows.DesktopReady)
 	}
 	ps(`$env:LABCENTRAL_INPUTS='C:\ProgramData\LabCentral\inputs.json'`,
 		`Set-Location 'C:\ProgramData\LabCentral\build'`,
@@ -108,3 +113,12 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 	cfg.Provisioners[len(cfg.Provisioners)-1] = raw(last)
 	return cfg, nil
 }
+
+// restartWait polls readiness for up to 15 minutes and always exits normally.
+const restartWait = `$deadline=(Get-Date).AddMinutes(15)
+while ((Get-Date) -lt $deadline) {
+ $ready=(Test-Path 'C:\ProgramData\LabCentral\ready') -and ((Get-Service sshd).Status -eq 'Running') -and ((Get-Service dcvserver -ErrorAction SilentlyContinue).Status -eq 'Running')
+ if ($ready) {break}
+ Start-Sleep -Seconds 5
+}
+`

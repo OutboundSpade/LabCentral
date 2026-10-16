@@ -3,6 +3,7 @@ package build
 import (
 	"encoding/json"
 	"github.com/OutboundSpade/LabCentral/v2/internal/pscheck"
+	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,11 +55,22 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 			if strings.Contains(string(data), "shell-local") || strings.Contains(string(data), "ansible-local") || strings.Contains(string(data), "AWS_SECRET_ACCESS_KEY") || strings.Contains(string(data), "images/build.ps1") {
 				t.Fatal("author values entered host/Packer templates")
 			}
-			install, restart, author, sysprep := -1, -1, -1, -1
+			install, restart, gate, author, sysprep := -1, -1, -1, -1, -1
 			for i, provisioner := range cfg.Provisioners {
 				text := string(provisioner)
 				if strings.Contains(text, `"type":"windows-restart"`) {
 					restart = i
+					// Packer ignores the check's exit status, so the check must wait itself.
+					check, _ := json.Marshal(windows.Command(restartWait))
+					if !strings.Contains(text, string(check)) || !strings.Contains(restartWait, "while ((Get-Date) -lt $deadline)") {
+						t.Fatal("restart check does not wait for the per-boot bootstrap")
+					}
+				}
+				if restart >= 0 && gate < 0 && i > restart && strings.Contains(text, `"type":"powershell"`) {
+					gate = i
+					if !strings.Contains(text, `ready')) {exit 1}`) || !strings.Contains(text, "dcvserver") {
+						t.Fatal("first step after restart does not assert readiness")
+					}
 				}
 				if strings.Contains(text, "Get-FileHash") {
 					install = i
@@ -82,7 +94,7 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 					}
 				}
 			}
-			if author < 0 || sysprep <= author || (desktop && (install < 0 || restart <= install || restart >= author)) || (!desktop && install >= 0) {
+			if author < 0 || sysprep <= author || (desktop && (install < 0 || restart <= install || gate != restart+1 || gate >= author)) || (!desktop && install >= 0) {
 				t.Fatal("incorrect guest build order", install, author, sysprep)
 			}
 			var inputs map[string]any
