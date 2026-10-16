@@ -316,8 +316,8 @@ func (s *Service) runTemplateJob(ctx context.Context, j Job) error {
 		if err = s.Store.Put(ctx, "template-images", t.ID, keys); err != nil {
 			return err
 		}
-		if _, err = s.Engine.Build(ctx, p); err != nil {
-			return err
+		if _, err = s.Engine.BuildWithRecovery(ctx, p); err != nil {
+			return fmt.Errorf("Image build did not finish. Choose Retry build to reconcile the previous attempt and continue; ready images are kept. If cleanup remains unconfirmed, ask the operator to resolve native build resources, then retry. Details: %w", err)
 		}
 		now := time.Now().UTC()
 		t.Built = true

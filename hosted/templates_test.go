@@ -66,7 +66,7 @@ func (e *imageTestEngine) AbandonBuild(_ context.Context, key string) error {
 	}
 	return errors.New("unknown build")
 }
-func (e *imageTestEngine) Build(_ context.Context, p lc.Plan) ([]lc.ImageRecord, error) {
+func (e *imageTestEngine) BuildWithRecovery(_ context.Context, p lc.Plan) ([]lc.ImageRecord, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, i := range p.Images {

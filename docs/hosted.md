@@ -69,6 +69,13 @@ To publish a change: push to `main`, then **Admin → Templates → Refresh from
 then **Build images** on the new revisions. Meetings and attempts keep the revision they
 started with.
 
+If an image build fails, choose **Retry build** in **Admin → Templates**. The server
+reconciles the previous attempt and, after confirmed cleanup, builds the missing image;
+already-built images are kept. **Build images** also handles pending failed attempts.
+If cleanup cannot be confirmed, the job stays retryable: ask the operator to resolve
+the native build resources, then retry. Removing all of the revision's images is not
+needed for a failed build retry.
+
 ## Requirements
 
 On one Linux host:

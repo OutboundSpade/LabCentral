@@ -152,7 +152,7 @@ type configuredBuildEngine struct {
 	started chan time.Duration
 }
 
-func (e *configuredBuildEngine) Build(ctx context.Context, _ lc.Plan) ([]lc.ImageRecord, error) {
+func (e *configuredBuildEngine) BuildWithRecovery(ctx context.Context, _ lc.Plan) ([]lc.ImageRecord, error) {
 	deadline, _ := ctx.Deadline()
 	e.started <- time.Until(deadline)
 	<-ctx.Done()

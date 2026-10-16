@@ -186,7 +186,7 @@ type Engine interface {
 	Builds(context.Context) ([]lc.Command, error)
 	AbandonBuild(context.Context, string) error
 
-	Build(context.Context, lc.Plan) ([]lc.ImageRecord, error)
+	BuildWithRecovery(context.Context, lc.Plan) ([]lc.ImageRecord, error)
 	DeployWithID(context.Context, lc.Plan, string) (lc.Instance, error)
 	Inspect(context.Context, string) (lc.Instance, error)
 	Recover(context.Context, string) (lc.Instance, error)

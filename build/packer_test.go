@@ -223,3 +223,60 @@ func TestGeneratedAnsibleExtensionsAndTypedVariables(t *testing.T) {
 		t.Fatal("extensions were not passed as scoped JSON", string(b))
 	}
 }
+
+func TestFailedPackerRecoveryConfirmsAbsenceOnlyAfterCleanup(t *testing.T) {
+	c, dir := fixture(t, "aws")
+	packer := filepath.Join(dir, "packer")
+	if err := os.WriteFile(packer, []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	plugins := filepath.Join(dir, "plugins")
+	if err := os.Mkdir(plugins, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(plugins, "test-plugin"), []byte("test plugin pin"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	c.Environment.Build.Packer = packer
+	c.Environment.Build.PackerSHA256, err = hashFile(packer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Environment.Build.PluginDirectory = plugins
+	c.Environment.Build.ToolchainID, err = FingerprintPlugins(plugins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Environment.Build.TimeoutSeconds = 10
+	cleanupUnknown := true
+	cleanupCalls := 0
+	r := &Runner{Root: dir,
+		Find: func(context.Context, lc.Command) (lc.Resource, bool, error) { return lc.Resource{}, false, nil },
+		Validate: func(context.Context, lc.Command, lc.Resource) (lc.Resource, error) {
+			t.Error("missing artifact was validated")
+			return lc.Resource{}, nil
+		},
+		Cleanup: func(context.Context, lc.Command) error {
+			cleanupCalls++
+			if cleanupUnknown {
+				return fmt.Errorf("cleanup timed out")
+			}
+			return nil
+		},
+	}
+	result, err := r.Run(context.Background(), c, nil)
+	if err == nil || !strings.Contains(err.Error(), "Packer build failed") || result.Absent || cleanupCalls != 0 {
+		t.Fatal("failed Packer run must leave an unknown outcome", result, cleanupCalls, err)
+	}
+	c.Recovery = true
+	result, err = r.Run(context.Background(), c, nil)
+	if err == nil || result.Absent || cleanupCalls != 1 {
+		t.Fatal("unknown cleanup confirmed absence", result, cleanupCalls, err)
+	}
+	cleanupUnknown = false
+	result, err = r.Run(context.Background(), c, nil)
+	if err != nil || !result.Absent || result.Resource.Complete || cleanupCalls != 2 {
+		t.Fatal("confirmed cleanup not reported", result, cleanupCalls, err)
+	}
+}
