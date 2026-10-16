@@ -164,3 +164,28 @@ func TestInvalidConfigAndExplicitMissingFileFailBeforeState(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVersionNeedsNoProviderStateOrConfig(t *testing.T) {
+	root, _ := cliFixture(t)
+	old := Version
+	Version = "v2.0.0-test"
+	defer func() { Version = old }()
+	broken := filepath.Join(root, "broken-config.json")
+	if err := os.WriteFile(broken, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runCLI(t, "version", "--config", broken, "--provider", filepath.Join(root, "missing"))
+	if err != nil || out != "labcentral v2.0.0-test\n" {
+		t.Fatalf("%q %v", out, err)
+	}
+	if _, _, err := runCLI(t, "version", "extra"); err == nil || !strings.Contains(err.Error(), "too many arguments") {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "state")); !os.IsNotExist(err) {
+		t.Fatal("version created state", err)
+	}
+	Version = ""
+	if out, _, err := runCLI(t, "version"); err != nil || !strings.HasPrefix(out, "labcentral ") {
+		t.Fatalf("%q %v", out, err)
+	}
+}

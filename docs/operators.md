@@ -24,9 +24,32 @@ flowchart LR
 
 ## Install
 
-You need Go 1.27 (every pinned tool version is in
-[tools/toolchain.json](../tools/toolchain.json)) and an AWS account or Proxmox cluster
-you control. The operator machine is Linux amd64.
+Download the latest release from
+[Releases](https://github.com/OutboundSpade/LabCentral/releases/latest). The operator
+machine is Linux amd64; `labcentral-linux-amd64.tar.gz` holds `labcentral` and
+`labcentral-provider`:
+
+```sh
+curl -fLO https://github.com/OutboundSpade/LabCentral/releases/latest/download/labcentral-linux-amd64.tar.gz
+curl -fLO https://github.com/OutboundSpade/LabCentral/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+mkdir -p ~/.local/lib/labcentral && tar -C ~/.local/lib/labcentral -xzf labcentral-linux-amd64.tar.gz
+export PATH="$HOME/.local/lib/labcentral:$PATH"
+labcentral version
+```
+
+The CLI looks for the provider next to itself, so keep both binaries together.
+`labcentral help COMMAND` shows usage and examples for every command.
+
+The Windows and macOS downloads (`labcentral-windows-amd64.exe`,
+`labcentral-darwin-arm64`, `labcentral-darwin-amd64`) are for validating templates;
+running labs needs Linux. On a Mac, clear the download quarantine first with
+`xattr -d com.apple.quarantine FILE` and `chmod +x FILE`.
+`gh attestation verify FILE --repo OutboundSpade/LabCentral` proves a download was
+built by this repository's release workflow.
+
+To build from source instead, you need Go 1.27 (every pinned tool version is in
+[tools/toolchain.json](../tools/toolchain.json)):
 
 ```sh
 git clone https://github.com/OutboundSpade/LabCentral.git
@@ -34,10 +57,6 @@ cd LabCentral
 make build
 export PATH="$PWD/bin:$PATH"
 ```
-
-`make build` produces `labcentral` and `labcentral-provider`. The CLI looks for the
-provider next to itself, so keep both binaries together. `labcentral help COMMAND`
-shows usage and examples for every command.
 
 ## Configure an environment
 

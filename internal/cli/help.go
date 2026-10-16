@@ -34,6 +34,7 @@ var commands = map[string]commandSpec{
 	"image abandon":                   {"IMAGE_KEY", "Abandon an unpublished build after recovery confirms cleanup.", "labcentral image abandon IMAGE_KEY", false},
 	"config init":                     {"[FILE]", "Write private CLI defaults; no credentials or automatic mutation approval.", "labcentral config init", false},
 	"config show":                     {"", "Show resolved CLI paths and environment defaults.", "labcentral config show", false},
+	"version":                         {"", "Show the CLI version.", "labcentral version", false},
 }
 
 func help(out io.Writer, key string) error {
@@ -53,6 +54,7 @@ Lifecycle:   build, deploy, list, inspect, access, recover, destroy
 Environment: environment setup|teardown|init|check|fingerprint-plugins
 Images:      image list|builds|remove|abandon
 Defaults:    config init|show
+About:       version
 
 Use labcentral help COMMAND for usage and examples.
 Options may precede or follow arguments. Use -- before a path beginning with '-'.

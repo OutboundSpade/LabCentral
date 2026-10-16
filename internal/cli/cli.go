@@ -71,6 +71,13 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 	if helpRequested {
 		return help(out, key)
 	}
+	if key == "version" {
+		if len(args) > 0 {
+			return usageError(key, "too many arguments")
+		}
+		_, err := fmt.Fprintln(out, "labcentral", version())
+		return err
+	}
 	var setupOptions proxmox.SetupOptions
 	o := defaults()
 	o.configFile = defaultConfigPath()

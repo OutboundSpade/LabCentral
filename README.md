@@ -91,14 +91,20 @@ remaining acceptance work.
 
 ## Quick start
 
-You need Go 1.27 and an AWS account or Proxmox cluster you control.
+Download the CLI for your computer from
+[Releases](https://github.com/OutboundSpade/LabCentral/releases/latest)
+([install steps](docs/operators.md#install)), or build it with Go 1.27:
 
 ```sh
 git clone https://github.com/OutboundSpade/LabCentral.git
 cd LabCentral
 make build
 export PATH="$PWD/bin:$PATH"
+```
 
+Then write and check a lab; validating needs no cloud account:
+
+```sh
 labcentral init my-lab          # writes a minimal lab
 labcentral validate my-lab
 ```

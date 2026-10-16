@@ -48,6 +48,10 @@ missing files are errors, each reported with a field path such as
 
 ## Quick start
 
+Validating a template needs only the `labcentral` CLI: download it for Windows, macOS
+or Linux from [Releases](https://github.com/OutboundSpade/LabCentral/releases/latest)
+(see [Install](operators.md#install)). No cloud account or environment file is needed.
+
 ```sh
 cp -r examples/starter-template templates/my-lab
 $EDITOR templates/my-lab/lab.yaml        # rename the lab, change machines

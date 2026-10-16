@@ -44,6 +44,24 @@ LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_CHROMIUM=… node web/tests/template
 
 None of these replace testing against real AWS or Proxmox accounts.
 
+## Continuous integration and releases
+
+`.github/workflows/ci.yml` runs vet, race tests, the consumer example, CLI
+cross-compilation and the web check and build on every push to `main` and every pull
+request.
+
+To release, tag a commit on `main` and push the tag:
+
+```sh
+git tag -a v2.0.0 -m "LabCentral v2.0.0"
+git push origin v2.0.0
+```
+
+`.github/workflows/release.yml` tests the tag, builds the CLI for Linux (with the
+provider), Windows and macOS with the version stamped in, records build provenance
+attestations, and publishes a GitHub release with `SHA256SUMS`. The hosted server is
+not part of the release.
+
 ## Using the library
 
 [examples/consumer](../examples/consumer/main.go) is a separate Go module that drives
