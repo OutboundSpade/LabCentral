@@ -283,11 +283,18 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		return nil, info, e
 	}
 	var closeMu sync.Mutex
+	cleanupStarted := false
 	closer := func() error {
 		closeMu.Lock()
 		defer closeMu.Unlock()
 		_ = relay.Close()
 		transport.CloseIdleConnections()
+		// The first attempt consumes the relay's dialer. A retained failed expiry
+		// must be able to reconcile again with fresh pinned SSH material.
+		if cleanupStarted {
+			return closeDCV(context.Background(), c)
+		}
+		cleanupStarted = true
 		ctx, cancel := context.WithTimeout(context.Background(), desktopCloseBudget(c.Machine.OS))
 		defer cancel()
 		defer dialer.Close()

@@ -497,8 +497,10 @@ restored one starts.
   owner. Ambiguous results keep their allocations and recovery intent.
 - An authorization/validation rejection or an explicit throttle and an uncertain
   transport/server failure are different outcomes. Only definite pre-mutation
-  rejections release the native create checkpoint for another submission. EC2 SDK
-  transport retries are disabled; reconciliation precedes any further create.
+  rejections release the native create checkpoint for another submission. Guarded EC2 creates use
+  one SDK attempt; reads and idempotent operations keep bounded SDK retries. Documented
+  launch quota/capacity denials are definite rejections, scoped to their native action;
+  reconciliation precedes any further create after an unknown outcome.
 - The pinned Packer builders use a private loopback capability to reach their native
   APIs. Provider guards restrict creates to the pinned base and reserved identity,
   preserve atomic ownership markings, verify ownership before later mutations, and
@@ -560,6 +562,11 @@ flowchart LR
   conflicting one.
 - Desktop grant and close intent precedes guest effects. Each new grant has a random
   generation; Linux guest file locks and Windows named mutexes serialize effects.
+  The library reuses a generation only after the provider confirms a live cached session.
+  Expiry shares its per-session fence with probes, grants and revokes, retaining the
+  entry until cleanup succeeds. Cache loss or retirement is reconciled before a fresh
+  generation is saved. Windows mutations run directly within the PowerShell mutex
+  program, with one final encoded command and no intermediate command shell.
   Revocation durably tombstones the generation even if the account is absent, so a
   delayed grant cannot recreate access after successful cleanup. Old generations
   cannot revoke a newer grant. Account markers and native DCV session owners are

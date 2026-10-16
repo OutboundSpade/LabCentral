@@ -99,6 +99,9 @@ func TestDCVThroughGatewayReusesSSHAndPinsTLS(t *testing.T) {
 			if err = desktop.close(); err != nil {
 				t.Fatal(err)
 			}
+			if err = desktop.close(); err != nil {
+				t.Fatal("retained cleanup could not retry after closing its original dialer", err)
+			}
 		})
 	}
 }

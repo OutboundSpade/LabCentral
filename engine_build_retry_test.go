@@ -172,6 +172,8 @@ func (processBuildProvider) Execute(_ context.Context, c Command, _ Observer) (R
 	switch c.Action {
 	case "check":
 		return Result{}, nil
+	case "image.read":
+		return Result{Resource: c.Prior}, nil
 	case "image.build":
 		fmt.Fprintln(os.Stdout, "building")
 		var input [1]byte

@@ -326,7 +326,8 @@ still uses.
 A failed command does not mean its native request failed. After a timeout or lost
 connection, use the original state directory and `recover`; do not start a replacement
 with a new state directory or delete journal files. Recovery discovers the original
-owned resource. An explicit authorization/validation rejection or throttle can be
+owned resource. An explicit authorization/validation rejection, documented EC2 launch quota/capacity
+denial, or throttle can be
 submitted again; an uncertain create with no authoritative result stays
 `recovery_required`, with its allocation and cleanup intent retained.
 
@@ -340,7 +341,9 @@ its native operation settles.
 
 `recover INSTANCE_ID` also finishes uncertain desktop grants and revocations. Guest
 revocation records a generation tombstone before cleanup, preventing delayed commands
-from reopening the retired access. A second client waits behind the instance/image
+from reopening the retired access. Reopening a provider-expired desktop first confirms
+retirement and uses a fresh generation; a saved successful launch alone does not
+authorize reuse. A second client waits behind the instance/image
 and provider fences; stop the original controller before restoring state elsewhere.
 Image recovery qualifies a captured image on disposable guests, or cleans an incomplete
 attempt and asks for `image abandon` before a fresh build. Abandonment cannot release
