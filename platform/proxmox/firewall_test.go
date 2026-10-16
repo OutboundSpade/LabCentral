@@ -12,7 +12,7 @@ import (
 )
 
 func TestEgressFirewallNativeOrderAndPrivateBlocking(t *testing.T) {
-	env := lc.Environment{OperatorCIDRs: []string{"203.0.113.10/32"}, Proxmox: lc.ProxmoxConfig{URL: "https://198.51.100.25:8006", CIDR: "10.90.0.0/16", Gateway: "10.90.0.1", AllowEgress: true}}
+	env := lc.Environment{OperatorCIDRs: []string{"203.0.113.10/32"}, Proxmox: lc.ProxmoxConfig{URL: "https://198.51.100.25:8006", CIDR: "10.90.0.0/16", AllowEgress: true}}
 	for _, internet := range []bool{false, true} {
 		rules := firewallRules(env, "10.90.0.0/24", internet)
 		effective := []firewallRule{}

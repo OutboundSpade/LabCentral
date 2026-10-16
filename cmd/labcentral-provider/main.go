@@ -50,7 +50,7 @@ func main() {
 	ar.Validate = func(ctx context.Context, c lc.Command, r lc.Resource) (lc.Resource, error) {
 		return build.ValidateNative(ctx, ar.Root, a, c, r)
 	}
-	pr := &build.Runner{Provider: p, Root: filepath.Join(*state, "builds"), Find: p.FindBuild, Cleanup: p.CleanupBuild}
+	pr := &build.Runner{Configure: p.ConfigureBuild, Provider: p, Root: filepath.Join(*state, "builds"), Find: p.FindBuild, Cleanup: p.CleanupBuild}
 	pr.Validate = func(ctx context.Context, c lc.Command, r lc.Resource) (lc.Resource, error) {
 		return build.ValidateNative(ctx, pr.Root, p, c, r)
 	}

@@ -284,15 +284,7 @@ func PlanNetworks(p *Plan, vlans []int) error {
 				first.Routes = append(first.Routes, PlannedRoute{CIDR: m.Resolver + "/32", Via: first.Gateway})
 			}
 		}
-		if e.Platform == "proxmox" && m.NICs[0].Gateway != "" {
-			first := &m.NICs[0]
-			for _, cidr := range e.OperatorCIDRs {
-				prefix, err := netip.ParsePrefix(cidr)
-				if err == nil && !netip.MustParsePrefix(first.CIDR).Contains(prefix.Addr()) {
-					first.Routes = append(first.Routes, PlannedRoute{CIDR: cidr, Via: first.Gateway})
-				}
-			}
-		}
+
 		m.Hosts = []HostEntry{}
 		for _, peer := range p.Machines {
 			if m.Spec.HostnamePeers.Explicit && !Contains(m.Spec.HostnamePeers.Names, peer.Name) {

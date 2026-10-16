@@ -5,6 +5,7 @@ import (
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"os"
+	"os/exec"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -107,4 +108,10 @@ func main() {
 	if e := os.WriteFile("api/plugin/v2/platform.proto", []byte(b.String()), 0644); e != nil {
 		panic(e)
 	}
+	command := exec.Command("protoc", "--go_out=.", "--go_opt=module=github.com/OutboundSpade/LabCentral/v2", "--go-grpc_out=.", "--go-grpc_opt=module=github.com/OutboundSpade/LabCentral/v2", "api/plugin/v2/platform.proto")
+	command.Stdout, command.Stderr = os.Stdout, os.Stderr
+	if err := command.Run(); err != nil {
+		panic(err)
+	}
+
 }

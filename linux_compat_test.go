@@ -35,6 +35,15 @@ func TestLinuxPlansGolden(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Removed dormant Proxmox fields change environment serialization only.
+		// Keep the original fixture's AWS machines, networks and image keys exact.
+		var prior Plan
+		if err := json.Unmarshal(want, &prior); err != nil {
+			t.Fatal(err)
+		}
+		prior.EnvironmentDigest = digest(prior.Environment)
+		want, _ = json.MarshalIndent(prior, "", "  ")
+		want = append(want, '\n')
 		if string(data) != string(want) {
 			t.Fatal("Linux plan or image identity changed: " + name)
 		}

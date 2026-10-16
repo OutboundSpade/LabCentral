@@ -375,22 +375,26 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 	if err != nil {
 		return nil, info, err
 	}
-	_, err = remote.Run(ctx, sshClient, "sudo useradd --create-home --shell /bin/bash "+username+" && printf '%s\\n' '"+username+":"+password+"' | sudo chpasswd")
+	_, err = remote.Run(ctx, sshClient, desktopAccountScript(username, password, cmd))
 	closeClient()
 	if err != nil {
 		return nil, info, err
 	}
 	var ticket struct {
-		Ticket   string `json:"ticket"`
-		Port     int    `json:"port"`
-		Password string `json:"password"`
+		Ticket   string      `json:"ticket"`
+		Port     json.Number `json:"port"`
+		Password string      `json:"password"`
 	}
 	if e = c.Call(ctx, "POST", c.VM(id, "/vncproxy"), struct {
 		Websocket int `json:"websocket"`
 	}{1}, &ticket); e != nil {
 		return nil, info, e
 	}
-	upstream := strings.Replace(c.URL, "https://", "wss://", 1) + c.VM(id, "/vncwebsocket") + "?port=" + strconv.Itoa(ticket.Port) + "&vncticket=" + url.QueryEscape(ticket.Ticket)
+	port, err := strconv.Atoi(string(ticket.Port))
+	if err != nil || port < 1 || port > 65535 {
+		return nil, info, fmt.Errorf("invalid Proxmox console port")
+	}
+	upstream := strings.Replace(c.URL, "https://", "wss://", 1) + c.VM(id, "/vncwebsocket") + "?port=" + strconv.Itoa(port) + "&vncticket=" + url.QueryEscape(ticket.Ticket)
 	header := http.Header{}
 	header.Set("Authorization", "PVEAPIToken="+c.Token)
 	used := false
@@ -484,7 +488,7 @@ func closeGuestUser(ctx context.Context, c lc.Command) error {
 	}
 	defer closeClient()
 	name := dcvName(c)
-	_, err = remote.Run(ctx, client, "if id "+name+" >/dev/null 2>&1; then sudo loginctl terminate-user "+name+" || true; sudo userdel --force --remove "+name+"; fi")
+	_, err = remote.Run(ctx, client, "set -eu; if id "+name+" >/dev/null 2>&1; then "+desktopOwned(name, c)+"; sudo loginctl terminate-user "+name+" || true; sudo userdel --force --remove "+name+"; fi")
 	return err
 }
 

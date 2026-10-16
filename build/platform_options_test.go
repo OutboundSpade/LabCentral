@@ -41,6 +41,7 @@ func TestAWSBuildInstanceTypeInPacker(t *testing.T) {
 
 type captureValidationProvider struct {
 	machine lc.PlannedMachine
+	gateway lc.PlannedMachine
 	calls   int
 }
 
@@ -52,6 +53,7 @@ func (p *captureValidationProvider) Execute(_ context.Context, c lc.Command, _ l
 		return lc.Result{Resource: lc.Resource{Kind: "network", ID: "native-fake", Data: []byte(`{}`)}}, nil
 	}
 	if c.Action == "gateway.create" {
+		p.gateway = c.Machine
 		return lc.Result{Resource: lc.Resource{Kind: "gateway", ID: "fake-gateway"}}, nil
 	}
 	p.machine = c.Machine
@@ -63,6 +65,9 @@ func TestBuildInstanceTypeInValidationVM(t *testing.T) {
 		c.Environment.AWS.Types = []lc.InstanceType{{Name: "m5.large", CPU: 4, MemoryMiB: 8192}}
 		c.Environment.Proxmox.CIDR, c.Environment.Proxmox.VLANStart, c.Environment.Proxmox.VLANEnd = "10.90.0.0/24", 100, 100
 		c.VLAN = 100
+		if platform == "proxmox" {
+			c.Gateway.Address = "192.0.2.4"
+		}
 		c.Image.BuildInstanceType = "m5.large"
 		p := &captureValidationProvider{}
 		_, err := ValidateNative(context.Background(), t.TempDir(), p, c, lc.Resource{ID: "native-image"})
@@ -75,6 +80,9 @@ func TestBuildInstanceTypeInValidationVM(t *testing.T) {
 		}
 		if p.machine.InstanceType != want || p.machine.CPU != cpu || p.machine.MemoryMiB != memory {
 			t.Fatal(platform, "validation type/capacity lost", p.machine)
+		}
+		if platform == "proxmox" && p.gateway.Address != c.Gateway.Address {
+			t.Fatal("qualification lost its static management reservation", p.gateway)
 		}
 		if p.machine.Spec.Platform.AWS != nil || p.machine.Spec.Platform.Proxmox != nil {
 			t.Fatal("runtime options entered image validation")

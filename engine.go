@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -247,13 +248,18 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 	}
 	owner := cmd.Owner
 	if p.Environment.Platform == "proxmox" {
-		v, err := e.state.Reserve(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, p.Environment.Proxmox.VMIDStart, p.Environment.Proxmox.VMIDEnd, 2)
+		v, err := e.state.Reserve(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, p.Environment.Proxmox.VMIDStart, p.Environment.Proxmox.VMIDEnd, 3)
 		if err != nil {
 			return images, err
 		}
 		cmd.Machine.VMID = v[0]
 		cmd.ValidationVMID = v[1]
-		vlans, err := e.state.Reserve(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.Bridge, owner, p.Environment.Proxmox.VLANStart, p.Environment.Proxmox.VLANEnd, 1)
+		cmd.GatewayVMID = v[2]
+		cmd.Gateway.Address, err = e.reserveProxmoxManagement(ctx, cmd.Environment.Proxmox, owner)
+		if err != nil {
+			return images, err
+		}
+		vlans, err := e.state.Reserve(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.LabBridge, owner, p.Environment.Proxmox.VLANStart, p.Environment.Proxmox.VLANEnd, 1)
 		if err != nil {
 			return images, err
 		}
@@ -277,8 +283,16 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 		if err = e.state.ReleaseValue(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, cmd.ValidationVMID); err != nil {
 			return images, err
 		}
-		if err = e.state.ReleaseValue(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.Bridge, owner, cmd.VLAN); err != nil {
+		if err = e.state.ReleaseValue(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, cmd.GatewayVMID); err != nil {
 			return images, err
+		}
+		if err = e.state.ReleaseValue(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.LabBridge, owner, cmd.VLAN); err != nil {
+			return images, err
+		}
+		if cmd.Environment.Proxmox.ManagementAddresses != nil {
+			if err = e.state.ReleaseScope(ctx, managementScope(cmd.Environment.Proxmox), owner); err != nil {
+				return images, err
+			}
 		}
 	}
 	images = append(images, rec)
@@ -368,6 +382,10 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 			b := p.Environment.Bases[g.Base]
 			inst.Gateway = &PlannedMachine{Name: "gateway", NativeImage: b.ID, InstanceType: g.InstanceType, DiskGiB: b.DiskGiB}
 		}
+		if p.Environment.Platform == "proxmox" {
+			b := p.Environment.Bases[p.Environment.Proxmox.EffectiveGatewayBase()]
+			inst.Gateway = &PlannedMachine{Name: "gateway", NativeImage: b.ID, CPU: 1, MemoryMiB: 768, DiskGiB: b.DiskGiB}
+		}
 		for n := range inst.Plan.Machines {
 			inst.Plan.Machines[n].NativeImage = native[inst.Plan.Machines[n].Spec.Image]
 		}
@@ -392,18 +410,27 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	var vlans []int
 	if env.Platform == "proxmox" {
 		p := env.Proxmox
-		v, err := e.state.Reserve(ctx, "vlan:"+p.URL+":"+p.Bridge, i.ID, p.VLANStart, p.VLANEnd, len(effectiveNetworks(i.Plan.Source.Lab)))
+		v, err := e.state.Reserve(ctx, "vlan:"+p.URL+":"+p.LabBridge, i.ID, p.VLANStart, p.VLANEnd, len(effectiveNetworks(i.Plan.Source.Lab)))
 		if err != nil {
 			return err
 		}
 		i.VLAN = v[0]
 		vlans = v
-		ids, err := e.state.Reserve(ctx, "vmid:"+p.URL, i.ID, p.VMIDStart, p.VMIDEnd, len(i.Plan.Machines))
+		ids, err := e.state.Reserve(ctx, "vmid:"+p.URL, i.ID, p.VMIDStart, p.VMIDEnd, len(i.Plan.Machines)+boolInt(i.Gateway != nil))
 		if err != nil {
 			return err
 		}
 		for n := range i.Plan.Machines {
 			i.Plan.Machines[n].VMID = ids[n]
+		}
+		if i.Gateway != nil {
+			i.Gateway.VMID = ids[len(ids)-1]
+			if p.ManagementAddresses != nil {
+				i.Gateway.Address, err = e.reserveProxmoxManagement(ctx, p, i.ID)
+				if err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if err := PlanNetworks(&i.Plan, vlans); err != nil {
@@ -978,4 +1005,27 @@ func (e *Engine) finishImageCleanup(ctx context.Context, key, owner string, publ
 		}
 	}
 	return tx.Commit()
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func managementScope(p ProxmoxConfig) string {
+	return "management:" + p.URL + ":" + p.ManagementBridge + ":" + p.ManagementAddresses.CIDR
+}
+func (e *Engine) reserveProxmoxManagement(ctx context.Context, p ProxmoxConfig, owner string) (string, error) {
+	if p.ManagementAddresses == nil {
+		return "", nil
+	}
+	prefix := netip.MustParsePrefix(p.ManagementAddresses.CIDR)
+	limit := (1 << (32 - prefix.Bits())) - 2
+	offsets, err := e.state.Reserve(ctx, managementScope(p), owner, 4, limit, 1)
+	if err != nil {
+		return "", err
+	}
+	return offsetAddress(prefix, offsets[0]), nil
 }

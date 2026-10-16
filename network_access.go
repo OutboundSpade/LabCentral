@@ -26,7 +26,7 @@ func InstanceGateway(i Instance) Resource {
 }
 
 // MachineDialer is the single management path for provider and library callers.
-// An absent gateway preserves Proxmox and retained AWS direct management.
+// An absent gateway preserves retained pre-gateway direct management.
 func MachineDialer(gateway Resource, private []byte) (*remote.Dialer, error) {
 	d := &remote.Dialer{}
 	if gateway.Kind == "" {

@@ -46,3 +46,12 @@ func TestDesktopAccountComment(t *testing.T) {
 		t.Fatal("cleanup accepted a foreign account")
 	}
 }
+
+func TestDesktopPasswordIsExactChpasswdInput(t *testing.T) {
+	script := desktopAccountScript("labcentral-test", "Abc123", lc.Command{Owner: "owner", Operation: "op"})
+	stubs := `id(){ return 1; }; sudo(){ if test "$1" = chpasswd; then cat; fi; }; `
+	out, err := exec.Command("bash", "-c", stubs+script).CombinedOutput()
+	if err != nil || string(out) != "labcentral-test:Abc123\n" {
+		t.Fatalf("chpasswd input=%q err=%v", out, err)
+	}
+}

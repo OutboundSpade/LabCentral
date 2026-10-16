@@ -192,26 +192,40 @@ type InstanceType struct {
 	MemoryMiB int    `yaml:"memoryMiB" json:"memoryMiB"`
 	MaxNICs   int    `yaml:"maxNICs,omitempty" json:"maxNICs,omitempty"`
 }
-type ProxmoxConfig struct {
-	InsecureSkipTLSVerify bool     `yaml:"insecureSkipTLSVerify,omitempty" json:"insecureSkipTLSVerify,omitempty"`
-	URL                   string   `yaml:"url" json:"url"`
-	TokenID               string   `yaml:"tokenID" json:"tokenID"`
-	TokenEnv              string   `yaml:"tokenEnv" json:"tokenEnv"`
-	CAFile                string   `yaml:"caFile,omitempty" json:"caFile,omitempty"`
-	Node                  string   `yaml:"node" json:"node"`
-	Storage               string   `yaml:"storage" json:"storage"`
-	Pool                  string   `yaml:"pool" json:"pool"`
-	Bridge                string   `yaml:"bridge" json:"bridge"`
-	VMIDStart             int      `yaml:"vmidStart" json:"vmidStart"`
-	VMIDEnd               int      `yaml:"vmidEnd" json:"vmidEnd"`
-	VLANStart             int      `yaml:"vlanStart" json:"vlanStart"`
-	VLANEnd               int      `yaml:"vlanEnd" json:"vlanEnd"`
-	CIDR                  string   `yaml:"cidr" json:"cidr"`
-	Gateway               string   `yaml:"gateway,omitempty" json:"gateway,omitempty"`
-	VerifiedIsolation     bool     `yaml:"verifiedIsolation" json:"verifiedIsolation"`
-	CPUTypes              []string `yaml:"cpuTypes,omitempty" json:"cpuTypes,omitempty"`
-	AllowEgress           bool     `yaml:"allowEgress,omitempty" json:"allowEgress,omitempty"`
+type ProxmoxManagementAddresses struct {
+	CIDR    string   `yaml:"cidr" json:"cidr"`
+	Gateway string   `yaml:"gateway" json:"gateway"`
+	DNS     []string `yaml:"dns" json:"dns"`
 }
+type ProxmoxConfig struct {
+	InsecureSkipTLSVerify bool                        `yaml:"insecureSkipTLSVerify,omitempty" json:"insecureSkipTLSVerify,omitempty" proto:"1"`
+	URL                   string                      `yaml:"url" json:"url" proto:"2"`
+	TokenID               string                      `yaml:"tokenID" json:"tokenID" proto:"3"`
+	TokenEnv              string                      `yaml:"tokenEnv" json:"tokenEnv" proto:"4"`
+	CAFile                string                      `yaml:"caFile,omitempty" json:"caFile,omitempty" proto:"5"`
+	Node                  string                      `yaml:"node" json:"node" proto:"6"`
+	Storage               string                      `yaml:"storage" json:"storage" proto:"7"`
+	Pool                  string                      `yaml:"pool" json:"pool" proto:"8"`
+	LabBridge             string                      `yaml:"labBridge" json:"labBridge" proto:"19"`
+	VMIDStart             int                         `yaml:"vmidStart" json:"vmidStart" proto:"10"`
+	VMIDEnd               int                         `yaml:"vmidEnd" json:"vmidEnd" proto:"11"`
+	VLANStart             int                         `yaml:"vlanStart" json:"vlanStart" proto:"12"`
+	VLANEnd               int                         `yaml:"vlanEnd" json:"vlanEnd" proto:"13"`
+	CIDR                  string                      `yaml:"cidr" json:"cidr" proto:"14"`
+	CPUTypes              []string                    `yaml:"cpuTypes,omitempty" json:"cpuTypes,omitempty" proto:"17"`
+	AllowEgress           bool                        `yaml:"allowEgress,omitempty" json:"allowEgress,omitempty" proto:"18"`
+	ManagementBridge      string                      `yaml:"managementBridge" json:"managementBridge" proto:"20"`
+	ManagementAddresses   *ProxmoxManagementAddresses `yaml:"managementAddresses,omitempty" json:"managementAddresses,omitempty" proto:"21"`
+	GatewayBase           string                      `yaml:"gatewayBase,omitempty" json:"gatewayBase,omitempty" proto:"22"`
+}
+
+func (p ProxmoxConfig) EffectiveGatewayBase() string {
+	if p.GatewayBase == "" {
+		return "ubuntu-24.04"
+	}
+	return p.GatewayBase
+}
+
 type BuildConfig struct {
 	DCVURL           string `yaml:"dcvURL,omitempty" json:"dcvURL,omitempty"`
 	DCVSHA256        string `yaml:"dcvSHA256,omitempty" json:"dcvSHA256,omitempty"`
@@ -318,7 +332,7 @@ type NativeResource struct {
 	ID   string `json:"id"`
 }
 type Instance struct {
-	// Gateway is absent on retained pre-gateway deployments and all Proxmox labs.
+	// Gateway is absent on retained pre-gateway deployments.
 	Gateway   *PlannedMachine `json:"gateway,omitempty"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
@@ -367,6 +381,7 @@ type Command struct {
 	Access           AccessOptions    `json:"access"`
 	Gateway          Resource         `json:"gateway,omitempty"`
 	Networks         []PlannedNetwork `json:"networks,omitempty"`
+	GatewayVMID      int              `json:"gatewayVMID,omitempty"`
 }
 type Result struct {
 	Resource Resource `json:"resource"`

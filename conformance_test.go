@@ -123,7 +123,6 @@ func TestLabConformance(t *testing.T) {
 				if metadata["allowEgress"] == "true" {
 					env.AWS.AllowEgress, env.Proxmox.AllowEgress = true, true
 					if env.Platform == "proxmox" {
-						env.Proxmox.Gateway = "10.90.0.1"
 					}
 				}
 				s, goErr := sourceYAML(t, b)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -106,4 +107,25 @@ func (v *VMConfig) UnmarshalJSON(raw []byte) error {
 	}
 	*v = VMConfig(decoded)
 	return nil
+}
+
+// MACs binds guest network programs to the actual assigned NICs, independent of
+// cloud-init's initial ethN or predictable ensN names.
+func (v VMConfig) MACs(count int) ([]string, error) {
+	macs := []string{}
+	for j := 0; j < count; j++ {
+		nic := v.NICs[fmt.Sprintf("net%d", j)]
+		if j == 0 {
+			nic = v.Net0
+		}
+		_, mac, ok := strings.Cut(strings.Split(nic, ",")[0], "=")
+		if !ok {
+			return nil, fmt.Errorf("planned NIC MAC is unavailable")
+		}
+		if _, err := net.ParseMAC(mac); err != nil {
+			return nil, fmt.Errorf("invalid planned NIC MAC")
+		}
+		macs = append(macs, mac)
+	}
+	return macs, nil
 }

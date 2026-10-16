@@ -23,6 +23,7 @@ message Command {
   AccessOptions access = 15 [json_name = "access"];
   Resource gateway = 16 [json_name = "gateway"];
   repeated PlannedNetwork networks = 17 [json_name = "networks"];
+  int32 gateway_vmid = 18 [json_name = "gatewayVMID"];
 }
 message Environment {
   int32 version = 1 [json_name = "version"];
@@ -70,16 +71,25 @@ message ProxmoxConfig {
   string node = 6 [json_name = "node"];
   string storage = 7 [json_name = "storage"];
   string pool = 8 [json_name = "pool"];
-  string bridge = 9 [json_name = "bridge"];
+  string lab_bridge = 19 [json_name = "labBridge"];
   int32 vmidstart = 10 [json_name = "vmidStart"];
   int32 vmidend = 11 [json_name = "vmidEnd"];
   int32 vlanstart = 12 [json_name = "vlanStart"];
   int32 vlanend = 13 [json_name = "vlanEnd"];
   string cidr = 14 [json_name = "cidr"];
-  string gateway = 15 [json_name = "gateway"];
-  bool verified_isolation = 16 [json_name = "verifiedIsolation"];
   repeated string cputypes = 17 [json_name = "cpuTypes"];
   bool allow_egress = 18 [json_name = "allowEgress"];
+  string management_bridge = 20 [json_name = "managementBridge"];
+  ProxmoxManagementAddresses management_addresses = 21 [json_name = "managementAddresses"];
+  string gateway_base = 22 [json_name = "gatewayBase"];
+  reserved 9;
+  reserved 15;
+  reserved 16;
+}
+message ProxmoxManagementAddresses {
+  string cidr = 1 [json_name = "cidr"];
+  string gateway = 2 [json_name = "gateway"];
+  repeated string dns = 3 [json_name = "dns"];
 }
 message BuildConfig {
   string dcvurl = 1 [json_name = "dcvURL"];

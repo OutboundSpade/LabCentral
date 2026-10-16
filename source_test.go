@@ -2,7 +2,7 @@ package labcentral
 
 import (
 	"encoding/json"
-	"errors"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,7 +92,7 @@ func TestPlanningIsPortableAndDeterministic(t *testing.T) {
 	}
 }
 func TestDisjointProxmoxSegments(t *testing.T) {
-	p := ProxmoxConfig{CIDR: "10.80.0.0/16", Gateway: "10.80.0.1", VLANStart: 100, VLANEnd: 199}
+	p := ProxmoxConfig{CIDR: "10.80.0.0/16", VLANStart: 100, VLANEnd: 199}
 	a, ag, e := ProxmoxSubnet(p, 100)
 	if e != nil {
 		t.Fatal(e)
@@ -120,7 +120,7 @@ func TestSharedExamplesValidate(t *testing.T) {
 		}
 		env.Platform = "proxmox"
 		env.Bases["ubuntu-24.04"] = Base{ID: "2000", Identity: "pinned-config", User: "ubuntu", DiskGiB: 20}
-		env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", Bridge: "vmbr-labs", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20", VerifiedIsolation: true}
+		env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", LabBridge: "vmbr-labs", ManagementBridge: "vmbr0", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20"}
 		if _, err = PlanLab(source, env, nil); err != nil {
 			t.Fatal(name, "proxmox", err)
 		}
@@ -196,22 +196,21 @@ func TestImageBuildFileSelectionValidation(t *testing.T) {
 	}
 }
 
-func TestProxmoxExplicitAddressCannotUseGatewayHost(t *testing.T) {
-	raw := strings.Replace(sample, "    access: [ssh]", "    nics: [{network: lab, address: 10}]\n    access: [ssh]", 1)
-	src, err := sourceYAML(t, []byte(raw))
-	if err != nil {
+func TestProxmoxGatewayReservedAtOne(t *testing.T) {
+	p := ProxmoxConfig{CIDR: "10.80.0.0/16", VLANStart: 100, VLANEnd: 199}
+	for v := 100; v <= 199; v++ {
+		cidr, gw, err := ProxmoxSubnet(p, v)
+		if err != nil || gw != offsetAddress(netip.MustParsePrefix(cidr), 1) {
+			t.Fatal(cidr, gw, err)
+		}
+	}
+}
+
+func TestProxmoxReservesNativeBridgeVLAN(t *testing.T) {
+	e := platformOptionsProxmoxEnvironment()
+	e.Proxmox.VLANStart = 1
+	err := ValidateEnvironment(e)
+	if err == nil || !strings.Contains(err.Error(), "VLAN 1 is reserved") {
 		t.Fatal(err)
-	}
-	env := testEnvironment()
-	env.Platform = "proxmox"
-	env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid", TokenID: "lab@pve!token", TokenEnv: "TEST_TOKEN", Node: "pve", Storage: "local-lvm", Pool: "test", Bridge: "vmbr0", VMIDStart: 2000, VMIDEnd: 2999, VLANStart: 100, VLANEnd: 110, CIDR: "10.80.0.0/16", Gateway: "10.80.0.10", VerifiedIsolation: true}
-	_, err = PlanLab(src, env, nil)
-	var problem *Error
-	if !errors.As(err, &problem) || problem.Field != "machines.one.nics[0].address" {
-		t.Fatal("gateway collision accepted", err)
-	}
-	env.Proxmox.Gateway = "10.80.0.1"
-	if _, err = PlanLab(src, env, nil); err != nil {
-		t.Fatal("noncolliding address rejected", err)
 	}
 }

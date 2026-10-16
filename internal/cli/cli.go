@@ -10,6 +10,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/access"
 	"github.com/OutboundSpade/LabCentral/v2/build"
 	"github.com/OutboundSpade/LabCentral/v2/instructor"
+	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
 	"github.com/OutboundSpade/LabCentral/v2/plugin"
 	"io"
 	"os"
@@ -70,6 +71,7 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 	if helpRequested {
 		return help(out, key)
 	}
+	var setupOptions proxmox.SetupOptions
 	o := defaults()
 	o.configFile = defaultConfigPath()
 	if key != "config init" {
@@ -95,6 +97,22 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 	f.BoolVar(&o.template, "template", false, "require hosted template README")
 	f.BoolVar(&o.json, "json", false, "versioned JSON output")
 	f.BoolVar(&o.yes, "yes", false, "confirm mutations without prompting")
+	if key == "environment setup" || key == "environment teardown" {
+		f.StringVar(&setupOptions.URL, "url", "", "Proxmox HTTPS URL")
+		f.StringVar(&setupOptions.AdminTokenID, "admin-token-id", "", "one-time admin API token ID")
+		f.StringVar(&setupOptions.AdminTokenEnv, "admin-token-env", "LABCENTRAL_PROXMOX_ADMIN_TOKEN", "admin secret environment variable")
+		f.StringVar(&setupOptions.CAFile, "ca-file", "", "trusted Proxmox CA")
+		f.BoolVar(&setupOptions.InsecureSkipTLSVerify, "insecure-skip-tls-verify", false, "test endpoints only")
+		f.StringVar(&setupOptions.Node, "node", "", "node override")
+		f.StringVar(&setupOptions.Storage, "storage", "", "directory storage override")
+		f.StringVar(&setupOptions.ManagementBridge, "management-bridge", "", "management/build bridge override")
+		f.StringVar(&setupOptions.LabBridge, "lab-bridge", "", "new internal bridge override")
+		f.StringVar(&setupOptions.Pool, "pool", "", "resource pool override")
+		f.StringVar(&setupOptions.CIDR, "cidr", "", "private CIDR pool override")
+		f.StringVar(&setupOptions.OperatorCIDR, "operator-cidr", "", "operator IPv4 CIDR override")
+		f.IntVar(&setupOptions.VMIDStart, "vmid-start", 0, "start of 101 free VMIDs")
+		f.IntVar(&setupOptions.VLANStart, "vlan-start", 0, "start of 64 free VLANs")
+	}
 	f.BoolVar(&helpRequested, "help", false, "show command help")
 	f.BoolVar(&helpRequested, "h", false, "show command help")
 	if err := f.Parse(append(append(flags, "--"), args...)); err != nil {
@@ -169,6 +187,12 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 			return err
 		}
 		return emit("Created " + dir + ". Run 'labcentral validate " + dir + "' to check your source.")
+	}
+	if command == "environment" && (sub == "setup" || sub == "teardown") {
+		if args[0] != "proxmox" {
+			return fmt.Errorf("environment setup/teardown supports proxmox")
+		}
+		return setupProxmox(ctx, sub, args[1], setupOptions, o, in, out)
 	}
 	if command == "environment" && sub == "init" {
 		file, err := arg(0)
@@ -361,6 +385,12 @@ func Run(ctx context.Context, args []string, in *os.File, out, errOut io.Writer)
 		if err = engine.Check(ctx, env); err != nil {
 			return err
 		}
+		if env.Platform == "proxmox" {
+			if err = build.CheckToolchain(env.Build); err != nil {
+				return err
+			}
+			return emit("environment checks passed; operator SSH must reach gateway DHCP/static addresses on " + env.Proxmox.ManagementBridge + " and build DHCP addresses on " + env.Build.Bridge + ". Live isolation probes remain separate.")
+		}
 		return emit("environment checks passed; live isolation probes remain separate")
 	case "image":
 		if sub == "builds" {
@@ -481,7 +511,7 @@ func initEnvironment(path, platform string) error {
 	case "aws":
 		common += "  subnetID: subnet-REPLACE\n  securityGroupID: sg-REPLACE\n  instanceType: t3.medium\naws:\n  account: '000000000000'\n  region: us-east-1\n  zone: us-east-1a\n  allowEgress: false\n  gateway: {base: ubuntu-24.04, instanceType: t3.micro}\n  types:\n    - {name: t3.medium, cpu: 2, memoryMiB: 4096}\n"
 	case "proxmox":
-		common += "  bridge: vmbr-build\nproxmox:\n  url: https://pve.example.invalid:8006\n  tokenID: labcentral@pve!v2\n  tokenEnv: LABCENTRAL_PROXMOX_TOKEN\n  node: pve\n  storage: local-lvm\n  pool: labcentral-v2\n  bridge: vmbr-labs\n  vmidStart: 2000\n  vmidEnd: 2999\n  vlanStart: 100\n  vlanEnd: 199\n  cidr: 10.80.0.0/16\n  gateway: 10.80.0.1\n  verifiedIsolation: false\n  allowEgress: false\n"
+		common += "  bridge: vmbr0\nproxmox:\n  url: https://pve.example.invalid:8006\n  tokenID: labcentral@pve!labs\n  tokenEnv: LABCENTRAL_PROXMOX_TOKEN\n  node: pve\n  storage: local\n  pool: labcentral-v2\n  labBridge: vmbr3\n  managementBridge: vmbr0\n  vmidStart: 2000\n  vmidEnd: 2999\n  vlanStart: 100\n  vlanEnd: 199\n  cidr: 10.80.0.0/16\n  allowEgress: false\n"
 	default:
 		return fmt.Errorf("expected aws or proxmox")
 	}

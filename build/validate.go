@@ -114,7 +114,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 	if e = j.Save("receipt", receipt); e != nil {
 		return image, e
 	}
-	if c.Environment.Platform == "aws" {
+	if c.Environment.Platform == "aws" || c.Environment.Platform == "proxmox" {
 		gp, gpub, err := key(filepath.Join(dir, "gateway-host"))
 		if err != nil {
 			return image, err
@@ -122,6 +122,12 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		g := c.Environment.AWS.Gateway.Effective()
 		base := c.Environment.Bases[g.Base]
 		gatewayCommand := lc.Command{Action: "gateway.create", Operation: owner + "/gateway", Owner: owner, Environment: c.Environment, Network: net.Resource, Prior: lc.Resource{Kind: "gateway"}, Machine: lc.PlannedMachine{Name: "gateway", NativeImage: base.ID, InstanceType: g.InstanceType, DiskGiB: base.DiskGiB, PublicKey: pub, HostPublicKey: gpub}}
+		if c.Environment.Platform == "proxmox" {
+			base = c.Environment.Bases[c.Environment.Proxmox.EffectiveGatewayBase()]
+			gatewayCommand.Machine = lc.PlannedMachine{Name: "gateway", NativeImage: base.ID, VMID: c.GatewayVMID, CPU: 1, MemoryMiB: 768, DiskGiB: base.DiskGiB, PublicKey: pub, HostPublicKey: gpub}
+			gatewayCommand.Machine.Address = c.Gateway.Address
+		}
+
 		if err = j.Save("gateway-command-"+owner, gatewayCommand); err != nil {
 			return image, err
 		}
@@ -188,7 +194,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 			if c.Environment.Platform == "aws" {
 				command = "systemctl is-active dcvserver >/dev/null && command -v dcv >/dev/null"
 			} else {
-				command = "systemctl is-active lightdm >/dev/null"
+				command = "for attempt in $(seq 1 60); do if systemctl is-active lightdm >/dev/null && test -S /tmp/.X11-unix/X0; then exit 0; fi; sleep 2; done; exit 1"
 			}
 		}
 		if m.OS == "windows" {

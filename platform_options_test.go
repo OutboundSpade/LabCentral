@@ -10,7 +10,7 @@ func platformOptionsProxmoxEnvironment() Environment {
 	e := conformanceEnvironment()
 	e.Platform = "proxmox"
 	e.Bases["ubuntu-24.04"] = Base{ID: "2000", Identity: "pinned", User: "ubuntu", DiskGiB: 8}
-	e.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", Bridge: "vmbr-labs", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20", VerifiedIsolation: true, CPUTypes: []string{"host", "kvm64"}}
+	e.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", LabBridge: "vmbr-labs", ManagementBridge: "vmbr0", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20", CPUTypes: []string{"host", "kvm64"}}
 	return e
 }
 func optionSource(t *testing.T, machine, image string, selectedFiles bool) Source {

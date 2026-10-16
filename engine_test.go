@@ -507,7 +507,7 @@ func TestParallelProxmoxAllocationAndRecovery(t *testing.T) {
 	env := testEnvironment()
 	env.Platform = "proxmox"
 	env.Bases["ubuntu-24.04"] = Base{ID: "2000", Identity: "pinned-config", User: "ubuntu", DiskGiB: 20}
-	env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", Bridge: "vmbr-labs", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20", VerifiedIsolation: true}
+	env.Proxmox = ProxmoxConfig{URL: "https://pve.example.invalid:8006", Node: "pve", Storage: "local", Pool: "test", LabBridge: "vmbr-labs", ManagementBridge: "vmbr0", TokenID: "test@pve!test", TokenEnv: "TEST_TOKEN", VMIDStart: 2100, VMIDEnd: 2199, VLANStart: 100, VLANEnd: 115, CIDR: "10.90.0.0/20"}
 	p, err := PlanLab(testSource(t), env, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -589,5 +589,47 @@ func TestPreparePreservesExplicitHostnameInventoryAcrossRestart(t *testing.T) {
 	}
 	if len(stored.Plan.Machines[0].Hosts) != 1 || len(stored.Plan.Machines[1].Hosts) != 2 {
 		t.Fatal("hostname policy not persisted")
+	}
+}
+
+func TestStaticManagementBuildReservationSurvivesFailureAndReleasesAfterCleanup(t *testing.T) {
+	ctx := context.Background()
+	f := freshFake()
+	f.loseOnce = true
+	e := openFake(t, t.TempDir(), f)
+	env := platformOptionsProxmoxEnvironment()
+	env.Proxmox.ManagementAddresses = &ProxmoxManagementAddresses{CIDR: "192.0.2.0/28", Gateway: "192.0.2.1", DNS: []string{"1.1.1.1"}}
+	plan, err := PlanLab(testSource(t), env, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	im := plan.Images[0]
+	if _, err = e.buildImage(ctx, plan, im); err == nil {
+		t.Fatal("lost build response accepted")
+	}
+	var cmd Command
+	if err = e.state.Get(ctx, "build", im.CacheKey, &cmd); err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Gateway.Address != "192.0.2.4" {
+		t.Fatal("qualification gateway lacks reserved management address", cmd.Gateway)
+	}
+	other, err := e.reserveProxmoxManagement(ctx, env.Proxmox, "other-lab")
+	if err != nil || other == cmd.Gateway.Address {
+		t.Fatal("uncertain build released its address", other, err)
+	}
+	if _, err = e.buildImage(ctx, plan, im); err != nil {
+		t.Fatal(err)
+	}
+	reused, err := e.reserveProxmoxManagement(ctx, env.Proxmox, "later-lab")
+	if err != nil || reused != cmd.Gateway.Address {
+		t.Fatal("confirmed qualification cleanup retained management claim", reused, err)
+	}
+	var count int
+	if err = e.state.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM claims WHERE scope=? AND owner=?", managementScope(env.Proxmox), "other-lab").Scan(&count); err != nil || count != 1 {
+		t.Fatal("release removed another lab's claim", count, err)
+	}
+	if err = e.state.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM claims WHERE scope=? AND owner=?", "vmid:"+env.Proxmox.URL, cmd.Owner).Scan(&count); err != nil || count != 1 {
+		t.Fatal("image VMID was released with qualification resources", count, err)
 	}
 }

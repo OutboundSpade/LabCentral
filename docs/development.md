@@ -21,7 +21,7 @@ Regenerate these after changing their sources; tests fail when they are stale.
 
 ```sh
 go run ./tools/schema      # schemas/*.json from the Go types
-go run ./tools/protocol    # provider protocol (needs the pinned protoc)
+PATH="$(go env GOPATH)/bin:$PATH" go run ./tools/protocol # pinned protoc and Go plugins
 go run ./tools/webapi      # web/src/lib/types.ts from the hosted API types
 LABCENTRAL_REGENERATE_V2_FIXTURE=1 go test ./hosted -run TestRetainedV2FixturePublicProvenance
 ```

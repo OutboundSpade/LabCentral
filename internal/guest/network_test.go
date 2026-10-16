@@ -110,13 +110,27 @@ func TestProxmoxDNSPreservedOnDefaultNICAndRecovery(t *testing.T) {
 		if err = yaml.Unmarshal(data, &config); err != nil {
 			t.Fatal(err)
 		}
-		if got := config.Network.Ethernets["nic1"].Nameservers.Addresses; len(got) != 1 || got[0] != "9.9.9.9" || len(config.Network.Ethernets["nic0"].Nameservers.Addresses) != 0 {
-			t.Fatal("DNS lost or bound to non-egress NIC", string(data))
+		if got := config.Network.Ethernets["nic1"].Nameservers.Addresses; len(got) != 2 || got[0] != "1.1.1.1" || got[1] != "9.9.9.9" || len(config.Network.Ethernets["nic0"].Nameservers.Addresses) != 0 {
+			t.Fatal("egress DNS lost or bound to non-egress NIC", string(data))
 		}
 		if attempt == 0 {
 			if err = os.Remove(original); err != nil {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestProxmoxNICsAreMatchedByAssignedMACAndRenamed(t *testing.T) {
+	m := lc.PlannedMachine{NICs: []lc.PlannedNIC{{Network: "lab", CIDR: "10.80.0.0/24", Address: "10.80.0.11"}}}
+	raw, err := Netplan(m, "proxmox", "AA:BB:CC:DD:EE:FF")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw, "macaddress: AA:BB:CC:DD:EE:FF") || !strings.Contains(raw, "set-name: ens18") {
+		t.Fatal("unreliable name-only NIC binding", raw)
+	}
+	if _, err = Netplan(m, "proxmox", "not-a-mac"); err == nil {
+		t.Fatal("invalid native NIC identity accepted")
 	}
 }

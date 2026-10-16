@@ -36,8 +36,8 @@ It has three parts:
   content, checked on a disposable machine before use, and rebuilt only when their
   inputs change.
 - **Private by default.** Lab networks have no Internet access unless an author asks for
-  it and the operator allows it. On AWS, lab machines have no public addresses; a small
-  per-lab gateway is the only way in.
+  it and the operator allows it. Each lab has a small gateway for SSH and opt-in NAT; Proxmox
+  VLANs live on an internal bridge with no physical uplink.
 - **Desktops in the browser.** Amazon DCV on AWS and the VM console (noVNC) on Proxmox,
   through authenticated relays with one-use launch links.
 - **Recoverable operations.** Every change to a cloud resource is recorded before it is
@@ -76,16 +76,18 @@ Cloud credentials stay in the operator's environment and the provider process.
 | --- | --- | --- |
 | Linux guests (Ubuntu 24.04) | Yes | Yes |
 | Windows guests (Server 2022) | Yes: desktop, SSH, PowerShell builds and checks | No |
-| SSH access | Through the lab gateway | Through operator routing |
+| SSH access | Through the lab gateway | Through the lab gateway |
 | Desktop access | Amazon DCV | VM console (noVNC) |
-| Internet egress (opt-in, per network) | NAT on the lab gateway | The operator's VLAN gateway |
+| Internet egress (opt-in, per network) | NAT on the lab gateway | NAT on the lab gateway |
 | Multiple networks, NICs and routers | Up to 8 networks and 8 NICs per machine; author CIDRs | Up to 4 networks and 4 NICs per machine |
 | Platform options | Instance type, gp3 volume, CPU credits, build instance type | CPU model, NIC model, memory ballooning |
+| Environment setup | Build stack and operator configuration | Guided setup and ownership-verified teardown |
 | Hosted service | Yes | Library and CLI only |
 
-The operator machine is Linux amd64. Everything on AWS above has been verified on real
-infrastructure; Proxmox support is implemented but not yet verified end to end. See
-[Qualification status](ARCHITECTURE.md#qualification-status) for details.
+The operator machine is Linux amd64. Real AWS and Proxmox runs cover the CLI lifecycle,
+gateways, egress, SSH and desktops. See
+[Qualification status](ARCHITECTURE.md#qualification-status) for specific coverage and
+remaining acceptance work.
 
 ## Quick start
 

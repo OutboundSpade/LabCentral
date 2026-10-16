@@ -110,9 +110,8 @@ several networks joins them:
 - Author CIDRs must be private IPv4 /16–/28 ranges. Only AWS implements them.
 
 Internet egress needs both the author's `egress: internet` on a network and the
-operator's `aws.allowEgress` or `proxmox.allowEgress` (both off by default). Proxmox also
-needs an operator VLAN gateway that provides NAT. A rejection names both the author field
-and the operator setting, and plans disclose enabled egress and its filtering limits.
+operator's `aws.allowEgress` or `proxmox.allowEgress` (both off by default). A rejection
+names both the author field and the operator setting, and plans disclose enabled egress and its filtering limits.
 
 ### Validation
 
@@ -145,7 +144,7 @@ flowchart LR
 | Networks / NICs per Linux machine | 8 / 8, within the instance type's ENI limit | 4 / 4 |
 | Windows NICs and forwarding | 1 NIC; never a router | — |
 | Author CIDRs | Yes | No |
-| Internet egress | Per network, NAT on the lab gateway | Per network, operator VLAN gateway |
+| Internet egress | Per network, NAT on the lab gateway | Per network, NAT on the lab gateway |
 
 Format support does not imply adapter support: anything an adapter does not implement
 fails before provisioning.
@@ -377,33 +376,74 @@ never adds a gateway to an old record.
 
 ### Proxmox
 
-- **Resources.** A configured node, storage and pool, an exclusive VMID range, and
-  isolated VLANs on a VLAN-aware bridge. Each lab network atomically reserves its own
-  VLAN and a /24 from the operator's pool. Up to four networks and four NICs per
-  machine; author CIDRs are rejected.
-- **Machines** configure `net0..netN` and `ipconfig0..ipconfigN`, with a gateway only on
-  the first egress NIC. Netplan routes are installed and verified through the guest
-  agent after boot.
-- **Firewall.** VM rules default to drop and allow, per NIC, same-network and routed
-  sources, with operator SSH only on the first NIC. Outbound rules keep intra-lab traffic,
-  then drop private, link-local, CGNAT, operator and management addresses before allowing
-  other IPv4 destinations; IPv6 forwarding is denied. Because the API prepends rules, the
-  adapter inserts them in reverse order and enables general Internet access last, so an
-  interrupted reconciliation stays closed
-  ([firewall rule API](https://github.com/proxmox/pve-firewall/blob/master/src/PVE/API2/Firewall/Rules.pm)).
-- **Operator responsibilities.** No gateway VM is created: the operator's routing must
-  already reach each VLAN, must drop traffic between lab VLANs, and must provide NAT for
-  Internet-enabled VLANs. A disabled cluster firewall fails preflight. The adapter checks
-  VLAN awareness but never changes bridges, routing or global firewall policy, and cannot
-  verify physical isolation, which is why the environment requires
-  `verifiedIsolation: true`. HTTPS verifies the server unless the environment explicitly
-  opts out ([Proxmox firewall](https://pve.proxmox.com/wiki/Firewall)).
+```mermaid
+flowchart TB
+    Operator[Operator on management network] -->|pinned jump SSH| GW
+    LAN[Management bridge: DHCP and Internet] --- GW[Per-lab gateway<br/>1 CPU / 768 MiB]
+    subgraph Internal[Internal VLAN-aware bridge: no physical ports or host IP]
+      A[Lab A VLAN 100 /24] --- R[Author router] --- B[Lab A VLAN 101 /24]
+      C[Lab B VLAN 102 /24]
+      A --- Desktop[Guest desktop]
+    end
+    GW ---|.1| A
+    GW ---|.1| B
+    GW -->|opted-in NAT only| Internet
+    LAN --- G2[Lab B gateway]
+    G2 --- C
+    Operator --> API[Proxmox API noVNC]
+    API --> Desktop
+```
+
+**Layout.** One exclusive VMID range and one VLAN range belong to one state root.
+Each lab reserves one VLAN and /24 per network on `proxmox.labBridge`; the adapter
+rejects bridges with physical ports, host addresses or no VLAN awareness. Each lab owns
+one gateway VM outside author inventory, cloned from a pinned Linux base (default
+`ubuntu-24.04`). NIC0 uses `managementBridge`, with DHCP discovered by the guest agent
+or an exclusively reserved `managementAddresses` pool. Additional NICs hold `.1` on
+each lab VLAN. The operator reaches only management/build addresses.
+
+**Policy.** The gateway uses the shared AWS nftables and SSH policy: pinned host keys,
+operator SSH, local forwarding only, no passwords, agent/X11 forwarding or tunnels.
+Forwarding starts disabled until nftables loads; its default is DROP. Only opted-in
+networks get guest default routes and NAT. Private, link-local and CGNAT destinations,
+gateway addresses and the discovered management subnet are blocked. Sources are bound
+to their incoming VLAN NICs before established forwarding is accepted. Lab networks
+connect only through author routers;
+the gateway does not route between them. Structural VLAN separation isolates concurrent
+labs from each other and the LAN. VM NIC firewall rules remain optional defense in depth;
+setup never changes the cluster firewall. Guest SSH uses the same pinned two-hop dialer
+as AWS. Desktops remain API noVNC consoles. Desktop clones use a VirtIO display,
+matching the Ubuntu cloud kernel graphics driver; images install a greeter and boot
+graphically.
+
+**Setup.** The CLI's reviewed setup plan detects resources, refuses visible allocation
+collisions and unowned resources, and creates a scoped privilege-separated token.
+A separate read-only `VM.Audit` role on `/vms` keeps
+inventory visibility after Proxmox removes VM-specific ACLs during deletion. Mutating
+permissions remain scoped to the owned pool and storage; cleanup refuses ambiguous
+absence and never removes unreferenced VMID-named disks. The admin secret is resolved
+from an environment variable and never persisted. Setup
+uses the API to download a checksum-pinned Ubuntu image and import `scsi0`, boots a
+platform-owned NoCloud seed to install/verify the guest agent and nftables in the guest,
+sanitizes it and converts it to a cloud-init template. Agent startup is checked again
+after a restart. The environment, runtime secret
+and ownership/recovery receipts remain in private operator files. Network application
+refuses unrelated pending changes; storage content changes require plan confirmation.
+Teardown verifies remote ownership and retained receipts, refuses remaining lab/build
+VMs, and removes exactly the setup inventory. Unknown outcomes retain intent.
+
+**Builds.** `build.bridge` stays a DHCP/Internet bridge whose build VMs the operator can
+reach directly. Built images are boot-qualified through a disposable gateway and guest
+on an isolated VLAN before publication. Gateway and guest VMIDs are reserved before
+creation and released only after confirmed cleanup. Deploy orders networks → gateway
+→ machines; destroy reverses those dependencies, with the same engine recovery journal
+as AWS.
 
 ## Access to machines
 
-`MachineDialer` is the only way to reach a guest. For new AWS labs it verifies the
+`MachineDialer` is the only way to reach a guest. For new labs it verifies the
 gateway's SSH host key, opens a `direct-tcpip` channel to the private machine, then
-verifies a second SSH handshake against that machine's pinned key. Proxmox and older AWS
+verifies a second SSH handshake against that machine's pinned key. Retained pre-gateway
 records dial directly. A failed connection never falls back to a different path, and
 agent forwarding is never used. Readiness checks, guest programs, coach terminals and
 DCV certificate fetches all share the dialer. Jobs reuse pinned connections; desktops
@@ -477,8 +517,8 @@ flowchart LR
     end
 ```
 
-- Deployment creates networks, then the gateway, then machines (no gateway on Proxmox or
-  older AWS records). Successful siblings are saved even if another fails, and recovery
+- Deployment creates networks, then the gateway, then machines (retained pre-gateway
+  records keep their original shape). Successful siblings are saved even if another fails, and recovery
   resumes the original operation and instance ID.
 - Destruction first reconciles uncertain creates, then deletes in reverse order:
   machines (concurrently), the gateway once every machine is confirmed absent, then
@@ -715,7 +755,9 @@ request capture, browser fixtures and local load models establish local behavior
 | Hosted identity and meetings | Real OIDC, revocation, seat switching, retained workspaces; a meeting of 4 teams × 3 students with 12 concurrent desktops, a break and checks on every team | Meetings larger than 4 × 3 |
 | Hosted practice and scenarios | Individual attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts; full weekly quota exhaustion |
 | Hosted desktops and coach terminal | Terminal input, resize, reconnect and revocation; cold and rebooted desktops; desktop browser launch | General launch latency |
-| Proxmox | Nothing end to end | Every example, isolation, noVNC, options and egress |
+| Proxmox setup and lifecycle | PVE 9.2 with directory storage: clean setup, guest-agent cold restart, idempotent rerun, environment check, the single/web-database/workstation examples, image removal and teardown; recovery after a killed deploy and destroy | Full response-loss, stale-ownership and interruption matrix; other storage and firmware combinations |
+| Proxmox networking | Single, web/database and two-network router labs; pinned jump SSH, requester-specific names, one-sided Internet egress, blocked LAN/gateway destinations after forced defaults, concurrent-lab L2 isolation; gateway reboot and policy restoration | Static management pools; four-network layouts |
+| Proxmox desktops and options | Workstation build and qualification; real noVNC login, keyboard input, desktop/mobile rendering and account revocation; host/kvm64 CPUs, e1000/virtio NICs, ballooning enabled/disabled | Wider CPU/NIC combinations; broader browser/device coverage |
 | Durability and scheduling | Local failure, persistence, response-loss, authorization and race tests; a hosted restore rehearsal | Native failure matrix; configured capacity ceilings |
 
 Not supported yet: Windows on Proxmox, Windows routers or multiple Windows NICs, Ansible
@@ -728,7 +770,7 @@ background cleanup for the CLI.
 Design intentions, not contracts. Each needs failure tests and live qualification in an
 explicitly configured environment.
 
-- **Proxmox qualification** end to end, starting from a fresh cluster.
+- **Proxmox:** wider storage/firmware coverage and the native failure matrix.
 - **Windows:** Proxmox bootstrap and firmware bindings, more NICs, and an optional
   disposable Linux controller for Ansible targeting Windows (author code still only in
   guests).

@@ -35,7 +35,6 @@ func TestImageKeysBindOnlyBuildEnvironment(t *testing.T) {
 				},
 				func(e *Environment) {
 					e.Proxmox.AllowEgress = true
-					e.Proxmox.Gateway = "10.90.0.1"
 					e.Proxmox.CPUTypes = []string{"new-model"}
 					e.Proxmox.TokenEnv = "OTHER_TOKEN"
 					e.Proxmox.InsecureSkipTLSVerify = !e.Proxmox.InsecureSkipTLSVerify

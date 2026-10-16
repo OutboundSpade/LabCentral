@@ -30,7 +30,11 @@ func readable(out io.Writer, value any) bool {
 			fmt.Fprintln(out)
 		}
 		for _, m := range v.Machines {
-			fmt.Fprintf(out, "Machine %s: %s, %d CPU / %d MiB / %d GiB, access %v\n", m.Name, m.InstanceType, m.CPU, m.MemoryMiB, m.DiskGiB, m.Spec.Access)
+			native := m.InstanceType
+			if native == "" {
+				native = "VM"
+			}
+			fmt.Fprintf(out, "Machine %s: %s, %d CPU / %d MiB / %d GiB, access %v\n", m.Name, native, m.CPU, m.MemoryMiB, m.DiskGiB, m.Spec.Access)
 			options := any(m.Spec.Platform.AWS)
 			if v.Environment.Platform == "proxmox" {
 				options = m.Spec.Platform.Proxmox

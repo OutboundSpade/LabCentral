@@ -437,21 +437,46 @@ func ValidateEnvironment(e Environment) error {
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return bad("proxmox.url", "expected HTTPS endpoint without credentials/query")
 		}
-		if p.Node == "" || p.Storage == "" || p.Pool == "" || p.Bridge == "" || p.TokenID == "" || p.TokenEnv == "" {
-			return bad("proxmox", "node, storage, pool, bridge and token reference are required")
+		if p.Node == "" || p.Storage == "" || p.Pool == "" || p.LabBridge == "" || p.ManagementBridge == "" || p.TokenID == "" || p.TokenEnv == "" {
+			return bad("proxmox", "node, storage, pool, labBridge, managementBridge and token reference are required")
 		}
-		if p.VMIDStart < 100 || p.VMIDEnd < p.VMIDStart || p.VMIDEnd > 999999999 || p.VLANStart < 1 || p.VLANEnd < p.VLANStart || p.VLANEnd > 4094 {
-			return bad("proxmox", "invalid VMID or VLAN range")
+		if p.VMIDStart < 100 || p.VMIDEnd < p.VMIDStart || p.VMIDEnd > 999999999 || p.VLANStart < 2 || p.VLANEnd < p.VLANStart || p.VLANEnd > 4094 {
+			return bad("proxmox", "invalid VMID or VLAN range; lab VLANs must be 2–4094 (VLAN 1 is reserved for the native bridge)")
 		}
 		cidr, err := netip.ParsePrefix(p.CIDR)
-		if err != nil || !cidr.Addr().Is4() || cidr.Bits() > 24 || cidr.Bits() < 16 {
+		if err != nil || !cidr.Addr().Is4() || !cidr.Addr().IsPrivate() || cidr != cidr.Masked() || cidr.Bits() > 24 || cidr.Bits() < 16 {
 			return bad("proxmox.cidr", "expected IPv4 /16–/24")
 		}
 		if _, _, err := ProxmoxSubnet(p, p.VLANEnd); err != nil {
 			return bad("proxmox.cidr", err.Error())
 		}
-		if !p.VerifiedIsolation {
-			return bad("proxmox.verifiedIsolation", "operator must verify VLAN and management isolation before enabling")
+		if p.LabBridge == p.ManagementBridge {
+			return bad("proxmox.labBridge", "lab and management bridges must differ")
+		}
+		base := e.Bases[p.EffectiveGatewayBase()]
+		if base.ID == "" || OSFamily(base.OS) != "linux" {
+			return bad("proxmox.gatewayBase", "requires a pinned Linux base (default ubuntu-24.04)")
+		}
+		if p.ManagementAddresses != nil {
+			m := p.ManagementAddresses
+			q, err := netip.ParsePrefix(m.CIDR)
+			g, ge := netip.ParseAddr(m.Gateway)
+			if err != nil || !q.Addr().Is4() || q != q.Masked() || q.Bits() < 16 || q.Bits() > 28 || ge != nil || !q.Contains(g) {
+				return bad("proxmox.managementAddresses", "expected canonical IPv4 /16–/28 and gateway within it")
+			}
+			if g.String() != offsetAddress(q, 1) && g.String() != offsetAddress(q, 2) && g.String() != offsetAddress(q, 3) {
+				return bad("proxmox.managementAddresses.gateway", "gateway must occupy offset 1–3; offsets from 4 are reserved for LabCentral gateways")
+			}
+			if q.Overlaps(cidr) {
+				return bad("proxmox.managementAddresses.cidr", "management and lab address pools must not overlap")
+			}
+
+			for _, d := range m.DNS {
+				ip, err := netip.ParseAddr(d)
+				if err != nil || !ip.Is4() {
+					return bad("proxmox.managementAddresses.dns", "expected IPv4 addresses")
+				}
+			}
 		}
 	}
 	return nil
@@ -473,17 +498,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 	if err := CheckPlatformOptions(s.Lab, e); err != nil {
 		return p, err
 	}
-	if e.Platform == "proxmox" && e.Proxmox.Gateway != "" {
-		gateway, _ := netip.ParseAddr(e.Proxmox.Gateway)
-		host := int(gateway.As4()[3])
-		for _, name := range sortedKeys(s.Lab.Machines) {
-			for i, nic := range s.Lab.Machines[name].NICs {
-				if nic.Address != nil && *nic.Address == host {
-					return p, problem(Invalid, fmt.Sprintf("machines.%s.nics[%d].address", name, i), "explicit address collides with Proxmox gateway")
-				}
-			}
-		}
-	}
+
 	for n := range values {
 		if _, ok := s.Lab.Inputs[n]; !ok {
 			return p, problem(Invalid, "inputs."+n, "undeclared input")
@@ -555,6 +570,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		policy := ""
 		if im.Desktop {
 			policy = "xfce-minimal-1"
+			if e.Platform == "proxmox" {
+				policy = "xfce-proxmox-console-2"
+			}
 			if b.OS == "windows" {
 				if err := ValidateWindowsDCV(e.Build); err != nil {
 					return p, err
@@ -609,10 +627,14 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 				builds++
 			}
 		}
-		required := len(p.Machines) + builds
-		if builds+1 > required {
-			required = builds + 1
+		required := len(p.Machines) + builds + 1
+		if builds*3 > required {
+			required = builds * 3
 		}
+		if e.Proxmox.VLANEnd-e.Proxmox.VLANStart+1 < builds {
+			return p, problem(Unsupported, "environment.proxmox.vlanEnd", "VLAN range is too small for concurrent image qualification")
+		}
+
 		if e.Proxmox.VMIDEnd-e.Proxmox.VMIDStart+1 < required {
 			return p, problem(Unsupported, "environment.proxmox.vmidEnd", "VMID range is too small for images, validation and deployment")
 		}
@@ -623,6 +645,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 	p.Notices = []string{"Instances and native images remain billable until removed; no background cleanup service is installed.", "Builds may access package repositories; runtime Internet egress defaults to none."}
 	if e.Platform == "proxmox" {
 		p.Notices = append(p.Notices, "VLANs and addresses are previews; deployment reserves all networks atomically from the available range.")
+		p.Notices = append(p.Notices, "One platform-owned gateway per lab: 1 CPU / 768 MiB, base "+e.Proxmox.EffectiveGatewayBase()+"; operator SSH reaches only "+e.Proxmox.ManagementBridge+". Lab VLANs use internal bridge "+e.Proxmox.LabBridge+".")
 	}
 	for _, name := range sortedKeys(s.Lab.Networks) {
 		if s.Lab.Networks[name].Egress == "internet" {
@@ -652,8 +675,8 @@ func ProxmoxSubnet(p ProxmoxConfig, vlan int) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	if prefix.Bits() > 24 {
-		return "", "", fmt.Errorf("Proxmox address pool must be /24 or larger")
+	if !prefix.Addr().Is4() || !prefix.Addr().IsPrivate() || prefix != prefix.Masked() || prefix.Bits() < 16 || prefix.Bits() > 24 {
+		return "", "", fmt.Errorf("Proxmox address pool must be canonical private IPv4 /16–/24")
 	}
 	offset := vlan - p.VLANStart
 	if offset < 0 || vlan > p.VLANEnd || offset >= (1<<(24-prefix.Bits())) {
@@ -663,18 +686,7 @@ func ProxmoxSubnet(p ProxmoxConfig, vlan int) (string, string, error) {
 	n := uint32(a[0])<<24 | uint32(a[1])<<16 | uint32(a[2])<<8 | uint32(a[3])
 	n += uint32(offset * 256)
 	addr := netip.AddrFrom4([4]byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
-	gw := ""
-	if p.Gateway != "" {
-		g, err := netip.ParseAddr(p.Gateway)
-		if err != nil || !prefix.Contains(g) {
-			return "", "", fmt.Errorf("gateway must belong to address pool")
-		}
-		ga := g.As4()
-		gn := uint32(ga[0])<<24 | uint32(ga[1])<<16 | uint32(ga[2])<<8 | uint32(ga[3])
-		gn += uint32(offset * 256)
-		gw = netip.AddrFrom4([4]byte{byte(gn >> 24), byte(gn >> 16), byte(gn >> 8), byte(gn)}).String()
-	}
-	return netip.PrefixFrom(addr, 24).String(), gw, nil
+	return netip.PrefixFrom(addr, 24).String(), addr.Next().String(), nil
 }
 
 func declarationError(err error) error {

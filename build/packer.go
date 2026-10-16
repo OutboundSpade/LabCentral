@@ -29,12 +29,13 @@ type Config struct {
 	Provisioners []json.RawMessage `json:"provisioners"`
 }
 type Runner struct {
-	Provider lc.Provider
-	Prepare  func(context.Context, lc.Command, string) error
-	Cleanup  func(context.Context, lc.Command) error
-	Root     string
-	Find     func(context.Context, lc.Command) (lc.Resource, bool, error)
-	Validate func(context.Context, lc.Command, lc.Resource) (lc.Resource, error)
+	Configure func(context.Context, lc.Command, *Config) error
+	Provider  lc.Provider
+	Prepare   func(context.Context, lc.Command, string) error
+	Cleanup   func(context.Context, lc.Command) error
+	Root      string
+	Find      func(context.Context, lc.Command) (lc.Resource, bool, error)
+	Validate  func(context.Context, lc.Command, lc.Resource) (lc.Resource, error)
 }
 
 func raw(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
@@ -90,6 +91,19 @@ func hashFile(p string) (string, error) {
 		return "", e
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// CheckToolchain verifies installed bytes without invoking Packer or author code.
+func CheckToolchain(b lc.BuildConfig) error {
+	pin, err := hashFile(b.Packer)
+	if err != nil || pin != b.PackerSHA256 {
+		return fmt.Errorf("Packer executable missing or checksum mismatch; install the pinned version and rerun environment setup to pin it")
+	}
+	fp, err := FingerprintPlugins(b.PluginDirectory)
+	if err != nil || fp != b.ToolchainID {
+		return fmt.Errorf("Packer plugin directory missing or fingerprint mismatch; install pinned plugins and rerun environment setup")
+	}
+	return nil
 }
 func safePin(s string) bool { return regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(s) }
 func Generate(c lc.Command, dir string) (Config, error) {
@@ -280,6 +294,9 @@ func Generate(c lc.Command, dir string) (Config, error) {
 	}{"ansible-local", "sudo /opt/labcentral-ansible/bin/ansible-playbook", filepath.Join(dir, "source", im.Playbook), filepath.Join(dir, "source"), []string{"--extra-vars=@/tmp/labcentral-inputs.json"}, "/tmp/labcentral-source", true}))
 	if im.Desktop {
 		desktop := []string{"set -eu", "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xfce4 lightdm dbus-x11 xorg", "printf '%s\\n' 'exec startxfce4' | sudo tee /etc/skel/.xsession >/dev/null"}
+		if c.Environment.Platform == "proxmox" {
+			desktop = append(desktop, "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends lightdm-gtk-greeter", "sudo mkdir -p /etc/lightdm/lightdm.conf.d", "printf '%s\\n' '[Seat:*]' 'greeter-session=lightdm-gtk-greeter' 'user-session=xfce' | sudo tee /etc/lightdm/lightdm.conf.d/50-labcentral.conf >/dev/null", "sudo systemctl enable lightdm", "sudo systemctl set-default graphical.target")
+		}
 		if c.Environment.Platform == "aws" {
 			if !regexp.MustCompile(`^[a-f0-9]{64}$`).MatchString(b.DCVSHA256) || !strings.HasPrefix(b.DCVURL, "https://") || strings.ContainsAny(b.DCVURL, "'\n\r ") {
 				return cfg, fmt.Errorf("AWS desktop build requires a pinned HTTPS DCV archive")
@@ -328,6 +345,11 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 		cfg, err := Generate(c, dir)
 		if err != nil {
 			return lc.Result{}, err
+		}
+		if r.Configure != nil {
+			if err = r.Configure(ctx, c, &cfg); err != nil {
+				return lc.Result{}, err
+			}
 		}
 		if r.Prepare != nil {
 			_, pub, err := key(filepath.Join(dir, "build.key"))

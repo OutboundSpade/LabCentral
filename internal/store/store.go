@@ -218,6 +218,11 @@ func (s *Store) ReleaseValue(ctx context.Context, scope, owner string, value int
 	return e
 }
 
+func (s *Store) ReleaseScope(ctx context.Context, scope, owner string) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM claims WHERE scope=? AND owner=?`, scope, owner)
+	return err
+}
+
 // LockKeyContext queues contending access requests while preserving cancellation.
 func (s *Store) LockKeyContext(ctx context.Context, key string) (func(), error) {
 	return s.lockKeyContext(ctx, key, false)

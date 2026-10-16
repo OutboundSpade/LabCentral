@@ -40,7 +40,7 @@ func CheckCapabilities(l Lab, platform string) error {
 			return problem(Unsupported, f, "network count exceeds platform limit")
 		}
 		if v.CIDR != "" && !c.AuthorCIDR {
-			return problem(Unsupported, f+".cidr", "author CIDRs are unsupported on Proxmox: operator routing requires disjoint allocated ranges")
+			return problem(Unsupported, f+".cidr", "author CIDRs are unsupported on Proxmox: each VLAN uses a disjoint allocated /24")
 		}
 		if v.Egress != "" && !Contains(c.Egress, v.Egress) {
 			return problem(Unsupported, f+".egress", "egress mode is not implemented")
@@ -121,9 +121,7 @@ func CheckEgress(l Lab, e Environment) error {
 		if !enabled {
 			return problem(Unsupported, "networks."+name+".egress", "internet requires environment."+e.Platform+".allowEgress=true")
 		}
-		if e.Platform == "proxmox" && e.Proxmox.Gateway == "" {
-			return problem(Invalid, "environment.proxmox.gateway", "internet egress requires an operator VLAN gateway with NAT")
-		}
+
 	}
 	return nil
 }

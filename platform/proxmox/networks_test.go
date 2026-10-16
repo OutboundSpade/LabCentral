@@ -8,6 +8,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func routedMachine() (lc.PlannedMachine, []lc.PlannedNetwork) {
 }
 func TestMultipleNICConfigAndFirewallPaths(t *testing.T) {
 	m, n := routedMachine()
-	cmd := lc.Command{Machine: m, Environment: lc.Environment{OperatorCIDRs: []string{"203.0.113.10/32"}, Proxmox: lc.ProxmoxConfig{Bridge: "vmbr-labs", URL: "https://198.51.100.2:8006", CIDR: "10.90.0.0/16"}}}
+	cmd := lc.Command{Machine: m, Environment: lc.Environment{OperatorCIDRs: []string{"203.0.113.10/32"}, Proxmox: lc.ProxmoxConfig{LabBridge: "vmbr-labs", URL: "https://198.51.100.2:8006", CIDR: "10.90.0.0/16"}}}
 	cfg := machineConfig(cmd, VMConfig{Net0: "virtio=AA:BB:CC:DD:EE:FF", Digest: "clone"}, "")
 	for key, want := range map[string]string{"net0": "virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr-labs,tag=101,firewall=1", "net1": "virtio,bridge=vmbr-labs,tag=102,firewall=1", "ipconfig0": "ip=10.90.1.12/24", "ipconfig1": "ip=10.90.2.12/24,gw=10.90.2.1"} {
 		if cfg[key] != want {
@@ -106,7 +107,7 @@ func TestGuestNetworkApplyFailureLeavesMachineNotReady(t *testing.T) {
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/config") && r.Method == "GET":
-			response(w, VMConfig{Description: marker("owned-network-lab", m.Name), Digest: "clone", Net0: "virtio=AA:BB:CC:DD:EE:FF"})
+			response(w, map[string]any{"description": marker("owned-network-lab", m.Name), "digest": "clone", "net0": "virtio=AA:BB:CC:DD:EE:FF", "net1": "virtio=AA:BB:CC:DD:EE:01"})
 		case strings.HasSuffix(r.URL.Path, "/status/current"):
 			response(w, map[string]string{"status": "running"})
 		case strings.HasSuffix(r.URL.Path, "/firewall/rules") && r.Method == "GET":
@@ -133,7 +134,7 @@ func TestGuestNetworkApplyFailureLeavesMachineNotReady(t *testing.T) {
 			response(w, nil)
 		}
 	})
-	env.Proxmox.Bridge = "vmbr-labs"
+	env.Proxmox.LabBridge = "vmbr-labs"
 	cmd := lc.Command{Owner: "owned-network-lab", Operation: "machine", Environment: env, Machine: m}
 	raw, _ := json.Marshal(network{CIDR: n[0].CIDR, Segments: n})
 	cmd.Network = lc.Resource{Data: raw}
@@ -157,8 +158,18 @@ func TestCloneExtraNICsRemovedAndPlannedMACsPreserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := routedMachine()
-	cfg := machineConfig(lc.Command{Machine: m, Environment: lc.Environment{Proxmox: lc.ProxmoxConfig{Bridge: "vmbr-labs"}}}, v, "")
+	cfg := machineConfig(lc.Command{Machine: m, Environment: lc.Environment{Proxmox: lc.ProxmoxConfig{LabBridge: "vmbr-labs"}}}, v, "")
 	if cfg["delete"] != "ipconfig2,net2" || !strings.HasPrefix(cfg["net1"].(string), "virtio=AA:BB:CC:DD:EE:01,") {
 		t.Fatal("unplanned NIC or lost MAC", cfg)
+	}
+}
+
+func TestCloudInitPublicKeyUsesURIEncoding(t *testing.T) {
+	key := "ssh-ed25519 AAAA+BBBB/CCCC operator\n"
+	cfg := machineConfig(lc.Command{Machine: lc.PlannedMachine{PublicKey: key}}, VMConfig{}, "ip=dhcp")
+	encoded := cfg["sshkeys"].(string)
+	decoded, err := url.PathUnescape(encoded)
+	if err != nil || decoded != key || strings.Contains(encoded, "+") {
+		t.Fatal("Proxmox URI decoder cannot restore public key", encoded, decoded, err)
 	}
 }

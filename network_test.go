@@ -29,7 +29,6 @@ func TestInternetRequiresOperatorPermission(t *testing.T) {
 			env.AWS.AllowEgress = true
 		} else {
 			env.Proxmox.AllowEgress = true
-			env.Proxmox.Gateway = "10.90.0.1"
 		}
 		plan, err := PlanLab(src, env, nil)
 		if err != nil {
@@ -73,7 +72,7 @@ func (p *gatewayFailureProvider) Execute(ctx context.Context, c Command, o Obser
 			return Result{}, fmt.Errorf("gateway before network")
 		}
 	}
-	if c.Action == "machine.create" && c.Environment.Platform == "aws" && c.Gateway.Kind != "gateway" {
+	if c.Action == "machine.create" && c.Gateway.Kind != "gateway" {
 		return Result{}, fmt.Errorf("machine before gateway")
 	}
 	if c.Action == "resource.destroy" && c.Prior.Kind == "gateway" && p.failDelete {
@@ -88,49 +87,57 @@ func (p *gatewayFailureProvider) Execute(ctx context.Context, c Command, o Obser
 	return r, err
 }
 func TestGatewayLostCreateAndDeleteRecoverAcrossReopen(t *testing.T) {
-	ctx := context.Background()
-	p := &gatewayFailureProvider{fakeProvider: freshFake(), lose: true}
-	root := t.TempDir()
-	engine, err := Open(root, p, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := PlanLab(testSource(t), testEnvironment(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	inst, err := engine.Deploy(ctx, plan)
-	if err == nil || inst.Gateway == nil {
-		t.Fatal("lost outcome accepted", err)
-	}
-	if p.creates != 2 {
-		t.Fatal("machine created before ready gateway", p.creates)
-	}
-	engine.Close()
-	engine, err = Open(root, p, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer engine.Close()
-	ready, err := engine.Recover(ctx, inst.ID)
-	if err != nil || ready.Status != "ready" || p.creates != 3 {
-		t.Fatal("gateway replaced instead of recovered", err, p.creates)
-	}
-	if len(ready.Plan.Machines) != 1 || len(ready.Resources) != 3 {
-		t.Fatal("gateway entered author inventory", ready)
-	}
-	p.failDelete = true
-	if err = engine.Destroy(ctx, inst.ID); err == nil {
-		t.Fatal("lost delete accepted")
-	}
-	if _, ok := p.resources[inst.ID+"/network"]; !ok {
-		t.Fatal("network removed while gateway uncertain")
-	}
-	if err = engine.Destroy(ctx, inst.ID); err != nil {
-		t.Fatal(err)
-	}
-	if len(p.resources) != 0 {
-		t.Fatal("resources leaked", p.resources)
+	for _, platform := range []string{"aws", "proxmox"} {
+		t.Run(platform, func(t *testing.T) {
+			ctx := context.Background()
+			p := &gatewayFailureProvider{fakeProvider: freshFake(), lose: true}
+			root := t.TempDir()
+			engine, err := Open(root, p, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env := testEnvironment()
+			if platform == "proxmox" {
+				env = platformOptionsProxmoxEnvironment()
+			}
+			plan, err := PlanLab(testSource(t), env, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			inst, err := engine.Deploy(ctx, plan)
+			if err == nil || inst.Gateway == nil {
+				t.Fatal("lost outcome accepted", err)
+			}
+			if p.creates != 2 {
+				t.Fatal("machine created before ready gateway", p.creates)
+			}
+			engine.Close()
+			engine, err = Open(root, p, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer engine.Close()
+			ready, err := engine.Recover(ctx, inst.ID)
+			if err != nil || ready.Status != "ready" || p.creates != 3 {
+				t.Fatal("gateway replaced instead of recovered", err, p.creates)
+			}
+			if len(ready.Plan.Machines) != 1 || len(ready.Resources) != 3 {
+				t.Fatal("gateway entered author inventory", ready)
+			}
+			p.failDelete = true
+			if err = engine.Destroy(ctx, inst.ID); err == nil {
+				t.Fatal("lost delete accepted")
+			}
+			if _, ok := p.resources[inst.ID+"/network"]; !ok {
+				t.Fatal("network removed while gateway uncertain")
+			}
+			if err = engine.Destroy(ctx, inst.ID); err != nil {
+				t.Fatal(err)
+			}
+			if len(p.resources) != 0 {
+				t.Fatal("resources leaked", p.resources)
+			}
+		})
 	}
 }
 func TestLegacyAWSRecordRecoversAndDestroysWithoutGateway(t *testing.T) {

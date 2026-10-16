@@ -202,7 +202,7 @@ func TestMultiVLANReservationSurvivesInterruptedPreparation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := "vlan:" + env.Proxmox.URL + ":" + env.Proxmox.Bridge
+	scope := "vlan:" + env.Proxmox.URL + ":" + env.Proxmox.LabBridge
 	if _, err = engine.state.Reserve(ctx, scope, "occupied", 100, 115, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestMultiVLANExhaustionRollsBackWholeReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope := "vlan:" + env.Proxmox.URL + ":" + env.Proxmox.Bridge
+	scope := "vlan:" + env.Proxmox.URL + ":" + env.Proxmox.LabBridge
 	if _, err = engine.state.Reserve(ctx, scope, "occupied", 100, 115, 14); err != nil {
 		t.Fatal(err)
 	}

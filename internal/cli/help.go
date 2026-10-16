@@ -23,6 +23,8 @@ var commands = map[string]commandSpec{
 	"access":                          {"INSTANCE_ID MACHINE ssh|desktop", "Open SSH or a temporary browser desktop.", "labcentral access INSTANCE_ID workstation desktop", false},
 	"recover":                         {"INSTANCE_ID|build:IMAGE_KEY", "Reconcile the original attempt after an unknown outcome.", "labcentral recover INSTANCE_ID", false},
 	"destroy":                         {"INSTANCE_ID", "Destroy a verified owned instance; retain its images.", "labcentral destroy INSTANCE_ID", false},
+	"environment setup":               {"proxmox FILE", "Prepare an owned Proxmox environment with a reviewable plan.", "labcentral environment setup proxmox proxmox.yaml --url https://pve.example.invalid:8006 --admin-token-id admin@pve!setup", false},
+	"environment teardown":            {"proxmox FILE", "Remove only resources recorded and ownership-verified by setup.", "labcentral environment teardown proxmox proxmox.yaml --admin-token-id admin@pve!setup", false},
 	"environment init":                {"FILE aws|proxmox", "Write an environment skeleton that needs operator configuration.", "labcentral environment init aws.yaml aws", false},
 	"environment check":               {"", "Check the configured provider environment.", "labcentral environment check --environment aws.yaml", true},
 	"environment fingerprint-plugins": {"DIRECTORY", "Fingerprint the pinned Packer plugins.", "labcentral environment fingerprint-plugins /path/to/plugins", false},
@@ -48,7 +50,7 @@ Get started:
 
 Source:      init, validate, plan
 Lifecycle:   build, deploy, list, inspect, access, recover, destroy
-Environment: environment init|check|fingerprint-plugins
+Environment: environment setup|teardown|init|check|fingerprint-plugins
 Images:      image list|builds|remove|abandon
 Defaults:    config init|show
 
@@ -62,7 +64,7 @@ Mutations ask for confirmation; --yes explicitly approves automation.`)
 	}
 	if key == "image" || key == "environment" || key == "config" {
 		fmt.Fprintf(out, "Usage: labcentral %s SUBCOMMAND [OPTIONS] [ARGUMENTS]\n\n", key)
-		for _, sub := range []string{"init", "check", "fingerprint-plugins", "list", "builds", "remove", "abandon", "show"} {
+		for _, sub := range []string{"setup", "teardown", "init", "check", "fingerprint-plugins", "list", "builds", "remove", "abandon", "show"} {
 			if spec, ok := commands[key+" "+sub]; ok {
 				fmt.Fprintf(out, "  %-20s %s\n", sub, spec.description)
 			}
@@ -75,6 +77,9 @@ Mutations ask for confirmation; --yes explicitly approves automation.`)
 	}
 	fmt.Fprintf(out, "Usage: labcentral %s [OPTIONS] %s\n\n%s\n\nExample:\n  %s\n\n", key, spec.args, spec.description, spec.example)
 	fmt.Fprintln(out, "Options: --config FILE --state DIR --provider FILE --json --yes --template\n         --environment FILE --inputs FILE (JSON string values)\nConcurrency: --image-build-concurrency N --machine-concurrency N --cleanup-concurrency N (1–32)\nFlags may appear before or after arguments. Use -- to end options.")
+	if key == "environment setup" || key == "environment teardown" {
+		fmt.Fprintln(out, "Proxmox: --url HTTPS_URL --admin-token-id USER!TOKEN\nCredentials: --admin-token-env NAME (default LABCENTRAL_PROXMOX_ADMIN_TOKEN) --ca-file FILE\nDetection overrides: --node NAME --storage NAME --management-bridge NAME --lab-bridge NAME\n                    --pool NAME --vmid-start N --vlan-start N --cidr CIDR --operator-cidr CIDR\nTest endpoints only: --insecure-skip-tls-verify")
+	}
 	if spec.environment {
 		fmt.Fprintln(out, "An environment is required: pass --environment or save it with config init.")
 	}
@@ -136,9 +141,9 @@ func interspersed(args []string) (flags, positionals []string, err error) {
 		}
 		name, _, equal := strings.Cut(strings.TrimLeft(a, "-"), "=")
 		switch name {
-		case "json", "yes", "template", "h", "help":
+		case "json", "yes", "template", "h", "help", "insecure-skip-tls-verify":
 			flags = append(flags, a)
-		case "config", "state", "environment", "provider", "inputs", "image-build-concurrency", "machine-concurrency", "cleanup-concurrency":
+		case "config", "state", "environment", "provider", "inputs", "image-build-concurrency", "machine-concurrency", "cleanup-concurrency", "url", "admin-token-id", "admin-token-env", "ca-file", "node", "storage", "management-bridge", "lab-bridge", "pool", "cidr", "operator-cidr", "vmid-start", "vlan-start":
 			flags = append(flags, a)
 			if !equal {
 				if i+1 == len(args) {
@@ -156,7 +161,7 @@ func interspersed(args []string) (flags, positionals []string, err error) {
 
 func takesValue(name string) bool {
 	switch name {
-	case "config", "state", "environment", "provider", "inputs", "image-build-concurrency", "machine-concurrency", "cleanup-concurrency":
+	case "config", "state", "environment", "provider", "inputs", "image-build-concurrency", "machine-concurrency", "cleanup-concurrency", "url", "admin-token-id", "admin-token-env", "ca-file", "node", "storage", "management-bridge", "lab-bridge", "pool", "cidr", "operator-cidr", "vmid-start", "vlan-start":
 		return true
 	}
 	return false

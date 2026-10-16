@@ -38,7 +38,7 @@ func NewClient(e lc.Environment) (*Client, error) {
 	p := e.Proxmox
 	secret := os.Getenv(p.TokenEnv)
 	if secret == "" {
-		return nil, fmt.Errorf("Proxmox token environment variable is unset")
+		return nil, fmt.Errorf("Proxmox token environment variable %s is unset; export the setup token file secret", p.TokenEnv)
 	}
 	roots, err := x509.SystemCertPool()
 	if err != nil {
@@ -56,6 +56,9 @@ func NewClient(e lc.Environment) (*Client, error) {
 	return &Client{URL: strings.TrimRight(p.URL, "/") + "/api2/json", Token: p.TokenID + "=" + secret, Node: p.Node, HTTP: &http.Client{Timeout: 90 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, InsecureSkipVerify: p.InsecureSkipTLSVerify}}, CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("redirect refused") }}}, nil
 }
 func (c *Client) Call(ctx context.Context, method, path string, in, out any) error {
+	return c.call(ctx, method, path, in, out, nil)
+}
+func (c *Client) call(ctx context.Context, method, path string, in, out any, changes *string) error {
 	var body io.Reader
 	if in != nil {
 		b, e := json.Marshal(in)
@@ -83,10 +86,14 @@ func (c *Client) Call(ctx context.Context, method, path string, in, out any) err
 		return e
 	}
 	var envelope struct {
-		Data json.RawMessage `json:"data"`
+		Data    json.RawMessage `json:"data"`
+		Changes string          `json:"changes"`
 	}
 	if e = json.Unmarshal(b, &envelope); e != nil {
 		return e
+	}
+	if changes != nil {
+		*changes = envelope.Changes
 	}
 	if out != nil {
 		return json.Unmarshal(envelope.Data, out)
@@ -100,7 +107,14 @@ type HTTPError struct {
 }
 
 func (e *HTTPError) Error() string {
-	return fmt.Sprintf("Proxmox %s %s returned HTTP %d", e.Method, e.Path, e.Status)
+	hint := ""
+	if e.Status == 401 {
+		hint = "; verify token ID and secret environment variable"
+	}
+	if e.Status == 403 {
+		hint = "; verify ACLs for both the user and privilege-separated token"
+	}
+	return fmt.Sprintf("Proxmox %s %s returned HTTP %d%s", e.Method, e.Path, e.Status, hint)
 }
 func (c *Client) VM(id int, suffix string) string {
 	return "/nodes/" + url.PathEscape(c.Node) + "/qemu/" + strconv.Itoa(id) + suffix
@@ -134,13 +148,18 @@ func (c *Client) Wait(ctx context.Context, upid string) error {
 }
 
 type VMConfig struct {
-	Tags        string            `json:"tags"`
-	Description string            `json:"description"`
-	Digest      string            `json:"digest"`
-	Template    int               `json:"template"`
-	Name        string            `json:"name"`
-	Net0        string            `json:"net0"`
-	NICs        map[string]string `json:"-"`
+	SCSIController string            `json:"scsihw"`
+	Lock           string            `json:"lock"`
+	Agent          string            `json:"agent"`
+	Scsi0          string            `json:"scsi0"`
+	Ide2           string            `json:"ide2"`
+	Tags           string            `json:"tags"`
+	Description    string            `json:"description"`
+	Digest         string            `json:"digest"`
+	Template       int               `json:"template"`
+	Name           string            `json:"name"`
+	Net0           string            `json:"net0"`
+	NICs           map[string]string `json:"-"`
 }
 
 func marker(owner, name string) string { return "labcentral:v2:" + owner + ":" + name }
@@ -156,7 +175,7 @@ func checkOwner(v VMConfig, owner, name string) error {
 	return nil
 }
 func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (lc.Result, error) {
-	if cmd.Action == "check" || cmd.Action == "image.build" || cmd.Action == "network.create" || cmd.Action == "machine.create" {
+	if cmd.Action == "check" || cmd.Action == "image.build" || cmd.Action == "network.create" || cmd.Action == "machine.create" || cmd.Action == "gateway.create" {
 		if err := lc.CheckCapabilities(cmd.Source.Lab, cmd.Environment.Platform); err != nil {
 			return lc.Result{}, err
 		}
@@ -190,11 +209,16 @@ func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (
 		}
 		b, _ := json.Marshal(n)
 		return lc.Result{Resource: lc.Resource{Kind: "network", Name: "private", ID: strconv.Itoa(cmd.VLAN), Owner: cmd.Owner, Complete: true, Data: b}}, nil
+	case "gateway.create":
+		return p.gateway(ctx, c, cmd)
 	case "machine.create":
 		return p.machine(ctx, c, cmd)
 	case "discover":
 		if cmd.Machine.Name == "" {
 			return lc.Result{Resource: lc.Resource{Kind: "network", Name: "private", ID: strconv.Itoa(cmd.VLAN), Owner: cmd.Owner}}, nil
+		}
+		if cmd.Prior.Kind == "gateway" {
+			return p.findGateway(ctx, c, cmd)
 		}
 		return p.find(ctx, c, cmd)
 	case "resource.destroy":
@@ -251,30 +275,25 @@ func (p *Provider) check(ctx context.Context, c *Client, cmd lc.Command) (lc.Res
 	if !found {
 		return lc.Result{}, fmt.Errorf("configured node is not online")
 	}
-	var firewall struct {
-		Enable int `json:"enable"`
-	}
-	if err := c.Call(ctx, "GET", "/cluster/firewall/options", nil, &firewall); err != nil {
+	if err := checkLabBridge(ctx, c, cmd.Environment.Proxmox.LabBridge); err != nil {
 		return lc.Result{}, err
 	}
-	if firewall.Enable != 1 {
-		return lc.Result{}, fmt.Errorf("Proxmox cluster firewall is disabled; VM firewall rules cannot enforce the lab policy")
-	}
-	var bridges []struct {
-		Interface string `json:"iface"`
-		VLANAware int    `json:"bridge_vlan_aware"`
-	}
-	if err := c.Call(ctx, "GET", "/nodes/"+url.PathEscape(c.Node)+"/network", nil, &bridges); err != nil {
+	if err := checkOperatorBridges(ctx, c, cmd.Environment); err != nil {
 		return lc.Result{}, err
 	}
-	bridgeOK := false
-	for _, b := range bridges {
-		if b.Interface == cmd.Environment.Proxmox.Bridge && b.VLANAware == 1 {
-			bridgeOK = true
+	if err := checkStorage(ctx, c, cmd.Environment.Proxmox.Storage); err != nil {
+		return lc.Result{}, err
+	}
+	if err := checkPermissions(ctx, c, cmd.Environment); err != nil {
+		return lc.Result{}, err
+	}
+	for _, id := range []int{cmd.Environment.Proxmox.VMIDStart, cmd.Environment.Proxmox.VMIDEnd} {
+		if err := requireVMAudit(ctx, c, id); err != nil {
+			return lc.Result{}, err
 		}
 	}
-	if !bridgeOK {
-		return lc.Result{}, fmt.Errorf("lab bridge must exist and be VLAN-aware")
+	if err := checkRanges(ctx, c, cmd.Environment); err != nil {
+		return lc.Result{}, err
 	}
 	var pool struct {
 		PoolID string `json:"poolid"`
@@ -282,20 +301,23 @@ func (p *Provider) check(ctx context.Context, c *Client, cmd lc.Command) (lc.Res
 	if err := c.Call(ctx, "GET", "/pools/"+url.PathEscape(cmd.Environment.Proxmox.Pool), nil, &pool); err != nil {
 		return lc.Result{}, err
 	}
-	for _, base := range cmd.Environment.Bases {
+	for name, base := range cmd.Environment.Bases {
 		id, e := strconv.Atoi(base.ID)
 		if e != nil {
-			return lc.Result{}, e
+			return lc.Result{}, fmt.Errorf("base %s id must be a template VMID: %w", name, e)
 		}
 		v, e := c.Config(ctx, id)
 		if e != nil {
 			return lc.Result{}, e
 		}
 		if v.Template != 1 || v.Digest != base.Identity {
-			return lc.Result{}, fmt.Errorf("base template identity changed")
+			return lc.Result{}, fmt.Errorf("base %s template identity changed; verify the binding or rerun setup", name)
+		}
+		if !guestAgentEnabled(v.Agent) || v.Scsi0 == "" || v.Ide2 == "" {
+			return lc.Result{}, fmt.Errorf("base needs scsi0, cloud-init drive and enabled guest agent; rerun environment setup")
 		}
 	}
-	return lc.Result{Message: "node and base templates verified; physical network isolation is operator-owned"}, nil
+	return lc.Result{Message: "node, privileges, storage, internal lab bridge and base templates verified; operator must reach DHCP/static gateway and build addresses on managementBridge/build.bridge"}, nil
 }
 
 type network struct {
@@ -351,6 +373,9 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 		if e = checkOwner(v, cmd.Owner, m.Name); e != nil {
 			return 0, false, e
 		}
+		if v.Lock != "" {
+			return 0, false, fmt.Errorf("clone is still locked; retry recovery")
+		}
 		return m.VMID, true, nil
 	})
 	if e != nil {
@@ -363,8 +388,11 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	if e = checkOwner(v, cmd.Owner, m.Name); e != nil {
 		return lc.Result{}, e
 	}
+	if v.Lock != "" {
+		return lc.Result{}, fmt.Errorf("clone is still locked; retry recovery")
+	}
 	ip := "ip=" + m.Address + "/" + strings.Split(net.CIDR, "/")[1]
-	if net.Gateway != "" {
+	if net.Gateway != "" && lc.InternetAccess(cmd.Source.Lab) {
 		ip += ",gw=" + net.Gateway
 	}
 
@@ -443,12 +471,20 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	priv := base64.StdEncoding.EncodeToString([]byte(m.HostPrivateKey))
 	pub := base64.StdEncoding.EncodeToString([]byte(m.HostPublicKey))
 	hosts := base64.StdEncoding.EncodeToString([]byte(guest.Hosts(m)))
-	script := "cloud-init status --wait >/dev/null; printf '%s' '" + hosts + "' | base64 -d > /etc/hosts; chmod 644 /etc/hosts; umask 077; printf '%s' '" + priv + "' | base64 -d > /etc/ssh/ssh_host_ed25519_key; printf '%s' '" + pub + "' | base64 -d > /etc/ssh/ssh_host_ed25519_key.pub; systemctl restart ssh"
+	script := cloudInitWait + guest.ProxmoxLoginPolicy + "printf '%s' '" + hosts + "' | base64 -d > /etc/hosts; chmod 644 /etc/hosts; " + guest.ProxmoxHostnameAlias + "umask 077; printf '%s' '" + priv + "' | base64 -d > /etc/ssh/ssh_host_ed25519_key; printf '%s' '" + pub + "' | base64 -d > /etc/ssh/ssh_host_ed25519_key.pub; systemctl restart ssh"
 	if e = c.GuestExec(ctx, m.VMID, []string{"/bin/sh", "-ec", script}); e != nil {
 		return lc.Result{}, e
 	}
 	if len(m.NICs) > 0 {
-		script, err := guest.NetworkExec(m)
+		current, err := c.Config(ctx, m.VMID)
+		if err != nil {
+			return lc.Result{}, err
+		}
+		macs, err := current.MACs(len(m.NICs))
+		if err != nil {
+			return lc.Result{}, err
+		}
+		script, err := guest.NetworkExec(m, macs...)
 		if err != nil {
 			return lc.Result{}, err
 		}
@@ -456,7 +492,12 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 			return lc.Result{}, e
 		}
 	}
-	if e = remote.Wait(ctx, m.Address, "lab", cmd.ClientPrivateKey, m.HostPublicKey); e != nil {
+	dialer, e := lc.MachineDialer(cmd.Gateway, cmd.ClientPrivateKey)
+	if e != nil {
+		return lc.Result{}, e
+	}
+	defer dialer.Close()
+	if e = remote.WaitWithDialer(ctx, dialer, m.Address, "lab", cmd.ClientPrivateKey, m.HostPublicKey); e != nil {
 		return lc.Result{}, e
 	}
 	return p.find(ctx, c, cmd)
@@ -523,17 +564,30 @@ func (p *Provider) destroy(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	if e != nil {
 		return lc.Result{}, e
 	}
-	var inventory []struct {
-		VMID int `json:"vmid"`
+	if err := requireVMAudit(ctx, c, id); err != nil {
+		return lc.Result{}, err
 	}
-	if e = c.Call(ctx, "GET", "/nodes/"+url.PathEscape(c.Node)+"/qemu", nil, &inventory); e != nil {
+	var inventory []struct {
+		VMID int    `json:"vmid"`
+		Node string `json:"node"`
+	}
+	if e = c.Call(ctx, "GET", "/cluster/resources?type=vm", nil, &inventory); e != nil {
 		return lc.Result{}, e
 	}
 	found := false
 	for _, v := range inventory {
-		found = found || v.VMID == id
+		if v.VMID == id {
+			if v.Node != c.Node {
+				return lc.Result{}, fmt.Errorf("recovery_required: VM is outside the configured node; investigate ownership before cleanup")
+			}
+			found = true
+		}
 	}
+
 	if !found {
+		if err := requireVMAudit(ctx, c, id); err != nil {
+			return lc.Result{}, err
+		}
 		return lc.Result{Absent: true}, nil
 	}
 	v, e := c.Config(ctx, id)
@@ -560,13 +614,13 @@ func (p *Provider) destroy(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 		return lc.Result{}, e
 	}
 	var task string
-	if e = c.Call(ctx, "DELETE", c.VM(id, "?purge=1&destroy-unreferenced-disks=1"), nil, &task); e != nil {
+	if e = c.Call(ctx, "DELETE", c.VM(id, ""), nil, &task); e != nil {
 		return lc.Result{}, e
 	}
 	if e = c.Wait(ctx, task); e != nil {
 		return lc.Result{}, e
 	}
-	if e = c.Call(ctx, "GET", "/nodes/"+url.PathEscape(c.Node)+"/qemu", nil, &inventory); e != nil {
+	if e = c.Call(ctx, "GET", "/cluster/resources?type=vm", nil, &inventory); e != nil {
 		return lc.Result{}, e
 	}
 	for _, v := range inventory {
@@ -663,9 +717,9 @@ func machineConfig(cmd lc.Command, v VMConfig, ip string) map[string]any {
 		nic += "=" + mac
 	}
 	cfg := map[string]any{
-		"cores": m.CPU, "memory": m.MemoryMiB,
-		"net0":      fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", nic, cmd.Environment.Proxmox.Bridge, cmd.VLAN),
-		"ipconfig0": ip, "ciuser": "lab", "sshkeys": url.QueryEscape(m.PublicKey), "agent": "enabled=1", "digest": v.Digest,
+		"cores": m.CPU, "memory": m.MemoryMiB, "ciupgrade": 0,
+		"net0":      fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", nic, cmd.Environment.Proxmox.LabBridge, cmd.VLAN),
+		"ipconfig0": ip, "ciuser": "lab", "sshkeys": strings.ReplaceAll(url.QueryEscape(m.PublicKey), "+", "%20"), "agent": "enabled=1", "digest": v.Digest,
 	}
 	if len(m.NICs) > 0 {
 		var removed []string
@@ -688,7 +742,7 @@ func machineConfig(cmd lc.Command, v VMConfig, ip string) map[string]any {
 			if _, mac, ok := strings.Cut(strings.Split(original, ",")[0], "="); ok && mac != "" {
 				modelNIC += "=" + mac
 			}
-			cfg[fmt.Sprintf("net%d", j)] = fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", modelNIC, cmd.Environment.Proxmox.Bridge, planned.VLAN)
+			cfg[fmt.Sprintf("net%d", j)] = fmt.Sprintf("%s,bridge=%s,tag=%d,firewall=1", modelNIC, cmd.Environment.Proxmox.LabBridge, planned.VLAN)
 			ipconfig := "ip=" + planned.Address + "/" + strings.Split(planned.CIDR, "/")[1]
 			if planned.Default && planned.Gateway != "" {
 				ipconfig += ",gw=" + planned.Gateway
@@ -696,6 +750,10 @@ func machineConfig(cmd lc.Command, v VMConfig, ip string) map[string]any {
 			cfg[fmt.Sprintf("ipconfig%d", j)] = ipconfig
 		}
 	}
+	if lc.Contains(m.Spec.Access, "desktop") {
+		cfg["vga"] = "virtio"
+	}
+
 	if options != nil {
 		if options.CPUType != "" {
 			cfg["cpu"] = options.CPUType

@@ -5,12 +5,13 @@ import (
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"go.yaml.in/yaml/v3"
+	"net"
 	"strings"
 )
 
 // Netplan renders only platform-owned addressing and routing. AWS substitutes
 // MACs obtained by device index from IMDS; Proxmox uses its stable PCI NIC names.
-func Netplan(m lc.PlannedMachine, platform string) (string, error) {
+func Netplan(m lc.PlannedMachine, platform string, macs ...string) (string, error) {
 	ethernets := map[string]any{}
 	for j, nic := range m.NICs {
 		iface := map[string]any{"dhcp4": false, "dhcp6": false, "accept-ra": false, "addresses": []string{nic.Address + "/" + strings.Split(nic.CIDR, "/")[1]}}
@@ -18,6 +19,16 @@ func Netplan(m lc.PlannedMachine, platform string) (string, error) {
 			iface["match"] = map[string]string{"macaddress": fmt.Sprintf("MAC_%d", j)}
 		} else {
 			iface["match"] = map[string]string{"name": fmt.Sprintf("ens%d", 18+j)}
+			if len(macs) > 0 {
+				if len(macs) != len(m.NICs) {
+					return "", fmt.Errorf("missing Proxmox NIC identities")
+				}
+				if _, err := net.ParseMAC(macs[j]); err != nil {
+					return "", err
+				}
+				iface["match"] = map[string]string{"macaddress": macs[j]}
+				iface["set-name"] = fmt.Sprintf("ens%d", 18+j)
+			}
 		}
 		routes := []map[string]any{}
 		if nic.Default && nic.Gateway != "" {
@@ -31,6 +42,10 @@ func Netplan(m lc.PlannedMachine, platform string) (string, error) {
 			if m.Resolver != "" {
 				iface["nameservers"] = map[string]any{"addresses": []string{m.Resolver}}
 			}
+		}
+		if platform == "proxmox" && nic.Default {
+			// LAN DNS is deliberately unreachable from a lab; egress uses public DNS.
+			iface["nameservers"] = map[string]any{"addresses": []string{"1.1.1.1", "9.9.9.9"}}
 		}
 		if len(routes) > 0 {
 			iface["routes"] = routes
@@ -60,8 +75,8 @@ path.chmod(0o600)
 
 // NetworkExec writes, applies, and checks the runtime network through the guest
 // agent. Any failed address/default/static-route assertion leaves readiness false.
-func NetworkExec(m lc.PlannedMachine) (string, error) {
-	raw, err := Netplan(m, "proxmox")
+func NetworkExec(m lc.PlannedMachine, macs ...string) (string, error) {
+	raw, err := Netplan(m, "proxmox", macs...)
 	if err != nil {
 		return "", err
 	}
@@ -114,12 +129,12 @@ for name in ('99-labcentral.yaml', '50-cloud-init.yaml'):
         continue
     previous = yaml.safe_load(old.read_text()) or {}
     dns = next((nic.get('nameservers') for nic in previous.get('network', {}).get('ethernets', {}).values() if nic.get('nameservers')), None)
-    if dns:
+    if dns and not config['network']['ethernets']['nic%d'].get('nameservers'):
         config['network']['ethernets']['nic%d']['nameservers'] = dns
         break
 path = pathlib.Path('/etc/netplan/99-labcentral.yaml')
 path.write_text(yaml.safe_dump(config))
 path.chmod(0o600)
 LC_NETWORK_DNS
-`, index)
+`, index, index)
 }

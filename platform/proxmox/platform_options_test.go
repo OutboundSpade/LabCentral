@@ -64,7 +64,7 @@ func TestRuntimeOptionsInNativeConfigPUT(t *testing.T) {
 				}
 			})
 			env.Proxmox.CPUTypes = []string{"host", "kvm64"}
-			env.Proxmox.Bridge = "vmbr-labs"
+			env.Proxmox.LabBridge = "vmbr-labs"
 			cmd := lc.Command{Owner: "owned-lab", Operation: "op", Environment: env, VLAN: 123, Network: lc.Resource{Data: []byte(`{"cidr":"10.90.0.0/24","gateway":"10.90.0.1"}`)}, Machine: lc.PlannedMachine{Name: "one", NativeImage: "2000", VMID: 2100, CPU: 2, MemoryMiB: 4096, DiskGiB: 32, Address: "10.90.0.11", PublicKey: "ssh-ed25519 public", Spec: lc.Machine{Platform: lc.MachinePlatform{Proxmox: tc.options, AWS: &lc.AWSMachineOptions{InstanceType: "forbidden", CPUCredits: "unlimited"}}}}}
 			p := &Provider{Journal: journal.Journal{Root: t.TempDir()}}
 			if err := p.Journal.Save("op/clone", 2100); err != nil {
@@ -87,7 +87,7 @@ func TestRuntimeOptionsInNativeConfigPUT(t *testing.T) {
 			} else if captured["balloon"] != float64(*tc.balloon) {
 				t.Fatal("balloon option lost", captured)
 			}
-			if captured["memory"] != float64(4096) || captured["cores"] != float64(2) || captured["ipconfig0"] != "ip=10.90.0.11/24,gw=10.90.0.1" || captured["digest"] != "clone-digest" {
+			if captured["memory"] != float64(4096) || captured["cores"] != float64(2) || captured["ipconfig0"] != "ip=10.90.0.11/24" || captured["digest"] != "clone-digest" {
 				t.Fatal("portable config changed", captured)
 			}
 			for _, forbidden := range []string{"bios", "machine", "scsihw", "scsi0", "ide0", "sata0"} {
@@ -114,5 +114,18 @@ func TestCPUAllowlistRejectsBeforeNativeConfiguration(t *testing.T) {
 	_, err := (&Provider{}).check(context.Background(), c, lc.Command{Environment: env, Source: lc.Source{Lab: lc.Lab{Machines: map[string]lc.Machine{"one": {Platform: lc.MachinePlatform{Proxmox: &lc.ProxmoxMachineOptions{CPUType: "host"}}}}}}})
 	if err == nil || !strings.Contains(err.Error(), "cpuType") {
 		t.Fatal(err)
+	}
+}
+
+func TestDesktopUsesCloudKernelSupportedVirtIODisplay(t *testing.T) {
+	m := lc.PlannedMachine{Name: "workstation", Spec: lc.Machine{Access: []string{"ssh", "desktop"}}}
+	cfg := machineConfig(lc.Command{Machine: m}, VMConfig{}, "ip=dhcp")
+	if cfg["vga"] != "virtio" {
+		t.Fatal("desktop lacks the cloud kernel's supported display", cfg)
+	}
+	m.Spec.Access = []string{"ssh"}
+	cfg = machineConfig(lc.Command{Machine: m}, VMConfig{}, "ip=dhcp")
+	if _, changed := cfg["vga"]; changed {
+		t.Fatal("non-desktop base display was overridden")
 	}
 }
