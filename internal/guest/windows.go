@@ -1,7 +1,9 @@
 package guest
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -49,7 +51,9 @@ func windowsUserData(m lc.PlannedMachine, management []string, build bool) (stri
 		Build, Desktop                                        bool
 		NICs                                                  []lc.PlannedNIC
 	}{m.Name, strings.TrimSpace(m.PublicKey), m.HostPrivateKey, m.HostPublicKey, Hosts(m), management, allowed, build, lc.Contains(m.Spec.Access, "desktop"), m.NICs})
+	digest := sha256.Sum256(payload)
 	program := `$ErrorActionPreference='Stop'
+$digest='` + hex.EncodeToString(digest[:]) + `'
 $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('` + base64.StdEncoding.EncodeToString(payload) + `')) | ConvertFrom-Json
 $root='C:\ProgramData\LabCentral'
 New-Item -ItemType Directory -Force -Path $root | Out-Null
@@ -64,6 +68,12 @@ if ($env:COMPUTERNAME -ine $p.Name) {
  New-Item -ItemType File -Force -Path (Join-Path $root 'renamed') | Out-Null
  exit 3010
 }
+# EC2Launch reruns this script at every boot. After the first complete run for this
+# payload, leave OpenSSH alone: stopping sshd would cut active sessions, which
+# Packer's SSH communicator reports as completed commands.
+$done=Join-Path $root 'bootstrapped'
+$rerun=(Test-Path $done) -and ((Get-Content -Raw $done).Trim() -eq $digest)
+if (!$rerun) {
 $cap=Get-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
 if ($cap.State -ne 'Installed') {Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null}
 if (!(Test-Path -LiteralPath 'HKLM:\SOFTWARE\OpenSSH')) {New-Item -Path 'HKLM:\SOFTWARE\OpenSSH' -Force | Out-Null}
@@ -94,6 +104,7 @@ Subsystem sftp sftp-server.exe
 Match Group administrators
  AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys
 '@ | Set-Content -Encoding ascii (Join-Path $ssh 'sshd_config')
+}
 Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
 Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP','LabCentral-*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -Name LabCentral-SSH -DisplayName 'LabCentral management SSH' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 22 -RemoteAddress $p.Management | Out-Null
@@ -118,6 +129,7 @@ Set-Service sshd -StartupType Automatic
 Start-Service sshd
 if ((Get-Service sshd).Status -ne 'Running') {throw 'sshd is not ready'}
 if ($p.Desktop -and (Get-Service dcvserver).Status -ne 'Running') {Start-Service dcvserver}
+Set-Content -Encoding ascii -Path $done -Value $digest
 New-Item -ItemType File -Force -Path (Join-Path $root 'ready') | Out-Null
 `
 	// The outer user-data file contains only a fixed platform script and JSON. persist

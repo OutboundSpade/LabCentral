@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
-	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 )
 
 func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
@@ -80,10 +79,16 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 			`if (!(Test-Path -LiteralPath 'Registry::HKEY_USERS\S-1-5-18\Software\GSettings\com\nicesoftware\dcv\session-management')) {New-Item -Force -Path 'Registry::HKEY_USERS\S-1-5-18\Software\GSettings\com\nicesoftware\dcv\session-management' | Out-Null}`,
 			`New-ItemProperty -Force -Path 'Registry::HKEY_USERS\S-1-5-18\Software\GSettings\com\nicesoftware\dcv\session-management' -Name create-session -PropertyType DWord -Value 0 | Out-Null`,
 			`Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -match '(DCV|NICE)'} | Disable-NetFirewallRule`,
-			`Set-Service dcvserver -StartupType Automatic`, `Start-Service dcvserver`, `Remove-Item -Force 'C:\ProgramData\LabCentral\ready'`)
+			`Set-Service dcvserver -StartupType Automatic`, `Start-Service dcvserver`, `Remove-Item -Force 'C:\ProgramData\LabCentral\ready'`,
+			`Set-Content -Encoding ascii -Path 'C:\ProgramData\LabCentral\boot-before-restart' -Value (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().Ticks`)
 		// Finish platform driver installation before the author uses Windows
 		// servicing. The EC2Launch bootstrap remains idempotent across this reboot.
-		cfg.Provisioners = append(cfg.Provisioners, raw(map[string]any{"type": "windows-restart", "restart_timeout": "20m", "restart_check_command": windows.Command(windows.Ready + windows.DesktopReady)}))
+		// Packer's restart check ignores exit status and counts a session cut by the
+		// shutdown as completed, so it can pass before the reboot. The gate after it
+		// waits for a newer boot and the bootstrap's ready marker; if the shutdown cuts
+		// the gate's session too, Packer retries it after reconnecting.
+		cfg.Provisioners = append(cfg.Provisioners, raw(map[string]any{"type": "windows-restart", "restart_timeout": "20m"}))
+		cfg.Provisioners = append(cfg.Provisioners, raw(map[string]any{"type": "powershell", "max_retries": 10, "pause_before": "10s", "inline": []string{restartGate}, "execute_command": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {{.Path}}"}))
 	}
 	ps(`$env:LABCENTRAL_INPUTS='C:\ProgramData\LabCentral\inputs.json'`,
 		`Set-Location 'C:\ProgramData\LabCentral\build'`,
@@ -108,3 +113,18 @@ func windowsProvisioners(c lc.Command, dir string, cfg Config) (Config, error) {
 	cfg.Provisioners[len(cfg.Provisioners)-1] = raw(last)
 	return cfg, nil
 }
+
+// restartGate waits up to 15 minutes for a boot newer than the one recorded before
+// the restart, a running sshd and DCV, and the bootstrap's ready marker.
+const restartGate = `$ErrorActionPreference='Stop'
+$before=[long](Get-Content -Raw 'C:\ProgramData\LabCentral\boot-before-restart')
+$deadline=(Get-Date).AddMinutes(15)
+while ($true) {
+ $booted=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().Ticks -gt $before
+ $ready=(Test-Path 'C:\ProgramData\LabCentral\ready') -and ((Get-Service sshd).Status -eq 'Running') -and ((Get-Service dcvserver).Status -eq 'Running')
+ if ($booted -and $ready) {break}
+ if ((Get-Date) -gt $deadline) {throw 'Windows did not finish restarting'}
+ Start-Sleep -Seconds 5
+}
+Remove-Item -Force 'C:\ProgramData\LabCentral\boot-before-restart'
+`

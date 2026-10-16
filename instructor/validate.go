@@ -260,8 +260,8 @@ func (b Bundle) validate(src lc.Source) error {
 			seen[t] = true
 		}
 	}
-	if len(b.Scenarios) > 0 && (b.Visibility.Audience == "coaches" || len(b.Reset) == 0) {
-		return invalid("scenarios", "student scenarios require reset")
+	if len(b.Scenarios) > 0 && len(b.Reset) == 0 {
+		return invalid("scenarios", "scenarios require reset")
 	}
 	seen = map[string]bool{}
 	for i, sc := range b.Scenarios {

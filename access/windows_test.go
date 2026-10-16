@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/pscheck"
@@ -59,5 +60,14 @@ func TestWindowsDesktopCredentialMeetsComplexityWithoutReducingEntropy(t *testin
 	linux := desktopPassword("linux")
 	if len(linux) != 48 || strings.Trim(linux, "0123456789abcdef") != "" {
 		t.Fatal("Linux credential generation changed")
+	}
+}
+
+func TestDesktopBudgetsLeaveLinuxUnchanged(t *testing.T) {
+	if desktopOpenBudget("linux") != 2*time.Minute || desktopCloseBudget("linux") != 20*time.Second {
+		t.Fatal("Linux budgets changed")
+	}
+	if desktopOpenBudget("windows") != 10*time.Minute || desktopCloseBudget("windows") != 2*time.Minute {
+		t.Fatal("Windows budgets truncate cold logon/logoff")
 	}
 }

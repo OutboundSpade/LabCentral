@@ -328,6 +328,6 @@ func putBrowserTemplateSource(t *testing.T, s *Service, id string) {
 // Fail at the engine boundary after real planning and durable job admission.
 type browserImageBuildFailure struct{ *imageTestEngine }
 
-func (browserImageBuildFailure) Build(context.Context, lc.Plan) ([]lc.ImageRecord, error) {
+func (browserImageBuildFailure) BuildWithRecovery(context.Context, lc.Plan) ([]lc.ImageRecord, error) {
 	return nil, fmt.Errorf("Fixture image build failure")
 }

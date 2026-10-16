@@ -8,8 +8,8 @@ client on the same private network.
 - **Breaks:** stop the W3SVC service, or stop the default web site.
 - **Checks:** the page is served locally (a PowerShell check on the server) and from
   the client (an Ansible check using `curl`).
-- **Practice:** two recovery stages, and a scenario whose two variants apply one break
-  each.
+- **Practice:** a healthy-page baseline stage and four recovery stages. A scenario
+  has two variants, each applying one break and checking it from Windows and Linux.
 
 ## Run it
 

@@ -331,7 +331,9 @@
     try {
       await launchDesktop(
         endpoint(view.lab.id, "access"),
-        "Starting your practice desktop and its lesson panel…",
+        view.machines?.some((m) => m.os === "windows" && m.access.includes("desktop"))
+          ? "Starting your Windows desktop and its lesson panel. This can take a few minutes…"
+          : "Starting your practice desktop and its lesson panel…",
       );
     } catch (e) {
       if (s === scope) error = (e as Error).message;

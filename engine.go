@@ -122,7 +122,15 @@ func (e *Engine) Images(ctx context.Context) ([]ImageRecord, error) {
 	return out, nil
 }
 func (e *Engine) Build(ctx context.Context, p Plan) ([]ImageRecord, error) {
-	return e.build(ctx, p)
+	return e.build(ctx, p, false)
+}
+
+// BuildWithRecovery builds or reuses each image, reconciling retained attempts first.
+// Only confirmed-absent attempts are abandoned and replaced. The cache-key lock
+// spans reconciliation, abandonment and the new attempt across clients/processes.
+// Unknown outcomes retain their original intent and identifiers for another retry.
+func (e *Engine) BuildWithRecovery(ctx context.Context, p Plan) ([]ImageRecord, error) {
+	return e.build(ctx, p, true)
 }
 
 func (e *Engine) lockImages(ctx context.Context, p Plan) (func(), error) {
@@ -167,7 +175,7 @@ func inputMap(in []InputValue) map[string]string {
 	}
 	return m
 }
-func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
+func (e *Engine) build(ctx context.Context, p Plan, recoverFailed bool) ([]ImageRecord, error) {
 	if err := verifyPlan(p); err != nil {
 		return nil, err
 	}
@@ -196,7 +204,7 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 				failures[n] = ctx.Err()
 				return
 			}
-			results[n], failures[n] = e.buildImage(ctx, p, im)
+			results[n], failures[n] = e.buildImageWithRecovery(ctx, p, im, recoverFailed)
 		})
 	}
 	workers.Wait()
@@ -208,22 +216,38 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 }
 
 func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]ImageRecord, error) {
+	return e.buildImageWithRecovery(ctx, p, im, false)
+}
+
+func (e *Engine) buildImageWithRecovery(ctx context.Context, p Plan, im PlannedImage, recoverFailed bool) ([]ImageRecord, error) {
 	ctx = faultinject.WithOperation(ctx, p.Environment.Platform, "image.build")
 	unlock, err := e.state.LockKeyContext(ctx, "image:"+im.CacheKey)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
+	return e.buildImageLocked(ctx, p, im, recoverFailed)
+}
+
+// Caller holds the image's cache-key lock, including through a replacement attempt.
+func (e *Engine) buildImageLocked(ctx context.Context, p Plan, im PlannedImage, recoverFailed bool) ([]ImageRecord, error) {
 	var cleanup Command
 	if err := e.state.Get(ctx, "image-cleanup", im.CacheKey, &cleanup); err == nil {
-		return nil, problem(RecoveryRequired, im.CacheKey, "image cleanup is pending; confirm removal before rebuilding")
+		if !recoverFailed || cleanup.Action != "image.abandon" {
+			return nil, problem(RecoveryRequired, im.CacheKey, "image cleanup is pending; confirm removal before rebuilding")
+		}
+		// Resume durable abandonment after an interrupted retry. This cannot be a
+		// published-image removal; abandonBuildLocked checks publication again.
+		if err := e.abandonBuildLocked(ctx, im.CacheKey); err != nil {
+			return nil, err
+		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
 	var images []ImageRecord
 	var cached ImageRecord
-	err = e.state.Get(ctx, "image", im.CacheKey, &cached)
+	err := e.state.Get(ctx, "image", im.CacheKey, &cached)
 	if err == nil {
 		r, er := e.execute(ctx, Command{Action: "image.read", Owner: cached.Resource.Owner, Environment: p.Environment, Prior: cached.Resource}, e.observer)
 		if er != nil {
@@ -239,6 +263,7 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 	}
 	var cmd Command
 	err = e.state.Get(ctx, "build", im.CacheKey, &cmd)
+	pending := err == nil
 	if errors.Is(err, sql.ErrNoRows) {
 		owner := "build-" + id()
 		cmd = Command{Action: "image.build", Operation: owner, Owner: owner, Environment: p.Environment, Image: im, Source: p.Source, Inputs: p.Inputs}
@@ -273,6 +298,15 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 	r, err := e.invoke(ctx, cmd)
 	if err != nil {
 		return images, err
+	}
+	if r.Absent {
+		if recoverFailed && pending {
+			if err := e.abandonBuildLocked(ctx, im.CacheKey); err != nil {
+				return images, err
+			}
+			return e.buildImageLocked(ctx, p, im, false)
+		}
+		return images, problem(RecoveryRequired, im.Name, "incomplete build resources were cleaned; abandon the failed attempt before rebuilding")
 	}
 	if !r.Resource.Complete {
 		return images, problem(RecoveryRequired, im.Name, "build is incomplete")
@@ -967,8 +1001,12 @@ func (e *Engine) AbandonBuild(ctx context.Context, key string) error {
 		return err
 	}
 	defer unlock()
+	return e.abandonBuildLocked(ctx, key)
+}
+
+func (e *Engine) abandonBuildLocked(ctx context.Context, key string) error {
 	var c Command
-	err = e.withAllocationLock(ctx, func() error {
+	err := e.withAllocationLock(ctx, func() error {
 		var im ImageRecord
 		if err := e.state.Get(ctx, "image", key, &im); err == nil {
 			return problem(Invalid, key, "published image: use image remove")

@@ -330,7 +330,10 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 			if err = r.Cleanup(ctx, c); err != nil {
 				return lc.Result{}, err
 			}
-			return lc.Result{}, fmt.Errorf("recovery_required: incomplete build resources were cleaned; remove the failed attempt with image abandon before rebuilding")
+			// Absence is a positive reconciliation result, not an inference from
+			// a failed Packer run. Callers may replace this attempt only after
+			// abandonment confirms all remaining cleanup.
+			return lc.Result{Absent: true}, nil
 		}
 		if err = stageImageSource(c, dir); err != nil {
 			return lc.Result{}, err

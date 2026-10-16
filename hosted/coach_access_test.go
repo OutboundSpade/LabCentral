@@ -189,7 +189,11 @@ func TestCoachSSHRelayBytesAndPinnedIdentity(t *testing.T) {
 	if os.Getenv("LABCENTRAL_COACH_SSH_TEST") != "1" {
 		t.Skip("set LABCENTRAL_COACH_SSH_TEST=1 in an isolated test namespace permitting loopback SSH")
 	}
-	listener, err := net.Listen("tcp", "127.0.0.3:22")
+	testCoachSSHRelay(t, "linux")
+}
+func TestCoachWindowsSSHRelayBytesAndPinnedIdentity(t *testing.T) { testCoachSSHRelay(t, "windows") }
+func testCoachSSHRelay(t *testing.T, osFamily string) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal("loopback SSH fixture port unavailable: ", err)
 	}
@@ -216,7 +220,11 @@ func TestCoachSSHRelayBytesAndPinnedIdentity(t *testing.T) {
 	}
 	material := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: encoded})
 	config := &ssh.ServerConfig{PublicKeyCallback: func(meta ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-		if meta.User() != "lab" || !bytes.Equal(key.Marshal(), credentialSigner.PublicKey().Marshal()) {
+		user := "lab"
+		if osFamily == "windows" {
+			user = "Administrator"
+		}
+		if meta.User() != user || !bytes.Equal(key.Marshal(), credentialSigner.PublicKey().Marshal()) {
 			return nil, fmt.Errorf("unauthorized fixture key")
 		}
 		return nil, nil
@@ -293,7 +301,16 @@ func TestCoachSSHRelayBytesAndPinnedIdentity(t *testing.T) {
 	if err = s.Store.Put(context.Background(), "session", v.ID, v); err != nil {
 		t.Fatal(err)
 	}
-	s.Engine = &pinnedCoachEngine{Engine: s.Engine, src: src, key: material, host: string(ssh.MarshalAuthorizedKey(hostSigner.PublicKey()))}
+	if osFamily == "windows" {
+		for name, image := range src.Lab.Images {
+			image.OS = "windows"
+			src.Lab.Images[name] = image
+		}
+		if err = s.Store.Put(context.Background(), "source", "pinned", src); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Engine = &pinnedCoachEngine{Engine: s.Engine, src: src, key: material, host: string(ssh.MarshalAuthorizedKey(hostSigner.PublicKey())), os: osFamily, address: listener.Addr().String()}
 	app := httptest.NewUnstartedServer(nil)
 	s.Config.Origin = "https://" + app.Listener.Addr().String()
 	app.Config.Handler = s.Handler()
@@ -345,13 +362,29 @@ func TestCoachSSHRelayBytesAndPinnedIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 		var window struct{ Cols, Rows, Width, Height uint32 }
-		select {
-		case payload := <-windows:
-			if ssh.Unmarshal(payload, &window) != nil || window.Cols != 80 || window.Rows != 25 {
-				t.Fatal("window change", window)
+		if osFamily == "windows" {
+			// A following input echo proves the prior control frame was consumed.
+			if err = connection.Write(ctx, websocket.MessageBinary, []byte("after-resize\r")); err != nil {
+				t.Fatal(err)
 			}
-		case <-ctx.Done():
-			t.Fatal("resize missing")
+			_, output, err = connection.Read(ctx)
+			if err != nil || !bytes.Contains(output, []byte("after-resize")) {
+				t.Fatal("Windows input after resize", string(output), err)
+			}
+			select {
+			case <-windows:
+				t.Fatal("Windows console received resize signal")
+			default:
+			}
+		} else {
+			select {
+			case payload := <-windows:
+				if ssh.Unmarshal(payload, &window) != nil || window.Cols != 80 || window.Rows != 25 {
+					t.Fatal("window change", window)
+				}
+			case <-ctx.Done():
+				t.Fatal("resize missing")
+			}
 		}
 		if machine == "workstation" {
 			if err = connection.Write(ctx, websocket.MessageBinary, []byte("exit\r")); err != nil {
@@ -411,13 +444,14 @@ func TestCoachSSHRelayBytesAndPinnedIdentity(t *testing.T) {
 
 type pinnedCoachEngine struct {
 	Engine
-	src  lc.Source
-	key  []byte
-	host string
+	src         lc.Source
+	key         []byte
+	host        string
+	os, address string
 }
 
 func (e *pinnedCoachEngine) WithSSHMaterial(ctx context.Context, instance, machine string, fn func(lc.Instance, lc.PlannedMachine, lc.Resource, []byte) error) error {
-	return fn(lc.Instance{ID: instance, Status: "ready", Plan: lc.Plan{Source: e.src}}, lc.PlannedMachine{Name: machine, Address: "10.77.0.10", HostPublicKey: e.host}, lc.Resource{Kind: "machine", Name: machine, Owner: instance, Address: "127.0.0.3", PrivateAddress: "10.77.0.10"}, e.key)
+	return fn(lc.Instance{ID: instance, Status: "ready", Plan: lc.Plan{Source: e.src}}, lc.PlannedMachine{Name: machine, Address: "10.77.0.10", HostPublicKey: e.host, OS: e.os}, lc.Resource{Kind: "machine", Name: machine, Owner: instance, Address: e.address, PrivateAddress: "10.77.0.10"}, e.key)
 }
 
 func TestCoachGuestBindsPrivateAddressAndOwnership(t *testing.T) {

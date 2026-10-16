@@ -54,11 +54,24 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 			if strings.Contains(string(data), "shell-local") || strings.Contains(string(data), "ansible-local") || strings.Contains(string(data), "AWS_SECRET_ACCESS_KEY") || strings.Contains(string(data), "images/build.ps1") {
 				t.Fatal("author values entered host/Packer templates")
 			}
-			install, restart, author, sysprep := -1, -1, -1, -1
+			install, restart, gate, author, sysprep := -1, -1, -1, -1, -1
 			for i, provisioner := range cfg.Provisioners {
 				text := string(provisioner)
 				if strings.Contains(text, `"type":"windows-restart"`) {
 					restart = i
+				}
+				if restart >= 0 && gate < 0 && i > restart && strings.Contains(text, `"type":"powershell"`) {
+					gate = i
+					// Packer counts sessions cut by the shutdown as completed, so the first step
+					// after the restart must wait for a newer boot and be retried.
+					var g struct {
+						MaxRetries int      `json:"max_retries"`
+						Inline     []string `json:"inline"`
+					}
+					_ = json.Unmarshal(provisioner, &g)
+					if g.MaxRetries < 1 || len(g.Inline) != 1 || g.Inline[0] != restartGate || !strings.Contains(restartGate, "LastBootUpTime") || !strings.Contains(restartGate, `LabCentral\ready`) {
+						t.Fatal("first step after restart does not wait for a newer boot and readiness")
+					}
 				}
 				if strings.Contains(text, "Get-FileHash") {
 					install = i
@@ -82,7 +95,7 @@ func TestWindowsPackerUsesGuestOnlyPowerShell(t *testing.T) {
 					}
 				}
 			}
-			if author < 0 || sysprep <= author || (desktop && (install < 0 || restart <= install || restart >= author)) || (!desktop && install >= 0) {
+			if author < 0 || sysprep <= author || (desktop && (install < 0 || restart <= install || gate != restart+1 || gate >= author)) || (!desktop && install >= 0) {
 				t.Fatal("incorrect guest build order", install, author, sysprep)
 			}
 			var inputs map[string]any

@@ -272,7 +272,11 @@ sequenceDiagram
   `C:\ProgramData\LabCentral\build\` and `$env:LABCENTRAL_INPUTS` names the typed inputs
   file. For desktop images, the platform installs the DCV MSI pinned by
   `build.windowsDCVURL` and `build.windowsDCVSHA256` (checksum and Authenticode
-  signature verified) before the author script. Afterwards it removes build files,
+  signature verified) and reboots before the author script. Packer's restart check
+  ignores exit status and counts a session cut by the shutdown as a pass, so a retried
+  gate waits for a newer boot and the bootstrap's ready marker before any author code.
+  The bootstrap reruns at every boot but leaves OpenSSH running after its first
+  complete run for the same payload. Afterwards it removes build files,
   inputs, keys and DCV/SSH identities, then runs EC2Launch sysprep with shutdown. Only
   that final step accepts OpenSSH's shutdown status 2300218.
 - **Proxmox builds** clone the base and keep its root disk; the base needs enough disk
@@ -503,6 +507,9 @@ restored one starts.
   discovered, never blindly replayed. Proxmox task locks and recorded tasks must settle
   before cleanup; unknown empty discovery retains the attempt and its allocations.
 - Cache-key file locks coordinate build, reuse, abandonment and removal across clients.
+  `BuildWithRecovery` holds one key's lock through reconciliation, abandonment after
+  confirmed absence and its replacement attempt; active builds finish before recovery
+  can inspect them. Unknown outcomes retain intent and allocations across retries/restarts.
   Deployment builds or reuses images first, then takes the image locks in sorted order
   and a short allocation fence to save references. Image removal uses the same fence to
   check for references.
@@ -621,8 +628,10 @@ completion wake the dispatcher, with a five-second fallback tick.
 | Native operations | 8 | Machine and gateway lifecycle and builds, across jobs |
 | SSH operations | 24 | Guest steps, terminals, desktops and readiness, across jobs |
 | Job timeout | 120 min | Allocation deadlines can stop jobs sooner |
+| Preparation | Linux 30 / Windows or mixed 45 min | Per allocation, configurable; job and allocation deadlines still apply |
+| Hosted desktop open | Linux 90 / Windows 600 sec | Configurable; provider ceiling Linux 120 / Windows 600 sec |
 
-Worker and engine limits accept 1–32, aggregate budgets 1–64 and the timeout 1–1440
+Worker concurrency and engine limits accept 1–32, aggregate budgets 1–64 and job/prepare timeouts 1–1440
 minutes. Ending a meeting cancels overlapping work but leaves unrelated builds running.
 Cleanup runs in bounded pools, records each result, and keeps unknown outcomes
 retryable.
@@ -649,14 +658,21 @@ retryable.
 The template repository is fetched with a read-only deploy key and pinned GitHub host
 keys. The importer finds `templates/*/lab.yaml`, pins the commit, validates the portable
 and private source, and snapshots it. Each template is imported in its own transaction,
-and a failing directory is reported to admins without blocking the others. A revision's
+and a failing directory is reported to admins without blocking the others. Planning
+requires each image's OS-matched base, Windows-capable build/runtime instance types and
+Windows DCV installer pins before build admission. A Linux-only environment remains
+valid. A revision's current capability problem is exposed to admins through `problem`
+and the existing template problem panel without failing the entire catalog; saved
+image identities still fence cleanup if planning becomes impossible. A revision's
 identity is the repository commit plus the directory, so any new commit imports new
 revisions; meetings and attempts keep their pins.
 
 Image operations save cache keys and operation identity before any effect. Removing a
 revision's images blocks new meetings on it, keeps images shared with other built
-revisions and images used by retained labs, and cleans unpublished builds. Uncertain
-cleanup blocks rebuilding until reconciled.
+revisions and images used by retained labs, and cleans unpublished builds. Hosted builds,
+including **Retry build**, reconcile pending attempts and replace them only after
+confirmed cleanup, keeping already-built sibling images. Uncertain cleanup retains
+retryable intent and reports operator guidance in the failed template job.
 
 "Remove unused images" (`POST /api/admin/images/prune`, admin and CSRF) queues a durable
 `prune-images` job. It keeps images needed by each template's latest revision, open
@@ -664,6 +680,69 @@ meetings, unfinished personal practice (including pending cleanup) and builds in
 progress, and removes the rest, including orphaned keys left by rebuilds. Each image
 gets an outcome: removed, skipped because a retained lab uses it, or unknown and
 retryable. Revision readiness is then reconciled with the remaining images.
+
+### Windows desktop holders and terminals
+
+The library still uses opaque per-principal access identities. Hosted policy adds a
+single holder for each meeting Windows allocation/machine; Linux keeps independent
+per-user desktops and personal attempts have only one owner. A normal conflicting
+open returns authorized HTTP 409 `desktop_held` plus the holder's display name.
+Teammates can explicitly take over their own team's desktop; coaches/admins use a
+ready team in the current meeting under the existing privileged group policy.
+There is no separate coach role or per-meeting coach enrollment.
+
+```mermaid
+sequenceDiagram
+    participant R as Requester
+    participant H as Hosted SQLite and machine fence
+    participant P as Library and provider
+    R->>H: Authorized explicit take-over
+    H->>H: Persist old holder and handoff intent
+    H->>P: Close old access, retain shared profile
+    alt Revocation confirmed
+      P-->>H: Absent
+      H->>H: Commit displacement and remove old holder
+      H->>H: Persist new holder and opening generation
+      H->>P: Open requester access
+      H-->>R: One-use launch ticket after authorization recheck
+    else Unknown or failed revoke
+      H-->>R: desktop_outcome_unknown, Retry-After
+      H->>H: Keep old holder and cleanup intent
+    end
+```
+
+A per-machine lock spans native revoke/open, while identity and relay locks are never
+held across native work. Reserve and confirmed cleanup atomically update the holder
+with the existing desktop intent. Recovery closes unconfirmed access before another
+grant, including a restart between revoke and grant. It never automatically grants a
+request whose caller disappeared. Profile retention uses existing library options:
+Windows disables `lab`, logs off the console, terminates its processes and keeps the
+profile. Saved files survive; unsaved applications do not.
+
+Displacement is durable, bounded by the old access expiry, and readable only by a
+currently authorized session in the same allocation. `/api/me`, dedicated app status
+routes and desktop-origin `/status` expose holder/take-over state. Displaced cookie
+observations store only a cookie digest and authorization record, never credentials.
+Old launch tickets and relay transports become unusable before another grant. The
+Windows browser credential response pairs username `lab` with DCV session `console`.
+Machine OS is exposed in template, personal attempt, meeting and coach machine views.
+The lab page offers a confirmed take over or take back, the desktop page names who
+took over, and coaches open or take over team desktops from the coach console.
+
+Coach terminals use pinned OpenSSH and `SSHUser()` (`Administrator` on Windows),
+request an initial PTY and launch the platform-configured PowerShell default shell.
+They validate and ignore resize frames for Windows while retaining Linux window-change
+behavior. Existing current-meeting checks, source/resource pins, group refresh,
+transport revocation and shell duration limits apply unchanged.
+
+Windows guest readiness already allows 15 minutes (Linux: 5). Windows console startup
+allows 5 minutes, open 10 minutes and logoff cleanup 2 minutes; Linux remains at
+25 seconds, 2 minutes in the provider and 20 seconds respectively. Hosted open uses
+`desktop.openSeconds` / `desktop.windowsOpenSeconds`; preparation uses
+`worker.prepareTimeoutMinutes` / `worker.windowsPrepareTimeoutMinutes`. These budgets
+remain bounded by job and allocation deadlines. Unknown DCV state never creates a
+replacement session. Qualification budgets remain Linux 10 / Windows 20 minutes.
+Browser launches retry for up to five minutes while the server asks them to.
 
 ### Instructor material and guest programs
 
@@ -673,7 +752,10 @@ excludes private material without changing author files.
 
 - **Visibility.** `visibility.audience` is `students` or `coaches`; only coach templates
   may hide machines. Coach revisions are excluded from student catalogs, views, practice
-  and downloads, and missing privacy metadata fails closed. Hidden-machine templates
+  and downloads. Coaches can create owner-only personal attempts from private revisions;
+  request policy uses their verified session role and background preparation reads the
+  last verified persisted user role. Role loss blocks disclosure and guest work; cleanup
+  remains available. Missing privacy metadata fails closed. Hidden-machine templates
   require visible images to list their build files (excluding `lab.yaml` and private
   programs) and visible machines to use explicit `hostnamePeers`. Validation checks
   structure, not file contents.
@@ -787,6 +869,7 @@ request capture, browser fixtures and local load models establish local behavior
 | AWS Windows guests (CLI/library) | Mixed IIS lab: both images built and boot-qualified; sysprep and certificate sanitization; private deployment; coach and student SSH; firewall, hosts and routes; DCV console with browser rendering, reconnect and revocation; break/check/repair for every stage and scenario variant; recovery after a killed destroy; image removal with confirmed cleanup | Hosted Windows sign-in and release acceptance; typed desktop input; cohorts; full failure matrix |
 | Hosted identity and meetings | Real OIDC, revocation, seat switching, retained workspaces; a meeting of 4 teams × 3 students with 12 concurrent desktops, a break and checks on every team | Meetings larger than 4 × 3 |
 | Hosted practice and scenarios | Individual attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts; full weekly quota exhaustion |
+| Hosted Windows | None for this hosted implementation; local conflict, authorization, ordering, restart, race, OS-budget, capability and fake OpenSSH tests only | Real OIDC; typed Windows desktop input; shared holder conflict/take-over/take-back; coach PowerShell; lesson panel; retained reopen; scoreboard; cleanup and image removal; cohorts |
 | Hosted desktops and coach terminal | Terminal input, resize, reconnect and revocation; cold and rebooted desktops; desktop browser launch | General launch latency |
 | Proxmox setup and lifecycle | PVE 9.2 with directory storage: clean setup, guest-agent cold restart, idempotent rerun, environment check, the single/web-database/workstation examples, image removal and teardown; killed deploy/build/destroy, native clone/template/delete response loss, concurrent clients and changed ownership; confirmed disk cleanup after a native VM deletion reported only a disk-free warning | Full native response-loss, stale-ownership and interruption matrix; capture-receipt and publication races; other storage and firmware combinations |
 | Proxmox networking | Single, web/database and two-network router labs; pinned jump SSH, requester-specific names, one-sided Internet egress, blocked LAN/gateway destinations after forced defaults, concurrent-lab L2 isolation; gateway reboot and policy restoration | Static management pools; four-network layouts |

@@ -25,6 +25,7 @@
   } = $props();
   const meta = $derived(t.library);
   const count = $derived(scenarios(t).length);
+  const windows = $derived(t.machines.some((m) => m.os === "windows"));
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 </script>
 
@@ -41,10 +42,11 @@
     <p class="line-clamp-2 min-h-[2lh] text-sm leading-relaxed text-base-content/70">
       {t.description || "No description."}
     </p>
-    {#if t.coachOnly || meta?.difficulty || meta?.estimatedMinutes || meta?.category}<div
+    {#if t.coachOnly || windows || meta?.difficulty || meta?.estimatedMinutes || meta?.category}<div
         class="flex flex-wrap gap-1.5"
       >
       {#if t.coachOnly}<span class="badge badge-sm badge-ghost">Coach-only</span>{/if}
+      {#if windows}<span class="badge badge-sm badge-ghost">Windows</span>{/if}
       {#if meta?.difficulty}<span class="badge badge-sm badge-ghost"
           ><Gauge size={12} aria-hidden="true" />{difficultyLabel(meta.difficulty)}</span
         >{/if}

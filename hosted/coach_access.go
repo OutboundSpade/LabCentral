@@ -62,7 +62,7 @@ func (s *Service) coachMachines(w http.ResponseWriter, r *http.Request, v Sessio
 		if spec, declared := src.Lab.Machines[m.Name]; !declared || !lc.Contains(spec.Access, "ssh") {
 			continue
 		}
-		out.Machines = append(out.Machines, Machine{m.Name, inst.Status, lc.Contains(m.Spec.Access, "desktop")})
+		out.Machines = append(out.Machines, Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, Desktop: lc.Contains(m.Spec.Access, "desktop")})
 	}
 	writeJSON(w, 200, out)
 }
@@ -214,7 +214,7 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 	}
 	defer release()
 	err = engine.WithSSHMaterial(ctx, team.InstanceID, name, func(inst lc.Instance, m lc.PlannedMachine, res lc.Resource, key []byte) error {
-		if !s.coachAuthorized(ctx, v, team, meeting) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) {
+		if !s.coachAuthorized(ctx, v, team, meeting) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) || lc.OSFamily(m.OS) != lc.OSFamily(src.Lab.Images[spec.Image].OS) {
 			cancel(errCoachRevoked)
 			return errCoachRevoked
 		}
@@ -335,6 +335,10 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 					var resize coachResize
 					if json.Unmarshal(frame.data, &resize) != nil || resize.Type != "resize" || !coachDimensions(resize.Cols, resize.Rows) {
 						return errCoachProtocol
+					}
+					// Windows OpenSSH consoles keep the initial PTY size.
+					if m.OS == "windows" {
+						continue
 					}
 					if err := terminal.WindowChange(resize.Rows, resize.Cols); err != nil {
 						return err

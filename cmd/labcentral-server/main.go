@@ -66,17 +66,21 @@ func run() error {
 		if err != nil {
 			return err
 		}
+		if err = hosted.ValidateHostedEnvironment(env); err != nil {
+			return err
+		}
 		return json.NewEncoder(os.Stdout).Encode(struct {
 			MemberGroup        string                  `json:"memberGroup"`
 			AdminGroup         string                  `json:"adminGroup"`
 			Aggregate          hosted.AggregateOptions `json:"aggregate"`
 			Engine             lc.EngineOptions        `json:"engine"`
 			Worker             hosted.WorkerOptions    `json:"worker"`
+			Desktop            hosted.DesktopOptions   `json:"desktop"`
 			WeeklyCloudMinutes int                     `json:"weeklyCloudMinutes"`
 			Note               string                  `json:"note"`
 			Gateway            lc.AWSGatewayConfig     `json:"awsGateway"`
 			AllowEgress        bool                    `json:"allowEgress"`
-		}{c.MemberGroup, c.AdminGroup, c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), func() int {
+		}{c.MemberGroup, c.AdminGroup, c.Aggregate.Effective(), c.Engine.Effective(), c.Worker.Effective(), c.Desktop.Effective(), func() int {
 			if c.WeeklyCloudMinutes == 0 {
 				return 180
 			}

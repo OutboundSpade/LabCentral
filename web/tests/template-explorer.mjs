@@ -436,9 +436,10 @@ try {
     emptyCatalog=false;
     await page.goto(app+"/labs/?template=coach");
     await page.getByText("Coach-only",{exact:true}).waitFor();
-    assert(await page.getByRole("button",{name:"Start practice: Coach support"}).isDisabled());
-    assert(await page.getByRole("button",{name:"New scenario: Coach drill"}).isDisabled());
-    await page.getByText("Coach-only revisions are previews for instructors.",{exact:true}).first().waitFor();
+    // Coaches may practice coach-only revisions privately; students never list them.
+    assert(!await page.getByRole("button",{name:"Start practice: Coach support"}).isDisabled());
+    assert(!await page.getByRole("button",{name:"New scenario: Coach drill"}).isDisabled());
+    assert.equal(await page.getByText("Coach-only revisions are previews for instructors.",{exact:true}).count(),0);
     await page.goto(app+"/labs/?template=network");
     const administration=page.getByRole("region",{name:"Administration",exact:true});
     await administration.getByRole("button",{name:"Build images",exact:true}).waitFor();

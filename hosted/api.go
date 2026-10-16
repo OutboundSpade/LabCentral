@@ -55,7 +55,7 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 						if !v.User.Admin && lc.Contains(policy.Visibility.HiddenMachines, m.Name) {
 							continue
 						}
-						out.Lab.Machines = append(out.Lab.Machines, Machine{m.Name, inst.Status, lc.Contains(m.Spec.Access, "desktop")})
+						out.Lab.Machines = append(out.Lab.Machines, Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, Desktop: lc.Contains(m.Spec.Access, "desktop")})
 					}
 				}
 			}
@@ -70,6 +70,19 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 			}
 		}
 		s.desktopMu.Unlock()
+		machine, e := s.desktopMachine(ctx, out.Meeting.Template)
+		if e == nil {
+			os, e := s.desktopOS(ctx, *out.Lab.Team, machine)
+			if e == nil && os == "windows" {
+				a := accessRecord{ID: digest(out.Lab.Team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24], UserID: v.User.ID, TeamID: out.Lab.Team.ID, InstanceID: out.Lab.Team.InstanceID, Machine: machine, OS: os}
+				state, e := s.desktopState(ctx, a)
+				if e != nil {
+					writeError(w, 503, "Desktop state is unavailable.")
+					return
+				}
+				out.Lab.DesktopState = &state
+			}
+		}
 	}
 	writeJSON(w, 200, out)
 }
@@ -153,6 +166,11 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	}
 	if err == nil {
 		out.Templates, err = s.templates(ctx)
+		for _, t := range out.Templates {
+			if t.Problem != "" {
+				out.ImportFailures = append(out.ImportFailures, TemplateImportFailure{Directory: t.Name + " (" + t.ID + ")", Error: t.Problem})
+			}
+		}
 	}
 	if err == nil && s.Engine != nil {
 		summary, _, inventoryErr := s.imageInventory(ctx)
@@ -371,7 +389,7 @@ func (s *Service) plan(ctx context.Context, id string) (lc.Plan, error) {
 	if e := s.Store.Get(ctx, "source", id, &src); e != nil {
 		return lc.Plan{}, e
 	}
-	return lc.PlanLab(src, s.env, nil)
+	return s.planSource(src)
 }
 func (s *Service) readyTeam(ctx context.Context, user string) (Team, *Meeting, error) {
 	m, e := s.Store.Meeting(ctx)

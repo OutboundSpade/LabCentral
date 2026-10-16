@@ -149,8 +149,7 @@
     });
   });
   const practicable = (t: LibraryTemplate) => !baselineBlocked(t);
-  const randomized = (t: LibraryTemplate) =>
-    !t.coachOnly && scenarioList(t).length > 0;
+  const randomized = (t: LibraryTemplate) => scenarioList(t).length > 0;
   // One card per template name, showing its newest revision.
   const latest = $derived(
     [
