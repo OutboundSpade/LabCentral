@@ -68,6 +68,22 @@ func (s *Service) startPracticeDecision(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 	}
+	// A repeated start is idempotent and already owns its reservation.
+	existing, err := s.Store.activePractice(r.Context(), v.User.ID)
+	if err != nil {
+		writeError(w, 503, "Capacity inventory is unavailable.")
+		return
+	}
+	if existing == nil {
+		size, e := s.revisionCapacity(r.Context(), p.Template, 1)
+		if e == nil {
+			e = s.checkCapacity(r.Context(), size)
+		}
+		if e != nil {
+			writeError(w, 409, e.Error())
+			return
+		}
+	}
 	run, err := s.Store.reservePractice(r.Context(), v.User.ID, p.ID, s.weeklyMinutes(), time.Now().UTC())
 	if err != nil {
 		writeError(w, 409, err.Error())
@@ -201,6 +217,9 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 		if _, e := s.scenarioIntent(ctx, run, p, src); e != nil {
 			return e
 		}
+	}
+	if err = s.Store.atomic(ctx, func(ctx context.Context) error { return s.checkCapacity(ctx, SiteCapacity{}) }); err != nil {
+		return err
 	}
 	ctx, prepareCancel := context.WithTimeout(ctx, s.prepareTimeout(plan))
 	defer prepareCancel()

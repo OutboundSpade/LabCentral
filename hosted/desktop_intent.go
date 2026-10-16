@@ -197,6 +197,13 @@ func (s *Service) cleanupDesktopLocked(ctx context.Context, id string, inactiveO
 		d.cancel()
 		delete(s.desktops, id)
 	}
+	// Deterministic access IDs can be reopened. A revoked generation must
+	// never lend an unused launch ticket to that later grant.
+	for ticket, launch := range s.tickets {
+		if launch.AccessID == id {
+			delete(s.tickets, ticket)
+		}
+	}
 	if !busy {
 		if s.accessFlights == nil {
 			s.accessFlights = map[string]string{}
@@ -324,6 +331,11 @@ func (s *Service) forgetDestroyedDesktops(ctx context.Context, instance string) 
 			if d := s.desktops[a.ID]; d != nil {
 				d.cancel()
 				delete(s.desktops, a.ID)
+			}
+			for ticket, launch := range s.tickets {
+				if launch.AccessID == a.ID {
+					delete(s.tickets, ticket)
+				}
 			}
 			s.desktopMu.Unlock()
 			return s.Store.atomic(ctx, func(ctx context.Context) error {

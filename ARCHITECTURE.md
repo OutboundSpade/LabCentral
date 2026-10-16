@@ -693,11 +693,45 @@ progress, and removes the rest, including orphaned keys left by rebuilds. Each i
 gets an outcome: removed, skipped because a retained lab uses it, or unknown and
 retryable. Revision readiness is then reconciled with the remaining images.
 
-### Windows desktop holders and terminals
+### Hosted Proxmox and site capacity
+
+Each installation has one platform environment and independent identity, state,
+app/desktop origins and native allocation namespace. A Proxmox server runs on the
+management LAN, reaching per-lab gateways and build guests directly. It uses the
+library's guided setup, internal bridge and pinned two-hop SSH without hosted
+policy entering the library or portable types. `deploy/` provides a Linux systemd
+unit and a two-origin Caddy example; the server archive contains the provider, CLI,
+static UI and embedded noVNC. Proxmox does not require the DCV SDK.
+
+Optional `capacity.vCPU` and `capacity.memoryMiB` bound durable reservations.
+Serialized hosted database decisions admit a meeting (all teams, including waiting
+teams), or a practice run, together with its reservation. Counts are derived from
+pinned source and retained engine inventory, deduplicated by allocation ID, and
+include gateways. Queued, failed and ending allocations remain counted until native
+absence is confirmed. Workers recheck the ceiling before preparation, including old
+queued jobs after restart/configuration changes. Builds persist a separate temporary
+reservation before queueing; Proxmox reserves 3 CPU / 4864 MiB per parallel image
+(builder or qualifier plus gateway), retained after uncertain failure until successful
+retry or cleanup. Weekly practice minutes remain independent. The ceiling is admission
+policy, not provider free-capacity discovery; host/server headroom is operator policy.
+
+Proxmox browser consoles reuse the authenticated provider relay and bundled noVNC.
+Native `vncproxy` tickets are refreshed for every connection; the relay performs RFB
+VNC authentication server-side, presenting RFB 3.8 None only inside the authenticated
+browser WebSocket. API tokens, native ticket passwords and endpoint queries never
+reach the browser. Browser credential responses contain only the generation-fenced
+guest account, which signs in at the guest greeter. Retained workspaces terminate and
+lock on revocation; CLI accounts are removed. Reopen obtains a fresh native connection.
+The existing one-use launch POST, exact Host/Origin checks, HttpOnly cookie, 20-second
+revalidation, transport cancellation, displaced status and lesson routes are shared
+with DCV. noVNC supports scaling, guest resize, full screen and clipboard text when
+the native guest channel supports it.
+
+### Single-console desktop holders and terminals
 
 The library still uses opaque per-principal access identities. Hosted policy adds a
-single holder for each meeting Windows allocation/machine; Linux keeps independent
-per-user desktops and personal attempts have only one owner. A normal conflicting
+single holder for each meeting AWS Windows or Proxmox allocation/machine; AWS Linux keeps independent
+per-user DCV desktops and personal attempts have only one owner. A normal conflicting
 open returns authorized HTTP 409 `desktop_held` plus the holder's display name.
 Teammates can explicitly take over their own team's desktop; coaches/admins use a
 ready team in the current meeting under the existing privileged group policy.
@@ -710,7 +744,7 @@ sequenceDiagram
     participant P as Library and provider
     R->>H: Authorized explicit take-over
     H->>H: Persist old holder and handoff intent
-    H->>P: Close old access, retain shared profile
+    H->>P: Close old access, retain workspace files
     alt Revocation confirmed
       P-->>H: Absent
       H->>H: Commit displacement and remove old holder
@@ -886,7 +920,8 @@ request capture, browser fixtures and local load models establish local behavior
 | Proxmox setup and lifecycle | PVE 9.2 with directory storage: clean setup, guest-agent cold restart, idempotent rerun, environment check, the single/web-database/workstation examples, image removal and teardown; killed deploy/build/destroy, native clone/template/delete response loss, concurrent clients and changed ownership; confirmed disk cleanup after a native VM deletion reported only a disk-free warning | Full native response-loss, stale-ownership and interruption matrix; capture-receipt and publication races; other storage and firmware combinations |
 | Proxmox networking | Single, web/database and two-network router labs; pinned jump SSH, requester-specific names, one-sided Internet egress, blocked LAN/gateway destinations after forced defaults, concurrent-lab L2 isolation; gateway reboot and policy restoration | Static management pools; four-network layouts |
 | Proxmox desktops and options | Workstation build and qualification; real noVNC login, keyboard input, desktop/mobile rendering and account revocation; host/kvm64 CPUs, e1000/virtio NICs, ballooning enabled/disabled | Wider CPU/NIC combinations; broader browser/device coverage |
-| Durability and scheduling | Local persisted-restart matrices, subprocess SIGKILL and second-client tests, native HTTP/SSH response-loss and rejection tests; AWS and Proxmox live subsets; a hosted restore rehearsal | Completion of the native failure matrix; configured capacity ceilings |
+| Hosted Proxmox | Ubuntu 24.04 LAN server installed from the documented bundle; throwaway Dex OIDC with admin/groups and four students; unchanged pinned Linux template import/build; real noVNC input, retained-workspace reopen and lesson panel at desktop/mobile widths; two teams with conflict, takeover/take back and coach access; break/check recovery and scoreboard; capacity refusal before provisioning; end, image removal and setup teardown | Public DNS/ACME, native guest clipboard, other site hardware and the full native interruption/response-loss matrix; AWS live acceptance was not repeated for this change |
+| Durability and scheduling | Local persisted-restart matrices, subprocess SIGKILL and second-client tests, native HTTP/SSH response-loss and rejection tests; AWS and Proxmox live subsets; a hosted restore rehearsal | Completion of the native failure matrix |
 
 The expanded local matrices cover library intents and reservations, provider mutation
 boundaries, builder create/capture journals, guest lease fencing and cleanup inventories.
@@ -901,7 +936,7 @@ remains outstanding. Detailed cell mappings and live limitations are recorded in
 private operator evidence.
 
 Not supported yet: Windows on Proxmox, Windows routers or multiple Windows NICs, Ansible
-targeting Windows, author CIDRs on Proxmox, hosted platforms other than AWS,
+targeting Windows, author CIDRs on Proxmox, hosted platforms other than AWS and Proxmox,
 multi-operator allocation, laptop hypervisors or Docker runners, a template registry and
 background cleanup for the CLI.
 

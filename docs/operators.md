@@ -195,7 +195,8 @@ flowchart LR
 **Before you start**, run the CLI on a Linux amd64 machine that can reach the Proxmox
 API *and* addresses on the management bridge (where gateways and build machines get
 DHCP addresses). A VPN that only reaches the API is not enough; a small operator VM on
-the same network works well. Install the CLI, Packer and the pinned plugins (see
+the same network works well. A separate hosted installation can run there too; see
+[Running on Proxmox](hosted.md#running-on-proxmox) for the server VM and browser origins. Install the CLI, Packer and the pinned plugins (see
 [Build toolchain](#build-toolchain)), plus `xorriso`:
 
 ```sh

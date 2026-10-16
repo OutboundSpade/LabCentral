@@ -73,8 +73,8 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 		machine, e := s.desktopMachine(ctx, out.Meeting.Template)
 		if e == nil {
 			os, e := s.desktopOS(ctx, *out.Lab.Team, machine)
-			if e == nil && os == "windows" {
-				a := accessRecord{ID: digest(out.Lab.Team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24], UserID: v.User.ID, TeamID: out.Lab.Team.ID, InstanceID: out.Lab.Team.InstanceID, Machine: machine, OS: os}
+			if e == nil && (os == "windows" || s.env.Platform == "proxmox") {
+				a := accessRecord{ID: digest(out.Lab.Team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24], UserID: v.User.ID, TeamID: out.Lab.Team.ID, InstanceID: out.Lab.Team.InstanceID, Machine: machine, OS: os, Platform: s.env.Platform}
 				state, e := s.desktopState(ctx, a)
 				if e != nil {
 					writeError(w, 503, "Desktop state is unavailable.")
@@ -256,6 +256,14 @@ func (s *Service) createMeetingDecision(w http.ResponseWriter, r *http.Request, 
 		writeError(w, 409, err.Error())
 		return
 	}
+	size, err := s.revisionCapacity(r.Context(), q.Template, q.TeamCount)
+	if err == nil {
+		err = s.checkCapacity(r.Context(), size)
+	}
+	if err != nil {
+		writeError(w, 409, err.Error())
+		return
+	}
 	now := time.Now().UTC()
 	m := Meeting{randomID(12), q.Name, q.Template, "waiting", now, now.Add(time.Duration(q.Hours) * time.Hour)}
 	e := s.Store.CreateMeeting(r.Context(), m, q.TeamCount, q.Capacity)
@@ -277,6 +285,12 @@ func (s *Service) meetingJob(w http.ResponseWriter, r *http.Request, kind string
 	}
 	if kind == "prepare" {
 		if err := s.actionableRevision(r.Context(), m.Template); err != nil {
+			writeError(w, 409, err.Error())
+			return
+		}
+	}
+	if kind == "prepare" {
+		if err := s.checkCapacity(r.Context(), SiteCapacity{}); err != nil {
 			writeError(w, 409, err.Error())
 			return
 		}

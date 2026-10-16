@@ -16,6 +16,7 @@ import (
 	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
 	"github.com/coder/websocket"
 	"golang.org/x/crypto/ssh"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -460,21 +461,22 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 	if err != nil {
 		return nil, info, err
 	}
-	var ticket struct {
+	// Preflight native console permission before publishing a launch URL.
+	type consoleTicket struct {
 		Ticket   string      `json:"ticket"`
 		Port     json.Number `json:"port"`
 		Password string      `json:"password"`
 	}
-	if e = c.Call(ctx, "POST", c.VM(id, "/vncproxy"), struct {
-		Websocket int `json:"websocket"`
-	}{1}, &ticket); e != nil {
-		return nil, info, e
+	freshTicket := func(ctx context.Context) (consoleTicket, error) {
+		var ticket consoleTicket
+		err := c.Call(ctx, "POST", c.VM(id, "/vncproxy"), struct {
+			Websocket int `json:"websocket"`
+		}{1}, &ticket)
+		return ticket, err
 	}
-	port, err := strconv.Atoi(string(ticket.Port))
-	if err != nil || port < 1 || port > 65535 {
-		return nil, info, fmt.Errorf("invalid Proxmox console port")
+	if _, err = freshTicket(ctx); err != nil {
+		return nil, info, err
 	}
-	upstream := strings.Replace(c.URL, "https://", "wss://", 1) + c.VM(id, "/vncwebsocket") + "?port=" + strconv.Itoa(port) + "&vncticket=" + url.QueryEscape(ticket.Ticket)
 	header := http.Header{}
 	header.Set("Authorization", "PVEAPIToken="+c.Token)
 	used := false
@@ -482,16 +484,7 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 	var sockets []*websocket.Conn
 	mux := http.NewServeMux()
 	mux.Handle("/", staticHandler())
-	mux.HandleFunc("/credentials", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		password := ticket.Password
-		if password == "" {
-			password = ticket.Ticket
-		}
-		_ = json.NewEncoder(w).Encode(struct {
-			Password string `json:"password"`
-		}{password})
-	})
+	mux.HandleFunc("/credentials", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	mux.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		if used {
@@ -501,11 +494,23 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 		}
 		used = true
 		mu.Unlock()
+		defer func() { mu.Lock(); used = false; mu.Unlock() }()
 		down, e := websocket.Accept(w, r, &websocket.AcceptOptions{})
 		if e != nil {
 			return
 		}
 		defer down.CloseNow()
+		// A fresh native ticket on every connection also supports close/reopen
+		// while the same guest grant and authenticated relay remain valid.
+		ticket, e := freshTicket(r.Context())
+		if e != nil {
+			return
+		}
+		port, e := strconv.Atoi(string(ticket.Port))
+		if e != nil || port < 1 || port > 65535 || ticket.Ticket == "" {
+			return
+		}
+		upstream := strings.Replace(c.URL, "https://", "wss://", 1) + c.VM(id, "/vncwebsocket") + "?port=" + strconv.Itoa(port) + "&vncticket=" + url.QueryEscape(ticket.Ticket)
 		up, _, e := websocket.Dial(r.Context(), upstream, &websocket.DialOptions{HTTPClient: c.HTTP, HTTPHeader: header})
 		if e != nil {
 			_ = down.Close(websocket.StatusInternalError, "upstream unavailable")
@@ -515,30 +520,28 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 		mu.Lock()
 		sockets = append(sockets, down, up)
 		mu.Unlock()
+		defer func() { mu.Lock(); sockets = nil; mu.Unlock() }()
 		down.SetReadLimit(16 << 20)
 		up.SetReadLimit(16 << 20)
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
-		done := make(chan struct{}, 2)
-		copyMessages := func(dst, src *websocket.Conn) {
-			defer func() { done <- struct{}{} }()
-			for {
-				t, b, e := src.Read(ctx)
-				if e != nil {
-					return
-				}
-				if e = dst.Write(ctx, t, b); e != nil {
-					return
-				}
-			}
+		u := websocket.NetConn(ctx, up, websocket.MessageBinary)
+		d := websocket.NetConn(ctx, down, websocket.MessageBinary)
+		secret := ticket.Password
+		if secret == "" {
+			secret = ticket.Ticket
 		}
-		go copyMessages(up, down)
-		go copyMessages(down, up)
+		if consoleHandshake(u, d, secret) != nil {
+			return
+		}
+		done := make(chan struct{}, 2)
+		go func() { _, _ = io.Copy(u, d); done <- struct{}{} }()
+		go func() { _, _ = io.Copy(d, u); done <- struct{}{} }()
 		<-done
 		cancel()
 		<-done
 	})
-	relay, e := NewRelay(context.Background(), mux)
+	relay, e := NewRelayUntil(context.Background(), mux, accessExpiry(cmd))
 	if e != nil {
 		return nil, info, e
 	}
@@ -569,7 +572,11 @@ func closeGuestUser(ctx context.Context, c lc.Command) error {
 	}
 	defer closeClient()
 	name := dcvName(c)
-	_, err = guestRun(ctx, client, leaseCommand(c, "revoke", "set -eu; if id "+name+" >/dev/null 2>&1; then "+desktopOwned(name, c)+"; sudo loginctl terminate-user "+name+" || true; sudo userdel --force --remove "+name+"; fi"))
+	remove := "sudo userdel --force --remove " + name
+	if c.Access.RetainWorkspace {
+		remove = "sudo usermod --lock " + name
+	}
+	_, err = guestRun(ctx, client, leaseCommand(c, "revoke", "set -eu; if id "+name+" >/dev/null 2>&1; then "+desktopOwned(name, c)+"; sudo loginctl terminate-user "+name+" >/dev/null 2>&1 || true; sudo pkill -KILL -u "+name+" >/dev/null 2>&1 || true; n=0; while pgrep -u "+name+" >/dev/null; do n=$((n+1)); test \"$n\" -lt 100 || exit 1; sleep 0.1; done; "+remove+"; fi"))
 	return err
 }
 

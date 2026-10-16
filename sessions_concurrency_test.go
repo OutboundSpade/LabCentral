@@ -301,3 +301,24 @@ func TestDesktopReopenAfterProviderExpiryAllocatesFreshGeneration(t *testing.T) 
 		t.Fatal(err)
 	}
 }
+
+func TestProxmoxRetainedDesktopGrantAndRevoke(t *testing.T) {
+	engine, _, inst, _ := desktopFenceFixture(t)
+	inst.Plan.Environment.Platform = "proxmox"
+	if err := engine.state.Put(context.Background(), "instance", inst.ID, inst); err != nil {
+		t.Fatal(err)
+	}
+	provider := &expiringDesktopProvider{fakeProvider: freshFake(), tombstones: map[string]bool{}}
+	engine.provider = provider
+	info, err := engine.OpenDesktopWithOptions(context.Background(), inst.ID, "workstation", AccessOptions{Principal: "student", RetainWorkspace: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.cached == nil || !provider.cached.Access.RetainWorkspace || provider.cached.Environment.Platform != "proxmox" {
+		t.Fatal("retention lost at provider boundary")
+	}
+	generation := provider.cached.Access.Generation
+	if err = engine.CloseAccess(context.Background(), info.ID); err != nil || !provider.tombstones[generation] {
+		t.Fatal("generation not revoked", err)
+	}
+}

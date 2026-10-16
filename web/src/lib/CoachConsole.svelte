@@ -13,7 +13,7 @@
   let error = $state("");
   let loading = $state(false);
   let opening = $state(false);
-  // Set when the team's Windows desktop is in use: the coach may take it over.
+  // Set when the team's desktop is in use: the coach may take it over.
   let held = $state("");
   let sequence = 0;
   let scope = "";
@@ -182,7 +182,7 @@
   </div>
   {#if held && teamID}<div class="mt-3 rounded-box border border-warning/30 bg-warning/8 p-3" role="status">
       <p class="text-xs leading-relaxed">
-        {held} is using this team's Windows desktop. Taking over disconnects them; saved files stay.
+        {held} is using this team's desktop. Taking over disconnects them; saved files stay.
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
         <button type="button" class="btn btn-sm btn-warning min-h-11 lg:min-h-8" disabled={opening} onclick={() => openDesktop(true)}

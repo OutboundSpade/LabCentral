@@ -29,7 +29,7 @@ aws:
 `), 0600); err != nil {
 		t.Fatal(err)
 	}
-	c := hosted.Config{MemberGroup: "example_members", AdminGroup: "example_admins", Origin: "https://labs.invalid", DesktopOrigin: "https://desktop.invalid", Issuer: "https://issuer.invalid", Environment: environment, ClientSecret: "synthetic-secret-must-not-print", Root: filepath.Join(root, "must-not-create")}
+	c := hosted.Config{Capacity: hosted.SiteCapacity{VCPU: 12, MemoryMiB: 24576}, MemberGroup: "example_members", AdminGroup: "example_admins", Origin: "https://labs.invalid", DesktopOrigin: "https://desktop.invalid", Issuer: "https://issuer.invalid", Environment: environment, ClientSecret: "synthetic-secret-must-not-print", Root: filepath.Join(root, "must-not-create")}
 	config := filepath.Join(root, "config.json")
 	for _, test := range []struct{ name, member, admin, failure string }{
 		{"valid", c.MemberGroup, c.AdminGroup, ""},
@@ -73,8 +73,11 @@ aws:
 			if err != nil {
 				t.Fatal(err)
 			}
-			var report struct{ MemberGroup, AdminGroup string }
-			if err = json.Unmarshal(out, &report); err != nil || report.MemberGroup != c.MemberGroup || report.AdminGroup != c.AdminGroup {
+			var report struct {
+				MemberGroup, AdminGroup, Platform string
+				Capacity                          hosted.SiteCapacity
+			}
+			if err = json.Unmarshal(out, &report); err != nil || report.MemberGroup != c.MemberGroup || report.AdminGroup != c.AdminGroup || report.Platform != "aws" || report.Capacity != c.Capacity {
 				t.Fatal(report, err)
 			}
 			if strings.Contains(string(out), c.ClientSecret) {

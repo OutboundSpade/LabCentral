@@ -21,7 +21,7 @@
   let handover = $derived(render($session?.lab.handover ?? ""));
   let readyNotice = $state(false);
   let confirmTakeover = $state(false);
-  // A Windows console has one screen: one teammate holds it at a time.
+  // A shared console has one screen: one teammate holds it at a time.
   const desktop = $derived($session?.lab.desktopState ?? null);
   const windows = $derived(
     ($session?.lab.machines ?? []).some((m) => m.desktop && m.os === "windows"),
@@ -62,7 +62,7 @@
       await launchDesktop(
         takeover ? "/api/access/takeover" : "/api/access",
         windows
-          ? "Starting the Windows desktop. This can take a few minutes…"
+          ? "Starting the desktop. This can take a few minutes…"
           : "Starting your desktop. This can take a minute…",
       );
     } catch (e) {
@@ -138,8 +138,8 @@
             /></div>{/if}
           {#if holder && $session.lab.team.status === "ready"}<p class="mt-4 text-sm leading-relaxed" role="status">
               {desktop?.code === "held"
-                ? `${holder} is using the Windows desktop.`
-                : `${holder} took over the Windows desktop.`}
+                ? `${holder} is using the desktop.`
+                : `${holder} took over the desktop.`}
               <span class="text-base-content/70">It has one screen, so one teammate uses it at a time.</span>
             </p>
             {#if confirmTakeover}<div class="mt-3 rounded-box border border-warning/30 bg-warning/8 p-3">
@@ -179,7 +179,7 @@
           <p id="desktop-help" class="mt-2.5 text-xs leading-relaxed text-base-content/70">
             {busy
               ? windows
-                ? "Starting the Windows desktop…"
+                ? "Starting the desktop…"
                 : "Starting your desktop…"
               : handingOver
                 ? "The desktop is being handed over. Try again in a moment."
@@ -189,8 +189,8 @@
                     ? "Your lab is being prepared."
                     : readyNotice
                       ? "Your lab is ready."
-                      : windows
-                        ? "Opens in a new tab. Your team shares this Windows desktop."
+                      : desktop
+                        ? "Opens in a new tab. Your team shares this desktop."
                         : "Opens in a new tab."}
           </p>{/if}
           {#if $session.lab.desktopActive}<div class="mt-4 flex items-center justify-between gap-2 border-t border-base-content/8 pt-3">
@@ -214,9 +214,10 @@
               ><ChevronRight size={14} aria-hidden="true" class="transition-transform group-open:rotate-90" />Using your desktop</summary
             >
             <ul class="mt-2 [list-style-type:disc] space-y-1.5 pl-4 text-xs leading-relaxed text-base-content/80">
-              <li>After 60 idle minutes the desktop disconnects; reopen it to resume.</li>
-              {#if windows}<li>Your team shares one Windows screen. Taking over disconnects whoever is using it; saved files stay.</li>
-                <li>Paste inside the desktop with Ctrl+V (⌘V).</li>
+              {#if !desktop || windows}<li>After 60 idle minutes the desktop disconnects; reopen it to resume.</li>{/if}
+              {#if desktop}<li>Your team shares one screen. Taking over disconnects whoever is using it; saved files stay.</li>{/if}
+              {#if desktop && !windows}<li>Use Console login for the guest greeter. Console clipboard depends on guest support.</li>{/if}
+              {#if windows}<li>Paste inside the desktop with Ctrl+V (⌘V).</li>
               {:else}<li>Paste inside the desktop with Ctrl+V (⌘V); terminals use Ctrl+Shift+V.</li>{/if}
               <li><strong>Copy from desktop</strong> needs clipboard permission.</li>
               <li>In Firefox or Safari, use <strong>Paste to desktop</strong> for text.</li>

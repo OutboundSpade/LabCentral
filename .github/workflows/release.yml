@@ -35,6 +35,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Hosted bundle
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./tools/package-server.sh
       - name: Build
         env:
           TAG: ${{ github.ref_name }}
@@ -52,7 +61,7 @@ jobs:
           build darwin amd64 dist/labcentral-darwin-amd64 ./cmd/labcentral
           test "$(dist/linux/labcentral version)" = "labcentral $TAG"
           cd dist
-          sha256sum labcentral-linux-amd64.tar.gz labcentral-windows-amd64.exe \
+          sha256sum labcentral-server-linux-amd64.tar.gz labcentral-linux-amd64.tar.gz labcentral-windows-amd64.exe \
             labcentral-darwin-arm64 labcentral-darwin-amd64 > SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -64,5 +73,5 @@ jobs:
         run: |
           gh release create "$TAG" --verify-tag --title "LabCentral $TAG" --generate-notes \
             --notes-file .github/release-notes.md \
-            dist/labcentral-linux-amd64.tar.gz dist/labcentral-windows-amd64.exe \
+            dist/labcentral-server-linux-amd64.tar.gz dist/labcentral-linux-amd64.tar.gz dist/labcentral-windows-amd64.exe \
             dist/labcentral-darwin-arm64 dist/labcentral-darwin-amd64 dist/SHA256SUMS

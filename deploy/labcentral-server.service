@@ -1,0 +1,25 @@
+[Unit]
+Description=LabCentral hosted service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=labcentral
+Group=labcentral
+WorkingDirectory=/var/lib/labcentral
+Environment=PATH=/opt/labcentral:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/etc/labcentral/provider.env
+ExecStartPre=/opt/labcentral/labcentral-server --config /etc/labcentral/service.json --check-config
+ExecStart=/opt/labcentral/labcentral-server --config /etc/labcentral/service.json --listen 127.0.0.1:8080
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/labcentral
+
+[Install]
+WantedBy=multi-user.target

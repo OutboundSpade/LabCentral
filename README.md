@@ -82,7 +82,7 @@ Cloud credentials stay in the operator's environment and the provider process.
 | Multiple networks, NICs and routers | Up to 8 networks and 8 NICs per machine; author CIDRs | Up to 4 networks and 4 NICs per machine |
 | Platform options | Instance type, gp3 volume, CPU credits, build instance type | CPU model, NIC model, memory ballooning |
 | Environment setup | Build stack and operator configuration | Guided setup and ownership-verified teardown |
-| Hosted service | Yes | Library and CLI only |
+| Hosted service | Yes | Separate LAN installation; shared console desktops |
 
 The operator machine is Linux amd64. Real AWS and Proxmox runs cover the CLI lifecycle,
 gateways, egress, SSH and desktops. See

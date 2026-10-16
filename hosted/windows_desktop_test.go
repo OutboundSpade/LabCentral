@@ -65,12 +65,22 @@ func (e *consoleTestEngine) Inspect(_ context.Context, id string) (lc.Instance, 
 	return lc.Instance{ID: id, Status: "ready", Plan: p}, nil
 }
 func windowsFixture(t *testing.T) (*Service, Session, []Team, *consoleTestEngine) {
+	return consoleFixture(t, "aws")
+}
+func consoleFixture(t *testing.T, platform string) (*Service, Session, []Team, *consoleTestEngine) {
 	t.Helper()
 	s, v, _ := learningFixture(t)
 	ctx := context.Background()
 	src, b, err := instructor.LoadTemplate("../examples/windows-iis", true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if platform == "proxmox" {
+		s.env.Platform = "proxmox"
+		for name, image := range src.Lab.Images {
+			image.OS = "linux"
+			src.Lab.Images[name] = image
+		}
 	}
 	s.env.Bases["windows-2022"] = lc.Base{OS: "windows", ID: "ami-0123456789abcdef0", Identity: "ami-0123456789abcdef0", User: "Administrator", DiskGiB: 30}
 	s.env.Build.InstanceType = "t3.medium"
@@ -156,7 +166,10 @@ func consoleRecord(v Session, team Team) accessRecord {
 	return accessRecord{ID: digest(team.InstanceID + "\x00server\x00" + v.User.ID)[:24], UserID: v.User.ID, SessionID: v.ID, TeamID: team.ID, InstanceID: team.InstanceID, Machine: "server", OS: "windows", Expires: v.Expires}
 }
 func TestWindowsConflictTakeoverAndDisplacedCookie(t *testing.T) {
-	s, a, teams, e := windowsFixture(t)
+	testConsoleConflictTakeoverAndDisplacedCookie(t, "aws")
+}
+func testConsoleConflictTakeoverAndDisplacedCookie(t *testing.T, platform string) {
+	s, a, teams, e := consoleFixture(t, platform)
 	b := consoleUser(t, s, "Teammate", false)
 	seat(t, s, b, teams[0])
 	decodeLearning[Launch](t, consoleRequest(s, a, "/api/access"), 200)
@@ -195,7 +208,8 @@ func TestWindowsConflictTakeoverAndDisplacedCookie(t *testing.T) {
 		t.Fatal(state, err)
 	}
 }
-func TestWindowsTakeoverAuthorization(t *testing.T) {
+func TestWindowsTakeoverAuthorization(t *testing.T) { testConsoleTakeoverAuthorization(t, "aws") }
+func testConsoleTakeoverAuthorization(t *testing.T, platform string) {
 	for _, tc := range []struct {
 		name                        string
 		admin, member, otherMeeting bool
@@ -210,7 +224,7 @@ func TestWindowsTakeoverAuthorization(t *testing.T) {
 		{name: "other-meeting", admin: true, otherMeeting: true, path: "target", want: 403},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, a, teams, e := windowsFixture(t)
+			s, a, teams, e := consoleFixture(t, platform)
 			decodeLearning[Launch](t, consoleRequest(s, a, "/api/access"), 200)
 			v := consoleUser(t, s, tc.name, tc.admin)
 			if tc.member {
@@ -243,7 +257,10 @@ func TestWindowsTakeoverAuthorization(t *testing.T) {
 	}
 }
 func TestWindowsUnknownRevokePersistsAcrossRestart(t *testing.T) {
-	s, a, teams, e := windowsFixture(t)
+	testConsoleUnknownRevokePersistsAcrossRestart(t, "aws")
+}
+func testConsoleUnknownRevokePersistsAcrossRestart(t *testing.T, platform string) {
+	s, a, teams, e := consoleFixture(t, platform)
 	b := consoleUser(t, s, "Next", false)
 	seat(t, s, b, teams[0])
 	ctx := context.Background()
@@ -291,7 +308,10 @@ func TestWindowsUnknownRevokePersistsAcrossRestart(t *testing.T) {
 	}
 }
 func TestWindowsConcurrentTakeoversNeverOverlap(t *testing.T) {
-	s, a, teams, e := windowsFixture(t)
+	testConsoleConcurrentTakeoversNeverOverlap(t, "aws")
+}
+func testConsoleConcurrentTakeoversNeverOverlap(t *testing.T, platform string) {
+	s, a, teams, e := consoleFixture(t, platform)
 	decodeLearning[Launch](t, consoleRequest(s, a, "/api/access"), 200)
 	var users []Session
 	for i := 0; i < 3; i++ {
@@ -321,7 +341,10 @@ func TestWindowsConcurrentTakeoversNeverOverlap(t *testing.T) {
 	}
 }
 func TestWindowsUnknownOpenRequiresConfirmedCleanup(t *testing.T) {
-	s, a, teams, e := windowsFixture(t)
+	testConsoleUnknownOpenRequiresConfirmedCleanup(t, "aws")
+}
+func testConsoleUnknownOpenRequiresConfirmedCleanup(t *testing.T, platform string) {
+	s, a, teams, e := consoleFixture(t, platform)
 	b := consoleUser(t, s, "Next", false)
 	seat(t, s, b, teams[0])
 	e.errorOpen = errors.New("open response lost")
@@ -406,7 +429,10 @@ func TestWindowsSameUserReconnectAndMeetingOS(t *testing.T) {
 
 func (e *consoleTestEngine) Destroy(ctx context.Context, id string) error { return e.destroyErr }
 func TestWindowsEndClearsHolderOnlyAfterConfirmedDestruction(t *testing.T) {
-	s, a, teams, e := windowsFixture(t)
+	testConsoleEndClearsHolderOnlyAfterConfirmedDestruction(t, "aws")
+}
+func testConsoleEndClearsHolderOnlyAfterConfirmedDestruction(t *testing.T, platform string) {
+	s, a, teams, e := consoleFixture(t, platform)
 	ctx := context.Background()
 	decodeLearning[Launch](t, consoleRequest(s, a, "/api/access"), 200)
 	record := consoleRecord(a, teams[0])
