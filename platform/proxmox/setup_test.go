@@ -392,6 +392,7 @@ func TestSetupTeardownIdempotenceAndPrivateReceipts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reopened.seed = s.seed
 	if err = reopened.Teardown(ctx); err != nil {
 		t.Fatal("teardown rerun", err)
 	}
@@ -511,6 +512,7 @@ func TestCompetingSetupCannotReplaceOwnershipReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	second.seed = first.seed
 	p1, err := first.Plan(ctx, o)
 	if err != nil {
 		t.Fatal(err)
