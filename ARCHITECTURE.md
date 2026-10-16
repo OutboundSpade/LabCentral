@@ -604,6 +604,10 @@ public APIs.
 - Group authorization is refreshed from userinfo every four minutes (at most four
   refreshes at once). Desktop authorization is rechecked every 20 seconds and fails
   closed. Diagnostics report fixed categories, never tokens or response bodies.
+- A rejected refresh ends the session. A provider timeout, network failure or 5xx
+  (30-second limit per request, for scale-to-zero providers) keeps it: refreshes back
+  off for a minute and the session is served while its last successful check is under
+  15 minutes old; after that requests get 503 until the provider answers.
 
 ### Persistence
 

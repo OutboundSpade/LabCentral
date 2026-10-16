@@ -150,6 +150,11 @@ type endpoint func(http.ResponseWriter, *http.Request, Session)
 func (s *Service) authorized(admin bool, next endpoint) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := s.session(r.Context(), r)
+		if errors.Is(err, errIdentityUnavailable) {
+			w.Header().Set("Retry-After", "60")
+			writeError(w, 503, "The sign-in service is not responding. Try again in a minute.")
+			return
+		}
 		if err != nil {
 			writeError(w, 401, "Please sign in.")
 			return
@@ -186,10 +191,10 @@ func (s *Service) checkedSession(ctx context.Context, id string) (Session, error
 		_ = s.Store.Delete(ctx, "session", id)
 		return v, fmt.Errorf("session expired")
 	}
-	if time.Since(v.Checked) >= 4*time.Minute {
+	if time.Since(v.Checked) >= 4*time.Minute && !time.Now().Before(v.IdentityRetry) {
 		// Refresh token rotation and its durable write must finish even when a
 		// browser abandons a request. Session locking also serializes logout.
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 12*time.Second)
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 35*time.Second)
 		defer cancel()
 		ctx = refreshCtx
 		u, t, e := s.Identity.Refresh(ctx, v.Token)
@@ -200,9 +205,22 @@ func (s *Service) checkedSession(ctx context.Context, id string) (Session, error
 				diagnostic = *typed
 			}
 			s.recordIdentityFailure(ctx, diagnostic)
+			if e != nil && transientIdentity(diagnostic) {
+				// A slow or unavailable provider is not a revocation. Keep the
+				// session, back off, and serve it while the last check is recent.
+				v.IdentityRetry = time.Now().UTC().Add(identityRetryDelay)
+				if err := s.Store.Put(ctx, "session", id, v); err != nil {
+					return v, err
+				}
+				if time.Since(v.Checked) < identityGrace {
+					return v, nil
+				}
+				return v, errIdentityUnavailable
+			}
 			_ = s.Store.Delete(ctx, "session", id)
 			return v, fmt.Errorf("identity could not be verified")
 		}
+		v.IdentityRetry = time.Time{}
 		if e = s.Store.Put(ctx, "user", u.ID, u); e != nil {
 			return v, e
 		}
@@ -214,6 +232,23 @@ func (s *Service) checkedSession(ctx context.Context, id string) (Session, error
 		}
 	}
 	return v, nil
+}
+
+// A provider timeout, network failure or 5xx is transient; anything else,
+// including an invalid grant or a different user, ends the session.
+const (
+	identityGrace      = 15 * time.Minute
+	identityRetryDelay = time.Minute
+)
+
+var errIdentityUnavailable = errors.New("identity provider unavailable")
+
+func transientIdentity(e identityError) bool {
+	switch e.Category {
+	case "timeout", "transport", "upstream_unavailable", "rate_limited":
+		return true
+	}
+	return false
 }
 
 type loginAttempt struct {

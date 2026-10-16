@@ -60,7 +60,8 @@ func NewOIDC(ctx context.Context, c Config) (*OIDC, error) {
 	// Keep OIDC connection health independent of provider and desktop traffic.
 	transport.IdleConnTimeout = 30 * time.Second
 	transport.HTTP2 = &http.HTTP2Config{SendPingTimeout: 5 * time.Second, PingTimeout: 3 * time.Second}
-	client := &http.Client{Timeout: 10 * time.Second, Transport: transport}
+	// Providers on scale-to-zero hosting can take tens of seconds to cold start.
+	client := &http.Client{Timeout: 30 * time.Second, Transport: transport}
 	if c.BackchannelOrigin != "" {
 		target, e := url.Parse(c.BackchannelOrigin)
 		issuer, e2 := url.Parse(c.Issuer)

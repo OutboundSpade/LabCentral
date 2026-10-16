@@ -407,7 +407,7 @@ const resize=()=>{fit();if(connection){connection.requestResolution(Math.max(320
 new ResizeObserver(fit).observe(display);
 new ResizeObserver(resize).observe(viewport);
 if(document.body.dataset.practiceRun)import('/lesson-client.js').catch(()=>{});
-const ended=async message=>{status.textContent=message;try{const r=await fetch('/status',{cache:'no-store'});const state=r.ok?await r.json():null;if(state&&state.takenOverBy)status.textContent=state.takenOverBy+' took over this desktop. Return to your lab to take it back.'}catch{}};
+let polling=false;const ended=async message=>{status.textContent=message;if(polling)return;polling=true;for(let i=0;i<24;i++){try{const r=await fetch('/status',{cache:'no-store'});if(!r.ok)break;const state=await r.json();if(state.takenOverBy){status.textContent=state.takenOverBy+' took over this desktop. Return to your lab to take it back.';break}if(state.code==='available')break}catch{break}await new Promise(done=>setTimeout(done,5000))}polling=false};
 dcv.setLogLevel(dcv.LogLevel.ERROR);
 try {
  const response=await fetch('/credentials',{cache:'no-store'});
