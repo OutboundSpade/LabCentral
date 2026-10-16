@@ -90,7 +90,15 @@ func (v *VMConfig) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	decoded.NICs = map[string]string{}
+	decoded.Disks = map[string]string{}
 	for key, value := range fields {
+		if diskConfigKey(key) {
+			var drive string
+			if err := json.Unmarshal(value, &drive); err != nil {
+				return err
+			}
+			decoded.Disks[key] = drive
+		}
 		if !strings.HasPrefix(key, "net") {
 			continue
 		}
@@ -128,4 +136,18 @@ func (v VMConfig) MACs(count int) ([]string, error) {
 		macs = append(macs, mac)
 	}
 	return macs, nil
+}
+
+func diskConfigKey(key string) bool {
+	if key == "vmstate" {
+		return true
+	}
+	for _, prefix := range []string{"scsi", "sata", "virtio", "ide", "efidisk", "tpmstate", "unused"} {
+		if strings.HasPrefix(key, prefix) {
+			suffix := strings.TrimPrefix(key, prefix)
+			n, err := strconv.Atoi(suffix)
+			return err == nil && n >= 0 && strconv.Itoa(n) == suffix
+		}
+	}
+	return false
 }

@@ -321,3 +321,37 @@ labcentral image abandon IMAGE_KEY    # remove an unpublished build attempt
 There is no background cleanup: resources keep running, and costing money, until you
 destroy them. `destroy` keeps images; `image remove` refuses images that a retained lab
 still uses.
+
+
+A failed command does not mean its native request failed. After a timeout or lost
+connection, use the original state directory and `recover`; do not start a replacement
+with a new state directory or delete journal files. Recovery discovers the original
+owned resource. An explicit authorization/validation rejection or throttle can be
+submitted again; an uncertain create with no authoritative result stays
+`recovery_required`, with its allocation and cleanup intent retained.
+
+`ownership_mismatch` means a recorded native object, attached disk/NIC, guest account
+or desktop session no longer has the expected owner. Cleanup retains it. Inspect the
+exact recorded identity in protected local state and compare its native markings;
+restore a marking only when independent evidence establishes that it is still yours.
+Never fix this by deleting a same-named object. Confirmed absence completes cleanup;
+a running Proxmox task or an AWS object still deleting requires another recovery after
+its native operation settles.
+
+`recover INSTANCE_ID` also finishes uncertain desktop grants and revocations. Guest
+revocation records a generation tombstone before cleanup, preventing delayed commands
+from reopening the retired access. A second client waits behind the instance/image
+and provider fences; stop the original controller before restoring state elsewhere.
+Image recovery qualifies a captured image on disposable guests, or cleans an incomplete
+attempt and asks for `image abandon` before a fresh build. Abandonment cannot release
+identifiers while an unknown native create remains unresolved.
+
+Proxmox VM removal can succeed while its native task only warns about a disk free
+failure. LabCentral records disk IDs before deletion and checks storage afterwards.
+It keeps the VMID allocation if a disk remains. The runtime token intentionally lacks
+`Datastore.Allocate`, which Proxmox requires to delete an orphan image volume through
+the storage API. An administrator can inspect the exact recorded volume, verify its
+native VMID owner and the VM's absence, remove that volume, then rerun recovery. An
+unrecorded volume or a changed native owner is retained for investigation; cleanup
+never enables “destroy unreferenced disks” or removes a volume just because its name
+contains a VMID.

@@ -40,15 +40,15 @@ func (p *Provider) gateway(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	_, err = journal.Do(ctx, p.Journal, cmd.Operation+"/clone", func() (int, error) {
 		v, err := c.Config(ctx, baseID)
 		if err != nil {
-			return 0, err
+			return 0, journal.Rejected(err)
 		}
 		if v.Template != 1 || v.Digest != base.Identity {
-			return 0, fmt.Errorf("gateway base template identity changed; verify the environment binding before provisioning")
+			return 0, journal.Rejected(fmt.Errorf("gateway base template identity changed; verify the environment binding before provisioning"))
 		}
 		var task string
 		err = c.Call(ctx, "POST", c.VM(baseID, "/clone"), map[string]any{"newid": m.VMID, "name": "lc-" + cmd.Owner[:12] + "-gateway", "description": marker(cmd.Owner, "gateway"), "full": 1, "storage": e.Proxmox.Storage, "pool": e.Proxmox.Pool}, &task)
 		if err != nil {
-			return 0, err
+			return 0, cloneError(err)
 		}
 		if err = c.Wait(ctx, task); err != nil {
 			return 0, err

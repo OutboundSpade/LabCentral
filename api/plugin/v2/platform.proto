@@ -281,6 +281,7 @@ message AccessOptions {
   string principal = 1 [json_name = "principal"];
   string expires = 2 [json_name = "expires"];
   bool retain_workspace = 3 [json_name = "retainWorkspace"];
+  string generation = 4 [json_name = "generation"];
 }
 message PlannedNetwork {
   string name = 1 [json_name = "name"];

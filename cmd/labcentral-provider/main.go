@@ -7,6 +7,7 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/access"
 	"github.com/OutboundSpade/LabCentral/v2/build"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	awsplatform "github.com/OutboundSpade/LabCentral/v2/platform/aws"
 	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
@@ -24,7 +25,7 @@ type router struct {
 
 func (r *router) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
 	if c.Action == "access.open" || c.Action == "access.close" {
-		return r.access.Execute(ctx, c)
+		return r.access.Execute(faultinject.WithOperation(ctx, c.Environment.Platform, c.Action), c)
 	}
 	switch c.Environment.Platform {
 	case "aws":
@@ -54,6 +55,8 @@ func main() {
 	pr.Validate = func(ctx context.Context, c lc.Command, r lc.Resource) (lc.Resource, error) {
 		return build.ValidateNative(ctx, pr.Root, p, c, r)
 	}
+	ar.Intercept = a.BuildProxy
+	pr.Intercept = p.BuildProxy
 	a.Build = ar.Run
 	a.Abandon = ar.Abandon
 	p.Build = pr.Run
@@ -61,7 +64,7 @@ func main() {
 	manager := access.NewManager()
 	defer manager.Close()
 	r := &router{a, p, manager}
-	if err := plugin.Serve(ctx, *socket, r); err != nil && ctx.Err() == nil {
+	if err := plugin.Serve(ctx, *socket, plugin.WithNativeFences(filepath.Join(*state, "fences"), r)); err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -26,6 +26,8 @@ type AccessOptions struct {
 	Principal       string `json:"principal,omitempty"`
 	Expires         string `json:"expires,omitempty"` // RFC3339, at most eight hours away
 	RetainWorkspace bool   `json:"retainWorkspace,omitempty"`
+	// Generation is assigned by the engine and fences late guest commands.
+	Generation string `json:"generation,omitempty"`
 }
 
 // Machine operations share a lifecycle guard, so another machine can be used
@@ -78,16 +80,37 @@ func (e *Engine) OpenDesktopWithOptions(ctx context.Context, instance, machine s
 		if opts.Principal != "" {
 			operation = fmt.Sprintf("%x", sha256.Sum256([]byte(instance+"\x00"+machine+"\x00"+opts.Principal)))[:24]
 		}
+		// A failed grant/revoke must finish cleanup before a new generation can
+		// replace it. Successful cached launches keep their native generation.
+		opts.Generation = id()
+		var previous Command
+		if err = e.state.Get(ctx, "access", operation, &previous); err == nil {
+			if previous.Recovery || previous.Action == "access.close" {
+				if err = e.closeAccess(ctx, operation); err != nil {
+					return err
+				}
+			} else {
+				opts.Generation = previous.Access.Generation
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		cmd := Command{Action: "access.open", Operation: operation, Owner: instance, Environment: i.Plan.Environment, Machine: m, Prior: r, Access: opts, Gateway: InstanceGateway(i)}
+		cmd.Recovery = true
 		if err = e.state.Put(ctx, "access", cmd.Operation, cmd); err != nil {
 			return err
 		}
 		cmd.ClientPrivateKey = key
-		result, err := e.provider.Execute(ctx, cmd, e.observer)
+		result, err := e.execute(ctx, cmd, e.observer)
 		if err != nil {
 			return err
 		}
-		return json.Unmarshal(result.Resource.Data, &info)
+		if err = json.Unmarshal(result.Resource.Data, &info); err != nil {
+			return err
+		}
+		cmd.ClientPrivateKey = nil
+		cmd.Recovery = false
+		return e.state.Put(ctx, "access", cmd.Operation, cmd)
 	})
 	return info, err
 }
@@ -113,9 +136,13 @@ func (e *Engine) closeAccess(ctx context.Context, session string) error {
 	if err != nil {
 		return err
 	}
-	cmd.ClientPrivateKey = key
 	cmd.Action = "access.close"
-	r, err := e.provider.Execute(ctx, cmd, e.observer)
+	cmd.ClientPrivateKey = nil
+	if err = e.state.Put(ctx, "access", session, cmd); err != nil {
+		return err
+	}
+	cmd.ClientPrivateKey = key
+	r, err := e.execute(ctx, cmd, e.observer)
 	if err != nil {
 		return err
 	}

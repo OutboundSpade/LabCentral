@@ -90,7 +90,7 @@ func TestAMIPlatformMismatchFailsBeforeLaunch(t *testing.T) {
 func TestWindowsBuildPreparationDoesNotImportEC2KeyPair(t *testing.T) {
 	// No environment or SDK configuration is needed: Windows installs its key in
 	// platform user data, before SSH, and never attaches an EC2 Ed25519 key pair.
-	p := &Provider{}
+	p := &Provider{Journal: journal.Journal{Root: t.TempDir()}}
 	if err := p.PrepareBuild(context.Background(), lc.Command{Image: lc.PlannedImage{Base: lc.Base{OS: "windows"}}}, "ssh-ed25519 key"); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestWindowsBuildCleanupRetainsUnownedInstance(t *testing.T) {
 		response.Body = io.NopCloser(strings.NewReader(strings.ReplaceAll(string(body), "<value>owner</value>", "<value>somebody-else</value>")))
 		return response, nil
 	})
-	p := &Provider{}
+	p := &Provider{Journal: journal.Journal{Root: t.TempDir()}}
 	err := p.cleanupBuild(context.Background(), ec2.New(opts), lc.Command{Owner: "owner", Image: lc.PlannedImage{Name: "base", Base: lc.Base{OS: "windows"}}})
 	if err == nil || !strings.Contains(err.Error(), "ownership_mismatch") || f.terminated["i-build"] {
 		t.Fatal("Windows build cleanup deleted an unowned instance", err)

@@ -34,6 +34,9 @@ func (p *Provider) gateway(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if n.EdgeSubnet == "" || n.GatewaySG == "" {
 		return lc.Result{}, fmt.Errorf("gateway network is incomplete")
 	}
+	if err := p.prepareInstancePolicy(c); err != nil {
+		return lc.Result{}, err
+	}
 	id, err := doEC2(ctx, p.Journal, c.Operation+"/instance", func() (string, error) {
 		images, err := a.DescribeImages(ctx, &ec2.DescribeImagesInput{ImageIds: []string{c.Machine.NativeImage}})
 		if err != nil {
@@ -62,7 +65,7 @@ func (p *Provider) gateway(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			MetadataOptions:     &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)},
 			NetworkInterfaces:   []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), DeleteOnTermination: aw.Bool(true), SubnetId: &n.EdgeSubnet, Groups: []string{n.GatewaySG}, AssociatePublicIpAddress: aw.Bool(true)}},
 			BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: images.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(c.Machine.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}},
-			TagSpecifications:   append(specs(t.ResourceTypeInstance, c.Owner, "gateway"), specs(t.ResourceTypeVolume, c.Owner, "gateway")...),
+			TagSpecifications:   append(append(specs(t.ResourceTypeInstance, c.Owner, "gateway"), specs(t.ResourceTypeVolume, c.Owner, "gateway")...), specs(t.ResourceTypeNetworkInterface, c.Owner, "gateway")...),
 		})
 		if err != nil {
 			return "", err
@@ -149,10 +152,16 @@ func (p *Provider) findGateway(ctx context.Context, a *ec2.Client, c lc.Command)
 	}
 	data, _ := json.Marshal(identity)
 	r := lc.Resource{Kind: "gateway", Name: "gateway", ID: aw.ToString(i.InstanceId), Owner: c.Owner, Address: aw.ToString(i.PublicIpAddress), PrivateAddress: aw.ToString(i.PrivateIpAddress), Data: data}
+	for _, nic := range i.NetworkInterfaces {
+		r.Children = append(r.Children, lc.NativeResource{Kind: "eni", ID: aw.ToString(nic.NetworkInterfaceId)})
+	}
 	for _, mapping := range i.BlockDeviceMappings {
 		if mapping.Ebs != nil {
 			r.Children = append(r.Children, lc.NativeResource{Kind: "volume", ID: aw.ToString(mapping.Ebs.VolumeId)})
 		}
+	}
+	if err = p.attachInstancePolicy(c, &r); err != nil {
+		return lc.Result{}, err
 	}
 	return lc.Result{Resource: r}, nil
 }

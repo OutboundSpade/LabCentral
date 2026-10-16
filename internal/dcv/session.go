@@ -32,11 +32,12 @@ done'`
 
 type session struct {
 	ID      string `json:"id"`
+	Owner   string `json:"owner"`
 	Status  string `json:"status"`
 	Display string `json:"x11-display"`
 }
 
-func state(ctx context.Context, run Run, id string) (bool, bool, error) {
+func state(ctx context.Context, run Run, id string, owners ...string) (bool, bool, error) {
 	output, err := run(ctx, "sudo dcv list-sessions -j")
 	if err != nil {
 		return false, false, err
@@ -50,6 +51,9 @@ func state(ctx context.Context, run Run, id string) (bool, bool, error) {
 	}
 	for _, s := range sessions {
 		if s.ID == id {
+			if len(owners) > 0 && (owners[0] == "" || s.Owner != owners[0]) {
+				return true, false, fmt.Errorf("ownership_mismatch: DCV session owner differs; session retained")
+			}
 			return true, s.Status == "running" && s.Display != "", nil
 		}
 	}
@@ -58,7 +62,7 @@ func state(ctx context.Context, run Run, id string) (bool, bool, error) {
 
 // Ready reports an observed running X display; transport errors remain unknown.
 func Ready(ctx context.Context, run Run, id string) (bool, error) {
-	_, ready, err := state(ctx, run, id)
+	_, ready, err := state(ctx, run, id, id)
 	return ready, err
 }
 
@@ -82,7 +86,7 @@ func start(ctx context.Context, run Run, user, id string, timeout, interval time
 			return err
 		}
 		wait, cancel := context.WithTimeout(ctx, timeout)
-		err := waitReady(wait, run, id, interval)
+		err := waitReady(wait, run, id, user, interval)
 		cancel()
 		if err == nil {
 			return nil
@@ -93,7 +97,7 @@ func start(ctx context.Context, run Run, user, id string, timeout, interval time
 		if !errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
-		exists, ready, check := state(ctx, run, id)
+		exists, ready, check := state(ctx, run, id, user)
 		if check != nil {
 			return check
 		}
@@ -106,11 +110,11 @@ func start(ctx context.Context, run Run, user, id string, timeout, interval time
 	}
 	return fmt.Errorf("DCV session exited before its X display became ready")
 }
-func waitReady(ctx context.Context, run Run, id string, interval time.Duration) error {
+func waitReady(ctx context.Context, run Run, id, user string, interval time.Duration) error {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
-		_, ready, err := state(ctx, run, id)
+		_, ready, err := state(ctx, run, id, user)
 		if err != nil && !errors.Is(err, errEmptyStatus) {
 			return err
 		}
@@ -123,4 +127,31 @@ func waitReady(ctx context.Context, run Run, id string, interval time.Duration) 
 		case <-tick.C:
 		}
 	}
+}
+
+// Close verifies the native owner before closing a session, then confirms absence.
+// Empty or lost status responses retain cleanup intent; a matching name alone is
+// never evidence that a session belongs to this account.
+func Close(ctx context.Context, run Run, user, id string) error {
+	if !regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`).MatchString(id) {
+		return fmt.Errorf("invalid DCV session identity")
+	}
+	exists, _, err := state(ctx, run, id, user)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if _, err = run(ctx, "sudo dcv close-session "+id); err != nil {
+		return err
+	}
+	exists, _, err = state(ctx, run, id, user)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("DCV session removal unconfirmed; retry revocation")
+	}
+	return nil
 }

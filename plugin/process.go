@@ -191,23 +191,21 @@ func (s *Server) Execute(req *wire.Request, stream grpc.ServerStreamingServer[wi
 	// Native journals are owner-scoped. An unrelated build must never block
 	// a retained lab. Within an owner, distinct machines have distinct journals;
 	// networking, images and access retain the exclusive lifecycle fence.
-	machineCreate := c.Action == "machine.create"
 	machineDelete := c.Action == "resource.destroy" && c.Prior.Kind == "machine"
-	machineDiscover := c.Action == "discover" && c.Machine.Name != ""
-	independentMachine := machineCreate || machineDelete || machineDiscover
+	independent := independentMachine(c)
 	value, _ := s.owners.LoadOrStore(c.Owner, &sync.RWMutex{})
 	ownerLock := value.(*sync.RWMutex)
-	if err := waitOwner(stream.Context(), ownerLock, independentMachine); err != nil {
+	if err := waitOwner(stream.Context(), ownerLock, independent); err != nil {
 		return err
 	}
-	if independentMachine {
+	if independent {
 		defer ownerLock.RUnlock()
 	} else {
 		defer ownerLock.Unlock()
 	}
 	// A response-lost create/discovery and its retry share one machine fence.
 	// Destruction uses the same name fence; un-named resources retain their ID.
-	if independentMachine {
+	if independent {
 		machine := c.Machine.Name
 		if machineDelete {
 			machine = c.Prior.Name

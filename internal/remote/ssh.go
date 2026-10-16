@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"golang.org/x/crypto/ssh"
 	"net"
@@ -137,6 +138,9 @@ func Run(ctx context.Context, c *ssh.Client, command string) ([]byte, error) {
 }
 
 func RunInput(ctx context.Context, c *ssh.Client, command string, input []byte) ([]byte, error) {
+	return faultinject.Call(ctx, "ssh.exec", func(ctx context.Context) ([]byte, error) { return runInput(ctx, c, command, input) })
+}
+func runInput(ctx context.Context, c *ssh.Client, command string, input []byte) ([]byte, error) {
 	s, e := c.NewSession()
 	if e != nil {
 		return nil, e
@@ -155,7 +159,11 @@ func RunInput(ctx context.Context, c *ssh.Client, command string, input []byte) 
 	var out limitedOutput
 	s.Stdout = &out
 	s.Stderr = &out
-	e = s.Run(command)
+	e = s.Start(command)
+	if e == nil {
+		faultinject.Sent(ctx)
+		e = s.Wait()
+	}
 	b := out.Bytes()
 	if out.Exceeded {
 		return nil, fmt.Errorf("guest output exceeds bound")

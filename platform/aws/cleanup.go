@@ -211,3 +211,76 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 	}
 	return nil
 }
+
+func cleanupENIs(ctx context.Context, a *ec2.Client, c lc.Command) error {
+	role := c.Prior.Name
+	var data struct{ Role, ENI string }
+	if len(c.Prior.Data) > 0 {
+		if err := json.Unmarshal(c.Prior.Data, &data); err != nil {
+			return err
+		}
+		if data.Role != "" {
+			role = data.Role
+		}
+	}
+	interfaces := map[string]t.NetworkInterface{}
+	found, err := a.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{Filters: filters(c.Owner, role)})
+	if err != nil {
+		return err
+	}
+	for _, nic := range found.NetworkInterfaces {
+		interfaces[aw.ToString(nic.NetworkInterfaceId)] = nic
+	}
+	ids := []string{data.ENI}
+	for _, child := range c.Prior.Children {
+		if child.Kind == "eni" {
+			ids = append(ids, child.ID)
+		}
+	}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		result, err := a.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{NetworkInterfaceIds: []string{id}})
+		if apiCode(err, "InvalidNetworkInterfaceID.NotFound") {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, nic := range result.NetworkInterfaces {
+			interfaces[aw.ToString(nic.NetworkInterfaceId)] = nic
+		}
+	}
+	for _, nic := range interfaces {
+		if !owned(nic.TagSet, c.Owner) {
+			return fmt.Errorf("ownership_mismatch: NIC %s retained", aw.ToString(nic.NetworkInterfaceId))
+		}
+		if nic.Attachment != nil || nic.Status != t.NetworkInterfaceStatusAvailable {
+			return fmt.Errorf("recovery_required: NIC remains attached or unavailable; retain cleanup intent")
+		}
+	}
+	for _, nic := range interfaces {
+		id := aw.ToString(nic.NetworkInterfaceId)
+		if _, err = a.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{NetworkInterfaceId: &id}); err != nil && !apiCode(err, "InvalidNetworkInterfaceID.NotFound") {
+			return err
+		}
+		result, err := a.DescribeNetworkInterfaces(ctx, &ec2.DescribeNetworkInterfacesInput{NetworkInterfaceIds: []string{id}})
+		if apiCode(err, "InvalidNetworkInterfaceID.NotFound") {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if len(result.NetworkInterfaces) > 0 {
+			return fmt.Errorf("NIC deletion not yet confirmed: %s", id)
+		}
+	}
+	return nil
+}
+func cleanupInstanceChildren(ctx context.Context, a *ec2.Client, c lc.Command) error {
+	if err := cleanupVolumes(ctx, a, c); err != nil {
+		return err
+	}
+	return cleanupENIs(ctx, a, c)
+}

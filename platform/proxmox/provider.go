@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
@@ -59,6 +60,42 @@ func (c *Client) Call(ctx context.Context, method, path string, in, out any) err
 	return c.call(ctx, method, path, in, out, nil)
 }
 func (c *Client) call(ctx context.Context, method, path string, in, out any, changes *string) error {
+	_, err := faultinject.Call(ctx, faultStep(method, path), func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, c.nativeCall(ctx, method, path, in, out, changes)
+	})
+	return faultError(err, method, path)
+}
+func faultStep(method, path string) string {
+	path = strings.TrimPrefix(path, "/api2/json")
+	path, _, _ = strings.Cut(path, "?")
+	step := path
+	if strings.HasPrefix(step, "/nodes/") {
+		parts := strings.SplitN(strings.TrimPrefix(step, "/nodes/"), "/", 2)
+		if len(parts) == 2 {
+			step = "/" + parts[1]
+		}
+	}
+	parts := strings.Split(step, "/")
+	for i, part := range parts {
+		if i > 0 && parts[i-1] == "storage" {
+			parts[i] = "{storage}"
+			continue
+		}
+		if i > 0 && parts[i-1] == "content" {
+			parts = append(parts[:i], "{volume}")
+			break
+		}
+		if i > 0 && parts[i-1] == "tasks" {
+			parts[i] = "{task}"
+			continue
+		}
+		if _, err := strconv.Atoi(part); err == nil {
+			parts[i] = "{id}"
+		}
+	}
+	return method + strings.Join(parts, "/")
+}
+func (c *Client) nativeCall(ctx context.Context, method, path string, in, out any, changes *string) error {
 	var body io.Reader
 	if in != nil {
 		b, e := json.Marshal(in)
@@ -160,6 +197,7 @@ type VMConfig struct {
 	Name           string            `json:"name"`
 	Net0           string            `json:"net0"`
 	NICs           map[string]string `json:"-"`
+	Disks          map[string]string `json:"-"`
 }
 
 func marker(owner, name string) string { return "labcentral:v2:" + owner + ":" + name }
@@ -175,6 +213,7 @@ func checkOwner(v VMConfig, owner, name string) error {
 	return nil
 }
 func (p *Provider) Execute(ctx context.Context, cmd lc.Command, o lc.Observer) (lc.Result, error) {
+	ctx = faultinject.WithOperation(ctx, "proxmox", cmd.Action)
 	if cmd.Action == "check" || cmd.Action == "image.build" || cmd.Action == "network.create" || cmd.Action == "machine.create" || cmd.Action == "gateway.create" {
 		if err := lc.CheckCapabilities(cmd.Source.Lab, cmd.Environment.Platform); err != nil {
 			return lc.Result{}, err
@@ -359,7 +398,7 @@ func (p *Provider) machine(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 			Pool        string `json:"pool"`
 		}{m.VMID, "lc-" + cmd.Owner[:12] + "-" + m.Name, marker(cmd.Owner, m.Name), 1, cmd.Environment.Proxmox.Storage, cmd.Environment.Proxmox.Pool}
 		if e := c.Call(ctx, "POST", c.VM(base, "/clone"), in, &task); e != nil {
-			return 0, e
+			return 0, cloneError(e)
 		}
 		if e := c.Wait(ctx, task); e != nil {
 			return 0, e
@@ -588,13 +627,20 @@ func (p *Provider) destroy(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 		if err := requireVMAudit(ctx, c, id); err != nil {
 			return lc.Result{}, err
 		}
-		return lc.Result{Absent: true}, nil
+		err := p.cleanupDisks(ctx, c, cmd, id)
+		return lc.Result{Absent: err == nil}, err
 	}
 	v, e := c.Config(ctx, id)
 	if e != nil {
 		return lc.Result{}, e
 	}
 	if e = checkOwner(v, cmd.Owner, r.Name); e != nil {
+		return lc.Result{}, e
+	}
+	if v.Lock != "" {
+		return lc.Result{}, fmt.Errorf("recovery_required: VM mutation is still locked; retry cleanup after the native task finishes")
+	}
+	if e = p.rememberDisks(ctx, c, cmd, id, v); e != nil {
 		return lc.Result{}, e
 	}
 	if v.Template != 1 {
@@ -613,6 +659,12 @@ func (p *Provider) destroy(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 	if e = checkOwner(v, cmd.Owner, r.Name); e != nil {
 		return lc.Result{}, e
 	}
+	if v.Lock != "" {
+		return lc.Result{}, fmt.Errorf("recovery_required: VM mutation is still locked; retry cleanup after the native task finishes")
+	}
+	if e = p.rememberDisks(ctx, c, cmd, id, v); e != nil {
+		return lc.Result{}, e
+	}
 	var task string
 	if e = c.Call(ctx, "DELETE", c.VM(id, ""), nil, &task); e != nil {
 		return lc.Result{}, e
@@ -628,7 +680,8 @@ func (p *Provider) destroy(ctx context.Context, c *Client, cmd lc.Command) (lc.R
 			return lc.Result{}, fmt.Errorf("deletion is not yet confirmed")
 		}
 	}
-	return lc.Result{Absent: true}, nil
+	e = p.cleanupDisks(ctx, c, cmd, id)
+	return lc.Result{Absent: e == nil}, e
 }
 
 func (p *Provider) FindBuild(ctx context.Context, cmd lc.Command) (lc.Resource, bool, error) {
@@ -647,20 +700,23 @@ func (p *Provider) FindBuild(ctx context.Context, cmd lc.Command) (lc.Resource, 
 		found = found || v.ID == cmd.Machine.VMID
 	}
 	if !found {
+		if err := requireVMAudit(ctx, c, cmd.Machine.VMID); err != nil {
+			return lc.Resource{}, false, err
+		}
 		return lc.Resource{}, false, nil
 	}
 	v, e := c.Config(ctx, cmd.Machine.VMID)
 	if e != nil {
 		return lc.Resource{}, false, e
 	}
-	if v.Template != 1 {
-		if lc.Contains(strings.Split(v.Tags, ";"), cmd.Owner) && lc.Contains(strings.Split(v.Tags, ";"), "labcentral-v2") {
-			return lc.Resource{}, false, nil
-		}
-		return lc.Resource{}, false, fmt.Errorf("ownership_mismatch: native build VM")
-	}
-	if e = checkOwner(v, cmd.Owner, cmd.Image.Name); e != nil {
+	if e = p.checkBuildOwner(v, cmd); e != nil {
 		return lc.Resource{}, false, e
+	}
+	if v.Lock != "" {
+		return lc.Resource{}, false, fmt.Errorf("recovery_required: build mutation still locked; retry recovery")
+	}
+	if v.Template != 1 {
+		return lc.Resource{}, false, nil
 	}
 	return lc.Resource{Kind: "image", Name: cmd.Image.Name, ID: strconv.Itoa(cmd.Machine.VMID), Owner: cmd.Owner}, true, nil
 }
@@ -668,6 +724,9 @@ func (p *Provider) FindBuild(ctx context.Context, cmd lc.Command) (lc.Resource, 
 func (p *Provider) CleanupBuild(ctx context.Context, cmd lc.Command) error {
 	c, e := NewClient(cmd.Environment)
 	if e != nil {
+		return e
+	}
+	if e = p.reconcileBuildMutations(ctx, c, cmd); e != nil {
 		return e
 	}
 	var list []struct {
@@ -681,14 +740,20 @@ func (p *Provider) CleanupBuild(ctx context.Context, cmd lc.Command) error {
 		found = found || v.ID == cmd.Machine.VMID
 	}
 	if !found {
-		return nil
+		if err := requireVMAudit(ctx, c, cmd.Machine.VMID); err != nil {
+			return err
+		}
+		return p.cleanupDisks(ctx, c, cmd, cmd.Machine.VMID)
 	}
 	v, e := c.Config(ctx, cmd.Machine.VMID)
 	if e != nil {
 		return e
 	}
-	if !lc.Contains(strings.Split(v.Tags, ";"), cmd.Owner) || !lc.Contains(strings.Split(v.Tags, ";"), "labcentral-v2") {
-		return fmt.Errorf("ownership_mismatch: temporary build VM")
+	if e = p.checkBuildOwner(v, cmd); e != nil {
+		return e
+	}
+	if v.Lock != "" {
+		return fmt.Errorf("recovery_required: build mutation still locked; retry cleanup")
 	}
 	if v.Template == 1 {
 		return nil
@@ -699,7 +764,7 @@ func (p *Provider) CleanupBuild(ctx context.Context, cmd lc.Command) error {
 	}{marker(cmd.Owner, cmd.Image.Name), v.Digest}, nil); e != nil {
 		return e
 	}
-	_, e = p.destroy(ctx, c, lc.Command{Owner: cmd.Owner, Prior: lc.Resource{Kind: "machine", Name: cmd.Image.Name, ID: strconv.Itoa(cmd.Machine.VMID), Owner: cmd.Owner}})
+	_, e = p.destroy(ctx, c, lc.Command{Owner: cmd.Owner, Environment: cmd.Environment, Prior: lc.Resource{Kind: "machine", Name: cmd.Image.Name, ID: strconv.Itoa(cmd.Machine.VMID), Owner: cmd.Owner}})
 	return e
 }
 

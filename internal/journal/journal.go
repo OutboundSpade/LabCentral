@@ -148,3 +148,21 @@ func Rejected(err error) error { return &rejectedError{err} }
 type rejectedError struct{ error }
 
 func (e *rejectedError) Unwrap() error { return e.error }
+
+// HasIntent distinguishes retained mutations (including unknown outcomes) from a
+// definitely rejected submission. It is used to preserve older request policies
+// when a provider resumes an operation created by an earlier binary.
+func (j Journal) HasIntent(key string) (bool, error) {
+	b, err := os.ReadFile(j.path(key))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var r record
+	if err = json.Unmarshal(b, &r); err != nil {
+		return false, err
+	}
+	return !r.Rejected, nil
+}

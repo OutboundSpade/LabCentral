@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/privatefile"
 	"github.com/OutboundSpade/LabCentral/v2/internal/store"
 	"golang.org/x/crypto/ssh"
@@ -82,7 +83,7 @@ func (e *Engine) Check(ctx context.Context, env Environment) error {
 	if err := ValidateEnvironment(env); err != nil {
 		return err
 	}
-	_, err := e.provider.Execute(ctx, Command{Action: "check", Environment: env}, e.observer)
+	_, err := e.execute(ctx, Command{Action: "check", Environment: env}, e.observer)
 	return err
 }
 func (e *Engine) List(ctx context.Context) ([]Instance, error) {
@@ -170,7 +171,7 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 	if err := verifyPlan(p); err != nil {
 		return nil, err
 	}
-	if _, err := e.provider.Execute(ctx, Command{Action: "check", Environment: p.Environment, Source: p.Source}, e.observer); err != nil {
+	if _, err := e.execute(ctx, Command{Action: "check", Environment: p.Environment, Source: p.Source}, e.observer); err != nil {
 		return nil, err
 	}
 	// Images have no dependencies on one another. A cache-key fence preserves
@@ -207,6 +208,7 @@ func (e *Engine) build(ctx context.Context, p Plan) ([]ImageRecord, error) {
 }
 
 func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]ImageRecord, error) {
+	ctx = faultinject.WithOperation(ctx, p.Environment.Platform, "image.build")
 	unlock, err := e.state.LockKeyContext(ctx, "image:"+im.CacheKey)
 	if err != nil {
 		return nil, err
@@ -223,7 +225,7 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 	var cached ImageRecord
 	err = e.state.Get(ctx, "image", im.CacheKey, &cached)
 	if err == nil {
-		r, er := e.provider.Execute(ctx, Command{Action: "image.read", Owner: cached.Resource.Owner, Environment: p.Environment, Prior: cached.Resource}, e.observer)
+		r, er := e.execute(ctx, Command{Action: "image.read", Owner: cached.Resource.Owner, Environment: p.Environment, Prior: cached.Resource}, e.observer)
 		if er != nil {
 			return nil, er
 		}
@@ -276,28 +278,54 @@ func (e *Engine) buildImage(ctx context.Context, p Plan, im PlannedImage) ([]Ima
 		return images, problem(RecoveryRequired, im.Name, "build is incomplete")
 	}
 	rec := ImageRecord{ID: owner, Key: im.CacheKey, Name: im.Name, EnvironmentDigest: p.EnvironmentDigest, Resource: r.Resource, Created: time.Now().UTC(), Environment: p.Environment}
-	if err = e.state.Put(ctx, "image", im.CacheKey, rec); err != nil {
+	_, err = faultinject.Call(faultinject.WithOperation(ctx, p.Environment.Platform, "image.build"), "publish", func(ctx context.Context) (struct{}, error) {
+		// A completed library/provider intent can survive a crash before publication.
+		// Its cached result does not prove that the capture still exists or is owned.
+		current, err := e.execute(ctx, Command{Action: "image.read", Owner: owner, Environment: p.Environment, Prior: r.Resource}, e.observer)
+		if err != nil {
+			return struct{}{}, fmt.Errorf("confirm captured image before publication: %w", err)
+		}
+		if current.Absent || !current.Resource.Complete || current.Resource.ID != r.Resource.ID || current.Resource.Owner != owner {
+			return struct{}{}, problem(RecoveryRequired, im.Name, "captured image ownership or availability is unconfirmed; inspect the native image before recovery")
+		}
+		return struct{}{}, e.publishImage(ctx, im.CacheKey, rec, cmd)
+	})
+	if err != nil {
 		return images, err
-	}
-	if p.Environment.Platform == "proxmox" {
-		if err = e.state.ReleaseValue(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, cmd.ValidationVMID); err != nil {
-			return images, err
-		}
-		if err = e.state.ReleaseValue(ctx, "vmid:"+p.Environment.Proxmox.URL, owner, cmd.GatewayVMID); err != nil {
-			return images, err
-		}
-		if err = e.state.ReleaseValue(ctx, "vlan:"+p.Environment.Proxmox.URL+":"+p.Environment.Proxmox.LabBridge, owner, cmd.VLAN); err != nil {
-			return images, err
-		}
-		if cmd.Environment.Proxmox.ManagementAddresses != nil {
-			if err = e.state.ReleaseScope(ctx, managementScope(cmd.Environment.Proxmox), owner); err != nil {
-				return images, err
-			}
-		}
 	}
 	images = append(images, rec)
 	return images, nil
 }
+
+// Publication and release of disposable qualification reservations form one commit.
+// A crash must not publish an image while stranding its auxiliary allocations.
+func (e *Engine) publishImage(ctx context.Context, key string, rec ImageRecord, cmd Command) error {
+	tx, err := e.state.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	body, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO objects VALUES('image',?,?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body`, key, body); err != nil {
+		return err
+	}
+	if cmd.Environment.Platform == "proxmox" {
+		p := cmd.Environment.Proxmox
+		if _, err = tx.ExecContext(ctx, `DELETE FROM claims WHERE owner=? AND ((scope=? AND value IN (?,?)) OR (scope=? AND value=?))`, cmd.Owner, "vmid:"+p.URL, cmd.ValidationVMID, cmd.GatewayVMID, "vlan:"+p.URL+":"+p.LabBridge, cmd.VLAN); err != nil {
+			return err
+		}
+		if p.ManagementAddresses != nil {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM claims WHERE owner=? AND scope=?`, cmd.Owner, managementScope(p)); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
 func (e *Engine) Deploy(ctx context.Context, p Plan) (Instance, error) {
 	return e.DeployWithID(ctx, p, id())
 }
@@ -406,6 +434,7 @@ func (e *Engine) DeployWithID(ctx context.Context, p Plan, instanceID string) (I
 }
 func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	env := i.Plan.Environment
+	ctx = faultinject.WithOperation(ctx, env.Platform, "deploy")
 	legacy := len(i.Plan.Networks) == 0
 	var vlans []int
 	if env.Platform == "proxmox" {
@@ -494,6 +523,13 @@ func ensureKey(path string) (string, error) {
 	pub, _ := ssh.NewPublicKey(priv.Public())
 	return string(ssh.MarshalAuthorizedKey(pub)), nil
 }
+
+// execute covers a lost provider result before the library can commit it.
+func (e *Engine) execute(ctx context.Context, c Command, o Observer) (Result, error) {
+	ctx = faultinject.WithOperation(ctx, c.Environment.Platform, c.Action)
+	return faultinject.Call(ctx, "provider.result", func(ctx context.Context) (Result, error) { return e.provider.Execute(ctx, c, o) })
+}
+
 func (e *Engine) invoke(ctx context.Context, c Command) (Result, error) {
 	st, err := e.state.Intent(ctx, c.Operation, c.Owner, c)
 	if err != nil {
@@ -526,7 +562,7 @@ func (e *Engine) invoke(ctx context.Context, c Command) (Result, error) {
 		}
 	}
 	e.emit(c.Action, c.Owner, "")
-	r, err := e.provider.Execute(ctx, c, e.observer)
+	r, err := e.execute(ctx, c, e.observer)
 	if err != nil {
 		return r, err
 	}
@@ -709,7 +745,7 @@ func (e *Engine) destroy(ctx context.Context, i *Instance) error {
 		}
 		cmd.Action = "discover"
 		cmd.Recovery = true
-		r, err := e.provider.Execute(ctx, cmd, e.observer)
+		r, err := e.execute(ctx, cmd, e.observer)
 		if err != nil {
 			return err
 		}

@@ -2944,6 +2944,7 @@ type AccessOptions struct {
 	Principal       string                 `protobuf:"bytes,1,opt,name=principal,proto3" json:"principal,omitempty"`
 	Expires         string                 `protobuf:"bytes,2,opt,name=expires,proto3" json:"expires,omitempty"`
 	RetainWorkspace bool                   `protobuf:"varint,3,opt,name=retain_workspace,json=retainWorkspace,proto3" json:"retain_workspace,omitempty"`
+	Generation      string                 `protobuf:"bytes,4,opt,name=generation,proto3" json:"generation,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2997,6 +2998,13 @@ func (x *AccessOptions) GetRetainWorkspace() bool {
 		return x.RetainWorkspace
 	}
 	return false
+}
+
+func (x *AccessOptions) GetGeneration() string {
+	if x != nil {
+		return x.Generation
+	}
+	return ""
 }
 
 type PlannedNetwork struct {
@@ -3578,11 +3586,14 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\x04data\x18\t \x01(\fR\x04data\"4\n" +
 	"\x0eNativeResource\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"r\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\x92\x01\n" +
 	"\rAccessOptions\x12\x1c\n" +
 	"\tprincipal\x18\x01 \x01(\tR\tprincipal\x12\x18\n" +
 	"\aexpires\x18\x02 \x01(\tR\aexpires\x12)\n" +
-	"\x10retain_workspace\x18\x03 \x01(\bR\x0fretainWorkspace\"\xba\x01\n" +
+	"\x10retain_workspace\x18\x03 \x01(\bR\x0fretainWorkspace\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x04 \x01(\tR\n" +
+	"generation\"\xba\x01\n" +
 	"\x0ePlannedNetwork\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04cidr\x18\x02 \x01(\tR\x04cidr\x12\x18\n" +

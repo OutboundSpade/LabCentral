@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	_ "modernc.org/sqlite"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -170,6 +172,10 @@ func (s *Store) Uncertain(ctx context.Context, owner string) ([]Step, error) {
 	return out, r.Err()
 }
 func (s *Store) Reserve(ctx context.Context, scope, owner string, start, end, count int) ([]int, error) {
+	kind, _, _ := strings.Cut(scope, ":")
+	return faultinject.Call(ctx, "reserve."+kind, func(ctx context.Context) ([]int, error) { return s.reserve(ctx, scope, owner, start, end, count) })
+}
+func (s *Store) reserve(ctx context.Context, scope, owner string, start, end, count int) ([]int, error) {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return nil, e
@@ -206,7 +212,8 @@ func (s *Store) Reserve(ctx context.Context, scope, owner string, start, end, co
 	if len(values) != count {
 		return nil, fmt.Errorf("allocation namespace %s is exhausted", scope)
 	}
-	return values, tx.Commit()
+	_, e = faultinject.Call(ctx, "reserve.commit", func(context.Context) (bool, error) { return true, tx.Commit() })
+	return values, e
 }
 func (s *Store) Release(ctx context.Context, owner string) error {
 	_, e := s.DB.ExecContext(ctx, `DELETE FROM claims WHERE owner=?`, owner)

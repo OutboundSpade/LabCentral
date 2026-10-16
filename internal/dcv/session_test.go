@@ -27,9 +27,9 @@ func TestCPUDesktopDisablesGLAndMustHaveRunningDisplay(t *testing.T) {
 		}
 		reads++
 		if reads == 1 {
-			return []byte(`[{"id":"student","status":"running","x11-display":""}]`), nil
+			return []byte(`[{"id":"student","owner":"student","status":"running","x11-display":""}]`), nil
 		}
-		return []byte(`[{"id":"student","status":"running","x11-display":":1"}]`), nil
+		return []byte(`[{"id":"student","owner":"student","status":"running","x11-display":":1"}]`), nil
 	}
 	if err := start(context.Background(), run, "student", "student", time.Second, time.Millisecond); err != nil {
 		t.Fatal(err)
@@ -51,13 +51,13 @@ func TestFailedLaunchRetriesOnlyConfirmedAbsence(t *testing.T) {
 					return nil, nil
 				}
 				if creates == 2 {
-					return []byte(`[{"id":"student","status":"running","x11-display":":1"}]`), nil
+					return []byte(`[{"id":"student","owner":"student","status":"running","x11-display":":1"}]`), nil
 				}
 				if outcome == "unknown" {
 					return nil, errors.New("response lost")
 				}
 				if outcome == "starting" {
-					return []byte(`[{"id":"student","status":"starting"}]`), nil
+					return []byte(`[{"id":"student","owner":"student","status":"starting"}]`), nil
 				}
 				return []byte(`[]`), nil
 			}
@@ -102,7 +102,7 @@ func TestEmptyStartupStatusWaitsWithoutDuplicatingSession(t *testing.T) {
 				}
 				reads++
 				if eventuallyReady && reads > 2 {
-					return []byte(`[{"id":"student","status":"running","x11-display":":1"}]`), nil
+					return []byte(`[{"id":"student","owner":"student","status":"running","x11-display":":1"}]`), nil
 				}
 				return []byte(" \n"), nil
 			}

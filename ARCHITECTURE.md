@@ -491,8 +491,17 @@ restored one starts.
 - Native create intent is saved before every call, with idempotency keys where the
   platform supports them. After a lost response, recovery looks for the exact recorded
   owner. Ambiguous results keep their allocations and recovery intent.
-- An authorization rejection and an uncertain transport failure are different outcomes;
-  the second is never retried as if it had been rejected.
+- An authorization/validation rejection or an explicit throttle and an uncertain
+  transport/server failure are different outcomes. Only definite pre-mutation
+  rejections release the native create checkpoint for another submission. EC2 SDK
+  transport retries are disabled; reconciliation precedes any further create.
+- The pinned Packer builders use a private loopback capability to reach their native
+  APIs. Provider guards restrict creates to the pinned base and reserved identity,
+  preserve atomic ownership markings, verify ownership before later mutations, and
+  journal create/capture requests and native resource IDs. A final local guard denial
+  is recorded as not submitted. A lost create response is
+  discovered, never blindly replayed. Proxmox task locks and recorded tasks must settle
+  before cleanup; unknown empty discovery retains the attempt and its allocations.
 - Cache-key file locks coordinate build, reuse, abandonment and removal across clients.
   Deployment builds or reuses images first, then takes the image locks in sorted order
   and a short allocation fence to save references. Image removal uses the same fence to
@@ -500,8 +509,13 @@ restored one starts.
 - Deployment, recovery and destruction take an exclusive lifecycle lock per instance.
   Desktop operations and SSH callbacks share it and take an exclusive lock per machine,
   so unrelated machines in one lab can be worked on at once.
+- Provider processes also hold file fences in their own private directory, without
+  opening the library database. A second provider cannot cross an in-flight operation
+  after the original CLI loses its connection. Builder proxy shutdown cancels and
+  drains native handlers before releasing that fence.
 - Cleanup intent is saved before fences are released for native I/O, and reservations
-  are released only after absence is confirmed.
+  are released only after absence is confirmed. Image publication and release of its
+  disposable qualification reservations commit in one SQLite transaction.
 
 ### Order of operations
 
@@ -523,14 +537,33 @@ flowchart LR
 - Destruction first reconciles uncertain creates, then deletes in reverse order:
   machines (concurrently), the gateway once every machine is confirmed absent, then
   networks. Cross-group security rules are removed before either group.
-- Deletion checks recorded IDs and ownership, never names alone. Route reconciliation
+- Deletion checks recorded IDs and ownership, never names alone. EC2 termination
+  verifies attached and recorded disks/NICs first because termination can delete them
+  implicitly. New launches mark NICs atomically; retained older inline NICs require
+  their exact parent attachment plus an original primary or a recorded identity.
+  Recorded detached children remain cleanup targets,
+  even when tag discovery omits them. Disk, NIC, key and snapshot deletion must be
+  confirmed before cleanup succeeds. Proxmox records attached/unused disk IDs before
+  VM deletion and verifies native storage VMID ownership and absence afterwards;
+  native disk-free warnings cannot release an allocation. Unrecorded orphan volumes
+  retain it for investigation. Exact recorded orphan deletion may require an
+  administrator's `Datastore.Allocate`; the runtime role remains unchanged.
+  Route reconciliation
   verifies table ownership, accepts an existing matching route and rejects a
   conflicting one.
+- Desktop grant and close intent precedes guest effects. Each new grant has a random
+  generation; Linux guest file locks and Windows named mutexes serialize effects.
+  Revocation durably tombstones the generation even if the account is absent, so a
+  delayed grant cannot recreate access after successful cleanup. Old generations
+  cannot revoke a newer grant. Account markers and native DCV session owners are
+  checked before deletion. Uncertain guest cleanup retains its record.
 - Guest-session cleanup is tried first, but an unreachable guest cannot block
   termination. Access records survive until machines are confirmed removed.
 - Image removal is a separate operation. It refuses images that retained labs still use
   and includes AMI snapshots or Proxmox template disks. Failed or unknown cleanup stays
-  recoverable and blocks reuse of the affected cache key.
+  recoverable and blocks reuse of the affected cache key. Abandonment reconciles
+  builder mutations before deleting a capture, preserving the evidence needed to
+  resolve a lost capture response.
 
 The CLI has no scheduler: resources keep running until destroyed. The hosted service
 persists deadlines and queues overdue cleanup on restart, but an offline control process
@@ -747,18 +780,28 @@ request capture, browser fixtures and local load models establish local behavior
 
 | Area | Verified on a real platform | Not yet verified |
 | --- | --- | --- |
-| AWS library lifecycle | Image builds, deployment, pinned SSH, desktops, interrupted cleanup | Full interruption, response-loss and stale-ownership matrix |
+| AWS library lifecycle | Image builds and disposable qualification, deployment, pinned SSH and Linux desktops; recovery after native create/delete and guest response loss, killed controllers, a second client, foreign parent/child ownership and out-of-band deletion | Full native interruption, response-loss and stale-ownership matrix; new builder capture-receipt and publication races |
 | AWS gateway and egress | Private guests, jump SSH and DCV, NAT, blocked private forwarding, cleanup | Reboot behavior; broader cold/warm latency |
 | AWS platform options | Explicit type, gp3 performance and CPU credits | Wider combinations |
-| Multiple networks and routers (AWS) | Two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot, cleanup | Interrupted multi-NIC recovery |
+| Multiple networks and routers (AWS) | Two-network labs with a router, default and author CIDRs, routed name resolution, one-sided egress, forwarding off/on, router reboot, cleanup; response-loss recovery during NIC configuration and detached-NIC cleanup, including changed child ownership | Wider native fault combinations |
 | AWS Windows guests (CLI/library) | Mixed IIS lab: both images built and boot-qualified; sysprep and certificate sanitization; private deployment; coach and student SSH; firewall, hosts and routes; DCV console with browser rendering, reconnect and revocation; break/check/repair for every stage and scenario variant; recovery after a killed destroy; image removal with confirmed cleanup | Hosted Windows sign-in and release acceptance; typed desktop input; cohorts; full failure matrix |
 | Hosted identity and meetings | Real OIDC, revocation, seat switching, retained workspaces; a meeting of 4 teams × 3 students with 12 concurrent desktops, a break and checks on every team | Meetings larger than 4 × 3 |
 | Hosted practice and scenarios | Individual attempts, pinned guest checks, combined breaks, retained progress and cleanup | Larger personal cohorts; full weekly quota exhaustion |
 | Hosted desktops and coach terminal | Terminal input, resize, reconnect and revocation; cold and rebooted desktops; desktop browser launch | General launch latency |
-| Proxmox setup and lifecycle | PVE 9.2 with directory storage: clean setup, guest-agent cold restart, idempotent rerun, environment check, the single/web-database/workstation examples, image removal and teardown; recovery after a killed deploy and destroy | Full response-loss, stale-ownership and interruption matrix; other storage and firmware combinations |
+| Proxmox setup and lifecycle | PVE 9.2 with directory storage: clean setup, guest-agent cold restart, idempotent rerun, environment check, the single/web-database/workstation examples, image removal and teardown; killed deploy/build/destroy, native clone/template/delete response loss, concurrent clients and changed ownership; confirmed disk cleanup after a native VM deletion reported only a disk-free warning | Full native response-loss, stale-ownership and interruption matrix; capture-receipt and publication races; other storage and firmware combinations |
 | Proxmox networking | Single, web/database and two-network router labs; pinned jump SSH, requester-specific names, one-sided Internet egress, blocked LAN/gateway destinations after forced defaults, concurrent-lab L2 isolation; gateway reboot and policy restoration | Static management pools; four-network layouts |
 | Proxmox desktops and options | Workstation build and qualification; real noVNC login, keyboard input, desktop/mobile rendering and account revocation; host/kvm64 CPUs, e1000/virtio NICs, ballooning enabled/disabled | Wider CPU/NIC combinations; broader browser/device coverage |
-| Durability and scheduling | Local failure, persistence, response-loss, authorization and race tests; a hosted restore rehearsal | Native failure matrix; configured capacity ceilings |
+| Durability and scheduling | Local persisted-restart matrices, subprocess SIGKILL and second-client tests, native HTTP/SSH response-loss and rejection tests; AWS and Proxmox live subsets; a hosted restore rehearsal | Completion of the native failure matrix; configured capacity ceilings |
+
+The expanded local matrices cover library intents and reservations, provider mutation
+boundaries, builder create/capture journals, guest lease fencing and cleanup inventories.
+The live subsets exercise distinct recovery paths but do not establish the full matrix.
+Windows access has fake-provider process coverage and compiled native guest tests; the
+new Windows lease implementation still needs execution on a real Windows guest. Windows
+builds affected by the known EC2Launch/SSH restart race remain blocked, and do not count
+as Windows failure-matrix qualification. Native capture-receipt and publication race
+qualification also remains outstanding. Detailed cell mappings and live limitations are
+recorded in the private operator evidence.
 
 Not supported yet: Windows on Proxmox, Windows routers or multiple Windows NICs, Ansible
 targeting Windows, author CIDRs on Proxmox, hosted platforms other than AWS,

@@ -164,7 +164,7 @@ func (f *setupAPI) serve(w http.ResponseWriter, r *http.Request) {
 			emit(items)
 		}
 	case path == "/access/permissions":
-		emit(map[string]any{"/": map[string]int{"VM.Audit": 1}})
+		emit(map[string]any{"/": map[string]int{"VM.Audit": 1, "Datastore.Audit": 1}})
 	case path == "/storage":
 		emit([]map[string]string{{"storage": "local", "content": f.content, "type": "dir"}})
 	case path == "/storage/local":

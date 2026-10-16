@@ -63,6 +63,12 @@ func (r *Runner) Abandon(ctx context.Context, c lc.Command, _ lc.Observer) (lc.R
 			return lc.Result{}, err
 		}
 	}
+	// Reconcile native builder creates/capture while their owned result still
+	// exists. Deleting a capture first could erase the only authoritative evidence
+	// for a lost response and permanently strand its allocation.
+	if err = r.Cleanup(ctx, c); err != nil {
+		return lc.Result{}, err
+	}
 	image, found, err := r.Find(ctx, c)
 	if err != nil {
 		return lc.Result{}, err

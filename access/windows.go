@@ -7,7 +7,6 @@ import (
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/dcv"
-	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
 	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"golang.org/x/crypto/ssh"
 )
@@ -46,7 +45,7 @@ func closeWindowsDCV(ctx context.Context, c lc.Command, client *ssh.Client) erro
 		Marker         string
 		Retain, Exists bool
 	}{dcvMarker(c), c.Access.RetainWorkspace, exists})
-	_, err = remote.Run(ctx, client, windows.PayloadCommand(`
+	_, err = guestRun(ctx, client, leaseCommand(c, "revoke", windows.PayloadCommand(`
 $registry='HKLM:\SOFTWARE\LabCentral\Desktop'
 $owner=(Get-ItemProperty -Path $registry -Name Owner -ErrorAction SilentlyContinue).Owner
 if (!$owner) {exit 0}
@@ -89,11 +88,11 @@ Get-CimInstance Win32_Process | ForEach-Object {
 if (!$p.Retain) {
  Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid | Remove-CimInstance
 }
-`, payload))
+`, payload)))
 	if err != nil {
 		return err
 	}
-	exists, _, err = dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) })
+	exists, _, err = dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
 	if err != nil {
 		return err
 	}
@@ -104,5 +103,5 @@ if (!$p.Retain) {
 }
 
 func dcvWindowsState(ctx context.Context, client *ssh.Client) (bool, bool, error) {
-	return dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) })
+	return dcv.WindowsState(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
 }

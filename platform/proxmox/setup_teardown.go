@@ -103,12 +103,6 @@ func (s *Setup) Teardown(ctx context.Context) error {
 			continue
 		}
 		if r.ID == p.BaseVMID {
-			if err = s.deleteStep(ctx, "base", func() error {
-				_, err := (&Provider{}).destroy(ctx, c, lc.Command{Owner: p.Owner, Prior: lc.Resource{Kind: "machine", Name: "base", ID: strconv.Itoa(p.BaseVMID), Owner: p.Owner}})
-				return err
-			}); err != nil {
-				return err
-			}
 			continue
 		}
 		var config map[string]any
@@ -125,6 +119,14 @@ func (s *Setup) Teardown(ctx context.Context) error {
 				}
 			}
 		}
+	}
+	// Retry disk confirmation even when an earlier VM deletion already removed
+	// the base from native inventory. Its setup intent remains until disks settle.
+	if err = s.deleteStep(ctx, "base", func() error {
+		_, err := (&Provider{Journal: s.journal()}).destroy(ctx, c, lc.Command{Owner: p.Owner, Environment: p.Environment, Prior: lc.Resource{Kind: "machine", Name: "base", ID: strconv.Itoa(p.BaseVMID), Owner: p.Owner}})
+		return err
+	}); err != nil {
+		return err
 	}
 	for _, v := range []struct{ Key, ID string }{{"seed", p.Environment.Proxmox.Storage + ":iso/" + p.SeedName}, {"image", p.Environment.Proxmox.Storage + ":import/" + p.ImageName}} {
 		if err = s.deleteStep(ctx, v.Key, func() error {

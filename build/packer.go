@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
 	"io"
 	"os"
@@ -29,6 +30,7 @@ type Config struct {
 	Provisioners []json.RawMessage `json:"provisioners"`
 }
 type Runner struct {
+	Intercept func(context.Context, lc.Command, *Config) (func(), error)
 	Configure func(context.Context, lc.Command, *Config) error
 	Provider  lc.Provider
 	Prepare   func(context.Context, lc.Command, string) error
@@ -351,6 +353,13 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 				return lc.Result{}, err
 			}
 		}
+		if r.Intercept != nil {
+			close, err := r.Intercept(ctx, c, &cfg)
+			if err != nil {
+				return lc.Result{}, err
+			}
+			defer close()
+		}
 		if r.Prepare != nil {
 			_, pub, err := key(filepath.Join(dir, "build.key"))
 			if err != nil {
@@ -401,11 +410,11 @@ func (r *Runner) Run(ctx context.Context, c lc.Command, o lc.Observer) (lc.Resul
 			return lc.Result{}, fmt.Errorf("native image was not found after Packer completed")
 		}
 	}
-	validated, err := r.Validate(ctx, c, artifact)
+	validated, err := faultinject.Call(ctx, "qualify", func(ctx context.Context) (lc.Resource, error) { return r.Validate(ctx, c, artifact) })
 	if err != nil {
 		return lc.Result{}, err
 	}
-	if err = r.Cleanup(ctx, c); err != nil {
+	if _, err = faultinject.Call(ctx, "build.cleanup", func(ctx context.Context) (struct{}, error) { return struct{}{}, r.Cleanup(ctx, c) }); err != nil {
 		return lc.Result{}, fmt.Errorf("build cleanup unconfirmed: %w", err)
 	}
 	validated.Complete = true

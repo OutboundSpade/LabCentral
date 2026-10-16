@@ -44,9 +44,55 @@ LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_CHROMIUM=… node web/tests/template
 
 None of these replace testing against real AWS or Proxmox accounts.
 
+## Failure injection
+
+Normal and release builds ignore `LABCENTRAL_FAULT`. Qualification binaries must be
+built explicitly with `-tags faultinject`, for both the CLI and provider:
+
+```sh
+go test -race -tags faultinject ./...
+go build -tags faultinject -o /private/test-bin/labcentral ./cmd/labcentral
+go build -tags faultinject -o /private/test-bin/labcentral-provider ./cmd/labcentral-provider
+```
+
+Use only an explicitly configured disposable environment. Select one occurrence with
+JSON in `LABCENTRAL_FAULT`, for example:
+
+```json
+{"operation":"aws/network.create","step":"CreateSubnet","fault":"response-loss","nth":1,"marker":"/private/run/subnet.hit"}
+```
+
+Operations are `PLATFORM/ACTION`, using provider actions such as `image.build`,
+`network.create`, `gateway.create`, `machine.create`, `resource.destroy`, `access.open`
+and `access.close`. AWS steps use SDK operation names; Proxmox steps use normalized
+methods and paths such as `POST/qemu/{id}/clone`. Packer steps have a `packer.` prefix;
+`.received` selects the point after a native reply but before the provider receipt.
+`ssh.exec` selects guest steps. Library boundaries also include `provider.result`,
+`publish`, `reserve.vmid`, `reserve.vlan` and `reserve.commit`; `qualify` and
+`build.cleanup` select builder phases. Reservation selectors use the library
+`deploy` or `image.build` operation.
+
+Faults are `kill-before`, `kill-during`, `kill-after`, `response-loss`,
+`reject-authorization`, `reject-validation`, `throttle`, `server-error`,
+`pause-before` and `pause-after`. Response loss executes the real call before dropping
+its result. A during-send kill uses HTTP request acceptance or SSH exec acceptance;
+the native outcome remains unknown. A pause writes the private marker and resumes
+when `MARKER.continue` exists, allowing an external harness to alter ownership or
+kill the controller. Markers are exclusive and stop the same selector poisoning
+recovery. `LABCENTRAL_FAULT_TRACE` optionally writes native step/status diagnostics to
+a private local file. Never put selectors, credentials, native inventory or evidence
+from a real installation in tracked files.
+
+The lifecycle matrices restart from persisted library and fake native inventory.
+Platform matrices select each native mutation occurrence from a successful trace,
+assert owned cleanup and preservation of foreign inventory, and distinguish empty
+unknown discovery from confirmed absence. Subprocess tests use actual SIGKILL and
+independent clients. These checks establish local behavior; real-platform evidence
+must be recorded separately.
+
 ## Continuous integration and releases
 
-`.github/workflows/ci.yml` runs vet, race tests, the consumer example, CLI
+`.github/workflows/ci.yml` runs vet, default and fault-tag race tests, the consumer example, CLI
 cross-compilation and the web check and build on every push to `main` and every pull
 request.
 

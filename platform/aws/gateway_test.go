@@ -23,18 +23,20 @@ import (
 
 type networkObject struct{ kind, id, component, cidr, role string }
 type networkEC2 struct {
-	t                *testing.T
-	objects          []networkObject
-	requests         []url.Values
-	loss, deleteLoss string
-	public           string
-	terminated       map[string]bool
-	defaults         map[string]string
-	subnets          map[string]string
-	routes           map[string]map[string]string
-	instanceNICs     map[string]url.Values
-	routeReject      string
-	imagePlatform    string
+	detached, enisDeleted, tagsRemoved map[string]bool
+	owners                             map[string]string
+	t                                  *testing.T
+	objects                            []networkObject
+	requests                           []url.Values
+	loss, deleteLoss                   string
+	public                             string
+	terminated                         map[string]bool
+	defaults                           map[string]string
+	subnets                            map[string]string
+	routes                             map[string]map[string]string
+	instanceNICs                       map[string]url.Values
+	routeReject                        string
+	imagePlatform                      string
 }
 
 func newNetworkEC2(t *testing.T) (*networkEC2, *ec2.Client) {
@@ -62,6 +64,10 @@ func (f *networkEC2) matching(v url.Values, o networkObject) bool {
 		if strings.HasPrefix(key, "Filter.") && strings.HasSuffix(key, ".Name") {
 			value := v.Get(strings.TrimSuffix(key, ".Name") + ".Value.1")
 			switch values[0] {
+			case "tag:labcentral:owner":
+				if owner, ok := f.owners[o.id]; ok && owner != value {
+					return false
+				}
 			case "tag:labcentral:component":
 				if o.component != value {
 					return false
@@ -95,7 +101,13 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 	errorCode := ""
 	createKinds := map[string]string{"CreateVpc": "vpc", "CreateSubnet": "subnet", "CreateInternetGateway": "igw", "CreateRouteTable": "route", "CreateSecurityGroup": "sg", "CreateVpcEndpoint": "endpoint", "RunInstances": "instance"}
 	if kind := createKinds[action]; kind != "" {
-		id := fmt.Sprintf("%s-%d", kind, len(f.objects)+1)
+		count := len(f.objects)
+		for _, object := range f.objects {
+			if owner, ok := f.owners[object.id]; ok && owner != "owner" {
+				count--
+			}
+		}
+		id := fmt.Sprintf("%s-%d", kind, count+1)
 		component := tagValue(v, "labcentral:component")
 		o := networkObject{kind: kind, id: id, component: component, cidr: v.Get("CidrBlock"), role: tagValue(v, "labcentral:role")}
 		f.objects = append(f.objects, o)
@@ -130,6 +142,59 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 			body += "</item></imagesSet>"
 		case "DescribePrefixLists":
 			body = "<prefixListSet><item><prefixListId>pl-s3</prefixListId></item></prefixListSet>"
+		case "DescribeNetworkInterfaces":
+			body = "<networkInterfaceSet>"
+			for instance, request := range f.instanceNICs {
+				count := 1
+				if request.Get("NetworkInterface.2.PrivateIpAddress") != "" {
+					count = 2
+				}
+				match := true
+				for key, values := range v {
+					if strings.HasPrefix(key, "Filter.") && strings.HasSuffix(key, ".Name") && values[0] == "tag:labcentral:role" && v.Get(strings.TrimSuffix(key, ".Name")+".Value.1") != tagValue(request, "labcentral:role") {
+						match = false
+					}
+				}
+				if !match {
+					continue
+				}
+				for index := 1; index <= count; index++ {
+					id := "eni-gateway"
+					if request.Get("NetworkInterface.1.PrivateIpAddress") != "" {
+						id = "eni-" + instance + fmt.Sprint(index)
+					}
+					if f.enisDeleted[id] || (f.terminated[instance] && !f.detached[id]) {
+						continue
+					}
+					if wanted := v.Get("NetworkInterfaceId.1"); wanted != "" && wanted != id {
+						continue
+					}
+					nativeTags := ""
+					if request.Get("TagSpecification.3.ResourceType") == "network-interface" {
+						nativeTags = fakeTags(tagValue(request, "labcentral:role"), "")
+					}
+					if owner, ok := f.owners[id]; ok {
+						nativeTags = strings.Replace(fakeTags("machine", ""), "<value>owner</value>", "<value>"+owner+"</value>", 1)
+					}
+					if f.tagsRemoved[id] {
+						nativeTags = ""
+					}
+					if v.Get("NetworkInterfaceId.1") == "" {
+						if owner, ok := f.owners[id]; ok && owner != "owner" {
+							continue
+						}
+						if f.tagsRemoved[id] {
+							continue
+						}
+					}
+					attachment := "<status>available</status>"
+					if !f.detached[id] {
+						attachment = "<status>in-use</status><attachment><instanceId>" + instance + "</instanceId><deleteOnTermination>true</deleteOnTermination></attachment>"
+					}
+					body += "<item><networkInterfaceId>" + id + "</networkInterfaceId>" + attachment + nativeTags + "</item>"
+				}
+			}
+			body += "</networkInterfaceSet>"
 		case "DescribeVolumes":
 			body = "<volumeSet/>"
 		case "DescribeVpcs", "DescribeSubnets", "DescribeInternetGateways", "DescribeRouteTables", "DescribeSecurityGroups", "DescribeVpcEndpoints", "DescribeInstances":
@@ -180,6 +245,9 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 							if address == "" {
 								break
 							}
+							if f.detached["eni-"+o.id+fmt.Sprint(j)] {
+								continue
+							}
 							enis += "<item><networkInterfaceId>eni-" + o.id + fmt.Sprint(j) + "</networkInterfaceId><vpcId>vpc-1</vpcId><subnetId>" + request.Get(prefix+"SubnetId") + "</subnetId><privateIpAddress>" + address + "</privateIpAddress><attachment><deviceIndex>" + request.Get(prefix+"DeviceIndex") + "</deviceIndex><deleteOnTermination>true</deleteOnTermination></attachment></item>"
 						}
 						a := strings.Index(item, "<networkInterfaceSet>")
@@ -188,7 +256,18 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 						item = strings.Replace(item, "<privateIpAddress>10.77.0.11</privateIpAddress>", "<privateIpAddress>"+request.Get("NetworkInterface.1.PrivateIpAddress")+"</privateIpAddress>", 1)
 					}
 				}
-				item += fakeTags(o.role, o.component)
+				nativeTags := fakeTags(o.role, o.component)
+				if owner, ok := f.owners[o.id]; ok {
+					nativeTags = strings.Replace(nativeTags, "<value>owner</value>", "<value>"+owner+"</value>", 1)
+				}
+				if kind == "instance" && f.instanceNICs[o.id] == nil {
+					start := strings.Index(item, "<networkInterfaceSet>")
+					end := strings.Index(item, "</networkInterfaceSet>")
+					if start >= 0 && end >= 0 {
+						item = item[:start] + item[end+len("</networkInterfaceSet>"):]
+					}
+				}
+				item += nativeTags
 				if kind == "instance" {
 					item = "<instancesSet><item>" + item + "</item></instancesSet>"
 				}
@@ -205,6 +284,11 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 					errorCode = "InvalidInstanceID.NotFound"
 				}
 			}
+		case "DeleteNetworkInterface":
+			if f.enisDeleted == nil {
+				f.enisDeleted = map[string]bool{}
+			}
+			f.enisDeleted[v.Get("NetworkInterfaceId")] = true
 		case "CreateRoute":
 			target := v.Get("GatewayId")
 			if target == "" {

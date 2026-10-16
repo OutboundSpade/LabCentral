@@ -55,3 +55,13 @@ func TestDesktopPasswordIsExactChpasswdInput(t *testing.T) {
 		t.Fatalf("chpasswd input=%q err=%v", out, err)
 	}
 }
+
+func TestDesktopForeignAccountMessageIsActionable(t *testing.T) {
+	c := lc.Command{Owner: "owner", Operation: "op"}
+	for _, script := range []string{desktopOwned("labcentral-x", c), desktopAccountScript("labcentral-x", "secret", c)} {
+		out, err := runAccountScript(t, "Someone Else", script)
+		if err == nil || !strings.Contains(out, "ownership_mismatch:") {
+			t.Fatal("foreign account lacks recovery category", err, out)
+		}
+	}
+}

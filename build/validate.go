@@ -206,7 +206,7 @@ func ValidateNative(ctx context.Context, root string, p lc.Provider, c lc.Comman
 		}
 		_, err = remote.Run(ctx, client, command)
 		if err == nil && c.Image.Desktop && c.Environment.Platform == "aws" && m.OS != "windows" {
-			_, err = remote.Run(ctx, client, "sudo dcv close-session labcentral-validation >/dev/null 2>&1 || true")
+			err = dcv.Close(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, "lab", "labcentral-validation")
 			if err == nil {
 				err = dcv.Start(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, "lab", "labcentral-validation")
 			}

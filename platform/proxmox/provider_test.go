@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	"io"
 	"log"
 	"net/http"
@@ -18,7 +19,7 @@ func testClient(t *testing.T, h http.HandlerFunc) (*Client, lc.Environment) {
 	server.Config.ErrorLog = log.New(io.Discard, "", 0)
 	t.Cleanup(server.Close)
 	t.Setenv("LC_TEST_TOKEN", "private-test-secret")
-	env := lc.Environment{Platform: "proxmox", Proxmox: lc.ProxmoxConfig{URL: server.URL, TokenID: "test@pve!test", TokenEnv: "LC_TEST_TOKEN", Node: "node", InsecureSkipTLSVerify: true}}
+	env := lc.Environment{Platform: "proxmox", Proxmox: lc.ProxmoxConfig{URL: server.URL, TokenID: "test@pve!test", TokenEnv: "LC_TEST_TOKEN", Node: "node", Storage: "local", InsecureSkipTLSVerify: true}}
 	c, err := NewClient(env)
 	if err != nil {
 		t.Fatal(err)
@@ -105,10 +106,12 @@ func TestAPIErrorsDoNotExposeSecrets(t *testing.T) {
 
 func TestDestroyDoesNotDeleteUnreferencedVMIDNamedDisks(t *testing.T) {
 	deleted := false
-	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c, env := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/storage/local/content"):
+			response(w, []any{})
 		case strings.HasSuffix(r.URL.Path, "/access/permissions"):
-			response(w, map[string]any{"/vms/2000": map[string]int{"VM.Audit": 1}})
+			response(w, map[string]any{"/": map[string]int{"VM.Audit": 1, "Datastore.Audit": 1}})
 		case strings.HasSuffix(r.URL.Path, "/cluster/resources"):
 			if deleted {
 				response(w, []any{})
@@ -130,7 +133,7 @@ func TestDestroyDoesNotDeleteUnreferencedVMIDNamedDisks(t *testing.T) {
 			w.WriteHeader(500)
 		}
 	})
-	result, err := (&Provider{}).destroy(context.Background(), c, lc.Command{Owner: "owner", Prior: lc.Resource{Kind: "image", Name: "image", ID: "2000", Owner: "owner"}})
+	result, err := (&Provider{Journal: journal.Journal{Root: t.TempDir()}}).destroy(context.Background(), c, lc.Command{Owner: "owner", Environment: env, Prior: lc.Resource{Kind: "image", Name: "image", ID: "2000", Owner: "owner"}})
 	if err != nil || !result.Absent || !deleted {
 		t.Fatal(result, err)
 	}

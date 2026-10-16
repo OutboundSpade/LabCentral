@@ -204,15 +204,17 @@ func checkRanges(ctx context.Context, c *Client, e lc.Environment) error {
 }
 
 func requireVMAudit(ctx context.Context, c *Client, id int) error {
+	return requireAudit(ctx, c, "/vms/"+strconv.Itoa(id), "VM.Audit")
+}
+func requireAudit(ctx context.Context, c *Client, path, privilege string) error {
 	var permissions map[string]map[string]int
 	if err := c.Call(ctx, "GET", "/access/permissions", nil, &permissions); err != nil {
 		return err
 	}
-	path := "/vms/" + strconv.Itoa(id)
 	for parent, grants := range permissions {
-		if (path == parent || strings.HasPrefix(path, parent+"/") || parent == "/") && grants["VM.Audit"] == 1 {
+		if (path == parent || strings.HasPrefix(path, parent+"/") || parent == "/") && grants[privilege] == 1 {
 			return nil
 		}
 	}
-	return fmt.Errorf("recovery_required: cannot prove VM absence without VM.Audit on %s; rerun environment setup to restore read-only inventory visibility", path)
+	return fmt.Errorf("recovery_required: cannot prove native absence without %s on %s; rerun environment setup to restore read-only inventory visibility", privilege, path)
 }

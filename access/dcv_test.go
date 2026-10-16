@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,5 +86,25 @@ func TestCachedDesktopReadinessPreservesUnknownOutcomes(t *testing.T) {
 		if (err != nil) != unknown || !checked || closed || m.sessions["operation"] != d {
 			t.Fatalf("unknown=%v err=%v checked=%v closed=%v", unknown, err, checked, closed)
 		}
+	}
+}
+
+func TestRetiredCachedDesktopCannotReuseItsRevokedGeneration(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprint(expired), func(t *testing.T) {
+			manager := NewManager()
+			closed := 0
+			expiry := time.Now().Add(time.Hour)
+			if expired {
+				expiry = time.Now().Add(-time.Second)
+			}
+			old := &desktop{info: Info{Expires: expiry}, ready: func(context.Context) (bool, error) { return false, nil }, close: func() error { closed++; return nil }}
+			manager.sessions["operation"] = old
+			c := lc.Command{Action: "access.open", Owner: "owner", Operation: "operation", Prior: lc.Resource{Owner: "owner", Name: "desktop"}, Machine: lc.PlannedMachine{Name: "desktop"}}
+			_, err := manager.Execute(context.Background(), c)
+			if err == nil || !strings.Contains(err.Error(), "previous desktop generation retired") || closed != 1 || manager.sessions["operation"] != nil {
+				t.Fatal("retired generation reopened", closed, err)
+			}
+		})
 	}
 }

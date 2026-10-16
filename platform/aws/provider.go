@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
 	"github.com/OutboundSpade/LabCentral/v2/internal/journal"
 	aw "github.com/aws/aws-sdk-go-v2/aws"
@@ -56,7 +57,9 @@ func client(ctx context.Context, e lc.Environment) (*ec2.Client, *sts.Client, er
 	if err != nil {
 		return nil, nil, err
 	}
-	return ec2.NewFromConfig(c), sts.NewFromConfig(c), nil
+	// Non-idempotent creates must reach the journal after their first uncertain
+	// response, before any SDK replay. Recovery performs authoritative discovery.
+	return ec2.NewFromConfig(c, func(o *ec2.Options) { o.RetryMaxAttempts = 1 }, faultOptions), sts.NewFromConfig(c), nil
 }
 func filters(owner, role string) []t.Filter {
 	f := []t.Filter{{Name: aw.String("tag:labcentral:owner"), Values: []string{owner}}, {Name: aw.String("tag:labcentral:version"), Values: []string{"2"}}}
@@ -88,6 +91,7 @@ func apiCode(err error, code string) bool {
 	return errors.As(err, &a) && a.ErrorCode() == code
 }
 func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
+	ctx = faultinject.WithOperation(ctx, "aws", c.Action)
 	if c.Action == "check" || c.Action == "image.build" || c.Action == "network.create" || c.Action == "machine.create" || c.Action == "gateway.create" {
 		if err := lc.CheckCapabilities(c.Source.Lab, c.Environment.Platform); err != nil {
 			return lc.Result{}, err
@@ -415,7 +419,7 @@ func (p *Provider) networkSegment(ctx context.Context, a *ec2.Client, c lc.Comma
 		}
 		return aw.ToString(r.Subnet.SubnetId), nil
 	}, func() (string, bool, error) {
-		r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{Filters: append(filters(owner, "network"), t.Filter{Name: aw.String("cidr-block"), Values: []string{"10.77.0.0/24"}})})
+		r, e := a.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{Filters: append(filters(owner, "network"), t.Filter{Name: aw.String("cidr-block"), Values: []string{planned.CIDR}})})
 		if e != nil {
 			return "", false, e
 		}
@@ -646,8 +650,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		}
 	}
 
-	if m.Spec.Forwarding {
-		in.TagSpecifications = append(in.TagSpecifications, specs(t.ResourceTypeNetworkInterface, c.Owner, role)...)
+	in.TagSpecifications = append(in.TagSpecifications, specs(t.ResourceTypeNetworkInterface, c.Owner, role)...)
+	if err = p.prepareInstancePolicy(c); err != nil {
+		return lc.Result{}, err
 	}
 	if lc.Contains(m.Spec.Access, "desktop") {
 		in.IamInstanceProfile = &t.IamInstanceProfileSpecification{Name: aw.String(c.Environment.AWS.DesktopProfile)}
@@ -755,6 +760,9 @@ func (p *Provider) findMachine(ctx context.Context, a *ec2.Client, c lc.Command)
 			resource.Children = append(resource.Children, lc.NativeResource{Kind: "volume", ID: aw.ToString(mapping.Ebs.VolumeId)})
 		}
 	}
+	if err = p.attachInstancePolicy(c, &resource); err != nil {
+		return lc.Result{}, err
+	}
 	return lc.Result{Resource: resource}, nil
 }
 func (p *Provider) findNetwork(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
@@ -847,22 +855,33 @@ func (p *Provider) destroy(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	case "machine", "gateway":
 		v, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.ID}})
 		if apiCode(err, "InvalidInstanceID.NotFound") {
-			err = cleanupVolumes(ctx, a, c)
+			err = cleanupInstanceChildren(ctx, a, c)
 			return lc.Result{Absent: err == nil}, err
 		}
 		if err != nil {
 			return lc.Result{}, err
 		}
+		var instances []t.Instance
 		for _, rs := range v.Reservations {
-			for _, i := range rs.Instances {
-				if !owned(i.Tags, c.Owner) {
-					return lc.Result{}, fmt.Errorf("ownership_mismatch: instance")
-				}
-				if i.State != nil && i.State.Name == t.InstanceStateNameTerminated {
-					err = cleanupVolumes(ctx, a, c)
-					return lc.Result{Absent: err == nil}, err
-				}
-			}
+			instances = append(instances, rs.Instances...)
+		}
+		if len(instances) == 0 {
+			err = cleanupInstanceChildren(ctx, a, c)
+			return lc.Result{Absent: err == nil}, err
+		}
+		if len(instances) != 1 || aw.ToString(instances[0].InstanceId) != r.ID {
+			return lc.Result{}, fmt.Errorf("recovery_required: recorded instance identity is ambiguous")
+		}
+		i := instances[0]
+		if i.State != nil && i.State.Name == t.InstanceStateNameTerminated {
+			err = cleanupInstanceChildren(ctx, a, c)
+			return lc.Result{Absent: err == nil}, err
+		}
+		if !owned(i.Tags, c.Owner) {
+			return lc.Result{}, fmt.Errorf("ownership_mismatch: instance")
+		}
+		if err = verifyInstanceChildren(ctx, a, c, i, false); err != nil {
+			return lc.Result{}, err
 		}
 		if _, err = a.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{r.ID}}); err != nil {
 			return lc.Result{}, err
@@ -872,7 +891,7 @@ func (p *Provider) destroy(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			o.MaxDelay = 5 * time.Second
 		}).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.ID}}, 10*time.Minute)
 		if err == nil {
-			err = cleanupVolumes(ctx, a, c)
+			err = cleanupInstanceChildren(ctx, a, c)
 		}
 		return lc.Result{Absent: err == nil}, err
 	case "image":
@@ -925,7 +944,7 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 		return lc.Result{}, err
 	}
 	for _, x := range ep.VpcEndpoints {
-		if aw.ToString(x.VpcId) != c.Prior.ID {
+		if aw.ToString(x.VpcId) != c.Prior.ID || !owned(x.Tags, owner) {
 			return lc.Result{}, fmt.Errorf("endpoint target mismatch")
 		}
 		r, e := a.DeleteVpcEndpoints(ctx, &ec2.DeleteVpcEndpointsInput{VpcEndpointIds: []string{aw.ToString(x.VpcEndpointId)}})
@@ -944,7 +963,7 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 		return lc.Result{}, err
 	}
 	for _, x := range tables.RouteTables {
-		if aw.ToString(x.VpcId) != c.Prior.ID {
+		if aw.ToString(x.VpcId) != c.Prior.ID || !owned(x.Tags, owner) {
 			return lc.Result{}, fmt.Errorf("route target mismatch")
 		}
 		for _, route := range x.Routes {
@@ -962,7 +981,7 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 		return lc.Result{}, err
 	}
 	for _, x := range sub.Subnets {
-		if aw.ToString(x.VpcId) != c.Prior.ID {
+		if aw.ToString(x.VpcId) != c.Prior.ID || !owned(x.Tags, owner) {
 			return lc.Result{}, fmt.Errorf("subnet target mismatch")
 		}
 		if _, err = a.DeleteSubnet(ctx, &ec2.DeleteSubnetInput{SubnetId: x.SubnetId}); err != nil {
@@ -974,7 +993,7 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 		return lc.Result{}, err
 	}
 	for _, x := range rt.RouteTables {
-		if aw.ToString(x.VpcId) != c.Prior.ID {
+		if aw.ToString(x.VpcId) != c.Prior.ID || !owned(x.Tags, owner) {
 			return lc.Result{}, fmt.Errorf("route target mismatch")
 		}
 		if _, err = a.DeleteRouteTable(ctx, &ec2.DeleteRouteTableInput{RouteTableId: x.RouteTableId}); err != nil {
@@ -1014,6 +1033,9 @@ func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Comma
 		return lc.Result{}, err
 	}
 	for _, x := range gateways.InternetGateways {
+		if !owned(x.Tags, owner) {
+			return lc.Result{}, fmt.Errorf("ownership_mismatch: internet gateway retained")
+		}
 		for _, at := range x.Attachments {
 			if aw.ToString(at.VpcId) != c.Prior.ID {
 				return lc.Result{}, fmt.Errorf("gateway target mismatch")
@@ -1065,8 +1087,8 @@ func (p *Provider) FindBuild(ctx context.Context, c lc.Command) (lc.Resource, bo
 	if !owned(im.Tags, c.Owner) {
 		return lc.Resource{}, false, fmt.Errorf("ownership_mismatch: build AMI")
 	}
-	if im.State != t.ImageStateAvailable {
-		return lc.Resource{}, false, fmt.Errorf("native AMI is not available yet")
+	if im.State != t.ImageStateAvailable && c.Action != "image.abandon" {
+		return lc.Resource{}, false, fmt.Errorf("recovery_required: native AMI state is %s; retry recovery when available, or use image abandon to clean the unpublished attempt", im.State)
 	}
 	out := lc.Resource{Kind: "image", Name: c.Image.Name, ID: aw.ToString(im.ImageId), Owner: c.Owner}
 	for _, b := range im.BlockDeviceMappings {
@@ -1117,45 +1139,102 @@ func (p *Provider) CleanupBuild(ctx context.Context, c lc.Command) error {
 }
 
 func (p *Provider) cleanupBuild(ctx context.Context, a *ec2.Client, c lc.Command) error {
+	if err := p.reconcileBuildMutations(ctx, a, c); err != nil {
+		return err
+	}
+	resources, err := p.buildResources(c)
+	if err != nil {
+		return err
+	}
+	instances := map[string]t.Instance{}
 	instanceFilters := []t.Filter{{Name: aw.String("key-name"), Values: []string{"labcentral-" + c.Owner}}}
 	if c.Image.Base.OS == "windows" {
 		instanceFilters = filters(c.Owner, c.Image.Name)
 	}
-	r, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: instanceFilters})
+	found, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{Filters: instanceFilters})
 	if err != nil {
 		return err
 	}
-	for _, rs := range r.Reservations {
-		for _, i := range rs.Instances {
-			if !owned(i.Tags, c.Owner) {
-				return fmt.Errorf("ownership_mismatch: build instance")
-			}
-			if i.State != nil && i.State.Name == t.InstanceStateNameTerminated {
-				continue
-			}
-			id := aw.ToString(i.InstanceId)
-			if _, err = a.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{id}}); err != nil {
-				return err
-			}
-			if err = ec2.NewInstanceTerminatedWaiter(a, func(o *ec2.InstanceTerminatedWaiterOptions) {
-				o.MinDelay = 2 * time.Second
-				o.MaxDelay = 5 * time.Second
-			}).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{id}}, 10*time.Minute); err != nil {
-				return err
-			}
+	for _, reservation := range found.Reservations {
+		for _, i := range reservation.Instances {
+			instances[aw.ToString(i.InstanceId)] = i
 		}
 	}
-	vol, err := a.DescribeVolumes(ctx, &ec2.DescribeVolumesInput{Filters: filters(c.Owner, c.Image.Name)})
-	if err != nil {
-		return err
-	}
-	for _, v := range vol.Volumes {
-		if !owned(v.Tags, c.Owner) || len(v.Attachments) > 0 {
-			return fmt.Errorf("build volume ownership or attachment is unresolved")
+	for _, r := range resources {
+		if r.Kind != "machine" {
+			continue
 		}
-		if _, err = a.DeleteVolume(ctx, &ec2.DeleteVolumeInput{VolumeId: v.VolumeId}); err != nil {
+		result, err := a.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{r.ID}})
+		if apiCode(err, "InvalidInstanceID.NotFound") {
+			continue
+		}
+		if err != nil {
 			return err
 		}
+		for _, reservation := range result.Reservations {
+			for _, i := range reservation.Instances {
+				instances[aw.ToString(i.InstanceId)] = i
+			}
+		}
+	}
+	// Persist every observed child before a termination can hide it. A response
+	// loss or changed tag must not make a detached disk/NIC disappear from cleanup.
+	for _, i := range instances {
+		if i.State != nil && i.State.Name == t.InstanceStateNameTerminated {
+			continue
+		}
+		if !owned(i.Tags, c.Owner) {
+			return fmt.Errorf("ownership_mismatch: build instance")
+		}
+		r := lc.Resource{Kind: "machine", Name: c.Image.Name, ID: aw.ToString(i.InstanceId), Owner: c.Owner}
+		for _, nic := range i.NetworkInterfaces {
+			r.Children = append(r.Children, lc.NativeResource{Kind: "eni", ID: aw.ToString(nic.NetworkInterfaceId)})
+		}
+		for _, disk := range i.BlockDeviceMappings {
+			if disk.Ebs != nil {
+				r.Children = append(r.Children, lc.NativeResource{Kind: "volume", ID: aw.ToString(disk.Ebs.VolumeId)})
+			}
+		}
+		resources = mergeBuildResource(resources, r)
+	}
+	if len(resources) > 0 {
+		if err = p.Journal.Save(c.Owner+"/build-resources", resources); err != nil {
+			return err
+		}
+	}
+	for _, i := range instances {
+		if i.State != nil && i.State.Name == t.InstanceStateNameTerminated {
+			continue
+		}
+		native := c
+		for _, r := range resources {
+			if r.Kind == "machine" && r.ID == aw.ToString(i.InstanceId) {
+				native.Prior = r
+				break
+			}
+		}
+		if err = verifyInstanceChildren(ctx, a, native, i, true); err != nil {
+			return err
+		}
+		id := aw.ToString(i.InstanceId)
+		if _, err = a.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: []string{id}}); err != nil {
+			return err
+		}
+		if err = ec2.NewInstanceTerminatedWaiter(a, func(o *ec2.InstanceTerminatedWaiterOptions) {
+			o.MinDelay = 2 * time.Second
+			o.MaxDelay = 5 * time.Second
+		}).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{id}}, 10*time.Minute); err != nil {
+			return err
+		}
+	}
+	cleanup := lc.Command{Owner: c.Owner, Prior: lc.Resource{Name: c.Image.Name}}
+	for _, r := range resources {
+		if r.Kind == "machine" {
+			cleanup.Prior.Children = append(cleanup.Prior.Children, r.Children...)
+		}
+	}
+	if err = cleanupInstanceChildren(ctx, a, cleanup); err != nil {
+		return err
 	}
 	if c.Image.Base.OS == "windows" {
 		return nil
@@ -1173,6 +1252,13 @@ func (p *Provider) cleanupBuild(ctx context.Context, a *ec2.Client, c lc.Command
 		}
 		if _, err = a.DeleteKeyPair(ctx, &ec2.DeleteKeyPairInput{KeyPairId: k.KeyPairId}); err != nil {
 			return err
+		}
+		remaining, e := a.DescribeKeyPairs(ctx, &ec2.DescribeKeyPairsInput{KeyPairIds: []string{aw.ToString(k.KeyPairId)}})
+		if e != nil && !apiCode(e, "InvalidKeyPair.NotFound") {
+			return e
+		}
+		if e == nil && len(remaining.KeyPairs) > 0 {
+			return fmt.Errorf("build keypair deletion unconfirmed; retry recovery")
 		}
 	}
 	return nil

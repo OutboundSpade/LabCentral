@@ -11,7 +11,7 @@ import (
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/dcv"
-	"github.com/OutboundSpade/LabCentral/v2/internal/remote"
+	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"github.com/OutboundSpade/LabCentral/v2/platform/proxmox"
 	"github.com/coder/websocket"
@@ -78,10 +78,10 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 	m.mu.Lock()
 	existing := m.sessions[c.Operation]
 	m.mu.Unlock()
-	if existing != nil && existing.info.Expires.After(time.Now()) {
-		ready := true
+	if existing != nil {
+		ready := existing.info.Expires.After(time.Now())
 		var err error
-		if existing.ready != nil {
+		if ready && existing.ready != nil {
 			ready, err = existing.ready(ctx)
 		}
 		if err != nil {
@@ -94,8 +94,11 @@ func (m *Manager) Execute(ctx context.Context, c lc.Command) (lc.Result, error) 
 			return lc.Result{}, err
 		}
 		m.mu.Lock()
-		delete(m.sessions, c.Operation)
+		if m.sessions[c.Operation] == existing {
+			delete(m.sessions, c.Operation)
+		}
 		m.mu.Unlock()
+		return lc.Result{}, fmt.Errorf("recovery_required: previous desktop generation retired; recover access before reopening")
 	}
 	if c.Prior.Owner != c.Owner || c.Prior.Name != c.Machine.Name {
 		return lc.Result{}, fmt.Errorf("ownership_mismatch: access")
@@ -175,18 +178,23 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		username = "lab"
 	}
 	password := desktopPassword(c.Machine.OS)
-	script := desktopAccountScript(username, password, c) + "; sudo dcv close-session " + username + " >/dev/null 2>&1 || true"
+	script := desktopAccountScript(username, password, c)
 	if c.Machine.OS == "windows" {
 		script = windowsDesktopProgram(c, password)
 	}
-	if _, e = remote.Run(ctx, sshClient, script); e != nil {
+	if _, e = guestRun(ctx, sshClient, leaseCommand(c, "begin", script)); e != nil {
 		return nil, info, fmt.Errorf("DCV session creation failed: %w", e)
 	}
-	run := func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, sshClient, command) }
+	run := func(ctx context.Context, command string) ([]byte, error) {
+		return guestRun(ctx, sshClient, leaseCommand(c, "active", command))
+	}
 	if c.Machine.OS == "windows" {
 		e = dcv.StartWindows(ctx, run)
 	} else {
-		e = dcv.Start(ctx, run, username, username)
+		e = dcv.Close(ctx, run, username, username)
+		if e == nil {
+			e = dcv.Start(ctx, run, username, username)
+		}
 	}
 	if e != nil {
 		return nil, info, fmt.Errorf("DCV session readiness failed: %w", e)
@@ -196,7 +204,7 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 	if c.Machine.OS == "windows" {
 		certCommand = windows.Command("[IO.File]::ReadAllText('" + dcv.WindowsCertificate + "')")
 	}
-	cert, e := remote.Run(ctx, sshClient, certCommand)
+	cert, e := guestRun(ctx, sshClient, certCommand)
 	if e != nil {
 		_ = closeDCV(context.Background(), c)
 		return nil, info, fmt.Errorf("read DCV certificate: %w", e)
@@ -244,9 +252,9 @@ func openDCV(ctx context.Context, c lc.Command) (*desktop, Info, error) {
 		}
 		defer client.Close()
 		if c.Machine.OS == "windows" {
-			return dcv.WindowsReady(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) })
+			return dcv.WindowsReady(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) })
 		}
-		return dcv.Ready(ctx, func(ctx context.Context, command string) ([]byte, error) { return remote.Run(ctx, client, command) }, username)
+		return dcv.Ready(ctx, func(ctx context.Context, command string) ([]byte, error) { return guestRun(ctx, client, command) }, username)
 	}
 	retained = true
 	return &desktop{relay: relay, close: closer, ready: ready}, info, nil
@@ -308,15 +316,16 @@ func desktopOwner(c lc.Command) (marker, comment string) {
 // ownership is verified, then gain the current comment.
 func desktopAccountScript(username, password string, c lc.Command) string {
 	marker, comment := desktopOwner(c)
-	return "set -eu; if id " + username + " >/dev/null 2>&1; then g=\"$(getent passwd " + username + " | cut -d: -f5)\"; if test \"$g\" = '" + marker + "'; then sudo usermod --comment '" + comment + "' " + username + "; else test \"$g\" = '" + comment + "'; fi; else sudo useradd --create-home --shell /bin/bash --comment '" + comment + "' " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd"
+	return "set -eu; if id " + username + " >/dev/null 2>&1; then g=\"$(getent passwd " + username + " | cut -d: -f5)\"; if test \"$g\" = '" + marker + "'; then sudo usermod --comment '" + comment + "' " + username + "; else test \"$g\" = '" + comment + "' || { echo 'ownership_mismatch: desktop account marker differs' >&2; exit 1; }; fi; else sudo useradd --create-home --shell /bin/bash --comment '" + comment + "' " + username + "; fi; sudo chmod 700 /home/" + username + "; printf '%s\\n' '" + username + ":" + password + "' | sudo chpasswd"
 }
 
 // desktopOwned succeeds only for an account this owner created, in either format.
 func desktopOwned(username string, c lc.Command) string {
 	marker, comment := desktopOwner(c)
-	return "{ g=\"$(getent passwd " + username + " | cut -d: -f5)\"; test \"$g\" = '" + comment + "' || test \"$g\" = '" + marker + "'; }"
+	return "{ g=\"$(getent passwd " + username + " | cut -d: -f5)\"; test \"$g\" = '" + comment + "' || test \"$g\" = '" + marker + "' || { echo 'ownership_mismatch: desktop account marker differs' >&2; exit 1; }; }"
 }
 func closeDCVClient(ctx context.Context, c lc.Command, sshClient *ssh.Client) error {
+	ctx = faultinject.WithOperation(ctx, c.Environment.Platform, "access.close")
 	if c.Machine.OS == "windows" {
 		return closeWindowsDCV(ctx, c, sshClient)
 	}
@@ -326,17 +335,27 @@ func closeDCVClient(ctx context.Context, c lc.Command, sshClient *ssh.Client) er
 	if c.Access.RetainWorkspace {
 		remove = "sudo usermod --lock " + name
 	}
-	cleanup := "set -eu; if id " + name + " >/dev/null 2>&1; then " + desktopOwned(name, c) + " || exit 1; fi; sudo dcv close-session " + name + " >/dev/null 2>&1 || true; " +
+	// Verify the account before touching its native session, including when a
+	// previous cleanup removed the account but lost its response.
+	if _, e = guestRun(ctx, sshClient, leaseCommand(c, "revoke", "set -eu; if id "+name+" >/dev/null 2>&1; then "+desktopOwned(name, c)+"; fi")); e != nil {
+		return e
+	}
+	if e = dcv.Close(ctx, func(ctx context.Context, command string) ([]byte, error) {
+		return guestRun(ctx, sshClient, leaseCommand(c, "revoke", command))
+	}, name, name); e != nil {
+		return e
+	}
+	cleanup := "set -eu; if id " + name + " >/dev/null 2>&1; then " + desktopOwned(name, c) + " || exit 1; fi; " +
 		"if id " + name + " >/dev/null 2>&1; then " +
 		"uid=$(id -u " + name + "); " +
 		"sudo loginctl terminate-user \"$uid\" >/dev/null 2>&1 || true; " +
 		"sudo pkill -KILL -u \"$uid\" >/dev/null 2>&1 || true; " +
 		"n=0; while pgrep -u \"$uid\" >/dev/null; do n=$((n+1)); test \"$n\" -lt 100 || exit 1; sleep 0.1; done; " +
 		remove + "; fi"
-	if _, e = remote.Run(ctx, sshClient, cleanup); e != nil {
+	if _, e = guestRun(ctx, sshClient, leaseCommand(c, "revoke", cleanup)); e != nil {
 		return e
 	}
-	output, e := remote.Run(ctx, sshClient, "sudo dcv list-sessions -j")
+	output, e := guestRun(ctx, sshClient, leaseCommand(c, "revoke", "sudo dcv list-sessions -j"))
 	if e != nil {
 		return e
 	}
@@ -375,7 +394,7 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 	if err != nil {
 		return nil, info, err
 	}
-	_, err = remote.Run(ctx, sshClient, desktopAccountScript(username, password, cmd))
+	_, err = guestRun(ctx, sshClient, leaseCommand(cmd, "begin", desktopAccountScript(username, password, cmd)))
 	closeClient()
 	if err != nil {
 		return nil, info, err
@@ -480,6 +499,7 @@ func openProxmox(ctx context.Context, cmd lc.Command) (*desktop, Info, error) {
 }
 
 func closeGuestUser(ctx context.Context, c lc.Command) error {
+	ctx = faultinject.WithOperation(ctx, c.Environment.Platform, "access.close")
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	client, closeClient, err := dialMachine(ctx, c)
@@ -488,7 +508,7 @@ func closeGuestUser(ctx context.Context, c lc.Command) error {
 	}
 	defer closeClient()
 	name := dcvName(c)
-	_, err = remote.Run(ctx, client, "set -eu; if id "+name+" >/dev/null 2>&1; then "+desktopOwned(name, c)+"; sudo loginctl terminate-user "+name+" || true; sudo userdel --force --remove "+name+"; fi")
+	_, err = guestRun(ctx, client, leaseCommand(c, "revoke", "set -eu; if id "+name+" >/dev/null 2>&1; then "+desktopOwned(name, c)+"; sudo loginctl terminate-user "+name+" || true; sudo userdel --force --remove "+name+"; fi"))
 	return err
 }
 

@@ -30,11 +30,15 @@ func TestDCVThroughGatewayReusesSSHAndPinsTLS(t *testing.T) {
 				cert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: altered})
 			}
 			var closed atomic.Bool
+			closed.Store(true)
 			c := lc.Command{Action: "access.open", Operation: "dcv-operation", Owner: "owner", Environment: lc.Environment{Platform: "aws"}, Prior: lc.Resource{Kind: "machine", Owner: "owner", Name: "workstation", Address: "10.77.0.11"}, Machine: lc.PlannedMachine{Name: "workstation"}}
 			name := dcvName(c)
 			machine := sshtest.New(t, nil, func(command string) string {
 				if strings.Contains(command, "openssl x509") {
 					return string(cert)
+				}
+				if strings.Contains(command, "dcv create-session") {
+					closed.Store(false)
 				}
 				if strings.Contains(command, "dcv close-session") && !strings.Contains(command, "useradd") {
 					closed.Store(true)
@@ -43,7 +47,7 @@ func TestDCVThroughGatewayReusesSSHAndPinsTLS(t *testing.T) {
 					if closed.Load() {
 						return "[]"
 					}
-					return fmt.Sprintf(`[{"id":%q,"status":"running","x11-display":":1"}]`, name)
+					return fmt.Sprintf(`[{"id":%q,"owner":%q,"status":"running","x11-display":":1"}]`, name, name)
 				}
 				return ""
 			})
