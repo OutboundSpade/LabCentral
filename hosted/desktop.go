@@ -407,16 +407,17 @@ const resize=()=>{fit();if(connection){connection.requestResolution(Math.max(320
 new ResizeObserver(fit).observe(display);
 new ResizeObserver(resize).observe(viewport);
 if(document.body.dataset.practiceRun)import('/lesson-client.js').catch(()=>{});
+const ended=async message=>{status.textContent=message;try{const r=await fetch('/status',{cache:'no-store'});const state=r.ok?await r.json():null;if(state&&state.takenOverBy)status.textContent=state.takenOverBy+' took over this desktop. Return to your lab to take it back.'}catch{}};
 dcv.setLogLevel(dcv.LogLevel.ERROR);
 try {
  const response=await fetch('/credentials',{cache:'no-store'});
  if(!response.ok)throw new Error('Access ended');credentials=await response.json();
- dcv.authenticate(location.origin,{promptCredentials:(auth)=>auth.sendCredentials({username:credentials.username,password:credentials.password}),error:()=>{credentials=null;status.textContent='Connection ended. Return to your lab to reconnect.'},success:async(_,sessions)=>{
+ dcv.authenticate(location.origin,{promptCredentials:(auth)=>auth.sendCredentials({username:credentials.username,password:credentials.password}),error:()=>{credentials=null;ended('Connection ended. Return to your lab to reconnect.')},success:async(_,sessions)=>{
  const session=sessions.find(s=>s.sessionId===credentials.sessionID);credentials=null;
  if(!session){status.textContent='Your desktop is unavailable. Return to your lab to reconnect.';return}
- try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false;paste.disabled=false}else if(event.name==='paste'&&pasteDialog.open){pasteDialog.close();status.textContent='Connected · clipboard ready; paste inside the desktop.'}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;paste.disabled=true;pasteDialog.close();pasteText.value='';connection=null;status.textContent='Disconnected. Return to your lab to reconnect.'}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
+ try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false;paste.disabled=false}else if(event.name==='paste'&&pasteDialog.open){pasteDialog.close();status.textContent='Connected · clipboard ready; paste inside the desktop.'}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;paste.disabled=true;pasteDialog.close();pasteText.value='';connection=null;ended('Disconnected. Return to your lab to reconnect.')}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
  }});
-}catch{status.textContent='Access ended. Return to your lab to reconnect.'}`
+}catch{ended('Access ended. Return to your lab to reconnect.')}`
 
 // Desktop policy is pinned to the template. Ownership/membership is checked by
 // the caller and the library verifies the instance's machine and desktop access.

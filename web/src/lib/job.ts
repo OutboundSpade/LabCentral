@@ -58,7 +58,7 @@ export function revisionState(t: Template, job: Job | null | undefined) {
 
 // A revision can be built when it is current-format and has no images in use.
 export function buildable(t: Template) {
-  return !t.built && !t.removing && !t.retired;
+  return !t.built && !t.removing && !t.retired && !t.problem;
 }
 
 export function buildLabel(t: Template, job: Job | null | undefined) {
