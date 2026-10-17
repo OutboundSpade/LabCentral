@@ -120,7 +120,6 @@
   <p id="coach-ssh-hint" class="mt-1 text-xs leading-relaxed text-base-content/70">
     Opens a terminal or the team's desktop in a new tab.
   </p>
-  {#if data.jobs.some((j) => ["check", "exercise"].includes(j.kind) && ["queued", "running"].includes(j.status))}<p class="mt-2 text-xs text-warning" role="status">Close the terminal before checks or resets use this machine.</p>{/if}
   <Notice message={error} />
   <div class="mt-4 flex flex-wrap items-end gap-3">
     <fieldset class="fieldset min-w-44 flex-1">
