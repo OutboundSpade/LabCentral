@@ -141,7 +141,7 @@
           {#if stage.prompt}<p class="mt-3 text-sm leading-relaxed">{stage.prompt}</p>{/if}
           {#key stage.id}{#if stage.solution || stage.completion.answer}<details class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mt-4">
             <summary class="collapse-title flex items-center gap-2 text-sm font-medium"><LockKeyhole size={14} />Instructor solution</summary>
-            <div class="collapse-content">{#if stage.solution}<div class={prose}>{@html render(stage.solution)}</div>{/if}{#if stage.completion.answer}{@const answer = stage.completion.answer}<p class="mt-3 text-sm">{answer.accepted.length === 1 ? "Accepted answer" : "Accepted answers"}:{#each answer.accepted as value, i}{i ? "," : ""} <code>{value}</code>{/each}{answer.caseSensitive ? "" : " (any letter case)"}</p>{/if}</div>
+            <div class="collapse-content min-w-0 break-words prose-pre:max-w-full prose-pre:overflow-x-auto">{#if stage.solution}<div class={prose}>{@html render(stage.solution)}</div>{/if}{#if stage.completion.answer}{@const answer = stage.completion.answer}<p class="mt-3 text-sm">{answer.accepted.length === 1 ? "Accepted answer" : "Accepted answers"}:{#each answer.accepted as value, i}{i ? "," : ""} <code>{value}</code>{/each}{answer.caseSensitive ? "" : " (any letter case)"}</p>{/if}</div>
           </details>{/if}{/key}
           <p class="mt-3 text-xs text-base-content/60">{stage.break ? `Break: ${data.breaks.find(d => d.id === stage.break)?.name ?? stage.break}.` : "No break in this stage."}</p>
         </article>{/if}
@@ -170,11 +170,11 @@
         <summary class="collapse-title text-sm font-medium"
           >Instructor walkthrough</summary
         >
-        <div class="collapse-content text-sm">
+        <div class="collapse-content min-w-0 text-sm">
           <p>{definition.description}</p>
-          <p class="mt-3 whitespace-pre-line leading-relaxed">
-            {definition.walkthrough}
-          </p>
+          <div class="mt-3 min-w-0 break-words prose-pre:max-w-full prose-pre:overflow-x-auto">
+            <div class={prose}>{@html render(definition.walkthrough)}</div>
+          </div>
         </div>
       </details>{/if}
     {#if data.breaks?.length}<fieldset class="mt-4">

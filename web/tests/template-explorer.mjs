@@ -561,6 +561,12 @@ try {
     await page.getByLabel("Template stage").selectOption("restore");
     await page.getByText("Instructor solution",{exact:true}).click();
     await page.getByText("Set the listener to",{exact:false}).waitFor();
+    await page.getByText("Instructor walkthrough",{exact:true}).click();
+    await page.getByRole("heading",{name:"Inspect the listener",exact:true}).waitFor();
+    const walkthrough=page.locator("details").filter({has:page.locator(":scope > summary").filter({hasText:"Instructor walkthrough"})});
+    assert((await walkthrough.locator("pre code").innerText()).includes("sudo journalctl -u ssh"),"meeting walkthrough renders commands as code too");
+    assert(await fits(page),"expanded meeting walkthrough fits the viewport");
+    await shot(page,"meeting-walkthrough",width);
     assert.equal(writes.filter(w=>w.path.endsWith("/exercises")).length,0,"stage selection does not mutate guests");
     await page.getByRole("button",{name:"Select ready teams"}).click();
     if(evidence)await page.screenshot({path:`${evidence}/meeting-stages-${width}.png`,fullPage:true});

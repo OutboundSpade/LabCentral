@@ -447,7 +447,7 @@ breaks:
   starter's `stop-web.yml` checks that nginx is inactive). It must not reset the lab or
   undo another break, so that breaks can be combined.
 - `notes` and break `walkthrough` render as Markdown in the admin-only Instructor notes
-  panel. Use headings, ordered steps and fenced command blocks; raw HTML is disabled.
+  panel and the meeting Exercises panel. Use headings, ordered steps and fenced command blocks; raw HTML is disabled.
   Walkthroughs expand separately. Keep the on-page instructions self-contained: private
   source files are not downloadable from that panel.
 - `description` is a short summary for instructors; `walkthrough` is the private fix,

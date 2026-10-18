@@ -827,7 +827,7 @@ excludes private material without changing author files.
   programs, selected variants and credentials are never sent. A solution is revealed only
   by an explicit request and does not advance progress. Markdown rendering disables raw
   HTML, including admin-only instructor notes and per-break walkthroughs in the template
-  explorer. Walkthroughs expand independently and command blocks scroll within their
+  explorer and the meeting Exercises panel. Walkthroughs expand independently and command blocks scroll within their
   container. Guest administrators can inspect programs that run on their machine; guest
   files are not a secrecy boundary.
 
