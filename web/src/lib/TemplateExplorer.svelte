@@ -420,12 +420,20 @@
             <summary class="collapse-title flex min-h-11 items-center gap-2 text-sm font-medium"
               ><LockKeyhole size={14} aria-hidden="true" />Instructor notes</summary
             >
-            <div class="collapse-content text-sm">
-              {#if instructor.notes}<p class="whitespace-pre-line leading-relaxed">{instructor.notes}</p>{/if}
-              {#each instructor.breaks as item (item.name)}<div class="mt-4">
-                  <p class="font-medium">{item.name}</p>
-                  <p class="mt-1 whitespace-pre-line text-base-content/70">{item.walkthrough}</p>
-                </div>{/each}
+            <div class="collapse-content min-w-0 text-sm">
+              {#if instructor.notes}<div class="min-w-0 break-words prose-pre:max-w-full prose-pre:overflow-x-auto"><div class={prose}>
+                  {@html render(instructor.notes)}
+                </div></div>{/if}
+              {#each instructor.breaks as item (item.id)}<details
+                  class="collapse collapse-arrow mt-4 min-w-0 border border-base-content/9 bg-base-100"
+                >
+                  <summary class="collapse-title min-h-11 text-sm font-medium">{item.name}</summary>
+                  <div class="collapse-content min-w-0">
+                    <div class="min-w-0 break-words prose-pre:max-w-full prose-pre:overflow-x-auto"><div class={prose}>
+                      {@html render(item.walkthrough)}
+                    </div></div>
+                  </div>
+                </details>{/each}
               {#if instructor.checks.length}<p class="mt-4 text-xs text-base-content/60">
                   {instructor.checks.length}
                   {instructor.checks.length === 1 ? "service check" : "service checks"}

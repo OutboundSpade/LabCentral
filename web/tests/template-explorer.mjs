@@ -36,7 +36,7 @@ try {
     const coach={...newest,id:"coach",name:"coach-support",coachOnly:true,description:"Coach preview environment.",library:undefined,scenarios:[{...outage,id:"coach-scenario",title:"Coach drill"}]};
     const catalog=()=>emptyCatalog?[]:admin?[newest,second,older,ubuntu,dns,coach]:[newest,second,older,ubuntu,dns];
     const privateStages=stages.map(s=>({...s,completion:s.kind==="answer"?{answer:{accepted:[s.answer,"four"],caseSensitive:false}}:s.kind==="action"?{check:s.checkID}:{instructor:true}}));
-    const template={id:"latest",name:newest.name,commit:newest.commit,commitTitle:newest.commitTitle,committedAt:newest.committedAt,built:true,latest:true,imagesReady:2,imagesTotal:2,buildsPending:0,removing:false,handover:newest.handover,instructor:{notes:"Instructor notes",stages:privateStages,checks:[{id:"website",name:"Website",points:10}],breaks:[{id:"port",name:"Change Apache port",description:"Change the listener.",walkthrough:"Inspect the listener."},{id:"stop",name:"Stop the web service",description:"Stop Apache for recovery practice.",walkthrough:"Restart Apache and check service health."}]}};
+    const template={id:"latest",name:newest.name,commit:newest.commit,commitTitle:newest.commitTitle,committedAt:newest.committedAt,built:true,latest:true,imagesReady:2,imagesTotal:2,buildsPending:0,removing:false,handover:newest.handover,instructor:{notes:"## Prepare the exercise\n\n1. Select ready teams.\n2. Apply once.\n\n<script>window.unsafeNotes=1</script>",stages:privateStages,checks:[{id:"website",name:"Website",points:10}],breaks:[{id:"port",name:"Change Apache port",description:"Change the listener.",walkthrough:"### Inspect the listener\n\nRun on **web**:\n\n```sh\nsudo journalctl -u ssh --utc --no-pager\nsudo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n```"},{id:"stop",name:"Stop the web service",description:"Stop Apache for recovery practice.",walkthrough:"Restart Apache and check service health."}]}};
     const teams=[{id:"t1",meetingID:"meeting",name:"Team 1",capacity:6,members:2,status:"ready"},{id:"t2",meetingID:"meeting",name:"Team 2",capacity:6,members:2,status:"ready"}];
     let meeting={id:"meeting",name:"Bank recovery meeting",template:"latest",status:"ready",created:iso(0),expires:iso(7200000)};
     const quota={limitMinutes:180,usedSeconds:0,remainingSeconds:10800,resetsAt:iso(86400000)};
@@ -504,7 +504,16 @@ try {
     await administration.getByRole("link",{name:"Open meeting",exact:true}).waitFor();
     assert.equal(await administration.getByRole("button",{name:"Start meeting",exact:true}).count(),0);
     await page.locator("summary").filter({hasText:"Instructor notes"}).click();
-    await page.getByText("Inspect the listener.",{exact:true}).waitFor();
+    const notes = page.locator("details").filter({has:page.locator(":scope > summary").filter({hasText:"Instructor notes"})});
+    await notes.getByRole("heading",{name:"Prepare the exercise",exact:true}).waitFor();
+    assert.equal(await notes.locator("ol > li").count(),2,"coach notes render ordered preparation steps");
+    assert.equal(await notes.getByRole("heading",{name:"Inspect the listener",exact:true}).isVisible(),false,"exercise walkthroughs stay collapsed until needed");
+    await notes.locator("summary").filter({hasText:"Change Apache port"}).click();
+    await notes.getByRole("heading",{name:"Inspect the listener",exact:true}).waitFor();
+    assert((await notes.locator("pre code").innerText()).includes("sudo journalctl -u ssh"),"commands render as selectable code");
+    assert.equal(await page.evaluate(()=>window.unsafeNotes),undefined,"raw HTML is disabled for private Markdown too");
+    assert(await fits(page),"expanded instructor notes fit narrow screens with local code scrolling");
+    await shot(page,"instructor-notes",width);
 
     // A historical detail revision is never substituted if its images become unavailable.
     meetingActive=false;

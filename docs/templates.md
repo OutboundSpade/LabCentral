@@ -348,7 +348,7 @@ scenarios: [...]
 | `visibility.hiddenMachines` | No | Coach templates only; see [Coach-only templates](#coach-only-templates) |
 | `practice.desktopMachine` | With stages or scenarios | A visible machine with `desktop` access |
 | `library` | No | `category` (1–80 bytes), `difficulty` (`beginner`, `intermediate`, `advanced`), `estimatedMinutes` (1–1440), up to 12 `tags` |
-| `notes` | No | Private instructor notes (shown to admins) |
+| `notes` | No | Private Markdown instructor notes (shown to admins) |
 | `reset` | With breaks | Guest steps that restore the baseline |
 | `checks` | No | Scored service checks |
 | `breaks` | No | Problems instructors and scenarios apply |
@@ -446,6 +446,10 @@ breaks:
 - A **break** changes only what it is about and should confirm it took effect (the
   starter's `stop-web.yml` checks that nginx is inactive). It must not reset the lab or
   undo another break, so that breaks can be combined.
+- `notes` and break `walkthrough` render as Markdown in the admin-only Instructor notes
+  panel. Use headings, ordered steps and fenced command blocks; raw HTML is disabled.
+  Walkthroughs expand separately. Keep the on-page instructions self-contained: private
+  source files are not downloadable from that panel.
 - `description` is a short summary for instructors; `walkthrough` is the private fix,
   shown to instructors in the meeting's Exercises panel.
 
