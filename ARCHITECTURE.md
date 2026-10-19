@@ -907,6 +907,10 @@ Practice, Meeting and Admin become a bottom navigation bar on phones. Practice a
 Admin → Templates share one card per template; meetings start from a template card or a
 revision's page. Admin data refreshes on a shared two-second poll that clears on
 sign-out or identity changes and shows a separate warning when updates fail repeatedly.
+The meeting admin page includes an Instructor notes tab when the meeting's exact
+pinned template has notes. It renders the existing admin-only Markdown alongside
+the meeting tools, keeps exercise selections when switching tabs and performs no
+guest or lifecycle actions. Newer catalog revisions never replace meeting notes.
 
 ### Global practice availability
 

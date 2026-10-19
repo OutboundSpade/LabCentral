@@ -40,6 +40,7 @@ LABCENTRAL_LOAD_TEST=1 go test ./hosted -run '^TestConcurrencyLoad$' -v   # loca
 
 # Browser scripts for the web UI (start `npx vite --host 127.0.0.1 --port 5173` in web/):
 LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_CHROMIUM=… node web/tests/template-explorer.mjs
+LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_BROWSER_EVIDENCE=/outside/source node web/tests/meeting-notes.mjs
 ```
 
 None of these replace testing against real AWS or Proxmox accounts.

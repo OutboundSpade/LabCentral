@@ -41,6 +41,10 @@ flowchart LR
   DCV sessions on AWS Linux); instructors apply breaks,
   run scheduled service checks with a scoreboard, and open an SSH terminal to any team
   machine in the browser.
+- **Meeting instructor notes.** In **Admin → Meeting → Instructor notes**, read
+  the coaching guide from that meeting's pinned template revision. Switching
+  between notes and Exercises keeps the current team selection. The notes are
+  visible to administrators only and opening them does not run guest actions.
 - **Image cleanup.** Admin → Templates shows image counts, and "Remove unused images"
   removes images that no current template, meeting or workspace needs.
 

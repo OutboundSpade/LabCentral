@@ -7,6 +7,7 @@
   import Status from "$lib/Status.svelte";
   import Deadline from "$lib/Deadline.svelte";
   import PollStatus from "$lib/PollStatus.svelte";
+  import { render, prose } from "$lib/markdown";
   import type { Meeting } from "$lib/types";
   import { onMount } from "svelte";
   import { page } from "$app/state";
@@ -114,18 +115,20 @@
     confirmation.showModal();
   }
   const panel = $derived(
-    ["teams", "exercises", "scoreboard"].includes(page.url.hash.slice(1))
+    ["teams", "exercises", "notes", "scoreboard"].includes(page.url.hash.slice(1))
       ? page.url.hash.slice(1)
       : "teams",
   );
-  const hasChecks = $derived(
-    !!data?.templates.find((t) => t.id === data.meeting?.template)?.instructor
-      ?.checks.length,
+  const meetingTemplate = $derived(
+    data?.templates.find((t) => t.id === data.meeting?.template),
   );
-  const hasExercises = $derived(!!(data?.breaks?.length || data?.templates.find(t => t.id === data.meeting?.template)?.instructor?.stages?.length));
+  const meetingNotes = $derived(meetingTemplate?.instructor?.notes?.trim() ?? "");
+  const hasChecks = $derived(!!meetingTemplate?.instructor?.checks.length);
+  const hasExercises = $derived(!!(data?.breaks?.length || meetingTemplate?.instructor?.stages?.length));
   const tabs = $derived([
     { id: "teams", label: "Teams" },
     ...(hasExercises ? [{ id: "exercises", label: "Exercises" }] : []),
+    ...(meetingNotes ? [{ id: "notes", label: "Instructor notes" }] : []),
     ...(hasChecks ? [{ id: "scoreboard", label: "Scoreboard" }] : []),
   ]);
   const visiblePanel = $derived(
@@ -271,7 +274,7 @@
           {#if tabs.length === 1}<h2 class="mb-4 text-sm font-semibold">Teams</h2>{:else}<div
             role="tablist"
             aria-label="Meeting tools"
-            class="mb-5 flex gap-5 border-b border-base-content/8"
+            class="mb-5 flex flex-wrap gap-x-4 gap-y-1 border-b border-base-content/8 sm:gap-x-5"
           >
             {#each tabs as tab}<button
                 type="button"
@@ -356,6 +359,21 @@
               hidden={visiblePanel !== "exercises"}
             >
               <Exercises {data} onchange={load} />
+            </div>{/if}
+          {#if meetingNotes}<div
+              role="tabpanel"
+              id="meeting-panel-notes"
+              aria-labelledby="meeting-tab-notes"
+              hidden={visiblePanel !== "notes"}
+            >
+              <h2 class="text-sm font-semibold">Instructor notes</h2>
+              <p class="mt-2 mb-5 text-xs text-base-content/70">
+                From this meeting’s
+                <a class="link" href={`/admin/templates/?template=${encodeURIComponent(data.meeting.template)}`}>template revision</a>.
+              </p>
+              <div class={[prose, "min-w-0 break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"]}>
+                {@html render(meetingNotes)}
+              </div>
             </div>{/if}
           {#if hasChecks}<div
               role="tabpanel"
