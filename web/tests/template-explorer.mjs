@@ -48,7 +48,7 @@ try {
     const templates={latest:newest,older,network:second,ubuntu,dns,coach};
     const view=lab=>{const t=templates[lab.template], scenario=lab.scenarioID?t.scenarios.find(s=>s.id===lab.scenarioID):undefined;
       return {lab,steps:stages.slice(0,lab.stepCount).map(safe),progress:{labID:lab.id,completedSteps:lab.completedSteps,updated:iso(0)},quota,run:activeRun,releasedSteps:lab.stepCount,cloudReady:t.imagesBuilt,localAvailable:!scenario,check:null,...(scenario?{scenario}:{})};};
-    const overview=()=>({user:{id:user,name:"Fixture Student",admin,email:""},csrf:`csrf-${user}`,meeting:admin&&meetingActive?meeting:null,teams:admin&&meetingActive?teams:[],membership:{userID:user,teamID:"",pendingTeam:"",switching:false},lab:{team:null,machines:[],handover:"",teammates:[],desktopActive:false}});
+    const overview=()=>({practiceEnabled:true,user:{id:user,name:"Fixture Student",admin,email:""},csrf:`csrf-${user}`,meeting:admin&&meetingActive?meeting:null,teams:admin&&meetingActive?teams:[],membership:{userID:user,teamID:"",pendingTeam:"",switching:false},lab:{team:null,machines:[],handover:"",teammates:[],desktopActive:false}});
     await context.route("**/auth/logout",async route=> {
       assert.equal(route.request().method(),"POST");
       assert.equal(route.request().headers()["x-csrf-token"],`csrf-${user}`);
@@ -57,6 +57,7 @@ try {
     });
     await context.route("**/api/**",async route=> {
       const req=route.request(), path=new URL(req.url()).pathname, body=req.postData()?JSON.parse(req.postData()):null;
+      if (path === "/api/admin/practice") return route.fulfill({json:{enabled:true,confirmation:"fixture",activeLabs:[]}});
       if(path==="/api/me") return route.fulfill(meFailure?{status:503,json:{error:"Unavailable"}}:signedIn?{json:overview()}:{status:401,json:{error:"Sign in"}});
       if(req.method()==="POST") {assert.equal(req.headers()["x-csrf-token"],`csrf-${user}`);writes.push({path,body,user});}
       const attempt=path.match(/^\/api\/templates\/([\w-]+)\/attempt$/);

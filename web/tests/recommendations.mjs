@@ -136,6 +136,7 @@ try {
       },
     };
     const overview = () => ({
+      practiceEnabled: true,
       user: { id: "u", name: "Instructor", admin },
       csrf: "csrf",
       meeting,
@@ -151,6 +152,7 @@ try {
     });
     await context.route("**/api/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/admin/practice") return route.fulfill({json:{enabled:true,confirmation:"fixture",activeLabs:[]}});
       if (path === "/api/me")
         return meFailure
           ? route.fulfill({

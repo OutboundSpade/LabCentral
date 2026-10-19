@@ -60,6 +60,9 @@
   const param = (name: string) =>
     browser && mounted ? (page.url.searchParams.get(name) ?? "") : "";
   const id = $derived(param("template"));
+  const management = $derived(page.url.pathname.startsWith("/admin/"));
+  const catalogPath = $derived(management ? "/admin/templates/" : "/labs/");
+  const practiceVisible = $derived(!management && !!$session?.practiceEnabled);
   const query = $derived(param("q"));
   const category = $derived(param("category"));
   const difficulty = $derived(param("difficulty"));
@@ -211,11 +214,11 @@
   function path(target: string) {
     const params = listParams();
     params.set("template", target);
-    return `/labs/?${params}`;
+    return `${catalogPath}?${params}`;
   }
   function listPath(params = listParams()) {
     const text = params.toString();
-    return text ? `/labs/?${text}` : "/labs/";
+    return text ? `${catalogPath}?${text}` : catalogPath;
   }
   function set(name: string, value: string) {
     const params = listParams();
@@ -228,7 +231,7 @@
     });
   }
   function clear() {
-    void goto("/labs/", { replaceState: true, noScroll: true, keepFocus: true });
+    void goto(catalogPath, { replaceState: true, noScroll: true, keepFocus: true });
   }
   // Native select text is not clipped by padding, so long titles are shortened.
   function revisionLabel(revision: LibraryTemplate) {
@@ -250,7 +253,7 @@
     {@const scenarioReason = scenarioBlocked(template)}
     {@const busyRun = attemptBlocked(catalog?.run)}
     <PageHeader title={templateName(template.name)} description={template.description}>
-      {#snippet eyebrow()}<a class="link link-hover" href={listPath()}>Practice</a>{#if meta?.category}{" · "}{meta.category}{/if}{/snippet}
+      {#snippet eyebrow()}<a class="link link-hover" href={listPath()}>{management ? "Templates" : "Practice"}</a>{#if meta?.category}{" · "}{meta.category}{/if}{/snippet}
       <a class="btn btn-sm min-h-11 lg:min-h-8" href={listPath()}><ArrowLeft size={15} />All templates</a>
     </PageHeader>
     <div class="grid items-start gap-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10">
@@ -325,7 +328,7 @@
         </section>
       </aside>
       <div class="order-3 min-w-0 space-y-10 lg:order-none">
-        <section aria-labelledby="template-practice-title">
+        {#if practiceVisible}<section aria-labelledby="template-practice-title">
           <h3 id="template-practice-title" class="text-sm font-semibold">
             Practice
           </h3>
@@ -414,6 +417,7 @@
             {/each}
           </ul>
         </section>
+        {/if}
         {#if $session?.user.admin && instructor}<details
             class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70"
           >
@@ -440,7 +444,7 @@
                 </p>{/if}
             </div>
           </details>{/if}
-        <section aria-labelledby="template-attempts-title">
+        {#if practiceVisible}<section aria-labelledby="template-attempts-title">
           <h3 id="template-attempts-title" class="text-sm font-semibold">
             Your attempts on this revision
           </h3>
@@ -484,6 +488,7 @@
               No attempts on this revision yet.
             </p>{/if}
         </section>
+        {/if}
         <section aria-labelledby="template-stages-title">
           {#if template.handover}<details
               class="collapse collapse-arrow rounded-box border border-base-content/9 bg-base-200/70 mb-6"

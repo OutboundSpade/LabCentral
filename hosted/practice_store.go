@@ -114,6 +114,13 @@ func (s *Store) reservePractice(ctx context.Context, user, lab string, minutes i
 		return PracticeRun{}, err
 	}
 	defer tx.Rollback()
+	var enabled bool
+	if err = tx.QueryRowContext(ctx, `SELECT coalesce((SELECT json_extract(body,'$.enabled') FROM objects WHERE kind='site-settings' AND id='practice'),1)`).Scan(&enabled); err != nil {
+		return PracticeRun{}, err
+	}
+	if !enabled {
+		return PracticeRun{}, fmt.Errorf("Practice labs are disabled by an administrator.")
+	}
 	existing, e := scanPractice(tx.QueryRowContext(ctx, `SELECT `+practiceColumns+` FROM practice_runs WHERE user_id=? AND status!='ended'`, user))
 	if e == nil {
 		if existing.LabID != lab {

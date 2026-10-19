@@ -60,6 +60,9 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
  LEFT JOIN objects b ON b.kind='template-instructor' AND b.id=t.id
  WHERE t.kind='template'`
 	args := []any{}
+	if id == "" {
+		query += ` AND NOT EXISTS (SELECT 1 FROM objects h WHERE h.kind='template-retired-name' AND h.id=json_extract(t.body,'$.name'))`
+	}
 	if id != "" {
 		query += ` AND t.id=?`
 		args = append(args, id)

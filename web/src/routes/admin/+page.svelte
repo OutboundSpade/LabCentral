@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PracticeSettings from "$lib/PracticeSettings.svelte";
   import CoachConsole from "$lib/CoachConsole.svelte";
   import Activity from "$lib/Activity.svelte";
   import Scoreboard from "$lib/Scoreboard.svelte";
@@ -157,6 +158,7 @@
     {#if !data.meeting || data.meeting.status === "ended"}
       <PageHeader title="Meeting" />
       <AdminNav />
+      <PracticeSettings />
       <div
         class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12"
       >
@@ -215,6 +217,7 @@
         {/if}
       </PageHeader>
       <AdminNav />
+      <PracticeSettings />
       <section
         class="rounded-box border border-base-content/9 bg-base-200/70 mb-8 grid grid-cols-2 divide-base-content/8 sm:grid-cols-4 sm:divide-x"
         aria-label="Meeting overview"

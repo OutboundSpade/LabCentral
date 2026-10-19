@@ -52,13 +52,13 @@
   );
   // Team choice and the team lab are one destination: the meeting.
   const destinations = $derived([
-    {
+    ...($session?.practiceEnabled ? [{
       href: "/labs/",
       label: "Practice",
       icon: FlaskConical,
       within: ["/labs/", "/learn/"],
       live: false,
-    },
+    }] : []),
     {
       href: $session?.membership.teamID ? "/lab/" : "/teams/",
       label: "Meeting",
@@ -184,6 +184,11 @@
       ? "w-full"
       : "mx-auto max-w-6xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 lg:pt-10 lg:pb-16"}
   >
-    <Notice message={error} dismissible />{@render children()}
+    <Notice message={error} dismissible />
+    {#if $session && !$session.practiceEnabled && ["/labs/", "/learn/"].some(prefix => page.url.pathname.startsWith(prefix))}
+      <h1 class="text-xl font-semibold">Practice labs are disabled</h1>
+      <p class="mt-3 text-sm text-base-content/70">An administrator has disabled practice browsing and workspaces. Team meetings remain available.</p>
+      <a class="btn btn-sm min-h-11 mt-5" href={$session.membership.teamID ? "/lab/" : "/teams/"}>Open meeting</a>
+    {:else}{@render children()}{/if}
   </main>
 </div>

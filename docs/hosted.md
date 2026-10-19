@@ -50,7 +50,35 @@ rechecked every few minutes. If the identity provider is slow or down, signed-in
 stay signed in for up to 15 minutes; after that pages ask them to try again, and a
 revoked account is signed out as soon as the provider answers.
 
+## Disabling practice for a meeting
+
+In **Admin → Meeting → Practice labs**, choose **Disable practice…**. Review the
+confirmation list, then choose **Disable practice and delete labs**. The list includes
+queued, preparing, ready and failed personal runs, plus runs already awaiting cleanup.
+Machines and workspace files in those runs will be deleted. Team meeting labs are
+unaffected.
+
+The setting applies to everyone, including administrators' personal practice. It
+blocks practice browsing, downloads, attempt creation, answers, checks, provisioning
+and desktop access, including direct API requests. Admin template management and
+meeting controls remain available. Use **Admin → Templates → Explore** to read
+instructor notes while practice is disabled. Existing practice desktops lose authorization;
+transport revalidation closes them within 20 seconds. Cleanup jobs retain each exact
+allocation identity until the provider confirms deletion. Inspect live activity and
+retry failed cleanup; disabled practice does not itself mean cleanup has finished.
+
+If allocations change after the confirmation opens, the server refuses the change.
+Choose **Review current list** and confirm again. Cancel leaves settings and labs
+untouched. Practice starts enabled on installations without a saved setting. The
+setting survives restarts. **Enable practice…** restores access without restarting
+old labs or cancelling cleanup. Learning progress and pinned revisions are retained.
+
 ## The template repository
+
+After a complete successful refresh, template names removed from Git leave the
+browsable catalog. Their pinned revisions remain available to existing meetings and
+attempts and through exact revision URLs. A refresh with invalid template directories
+preserves previous names until a complete snapshot can be imported.
 
 The server imports the `templates/` directory from the `main` branch of a Git
 repository you configure. Each template is a directory containing:

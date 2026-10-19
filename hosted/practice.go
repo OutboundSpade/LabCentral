@@ -228,6 +228,10 @@ func (s *Service) runPractice(ctx context.Context, j Job) (err error) {
 		return err
 	}
 	defer release()
+	if err = s.Store.requirePractice(ctx); err != nil {
+		_, save := s.Store.endPractice(context.WithoutCancel(ctx), run.ID, run.UserID)
+		return save
+	}
 	result, err := s.Store.DB.ExecContext(ctx, `UPDATE practice_runs SET status='preparing',error='' WHERE id=? AND status IN ('queued','failed','preparing')`, run.ID)
 	if err != nil {
 		return err

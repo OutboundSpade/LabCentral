@@ -908,6 +908,28 @@ Admin → Templates share one card per template; meetings start from a template 
 revision's page. Admin data refreshes on a shared two-second poll that clears on
 sign-out or identity changes and shows a separate warning when updates fail repeatedly.
 
+### Global practice availability
+
+Hosted persists the practice availability setting in `site-settings/practice`; an
+absent record defaults to enabled. Admin-only CSRF-protected settings routes return a
+preview of all non-ended personal allocations and a confirmation digest of their IDs
+and the policy revision. Changing availability checks that digest under the immediate
+writer transaction. Disabling and saving every exact allocation's `ending` intent and
+cleanup job commit together. A stale preview or failed cleanup enqueue changes nothing.
+Reservation admission checks availability inside its own writer transaction, and
+preparation checks it after its capacity wait. Concurrent preparation is cancelled
+only after durable ending intent; shared run claims fence destruction behind native
+preparation. Unknown native outcomes retain ownership and cleanup intent.
+
+Practice HTTP routes and publication/desktop authorization enforce the same setting.
+The UI removes practice navigation and replaces direct practice pages with a disabled
+notice; admin template management and team meeting access remain available. Existing
+relays revalidate within 20 seconds. Re-enabling never restarts ending runs or cancels
+cleanup. No policy enters the portable library. After a complete source refresh,
+removed template names receive catalog retirement markers and lose their heads;
+historical revisions and resource pins remain intact. Reintroducing a name clears
+its retirement marker. Incomplete imports do not retire other names.
+
 ## Qualification status
 
 What has been verified on real platforms. Evidence applies to the source, environment

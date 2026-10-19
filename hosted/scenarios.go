@@ -60,6 +60,9 @@ var attemptRequestPattern = regexp.MustCompile(`^[a-f0-9]{24}$`)
 
 func (s *Service) ownedPublication(ctx context.Context, id, user string) (LearningPublication, error) {
 	var p LearningPublication
+	if err := s.Store.requirePractice(ctx); err != nil {
+		return p, err
+	}
 	err := s.Store.Get(ctx, "learning-publication", id, &p)
 	if err == nil && (!p.Published || s.templateAudience(ctx, p.Template, p.OwnerID == user && s.coachForUser(ctx, user)) != nil) {
 		err = fmt.Errorf("This lab is unavailable.")
@@ -83,6 +86,10 @@ func (s *Service) learningBundle(ctx context.Context, p LearningPublication) (In
 	return b, err
 }
 func (s *Service) createTemplateAttemptDecision(w http.ResponseWriter, r *http.Request, v Session) {
+	if err := s.Store.requirePractice(r.Context()); err != nil {
+		writeError(w, 403, err.Error())
+		return
+	}
 	var req CreateTemplateAttemptRequest
 	if !decode(w, r, &req) {
 		return

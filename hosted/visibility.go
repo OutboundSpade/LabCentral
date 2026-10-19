@@ -67,6 +67,9 @@ func (s *Service) studentTemplate(ctx context.Context, id string) error {
 
 // Retained personal allocations survive unpublication, but never a private policy.
 func (s *Service) practiceDisclosure(ctx context.Context, lab string) error {
+	if err := s.Store.requirePractice(ctx); err != nil {
+		return err
+	}
 	var p LearningPublication
 	if err := s.Store.Get(ctx, "learning-publication", lab, &p); err != nil {
 		return err

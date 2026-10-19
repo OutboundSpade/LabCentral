@@ -15,7 +15,12 @@ import (
 func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 	ctx := r.Context()
 	out := Overview{User: v.User, CSRF: v.CSRF, Teams: []Team{}, Lab: LabView{Machines: []Machine{}}}
-	var err error
+	policy, err := s.Store.practicePolicy(ctx)
+	if err != nil {
+		writeError(w, 503, "Practice settings are unavailable.")
+		return
+	}
+	out.PracticeEnabled = policy.Enabled
 	out.Meeting, err = s.Store.Meeting(ctx)
 	if err != nil {
 		writeError(w, 503, "Meeting information is unavailable.")

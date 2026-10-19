@@ -199,6 +199,7 @@ func (s *Service) importSnapshot(ctx context.Context, root, commit string, commi
 		return fmt.Errorf("too many templates")
 	}
 	report := TemplateImportReport{Commit: commit, Failures: []TemplateImportFailure{}}
+	names := []string{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -228,13 +229,24 @@ func (s *Service) importSnapshot(ctx context.Context, root, commit string, commi
 				return err
 			}
 		}
+		names = append(names, src.Lab.Name)
 		id := digest(commit + ":" + entry.Name())[:24]
 		err = s.Store.importRevision(ctx, id, src, b, string(handover), commit, committed, title)
 		if err != nil {
 			return err
 		}
 	}
-	return s.Store.Put(ctx, "template-import-report", "current", report)
+	return s.Store.atomic(ctx, func(ctx context.Context) error {
+		if len(report.Failures) == 0 {
+			if _, err := s.Store.DB.ExecContext(ctx, `INSERT INTO objects(kind,id,body) SELECT 'template-retired-name',id,'true' FROM objects WHERE kind='template-head' AND id NOT IN (SELECT value FROM json_each(?)) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body`, jsonValue(names)); err != nil {
+				return err
+			}
+			if _, err := s.Store.DB.ExecContext(ctx, `DELETE FROM objects WHERE kind='template-head' AND id NOT IN (SELECT value FROM json_each(?))`, jsonValue(names)); err != nil {
+				return err
+			}
+		}
+		return s.Store.Put(ctx, "template-import-report", "current", report)
+	})
 }
 
 // All four records commit together. Re-import preserves build/cleanup state and
@@ -287,6 +299,9 @@ func (s *Store) importRevision(ctx context.Context, id string, src lc.Source, b 
 		return err
 	}
 	if err = put("template", id, t); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM objects WHERE kind='template-retired-name' AND id=?`, t.Name); err != nil {
 		return err
 	}
 	if err = put("template-head", t.Name, id); err != nil {

@@ -17,7 +17,8 @@ try {
     const template={id:"revision",name:"branch-services",commit:"1234567abc",built:true,latest:true,imagesReady:2,imagesTotal:2,buildsPending:0,removing:false};
     await page.route("**/api/**",async route=>{
       const req=route.request(),path=new URL(req.url()).pathname;
-      if(path==="/api/me")return route.fulfill({json:{user:{id:"admin",name:"Administrator",admin:true},csrf:"csrf",meeting:null,membership:{},teams:[],lab:{machines:[]}}});
+      if (path === "/api/admin/practice") return route.fulfill({json:{enabled:true,confirmation:"fixture",activeLabs:[]}});
+      if(path==="/api/me")return route.fulfill({json:{practiceEnabled:true,user:{id:"admin",name:"Administrator",admin:true},csrf:"csrf",meeting:null,membership:{},teams:[],lab:{machines:[]}}});
       if(path==="/api/templates")return route.fulfill({json:{templates:[{...template,description:"Branch recovery",machines:[],stages:[],stageCount:0,practiceStageIDs:[],scenarios:[]}]}});
       if(path==="/api/admin")return route.fulfill({json:{templates:[template],jobs,teams:[],meeting:null,breaks:[],breakRuns:[],checkRuns:[],imageSummary:{images:19,unusedImages:17}}});
       assert.equal(req.headers()["x-csrf-token"],"csrf");

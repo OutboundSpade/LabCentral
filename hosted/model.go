@@ -130,12 +130,13 @@ type LabView struct {
 	Handover      string        `json:"handover"`
 }
 type Overview struct {
-	User       User       `json:"user"`
-	CSRF       string     `json:"csrf"`
-	Meeting    *Meeting   `json:"meeting"`
-	Membership Membership `json:"membership"`
-	Teams      []Team     `json:"teams"`
-	Lab        LabView    `json:"lab"`
+	PracticeEnabled bool       `json:"practiceEnabled"`
+	User            User       `json:"user"`
+	CSRF            string     `json:"csrf"`
+	Meeting         *Meeting   `json:"meeting"`
+	Membership      Membership `json:"membership"`
+	Teams           []Team     `json:"teams"`
+	Lab             LabView    `json:"lab"`
 }
 type AdminView struct {
 	ImageSummary   *ImageSummary           `json:"imageSummary,omitempty"`

@@ -110,6 +110,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
 	mux.HandleFunc("GET /api/admin/teams/{id}/machines", s.authorized(true, s.coachMachines))
 	mux.HandleFunc("GET /api/admin/teams/{id}/machines/{machine}/terminal", s.authorized(true, s.coachTerminal))
+	mux.HandleFunc("GET /api/admin/practice", s.authorized(true, s.practiceSettingsView))
+	mux.HandleFunc("POST /api/admin/practice", s.authorized(true, s.setPracticeSettings))
 	mux.HandleFunc("GET /api/admin", s.authorized(true, s.admin))
 	mux.HandleFunc("POST /api/admin/meeting", s.authorized(true, s.createMeeting))
 	mux.HandleFunc("POST /api/admin/prepare", s.authorized(true, s.prepareMeeting))
@@ -166,6 +168,12 @@ func (s *Service) authorized(admin bool, next endpoint) http.HandlerFunc {
 		if r.Method != "GET" && (r.Header.Get("Origin") != s.Config.Origin || r.Header.Get("X-CSRF-Token") != session.CSRF) {
 			writeError(w, 403, "Request verification failed. Reload the page and try again.")
 			return
+		}
+		if practiceRoute(r, session.User.Admin) {
+			if err := s.Store.requirePractice(r.Context()); err != nil {
+				writeError(w, 403, err.Error())
+				return
+			}
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), verifiedUserKey{}, session.User)), session)
 	}

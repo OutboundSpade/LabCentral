@@ -14,7 +14,7 @@
       ? $session.membership.teamID
         ? "/lab/"
         : "/teams/"
-      : "/labs/",
+      : $session?.practiceEnabled ? "/labs/" : "/teams/",
   );
   $effect(() => {
     if (mounted && $session) void goto(destination, { replaceState: true });

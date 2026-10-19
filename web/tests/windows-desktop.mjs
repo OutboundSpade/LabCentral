@@ -20,6 +20,7 @@ try {
     const calls = [];
     await context.route('**/desktop-test-launch', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>Desktop launch accepted</h1>' }));
     const overview = () => ({
+      practiceEnabled: true,
       user: { id: 'u', name: 'Test Student', email: 'test@example.invalid', admin: true }, csrf: 'test-csrf', meeting,
       membership: { userID: 'u', teamID: 't1', pendingTeam: '', switching: false }, teams: [team],
       lab: { teammates: [{ name: 'Test Student' }, { name: 'Jordan' }], team, desktopActive: state.code === 'owned', desktopState: state,
@@ -28,6 +29,7 @@ try {
     });
     await page.route('**/api/**', async (route) => {
       const req = route.request(), path = new URL(req.url()).pathname;
+      if (path === "/api/admin/practice") return route.fulfill({json:{enabled:true,confirmation:"fixture",activeLabs:[]}});
       if (path === '/api/me') return route.fulfill({ json: overview() });
       if (path === '/api/admin') return route.fulfill({ json: { imageSummary: { images: 2, unusedImages: 0 }, meeting, teams: [team], templates: [], jobs: [] } });
       if (path === '/api/admin/teams/t1/machines') return route.fulfill({ json: { teamID: 't1', meetingID: 'm', template: 'win', instanceID: 'i', machines: [{ name: 'server', status: 'ready' }] } });

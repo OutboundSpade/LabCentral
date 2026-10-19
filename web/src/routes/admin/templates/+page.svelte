@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from "$app/state";
+  import TemplateExplorer from "$lib/TemplateExplorer.svelte";
   import { templateName } from "$lib/display";
   import Activity from "$lib/Activity.svelte";
   import { onMount } from "svelte";
@@ -30,6 +32,8 @@
   import { templatePath, type LibraryTemplate } from "$lib/library";
   import { api, session, adminView, refreshAdmin } from "$lib/api";
   let data = $derived($adminView);
+  const exploring = $derived(page.url.searchParams.has("template"));
+  const explorePath = (id: string) => $session?.practiceEnabled ? templatePath(id) : `/admin/templates/?template=${encodeURIComponent(id)}`;
   let error = $state("");
   let busy = $state(false);
   let catalog = $state<LibraryTemplate[] | null>(null);
@@ -99,7 +103,8 @@
 {#if $session?.user.admin}<AdminNav />{/if}
 <Guard admin
   ><Notice message={error} dismissible /><PollStatus />
-  {#if data}
+  {#if exploring}<TemplateExplorer />
+  {:else if data}
     {#if data.jobs.find((j) => j.kind === "refresh")?.status === "failed"}<Notice
         message={data.jobs.find((j) => j.kind === "refresh")?.error ??
           "GitHub refresh failed. Please retry."}
@@ -150,7 +155,7 @@
               {@const t = data.templates.find((x) => x.id === card.id)}
               {@const job = revisionJob(data, card.id)}
               {@const current = t ? revisionState(t, job) : null}
-              <TemplateCard template={card} href={templatePath(card.id)}>
+              <TemplateCard template={card} href={explorePath(card.id)}>
                 {#snippet badge()}{#if meetingOpen && data?.meeting?.template === card.id}<span
                       class="badge badge-sm badge-primary badge-soft shrink-0">In meeting</span
                     >{/if}{/snippet}
@@ -161,7 +166,7 @@
                 {#snippet actions()}
                   <a
                     class="btn btn-sm min-h-11 lg:min-h-8"
-                    href={templatePath(card.id)}
+                    href={explorePath(card.id)}
                     aria-label={`Explore ${templateName(card.name)} revision ${card.commit.slice(0, 7)}`}
                     >Explore</a
                   >
