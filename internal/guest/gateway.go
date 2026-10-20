@@ -75,7 +75,9 @@ sysctl -w net.ipv4.ip_forward=1
 		files = append(files, map[string]any{"path": f.Path, "content": f.Content, "permissions": f.Permissions})
 	}
 	c["write_files"] = files
-	c["runcmd"] = []string{"systemctl daemon-reload", "systemctl enable --now labcentral-gateway.service", "sshd -t && systemctl restart ssh"}
+	// Socket activation may not have started ssh.service yet. Its runtime
+	// directory must exist before sshd can validate the pinned configuration.
+	c["runcmd"] = []string{"systemctl daemon-reload", "systemctl enable --now labcentral-gateway.service", "install -d -m 0755 /run/sshd && sshd -t && systemctl restart ssh"}
 	out, err := yaml.Marshal(c)
 	return "#cloud-config\n" + string(out), err
 }

@@ -2,13 +2,74 @@ package guest
 
 import (
 	"encoding/base64"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"go.yaml.in/yaml/v3"
 )
+
+func TestGatewaySSHStartupBeforeSocketActivation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux gateway initialization uses a POSIX shell")
+	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("shell required to exercise Linux gateway startup")
+	}
+	raw, err := GatewayCloudInit(lc.PlannedMachine{Name: "gateway", PublicKey: "client", HostPublicKey: "host", HostPrivateKey: "private"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Run []string `yaml:"runcmd"`
+	}
+	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, reject := range []bool{false, true} {
+		t.Run(fmt.Sprintf("invalid_config_%v", reject), func(t *testing.T) {
+			root := t.TempDir()
+			bin := filepath.Join(root, "bin")
+			if err := os.Mkdir(bin, 0700); err != nil {
+				t.Fatal(err)
+			}
+			// Emulate sshd's real failure when socket activation has not created
+			// its privilege-separation directory, without touching host services.
+			stubs := map[string]string{
+				"sshd":      "#!/bin/sh\nset -eu\ntest -d \"$GATEWAY_SSH_DIR\"\ntest \"$REJECT_CONFIG\" = false\n",
+				"systemctl": "#!/bin/sh\nset -eu\ntest \"$*\" = 'restart ssh'\nprintf restarted > \"$RESTART_MARKER\"\n",
+			}
+			for name, body := range stubs {
+				if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			directory := filepath.Join(root, "sshd")
+			marker := filepath.Join(root, "restarted")
+			command := strings.ReplaceAll(doc.Run[len(doc.Run)-1], "/run/sshd", directory)
+			cmd := exec.Command("sh", "-ec", command)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GATEWAY_SSH_DIR="+directory, fmt.Sprintf("REJECT_CONFIG=%v", reject), "RESTART_MARKER="+marker)
+			output, err := cmd.CombinedOutput()
+			if (err != nil) != reject {
+				t.Fatalf("startup error=%v reject=%v: %s", err, reject, output)
+			}
+			info, err := os.Stat(directory)
+			if err != nil || info.Mode().Perm() != 0755 {
+				t.Fatalf("runtime directory unavailable or unsafe: %v %v", info, err)
+			}
+			_, err = os.Stat(marker)
+			if reject && !os.IsNotExist(err) || !reject && err != nil {
+				t.Fatalf("SSH restart must follow successful validation: %v", err)
+			}
+		})
+	}
+}
 
 func TestGatewayBootstrapIsPinnedAndForwardingIsOptIn(t *testing.T) {
 	m := lc.PlannedMachine{Name: "gateway", PublicKey: "ssh-ed25519 lab-key", HostPublicKey: "ssh-ed25519 pinned-host", HostPrivateKey: "PRIVATE-HOST-KEY"}

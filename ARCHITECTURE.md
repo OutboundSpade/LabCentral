@@ -344,7 +344,9 @@ the lab's only public IPv4 address (default `ubuntu-24.04` on `t3.micro`). It ha
 edge NIC, IMDSv2 with hop limit 1, an encrypted root disk and no instance profile; its
 host key is generated and pinned before creation. Its cloud-init allows operator SSH and
 local port forwarding only (no passwords, agent or X11 forwarding, or tunnels) and
-loads nftables before enabling forwarding. Forwarding defaults to drop; only opted-in
+loads nftables before enabling forwarding. It creates OpenSSH's runtime directory before
+validating and restarting SSH, without depending on earlier socket activation.
+Forwarding defaults to drop; only opted-in
 networks reach non-private destinations, with masquerade. RFC 1918, link-local, CGNAT
 and the gateway itself are blocked. Readiness needs pinned SSH and confirmed cloud-init
 completion. The routing follows [AWS NAT instance
