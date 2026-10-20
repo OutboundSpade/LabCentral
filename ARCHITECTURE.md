@@ -916,6 +916,13 @@ The meeting admin page includes an Instructor notes tab when the meeting's exact
 pinned template has notes. It renders the existing admin-only Markdown alongside
 the meeting tools, keeps exercise selections when switching tabs and performs no
 guest or lifecycle actions. Newer catalog revisions never replace meeting notes.
+The main app's shared Markdown renderer handles fenced Mermaid flowcharts, sequence,
+state, class, ER and XY diagrams with a pinned, DOM-independent SVG renderer.
+Diagrams display as inert SVG images under the existing CSP; generated remote-font
+imports are removed. Source remains available in an expandable disclosure, wide
+diagrams scroll within a keyboard-accessible region, and unsupported, oversized or
+failed diagrams retain escaped code. Rendering is bounded by source size, line count
+and image dimensions, with a bounded cache. Raw HTML remains disabled.
 
 ### Global practice availability
 

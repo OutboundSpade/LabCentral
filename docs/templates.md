@@ -450,6 +450,12 @@ breaks:
   panel and the meeting Exercises panel. Use headings, ordered steps and fenced command blocks; raw HTML is disabled.
   Walkthroughs expand separately. Keep the on-page instructions self-contained: private
   source files are not downloadable from that panel.
+- The main app also renders fenced `mermaid` blocks in handovers, lesson pages and
+  instructor Markdown. Flowcharts, sequence, state, class, ER and XY diagrams are
+  supported. Diagrams retain an expandable **Diagram source**; wide diagrams scroll
+  horizontally. Unsupported or failed diagrams show their escaped source instead.
+  Keep each diagram below 16,000 characters and 256 lines. No remote assets or raw
+  HTML are needed.
 - `description` is a short summary for instructors; `walkthrough` is the private fix,
   shown to instructors in the meeting's Exercises panel.
 

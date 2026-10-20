@@ -13,7 +13,11 @@ try {
     const page = await context.newPage(), errors = [], writes = [];
     page.setDefaultTimeout(10000);
     page.on('pageerror', error => errors.push(error.message));
+    const external = [];
+    page.on('request', request => { if (!request.url().startsWith('http://127.0.0.1:5173/') && !request.url().startsWith('data:')) external.push(request.url()); });
+    await page.addInitScript(() => { window.diagramCspViolations = []; document.addEventListener('securitypolicyviolation', event => window.diagramCspViolations.push(event.violatedDirective)); });
     let admin = true, notes = '# Coach run sheet\n\n## Round 1\n\nAsk: **What stands out?**\n\nExpected: private SSH evidence.\n\n```sh\nsudo grep Accepted /var/log/auth.log\n```\n\n<script>window.unsafeMeetingNotes = true</script>';
+    notes += '\n\n```mermaid\nflowchart LR\nWS[Workstation] --> DC[Directory and DNS]\nWS --> FS[CompanyDocs]\nWS --> WEB[Online banking]\nWEB --> DB[Bank database]\nSCORE[Scoring] --> DC\nSCORE --> FS\nSCORE --> WEB\nSCORE --> DB\nLOG[Graylog] --- SOURCES[Your chosen log sources]\n```';
     const now = new Date().toISOString();
     const meeting = {id: 'meeting', name: 'Prepared class', template: 'pinned', status: 'ready', created: now, expires: new Date(Date.now() + 3600000).toISOString()};
     const teams = [{id: 'team', meetingID: meeting.id, name: 'Team 1', status: 'ready', capacity: 6, members: 2}];
@@ -35,6 +39,9 @@ try {
     await page.goto('http://127.0.0.1:5173/admin/');
     await page.getByRole('tab', {name: 'Exercises', exact: true}).click();
     await page.getByRole('button', {name: 'Select ready teams', exact: true}).click();
+    // Ignore the existing SvelteKit announcer's boot-time inline style;
+    // measure CSP specifically while mounting and interacting with Markdown.
+    await page.evaluate(() => window.diagramCspViolations = []);
     await page.getByRole('tab', {name: 'Instructor notes', exact: true}).click();
     const panel = page.getByRole('tabpanel', {name: 'Instructor notes', exact: true});
     await panel.getByRole('heading', {name: 'Coach run sheet', exact: true}).waitFor();
@@ -43,6 +50,14 @@ try {
     assert.equal(await panel.getByRole('link', {name: 'template revision', exact: true}).getAttribute('href'), '/admin/templates/?template=pinned');
     assert.equal(await page.evaluate(() => window.unsafeMeetingNotes), undefined, 'notes executed raw HTML');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await panel.getByRole('img', {name: /Mermaid diagram/}).waitFor();
+    await page.waitForFunction(() => { const img = document.querySelector('img[alt^="Mermaid diagram"]'); return img?.complete && img.naturalWidth > 0; });
+    if (width < 600) { const diagram = panel.getByRole('region', {name: 'Mermaid diagram', exact: true}); await diagram.focus(); await page.keyboard.press('ArrowRight'); await page.waitForTimeout(250); assert(await diagram.evaluate(node => node.scrollLeft > 0), 'diagram cannot be scrolled with the keyboard'); await diagram.evaluate(node => node.scrollLeft = 0); }
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await panel.getByText('Diagram source', {exact: true}).click();
+    assert((await panel.locator('details').innerText()).includes('SOURCES[Your chosen log sources]'));
+    await panel.getByText('Diagram source', {exact: true}).click();
+    assert.deepEqual(await page.evaluate(() => window.diagramCspViolations), [], 'diagram violated page CSP');
     await page.screenshot({path: `${evidence}/meeting-notes-${width}.png`, fullPage: true});
 
     // Switching views preserves the coach's selection and does not start an exercise.
@@ -74,6 +89,8 @@ try {
     assert(!(await page.locator('body').innerText()).includes('Private coach notes'));
     assert.deepEqual(writes, [], 'viewing notes issued a mutation request');
     assert.deepEqual(errors, []);
+    assert.deepEqual(external, [], 'diagram loaded a remote resource');
+
     await context.close();
     console.log('PASS pinned meeting notes, selection, keyboard, reload, empty notes, student guard and no mutations at ' + width);
   }

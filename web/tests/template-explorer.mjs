@@ -28,7 +28,7 @@ try {
     const safe=s=>({id:s.id,title:s.title,instructions:s.instructions,kind:s.kind,prompt:s.prompt,hasSolution:!!s.solution});
     const machines=[{name:"workstation",cpu:2,memory:"4Gi",disk:"20Gi",access:["desktop","ssh"]},{name:"web-server-with-a-long-descriptive-machine-name-for-wrapping",cpu:2,memory:"2Gi",disk:"20Gi",access:["ssh"]}];
     const outage={id:"outage",title:"Branch outage",description:"Several branch services fail during one shift.",difficulty:"advanced",estimatedMinutes:60,variantCount:6,minBreaks:2,maxBreaks:3};
-    const newest={desktopMachine:"workstation",id:"latest",name:"branch-services",commit:"1234567890abc",commitTitle:"Add template-owned recovery stages",committedAt:iso(-10000),description:"Investigate a bank's service environment and practise recovery.",handover:"# Example Branch\nKeep customer banking available.",stageCount:4,stages:stages.map(safe),machines,imagesBuilt:true,practiceStageIDs:["discover","verify"],library:{category:"Incident response",difficulty:"intermediate",estimatedMinutes:90,tags:["ccdc","web"]},scenarios:[outage]};
+    const newest={desktopMachine:"workstation",id:"latest",name:"branch-services",commit:"1234567890abc",commitTitle:"Add template-owned recovery stages",committedAt:iso(-10000),description:"Investigate a bank's service environment and practise recovery.",handover:"# Example Branch\nKeep customer banking available.\n\n```mermaid\nflowchart LR\nWS[Workstation] --> WEB[Online banking]\nWEB --> DB[Bank database]\n```",stageCount:4,stages:stages.map(safe),machines,imagesBuilt:true,practiceStageIDs:["discover","verify"],library:{category:"Incident response",difficulty:"intermediate",estimatedMinutes:90,tags:["ccdc","web"]},scenarios:[outage]};
     const older={...newest,id:"older",commit:"abc123456789",commitTitle:"Initial branch environment",committedAt:iso(-86400000),stages:[safe(stages[0])],stageCount:1,practiceStageIDs:["discover"],scenarios:[]};
     const second={...newest,id:"network",name:"network-investigation",description:"Map a private lab network.",stages:[],stageCount:0,machines:[machines[0]],imagesBuilt:false,practiceStageIDs:[],library:{category:"Networking",difficulty:"beginner",estimatedMinutes:30,tags:["nmap"]},scenarios:[]};
     const ubuntu={...newest,id:"ubuntu",name:"ubuntu-basics",description:"Learn service management on one server.",stages:[safe(stages[0])],stageCount:1,machines:[machines[0]],imagesBuilt:false,practiceStageIDs:["discover"],library:{category:"Linux",difficulty:"beginner",estimatedMinutes:45,tags:["systemd"]},scenarios:[{...outage,id:"svc",title:"Service sweep",variantCount:3,minBreaks:1,maxBreaks:1}]};
@@ -151,6 +151,10 @@ try {
     await page.getByText("Instructor",{exact:true}).waitFor();
     await page.getByLabel("Stage",{exact:true}).selectOption("restore");
     assert.equal(await page.locator("article script").count(),0,"raw HTML disabled");
+    await page.getByText("Environment handover", {exact: true}).click();
+    const diagram = page.getByRole("img", {name: /Mermaid diagram/});
+    await diagram.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => { const img = document.querySelector('img[alt^="Mermaid diagram"]'); return img?.complete && img.naturalWidth > 0; });
     assert(await fits(page),"detail width");
     await shot(page,"template-detail",width);
     await page.getByLabel("Revision",{exact:true}).selectOption("older");
