@@ -51,6 +51,15 @@ func PayloadCommand(program string, payload []byte) string {
 	return Command("$ErrorActionPreference='Stop'; $p = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + base64.StdEncoding.EncodeToString(payload) + "')) | ConvertFrom-Json\n" + program)
 }
 
+// StdinPayloadCommand frames a payload independently of SSH's half-close. Windows
+// OpenSSH can leave a nested PowerShell stdin open after the sender finishes.
+// The length check rejects partial frames before staging or running author code.
+func StdinPayloadCommand(program string, payload []byte) (string, []byte) {
+	encoded := base64.StdEncoding.EncodeToString(payload)
+	reader := fmt.Sprintf("$ErrorActionPreference='Stop'; $line=[Console]::In.ReadLine(); if ($null -eq $line -or $line.Length -ne %d) {throw 'incomplete guest payload'}; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($line)) | ConvertFrom-Json\n", len(encoded))
+	return Command(reader + program), []byte(encoded + "\n")
+}
+
 const Ready = `$ErrorActionPreference='Stop'
 if (!(Test-Path 'C:\ProgramData\LabCentral\ready')) {exit 1}
 if ((Get-Service sshd).Status -ne 'Running') {exit 1}

@@ -817,9 +817,12 @@ excludes private material without changing author files.
 - **Execution.** A fixed launcher stages the files in a private temporary directory and
   runs the program under a per-machine lock, with a timeout (default 90 seconds,
   10–600). On Linux it runs Ansible as root. On Windows the payload arrives as base64
-  JSON on stdin, the script runs inside a kill-on-close job object with
+  JSON in a length-checked, newline-delimited stdin frame, without waiting for SSH
+  end-of-input. The script runs inside a kill-on-close job object with
   `$env:LABCENTRAL_STEP_DIR` set, and output is bounded. A failed task or nonzero exit
   is a failure; a timeout, lock, transport or launcher problem is an unknown outcome.
+  Cancellation returns even if the SSH server never acknowledges channel closure
+  with an exit status; the job then closes its cached connections.
   There is no generic remote-command API.
 - **Stages** have instructions, an optional prompt and solution, an optional linked
   `break`, and exactly one completion: an answer (1–10 accepted values, explicit case

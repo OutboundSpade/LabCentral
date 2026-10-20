@@ -3,7 +3,6 @@ package windows
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -35,12 +34,12 @@ func TestNativeWindowsStepFailureTimeoutLockAndCleanup(t *testing.T) {
 			Path    string `json:"path"`
 			Content []byte `json:"content"`
 		}{{"check.ps1", []byte(script)}}, "check.ps1", timeout})
-		program := "$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd())) | ConvertFrom-Json\n" + StepLauncher
-		args := strings.Fields(ProcessCommand(program))
+		command, input := StdinPayloadCommand(StepLauncher, payload)
+		args := strings.Fields(strings.TrimSuffix(command, "; exit $LASTEXITCODE"))
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 		cmd := exec.CommandContext(ctx, shell, args[1:]...)
-		cmd.Stdin = bytes.NewReader([]byte(base64.StdEncoding.EncodeToString(payload)))
+		cmd.Stdin = bytes.NewReader(input)
 		return cmd
 	}
 	exit := func(cmd *exec.Cmd) int {

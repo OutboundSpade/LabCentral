@@ -132,8 +132,8 @@ func (s *Service) runGuestPlaybooks(ctx context.Context, team Team, src lc.Sourc
 					Script         string    `json:"script"`
 					TimeoutSeconds int       `json:"timeoutSeconds"`
 				}{files, step.Script, int(step.Timeout() / time.Second)})
-				command := windows.Command("$ErrorActionPreference='Stop'; $p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd())) | ConvertFrom-Json\n" + windows.StepLauncher)
-				_, err = remote.RunInput(stepCtx, client, command, []byte(base64.StdEncoding.EncodeToString(payload)))
+				command, input := windows.StdinPayloadCommand(windows.StepLauncher, payload)
+				_, err = remote.RunInput(stepCtx, client, command, input)
 			} else {
 				if step.Script != "" {
 					return fmt.Errorf("Linux steps require a playbook")

@@ -45,6 +45,27 @@ func TestPowerShellPayloadIsData(t *testing.T) {
 		t.Fatal("fixed launcher exceeds Windows command-line limit")
 	}
 }
+
+func TestStdinPayloadIsFramedWithoutEmbeddingData(t *testing.T) {
+	payload := []byte(`{"script":"escape'; $(Get-Secret); 💻.ps1"}`)
+	command, input := StdinPayloadCommand(StepLauncher, payload)
+	encoded := base64.StdEncoding.EncodeToString(payload)
+	if string(input) != encoded+"\n" {
+		t.Fatal("payload has no complete stdin frame")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(string(input), "\n"))
+	if err != nil || string(decoded) != string(payload) {
+		t.Fatal("payload did not round trip", err)
+	}
+	program := decodeCommand(t, command)
+	if strings.Contains(program, encoded) || strings.Contains(program, "Get-Secret") {
+		t.Fatal("stdin data reached the command line")
+	}
+	if !strings.Contains(program, "[Console]::In.ReadLine()") || !strings.Contains(program, fmt.Sprintf("$line.Length -ne %d", len(encoded))) || strings.Contains(program, "ReadToEnd") {
+		t.Fatal("payload parsing depends on SSH EOF or permits partial input")
+	}
+	pscheck.Syntax(t, program)
+}
 func TestLauncherLockTimeoutAndProcessOwnership(t *testing.T) {
 	// The guest-native harness (enabled by LABCENTRAL_TEST_WINDOWS_POWERSHELL)
 	// exercises these operations on Windows; these checks also prevent removing

@@ -159,13 +159,24 @@ func runInput(ctx context.Context, c *ssh.Client, command string, input []byte) 
 	var out limitedOutput
 	s.Stdout = &out
 	s.Stderr = &out
-	e = s.Start(command)
-	if e == nil {
-		faultinject.Sent(ctx)
-		e = s.Wait()
+	finished := make(chan error, 1)
+	go func() {
+		err := s.Start(command)
+		if err == nil {
+			faultinject.Sent(ctx)
+			err = s.Wait()
+		}
+		finished <- err
+	}()
+	select {
+	case e = <-finished:
+	case <-ctx.Done():
+		// Closing a channel does not make every SSH server send an exit status.
+		// Return the unknown outcome promptly; the caller owns the connection.
+		e = ctx.Err()
 	}
-	b := out.Bytes()
-	if out.Exceeded {
+	b, exceeded := out.snapshot()
+	if exceeded {
 		return nil, fmt.Errorf("guest output exceeds bound")
 	}
 	return b, e
@@ -233,7 +244,11 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 }
 
 func (w *limitedOutput) Bytes() []byte {
+	b, _ := w.snapshot()
+	return b
+}
+func (w *limitedOutput) snapshot() ([]byte, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return append([]byte(nil), w.buffer.Bytes()...)
+	return append([]byte(nil), w.buffer.Bytes()...), w.Exceeded
 }
