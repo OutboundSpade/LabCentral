@@ -79,6 +79,19 @@ old labs or cancelling cleanup. Learning progress and pinned revisions are retai
 
 ## The template repository
 
+Operators with access to the server's protected configuration and state can also
+queue a repository refresh locally:
+
+```sh
+labcentral-server --config /protected/service.json --maintenance refresh
+```
+
+This returns the durable refresh job. An already queued or running repository
+refresh is reused. The normal worker imports the configured repository; this
+command does not build images, provision labs or reset existing machines. Check
+the job through `--maintenance status` and review any template import failures.
+It requires local operator access and does not change browser sign-in policy.
+
 After a complete successful refresh, template names removed from Git leave the
 browsable catalog, including when the last template and its directory are removed.
 Their pinned revisions remain available to existing meetings and

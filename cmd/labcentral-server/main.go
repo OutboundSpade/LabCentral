@@ -28,7 +28,7 @@ func run() error {
 	config := flag.String("config", "", "protected JSON configuration file")
 	listen := flag.String("listen", "127.0.0.1:8080", "HTTP address behind the TLS proxy")
 	provider := flag.String("provider", "", "provider executable")
-	maintenance := flag.String("maintenance", "", "local status, recover, or cleanup operation")
+	maintenance := flag.String("maintenance", "", "local status, refresh, recover, or cleanup operation")
 	checkConfig := flag.Bool("check-config", false, "validate static configuration and print identity groups and effective worker limits without starting providers or OIDC")
 	flag.Parse()
 	if *checkConfig && *maintenance != "" {

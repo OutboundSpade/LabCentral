@@ -51,6 +51,9 @@ func Maintain(ctx context.Context, root, operation string) (any, error) {
 			IdentityFailures []json.RawMessage `json:"identityFailures"`
 		}{m, teams, jobs, active, diagnostics}, e
 	}
+	if operation == "refresh" {
+		return st.Enqueue(ctx, "refresh", "repository")
+	}
 	tx, e := st.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return nil, e

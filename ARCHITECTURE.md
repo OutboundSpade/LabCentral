@@ -933,7 +933,10 @@ cleanup. No policy enters the portable library. After a complete source refresh,
 removed template names receive catalog retirement markers and lose their heads;
 an absent Git templates tree confirms an empty catalog, while a failed tree read
 or a non-directory templates path leaves the prior catalog intact.
-Historical revisions and resource pins remain intact. Reintroducing a name clears
+The local operator `--maintenance refresh` entry point queues the same durable
+repository job as the administrator API, deduplicating active refreshes without
+starting image builds or lab operations. Historical revisions and resource pins
+remain intact. Reintroducing a name clears
 its retirement marker. Incomplete imports do not retire other names.
 
 ## Qualification status
