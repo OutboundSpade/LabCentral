@@ -931,7 +931,9 @@ notice; admin template management and team meeting access remain available. Exis
 relays revalidate within 20 seconds. Re-enabling never restarts ending runs or cancels
 cleanup. No policy enters the portable library. After a complete source refresh,
 removed template names receive catalog retirement markers and lose their heads;
-historical revisions and resource pins remain intact. Reintroducing a name clears
+an absent Git templates tree confirms an empty catalog, while a failed tree read
+or a non-directory templates path leaves the prior catalog intact.
+Historical revisions and resource pins remain intact. Reintroducing a name clears
 its retirement marker. Incomplete imports do not retire other names.
 
 ## Qualification status

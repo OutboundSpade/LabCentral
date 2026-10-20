@@ -6,13 +6,93 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/OutboundSpade/LabCentral/v2/instructor"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/OutboundSpade/LabCentral/v2/instructor"
 )
+
+func TestGitSnapshotWithoutTemplatesRetiresAllNames(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	s, fixtures := importFixture(t)
+	ctx := context.Background()
+	src, bundle, err := instructor.LoadTemplate(filepath.Join(fixtures, "recovery"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Store.importRevision(ctx, "pinned", src, bundle, "retained handover", "original", time.Now(), "original"); err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	git := func(args ...string) *exec.Cmd {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+		return cmd
+	}
+	run := func(args ...string) {
+		t.Helper()
+		if out, err := git(args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s: %v", args, out, err)
+		}
+	}
+	run("init")
+	if err = os.WriteFile(filepath.Join(repo, "README.md"), []byte("The last template was removed.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "README.md")
+	run("-c", "user.name=Template test", "-c", "user.email=templates@example.invalid", "commit", "-m", "Remove last template")
+	root := filepath.Join(t.TempDir(), "snapshot")
+	if err = unpackTemplateRevision(git, "HEAD", root); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.importSnapshot(ctx, filepath.Join(root, "templates"), "empty", time.Now(), "empty"); err != nil {
+		t.Fatal(err)
+	}
+	views, err := s.publicTemplates(ctx, "")
+	if err != nil || len(views) != 0 {
+		t.Fatal("deleted templates remain listed", views, err)
+	}
+	views, err = s.publicTemplates(ctx, "pinned")
+	if err != nil || len(views) != 1 || views[0].Handover != "retained handover" {
+		t.Fatal("existing revision was lost", views, err)
+	}
+	if err = unpackTemplateRevision(git, "unknown-revision", t.TempDir()); err == nil {
+		t.Fatal("unknown revision accepted as an empty catalog")
+	}
+	if err = os.WriteFile(filepath.Join(repo, "templates"), []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "templates")
+	run("-c", "user.name=Template test", "-c", "user.email=templates@example.invalid", "commit", "-m", "Invalid template tree")
+	if err = unpackTemplateRevision(git, "HEAD", t.TempDir()); err == nil {
+		t.Fatal("invalid template tree accepted as an empty catalog")
+	}
+	if err = os.Remove(filepath.Join(repo, "templates")); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(filepath.Join(repo, "templates", "restored"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(repo, "templates", "restored", "README.md"), []byte("Restored source\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "templates")
+	run("-c", "user.name=Template test", "-c", "user.email=templates@example.invalid", "commit", "-m", "Restore template directory")
+	restored := t.TempDir()
+	if err = unpackTemplateRevision(git, "HEAD", restored); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(restored, "templates", "restored", "README.md"))
+	if err != nil || string(data) != "Restored source\n" {
+		t.Fatal("ordinary template tree did not unpack", string(data), err)
+	}
+}
 
 func TestGitArchiveMetadataAndUnsafeEntries(t *testing.T) {
 	for _, entry := range []struct {

@@ -55,25 +55,11 @@ func (s *Service) syncSource(ctx context.Context) error {
 		return e
 	}
 
-	cmd := git("--git-dir="+bare, "archive", commit, "templates")
-	pipe, e := cmd.StdoutPipe()
-	if e != nil {
-		return e
-	}
-	if e = cmd.Start(); e != nil {
-		return e
-	}
 	root := filepath.Join(dir, "snapshot")
-	e = unpackSource(pipe, root)
-	if e != nil {
-		_ = cmd.Process.Kill()
-	}
-	wait := cmd.Wait()
-	if e != nil {
+	if e = unpackTemplateRevision(func(args ...string) *exec.Cmd {
+		return git(append([]string{"--git-dir=" + bare}, args...)...)
+	}, commit, root); e != nil {
 		return e
-	}
-	if wait != nil {
-		return wait
 	}
 	if e = s.importSnapshot(ctx, filepath.Join(root, "templates"), commit, committed, title); e != nil {
 		return e
@@ -100,6 +86,42 @@ func (s *Service) syncSource(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func unpackTemplateRevision(git func(...string) *exec.Cmd, commit, root string) error {
+	// Git does not retain empty directories. Removing the final template removes
+	// templates/ itself, which git archive treats as an error. Only an observed
+	// absence in a successfully read commit establishes an empty catalog.
+	tree, err := git("ls-tree", "-z", commit, "--", "templates").Output()
+	if err != nil {
+		return fmt.Errorf("inspect template tree: %w", err)
+	}
+	if len(tree) == 0 {
+		return os.MkdirAll(filepath.Join(root, "templates"), 0700)
+	}
+	if !strings.HasPrefix(string(tree), "040000 tree ") || !strings.HasSuffix(string(tree), "\ttemplates\x00") {
+		return fmt.Errorf("templates must be a Git directory")
+	}
+	cmd := git("archive", commit, "templates")
+	pipe, e := cmd.StdoutPipe()
+	if e != nil {
+		return e
+	}
+	if e = cmd.Start(); e != nil {
+		return e
+	}
+	e = unpackSource(pipe, root)
+	if e != nil {
+		_ = cmd.Process.Kill()
+	}
+	wait := cmd.Wait()
+	if e != nil {
+		return e
+	}
+	if wait != nil {
+		return wait
 	}
 	return nil
 }

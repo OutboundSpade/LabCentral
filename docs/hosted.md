@@ -80,7 +80,8 @@ old labs or cancelling cleanup. Learning progress and pinned revisions are retai
 ## The template repository
 
 After a complete successful refresh, template names removed from Git leave the
-browsable catalog. Their pinned revisions remain available to existing meetings and
+browsable catalog, including when the last template and its directory are removed.
+Their pinned revisions remain available to existing meetings and
 attempts and through exact revision URLs. A refresh with invalid template directories
 preserves previous names until a complete snapshot can be imported.
 

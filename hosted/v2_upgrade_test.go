@@ -503,7 +503,7 @@ func TestV2StateRefreshKeepsPinnedRevisions(t *testing.T) {
 	}
 	bin := t.TempDir()
 	commit := strings.Repeat("f", 40)
-	script := "#!/bin/sh\ncase \"$*\" in\n*clone*) exit 0;;\n*rev-parse*) echo " + commit + ";;\n*show*) printf '2026-10-14T12:00:00Z\\nV3 refresh fixture\\n';;\n*archive*) cat " + quote(archivePath) + ";;\n*) exit 1;;\nesac\n"
+	script := "#!/bin/sh\ncase \"$*\" in\n*clone*) exit 0;;\n*rev-parse*) echo " + commit + ";;\n*show*) printf '2026-10-14T12:00:00Z\\nV3 refresh fixture\\n';;\n*ls-tree*) printf '040000 tree 0000000000000000000000000000000000000000\\ttemplates\\0';;\n*archive*) cat " + quote(archivePath) + ";;\n*) exit 1;;\nesac\n"
 	if err = os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
