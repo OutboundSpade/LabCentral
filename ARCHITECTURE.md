@@ -682,7 +682,11 @@ valid. A revision's current capability problem is exposed to admins through `pro
 and the existing template problem panel without failing the entire catalog; saved
 image identities still fence cleanup if planning becomes impossible. A revision's
 identity is the repository commit plus the directory, so any new commit imports new
-revisions; meetings and attempts keep their pins.
+revisions; meetings and attempts keep their pins. New revisions start with `built=false`
+until their own build operation succeeds, even when all image inputs match cached images.
+Admin image readiness is counted independently from the saved cache keys. The global
+image total counts unique cache entries across templates, rather than machines in the
+built revisions; latest revisions protect their image keys regardless of `built`.
 
 Image operations save cache keys and operation identity before any effect. Removing a
 revision's images blocks new meetings on it, keeps images shared with other built

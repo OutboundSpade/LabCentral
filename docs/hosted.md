@@ -46,7 +46,11 @@ flowchart LR
   between notes and Exercises keeps the current team selection. The notes are
   visible to administrators only and opening them does not run guest actions.
 - **Image cleanup.** Admin → Templates shows image counts, and "Remove unused images"
-  removes images that no current template, meeting or workspace needs.
+  removes images that no current template, meeting or workspace needs. The total counts
+  unique cached images across all templates, including images shared by several templates.
+  A new repository commit creates new revisions marked "Not built" until their build
+  operation succeeds; their unchanged images can already be cached and are still retained
+  for the latest revisions. A template's machine count is separate from this cache total.
 
 Sign-in uses OpenID Connect. Users in the configured member group can practice and join
 teams; users in the admin group manage templates and meetings. Group membership is
