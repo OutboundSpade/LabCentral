@@ -3,6 +3,7 @@
   import CoachConsole from "$lib/CoachConsole.svelte";
   import Activity from "$lib/Activity.svelte";
   import Scoreboard from "$lib/Scoreboard.svelte";
+  import LiveScoreboard from "$lib/LiveScoreboard.svelte";
   import Exercises from "$lib/Exercises.svelte";
   import Status from "$lib/Status.svelte";
   import Deadline from "$lib/Deadline.svelte";
@@ -129,7 +130,7 @@
     { id: "teams", label: "Teams" },
     ...(hasExercises ? [{ id: "exercises", label: "Exercises" }] : []),
     ...(meetingNotes ? [{ id: "notes", label: "Instructor notes" }] : []),
-    ...(hasChecks ? [{ id: "scoreboard", label: "Scoreboard" }] : []),
+    ...(hasChecks || data?.liveRedBlue ? [{ id: "scoreboard", label: "Scoreboard" }] : []),
   ]);
   const visiblePanel = $derived(
     tabs.some((t) => t.id === panel) ? panel : "teams",
@@ -375,13 +376,14 @@
                 {@html render(meetingNotes)}
               </div>
             </div>{/if}
-          {#if hasChecks}<div
+          {#if hasChecks || data?.liveRedBlue}<div
               role="tabpanel"
               id="meeting-panel-scoreboard"
               aria-labelledby="meeting-tab-scoreboard"
               hidden={visiblePanel !== "scoreboard"}
             >
-              <Scoreboard {data} onchange={load} />
+              {#if data?.liveRedBlue && data.meeting}<div class="mb-8"><LiveScoreboard meetingID={data.meeting.id}/></div>{/if}
+      {#if hasChecks}<Scoreboard {data} onchange={load} />{/if}
             </div>{/if}
         </section>
         <!-- On short laptop screens the pinned activity feed scrolls on its own. -->

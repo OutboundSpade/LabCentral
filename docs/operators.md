@@ -138,10 +138,74 @@ and check traffic is tunneled through it with host keys pinned on both hops. Con
 it with `aws.gateway: {base: ubuntu-24.04, instanceType: t3.micro}` (the defaults).
 Set `aws.allowEgress: true` to let labs request Internet access.
 
+For author subnets spanning several /16s, the plan includes `secondaryVPCCIDRs`.
+The provider associates these blocks with the owned VPC and waits for AWS to confirm
+each association before creating subnets. The operator identity also needs
+`ec2:AssociateVpcCidrBlock`. Unknown association outcomes retain their journal and
+are reconciled by VPC, requested CIDR and association ID; do not manually retry an
+association. Destroy removes the owned VPC after its children and confirms absence,
+including its CIDR associations. Existing single-block labs need no new permission.
+
 **Permissions and costs.** The operator identity needs EC2 lifecycle permissions and
 `iam:PassRole` for the DCV licensing role (restricted to `ec2.amazonaws.com`). Lab
 machines get no AWS permissions; desktop machines get a license-only instance profile.
 Instances, public IPv4 addresses, images and snapshots are billed while they exist.
+
+### Native appliance AMIs
+
+Bind each template appliance name to an AMI you have verified and are entitled to
+run in the selected region. `id` and `identity` must be the same immutable AMI ID:
+
+```yaml
+bases:
+  vyos-1.4:
+    id: ami-0123456789abcdef0 # replace with your approved regional AMI
+    identity: ami-0123456789abcdef0
+    user: vyos
+    diskGiB: 8
+    appliance: vyos
+  panos-11:
+    id: ami-0123456789abcdef1 # replace with your approved regional AMI
+    identity: ami-0123456789abcdef1
+    user: admin
+    diskGiB: 60
+    appliance: panos
+```
+
+The placeholders are not deployable images. Keep the gateway bound to ordinary
+Ubuntu. Allow instance types with enough ENIs, RAM, CPU and disks for each vendor
+image and its license. Multi-network deployments use one subnet per segment in one
+availability zone. The selected VyOS image must support its vendor cloud-init and
+initial boot hook. The PAN-OS path expects standard MGT-first interface mapping,
+EC2-key SSH login as `admin`, and non-FIPS console fingerprints. FIPS SHA-1 console
+fingerprints and management-interface swap are unsupported.
+
+Appliance deployments generate an RSA client key (kept at the existing local client
+key path). PAN-OS imports its public half as one owned EC2 key pair per range;
+network destruction removes that exact key after checking ownership. Grant
+`ec2:ImportKeyPair`, `ec2:DescribeKeyPairs`, `ec2:DeleteKeyPair`, and
+`ec2:GetConsoleOutput`, in addition to existing network and ENI permissions. Initial
+SSH host identity is obtained through the authenticated EC2 console API. Missing
+fingerprints or a mismatched host key never result in an unverified connection.
+
+VyOS receives native cloud-config. PAN-OS receives basic vendor user data and then
+interface, route and template policy commands through a verified guest CLI. A
+journal is written before its commit; a committed configuration receipt reconciles
+a lost response. An unresolved commit remains `recovery_required`; do not clear
+its journal or blindly repeat the commit. Readiness is bounded to 15 minutes.
+The firewall web login is configured through its terminal; no default password is
+published by LabCentral. Browser HTTPS access is from a lab workstation to the
+private MGT URL shown on its machine card.
+
+The bootstrap formats follow the vendor documentation for
+[VyOS initial boot hooks](https://docs.vyos.io/en/1.4/automation/cloud-init.html),
+[PAN-OS basic bootstrap](https://docs.paloaltonetworks.com/vm-series/getting-started/bootstrap-the-vm-series-firewall),
+and [PAN-OS console host fingerprints](https://docs.paloaltonetworks.com/ngfw/pan-os-cli-quick-start/get-started-with-the-cli/verify-ssh-connection-to-firewall).
+
+Before a practice, verify live boot and recovery with the exact AMIs, traffic across
+every firewall hop, both permitted and denied traffic, service VIP/NAT and return
+paths, simultaneous machine access, and complete teardown. Local tests do not prove
+vendor boot, licensing, or end-to-end packet forwarding.
 
 ### Windows guests
 

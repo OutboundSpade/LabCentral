@@ -45,6 +45,11 @@ func (b Bundle) Validate(src lc.Source) error {
 	return err
 }
 func (b Bundle) validate(src lc.Source) error {
+	if b.LiveScoring != nil {
+		if err := b.LiveScoring.Validate(src, b.Visibility.HiddenMachines); err != nil {
+			return err
+		}
+	}
 	if b.Version != 3 {
 		return invalid("version", "expected 3")
 	}
@@ -359,7 +364,9 @@ func (b Bundle) validateVisibility(src lc.Source) error {
 		}
 		im := src.Lab.Images[m.Image]
 		f := "images." + m.Image + ".build.files"
-		if len(im.BuildFiles()) == 0 || lc.Contains(im.BuildFiles(), "lab.yaml") {
+		// Native appliances receive bounded vendor configuration, not a build
+		// source bundle. They cannot accidentally bake lab.yaml into a guest.
+		if im.Appliance == nil && (len(im.BuildFiles()) == 0 || lc.Contains(im.BuildFiles(), "lab.yaml")) {
 			return invalid(f, "visible images require explicit files excluding lab.yaml")
 		}
 		for _, h := range hidden {

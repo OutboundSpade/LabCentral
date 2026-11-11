@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "round": 1,
+  "generatedAt": "2026-11-11T12:00:00Z",
+  "services": [
+    {
+      "id": "ad-winrm",
+      "name": "Ad Winrm",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "dns",
+      "name": "Dns",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ftp",
+      "name": "Ftp",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "http",
+      "name": "Http",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "https",
+      "name": "Https",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "imap",
+      "name": "Imap",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "internal-ping-ccdc-kali",
+      "name": "Kali workstation reachability",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "internal-ping-ccdc-pa",
+      "name": "Firewall reachability",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "internal-ping-ccdc-ubuntu",
+      "name": "Ubuntu workstation reachability",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "internal-ping-ccdc-win11",
+      "name": "Windows workstation reachability",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "mssql-query",
+      "name": "Mssql Query",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "mssql-rdp",
+      "name": "Mssql Rdp",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "mssql-smb",
+      "name": "Mssql Smb",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ping-ccdc-ad",
+      "name": "Ping Ccdc-Ad",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ping-ccdc-ecom",
+      "name": "Ping Ccdc-Ecom",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ping-ccdc-mail",
+      "name": "Ping Ccdc-Mail",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ping-ccdc-mssql",
+      "name": "Ping Ccdc-Mssql",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ping-ccdc-splunk",
+      "name": "Ping Ccdc-Splunk",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ping-ccdc-vyos",
+      "name": "Ping Ccdc-Vyos",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "pop3",
+      "name": "Pop3",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "smtp",
+      "name": "Smtp",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "splunk-management",
+      "name": "Splunk Management",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "splunk-query",
+      "name": "Splunk Query",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ssh",
+      "name": "Ssh",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "webmail",
+      "name": "Webmail",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    }
+  ]
+}

@@ -37,10 +37,11 @@ flowchart LR
 - **Personal workspaces** with a weekly cloud allowance per student (three hours by
   default), or a download to run the lab on your own infrastructure with the CLI.
 - **Team meetings.** Admins start a meeting from a built template, then prepare one lab
-  per team. Students join a team and open desktops (one holder per AWS Windows or Proxmox console, individual
-  DCV sessions on AWS Linux); instructors apply breaks,
-  run scheduled service checks with a scoreboard, and open an SSH terminal to any team
-  machine in the browser.
+  per team. Students join a team and choose individual machines from **Team machines**.
+  Each machine offers its configured desktop and/or terminal in a separate tab.
+  Windows and Proxmox allow one desktop holder per machine; AWS Linux uses individual
+  DCV sessions. Instructors apply breaks, run scheduled service checks with a
+  scoreboard, and access machines from the coach controls.
 - **Meeting instructor notes.** In **Admin → Meeting → Instructor notes**, read
   the coaching guide from that meeting's pinned template revision. Switching
   between notes and Exercises keeps the current team selection. The notes are
@@ -264,6 +265,34 @@ are available; clipboard text depends on the guest supporting QEMU's clipboard c
 and may be unavailable on standard console images. The lesson panel works beside the
 console during practice. AWS Linux keeps its per-user DCV sessions.
 
+## Access to team machines
+
+An eight-machine template can expose eight independent desktops, terminals, or a
+mixture. The template's machine `access` entries determine the controls. Team members
+can access only their current ready team allocation and visible machines; organizer
+machines remain hidden. Browser terminals provide administrative guest SSH access,
+so expose `ssh` only on machines intended for participants. Signing out, changing
+team, ending the meeting or losing membership revokes access. Terminal tabs stay
+pinned to the original meeting, template revision and allocation; they never follow
+a replacement lab automatically.
+
+Each desktop tab has a separate authenticated path and host-only cookie. Opening a
+second machine does not change the first window's guest. **Disconnect** on a machine
+closes only your desktop on that machine. **Disconnect all desktops** closes all
+your desktop sessions. Terminal tabs have their own **Disconnect** control.
+Taking over a Windows or Proxmox desktop affects that machine's holder only.
+
+The legacy default desktop control remains available when `practice.desktopMachine`
+is configured. Personal guided practice continues to use that default. Meeting-only
+templates can use per-machine access without configuring a default desktop.
+
+The AWS DCV Web Client SDK supplied in `sdkRoot` must support
+`httpExtraSearchParamsCallback` on authentication and connection callbacks. LabCentral
+uses it to select the authenticated desktop for root-path DCV requests, and strips
+the selector before forwarding to the native relay. Keep the reverse proxy forwarding
+paths and query strings intact; do not log desktop-origin request bodies or queries.
+SDK files, credentials and DCV resources remain on the authenticated desktop origin.
+
 ## Windows templates
 
 Templates can include Windows Server 2022 machines (AWS only). Add to the service's
@@ -351,3 +380,64 @@ concurrent desktops has been verified with the defaults: desktops opened at once
   workspaces or jobs), after a backup.
 - **Release checks.** Before trusting a release, sign in with a real identity, open a
   real desktop session and confirm cleanup; local tests cannot substitute for that.
+
+Native AWS appliance templates display VyOS and Palo Alto labels on team machine
+cards. Both use the same authenticated per-machine Terminal action. PAN-OS cards
+also show the private MGT HTTPS URL; open it inside a lab workstation desktop.
+The hosted server does not proxy an arbitrary appliance web interface. An eight
+workstation/server range can include two additional appliance terminals. The
+library's source limit remains 32 machines per range; operator AWS quotas and
+capacity must cover all guests plus the management gateway. See the
+[template appliance contract](templates.md#native-aws-routers-and-firewalls).
+
+## Live Red vs. Blue scoreboards
+
+Live competition scoring is optional and separate from teaching checks. A template
+declares a private `liveScoring` feed in `instructor.yaml`, then a coach checks
+**Live Red vs. Blue** when creating the meeting. The option is offered only for
+templates with a feed and defaults to off. It is pinned to that meeting; later
+meetings and personal practice do not inherit it. Existing check schedules,
+learning stages, and ordinary scoreboards keep their behavior.
+
+Students open their meeting page to see team standings and their own service
+breakdown. Coaches open the meeting's **Scoreboard** tab for all service breakdowns.
+Results include cumulative earned/possible points, current service state, completed
+round number and timestamp. Students do not receive another team's service details.
+Scores are reported by the guest scorer; LabCentral does not run the competition
+probes or decide the scoring rules.
+
+The scorer is a hidden Linux machine with SSH access. The hosted server fetches a
+bounded public JSON projection from loopback inside that VM through its existing
+pinned SSH connection. No guest HTTP port needs public access. The browser never
+receives a bot password, a provider credential, a raw probe report, or a forwarded
+scorer admin page. The scorer remains responsible for probing the intended
+VyOS-to-firewall-to-service path. If it runs in a container, publish only its feed
+to the VM's loopback address.
+
+See the [feed contract and guest helper](../examples/scoring-feed/README.md).
+Configure the adapter through your template's guest provisioning. An engine-specific
+exporter must map completed rounds into the documented projection; the helper does
+not scrape a bot dashboard, replace bot authentication or calculate scores.
+The initial MWCCDC integration uses the existing companion kit's practice scorer;
+its opt-in `ccdc.labcentral` exporter implements this projection. Other engines can
+use the same feed contract without changing LabCentral's scoreboard API.
+
+The UI polls every 15 seconds. Requests coalesce per pinned allocation, with at
+most one guest read every 10 seconds and four range reads concurrently per request,
+subject to the shared SSH budget. Each guest read has a five-second deadline;
+the whole request has a 20-second deadline. Responses are limited to 128 KiB and
+256 services. Redirects and arbitrary destination hosts are rejected. Membership,
+meeting, source, feed configuration and allocations are checked before responding.
+
+The latest valid snapshot persists in hosted state. Feed failures retain its points
+and mark it stale; missing scores are shown as unavailable, not as zero earned
+points. `staleAfterSeconds` defaults to 180 (30 through 900 allowed). Timestamps
+must represent the completed round, be no more than 30 seconds in the future, and
+belong to the current meeting. Regressing round numbers/timestamps, or changes to
+an already completed round, retain the previous score as stale. Full scoring history
+and archival remain in the bot's database. Include the hosted state in backups.
+
+Before using this in an AWS practice, test the actual bot exporter, scorer guest
+and container networking, service points and blocked traffic, stale detection when
+the scorer stops, simultaneous viewers, membership changes, and complete range
+cleanup. Local HTTP/SSH/browser fixtures do not establish live AWS acceptance.

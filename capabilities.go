@@ -26,6 +26,9 @@ func PlatformCapabilities(platform string) (Capabilities, bool) {
 	return c, true
 }
 func CheckCapabilities(l Lab, platform string) error {
+	if platform != "aws" && HasAppliances(l) {
+		return problem(Unsupported, "images.appliance", "native appliances are implemented only on AWS")
+	}
 	c, ok := PlatformCapabilities(platform)
 	if !ok {
 		return problem(Unsupported, "environment.platform", "unknown platform")
@@ -36,6 +39,9 @@ func CheckCapabilities(l Lab, platform string) error {
 	for index, n := range sortedKeys(l.Networks) {
 		f := "networks." + n
 		v := l.Networks[n]
+		if platform != "aws" && (v.DefaultRouter != "" || len(v.Routes) > 0) {
+			return problem(Unsupported, f, "explicit appliance routing is implemented only on AWS")
+		}
 		if index >= c.MaxNetworks {
 			return problem(Unsupported, f, "network count exceeds platform limit")
 		}

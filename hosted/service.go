@@ -16,6 +16,8 @@ import (
 )
 
 type Service struct {
+	scoreMu        sync.Mutex
+	scoreFlights   map[string]*scoreFlight
 	Config         Config
 	Store          *Store
 	Engine         Engine
@@ -87,6 +89,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /auth/callback", s.callback)
 	mux.HandleFunc("POST /auth/logout", s.authorized(false, s.logout))
 	mux.HandleFunc("GET /api/me", s.authorized(false, s.overview))
+	mux.HandleFunc("GET /api/live-scoreboard", s.authorized(false, s.liveScoreboard))
 	mux.HandleFunc("GET /api/templates", s.authorized(false, s.templateCatalog))
 	mux.HandleFunc("GET /api/templates/{id}", s.authorized(false, s.templateExplorer))
 	mux.HandleFunc("POST /api/templates/{id}/attempt", s.authorized(false, s.createTemplateAttempt))
@@ -108,6 +111,16 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/teams/{id}/desktop/takeover", s.authorized(true, s.takeoverDesktop))
 	mux.HandleFunc("GET /api/admin/teams/{id}/desktop/status", s.authorized(true, s.desktopStatus))
 	mux.HandleFunc("POST /api/access/close", s.authorized(false, s.closeDesktop))
+	mux.HandleFunc("GET /api/machines", s.authorized(false, s.teamMachines))
+	mux.HandleFunc("GET /api/machines/{machine}/terminal", s.authorized(false, s.teamTerminal))
+	mux.HandleFunc("POST /api/machines/{machine}/desktop", s.authorized(false, s.launch))
+	mux.HandleFunc("POST /api/machines/{machine}/desktop/takeover", s.authorized(false, s.takeoverDesktop))
+	mux.HandleFunc("GET /api/machines/{machine}/desktop/status", s.authorized(false, s.desktopStatus))
+	mux.HandleFunc("POST /api/machines/{machine}/desktop/close", s.authorized(false, s.closeMachineDesktop))
+	mux.HandleFunc("POST /api/admin/teams/{id}/machines/{machine}/desktop", s.authorized(true, s.coachDesktop))
+	mux.HandleFunc("POST /api/admin/teams/{id}/machines/{machine}/desktop/takeover", s.authorized(true, s.takeoverDesktop))
+	mux.HandleFunc("GET /api/admin/teams/{id}/machines/{machine}/desktop/status", s.authorized(true, s.desktopStatus))
+	mux.HandleFunc("POST /api/admin/teams/{id}/machines/{machine}/desktop/close", s.authorized(true, s.closeMachineDesktop))
 	mux.HandleFunc("GET /api/admin/teams/{id}/machines", s.authorized(true, s.coachMachines))
 	mux.HandleFunc("GET /api/admin/teams/{id}/machines/{machine}/terminal", s.authorized(true, s.coachTerminal))
 	mux.HandleFunc("GET /api/admin/practice", s.authorized(true, s.practiceSettingsView))

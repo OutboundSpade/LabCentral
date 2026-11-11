@@ -45,6 +45,16 @@ LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_BROWSER_EVIDENCE=/outside/source nod
 
 None of these replace testing against real AWS or Proxmox accounts.
 
+`TestHostedEightMachineBrowser` exercises the built team UI and actual hosted HTTP
+policy at desktop and phone widths, using fixture guest desktop/SSH transports.
+Build `web` first and set `LABCENTRAL_PLAYWRIGHT_MODULE`, `LABCENTRAL_CHROMIUM` and
+optionally `LABCENTRAL_BROWSER_EVIDENCE` outside tracked source. The accompanying
+hosted tests cover eight independent grants, per-machine cleanup persistence,
+student terminal revocation and hidden-machine/CSRF rejection. They do not establish
+native cloud or OIDC acceptance. SQLite paths use canonical file URIs on Windows
+as well as Unix so hosted authorization tests can run on both; provisioning still
+requires a Linux operator environment.
+
 ## Failure injection
 
 Normal and release builds ignore `LABCENTRAL_FAULT`. Qualification binaries must be
@@ -111,5 +121,22 @@ not part of the release.
 
 ## Using the library
 
+Optional live competition scoring has local regression coverage under
+`TestLiveScoring*` (guest HTTP over real fixture SSH, permission checks, bounded
+responses, cache persistence, role-specific disclosure and ordinary-lab isolation)
+and `TestHostedLiveScoringBrowser` (desktop/mobile views and stale results). These
+checks require no cloud account and do not qualify a real bot adapter or AWS path.
+
 [examples/consumer](../examples/consumer/main.go) is a separate Go module that drives
 the public API; its `replace` directive points at this checkout.
+
+Native appliance regression coverage includes `TestNativeApplianceChainKeepsManagementSeparate`,
+`TestApplianceVIPRoutesAndSourceRejections`, `TestApplianceBootstrapUsesVendorFormats`,
+`TestConsoleAttestedSSHPinsRejectDifferentHosts`, and
+`TestPANOSCommitReceiptSurvivesLostResponseWithoutRecommit`. The range browser fixture
+covers eight desktops and ten terminals, including appliance cards, at desktop and
+mobile widths. These checks use local guest/API fixtures; they do not qualify AWS
+AMI boot, licensing, or packet forwarding. Provider journals and private-key writes
+use flushed temporary files and directory sync on Unix, or synchronous Windows
+`MoveFileEx` publication, so local recovery checks do not fail after an already
+successful rename merely because Windows cannot sync a directory handle.

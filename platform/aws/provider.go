@@ -18,13 +18,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 	"os"
+	"sync"
 	"time"
 )
 
 type Provider struct {
-	Abandon func(context.Context, lc.Command, lc.Observer) (lc.Result, error)
-	Journal journal.Journal
-	Build   func(context.Context, lc.Command, lc.Observer) (lc.Result, error)
+	applianceKeyMu sync.Mutex
+	Abandon        func(context.Context, lc.Command, lc.Observer) (lc.Result, error)
+	Journal        journal.Journal
+	Build          func(context.Context, lc.Command, lc.Observer) (lc.Result, error)
 }
 type networkSegment struct {
 	Name   string `json:"name"`
@@ -95,6 +97,9 @@ func apiCode(err error, code string) bool {
 func (p *Provider) Execute(ctx context.Context, c lc.Command, o lc.Observer) (lc.Result, error) {
 	ctx = faultinject.WithOperation(ctx, "aws", c.Action)
 	if c.Action == "check" || c.Action == "image.build" || c.Action == "network.create" || c.Action == "machine.create" || c.Action == "gateway.create" {
+		if err := lc.ValidateAppliances(c.Source); err != nil {
+			return lc.Result{}, err
+		}
 		if err := lc.CheckCapabilities(c.Source.Lab, c.Environment.Platform); err != nil {
 			return lc.Result{}, err
 		}
@@ -273,6 +278,11 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err = ec2.NewVpcAvailableWaiter(a).Wait(ctx, &ec2.DescribeVpcsInput{VpcIds: []string{vpc}}, 2*time.Minute); err != nil {
 		return lc.Result{}, err
 	}
+	for _, cidr := range lc.AWSVPCCIDRs(planned, vpcCIDR)[1:] {
+		if err = p.associateVPCCIDR(ctx, a, owner, key, vpc, cidr, waitRouteRetry); err != nil {
+			return lc.Result{}, err
+		}
+	}
 	igw, err := doEC2(ctx, p.Journal, key+"/gateway", func() (string, error) {
 		r, e := a.CreateInternetGateway(ctx, &ec2.CreateInternetGatewayInput{TagSpecifications: specs(t.ResourceTypeInternetGateway, owner, "network")}, noCreateRetries)
 		if e != nil {
@@ -334,12 +344,24 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		}
 	}
 	// Forwarded packets retain their original source. Guest and subnet routes
+	for _, image := range c.Source.Lab.Images {
+		if image.ApplianceKind() == "panos" {
+			for _, net := range planned {
+				if err = authorize(ctx, a, management, true, t.IpPermission{IpProtocol: aw.String("tcp"), FromPort: aw.Int32(443), ToPort: aw.Int32(443), IpRanges: []t.IpRange{{CidrIp: aw.String(net.CIDR)}}}); err != nil {
+					return lc.Result{}, err
+				}
+			}
+			break
+		}
+	}
 	// constrain them to the declared router paths; disconnected segments get no rule.
 	for j, n := range topology.Networks {
 		for _, r := range n.Routes {
 			permission := t.IpPermission{IpProtocol: aw.String("-1"), IpRanges: []t.IpRange{{CidrIp: aw.String(r.CIDR)}}}
-			if err = authorize(ctx, a, ns.Segments[j].SG, true, permission); err != nil {
-				return lc.Result{}, err
+			if r.CIDR != "0.0.0.0/0" {
+				if err = authorize(ctx, a, ns.Segments[j].SG, true, permission); err != nil {
+					return lc.Result{}, err
+				}
 			}
 			if err = authorize(ctx, a, ns.Segments[j].SG, false, permission); err != nil {
 				return lc.Result{}, err
@@ -564,6 +586,9 @@ func authorize(ctx context.Context, a *ec2.Client, sg string, ingress bool, perm
 	return err
 }
 func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
+	if err := lc.ValidateAppliances(c.Source); err != nil {
+		return lc.Result{}, err
+	}
 	if err := lc.CheckCommandPlatformOptions(c); err != nil {
 		return lc.Result{}, err
 	}
@@ -577,6 +602,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	}
 	defer dialer.Close()
 	m := c.Machine
+	if m.Appliance != c.Source.Lab.Images[m.Spec.Image].ApplianceKind() {
+		return lc.Result{}, fmt.Errorf("machine appliance differs from source")
+	}
 	role := m.Name
 	if c.Gateway.Kind != "" {
 		role = "machine:" + m.Name
@@ -605,6 +633,13 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	ud, err := guest.CloudInit(m)
+	if m.Appliance != "" {
+		commands, validateErr := applianceCommands(c)
+		if validateErr != nil {
+			return lc.Result{}, validateErr
+		}
+		ud, err = guest.ApplianceUserData(m, c.Owner, commands)
+	}
 	if m.OS == "windows" {
 		if c.Gateway.PrivateAddress == "" {
 			return lc.Result{}, fmt.Errorf("Windows requires a private management gateway")
@@ -613,6 +648,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	}
 	if err != nil {
 		return lc.Result{}, err
+	}
+	if len(ud) > 16<<10 {
+		return lc.Result{}, fmt.Errorf("EC2 user data exceeds 16 KiB")
 	}
 	in := &ec2.RunInstancesInput{ImageId: &m.NativeImage, InstanceType: t.InstanceType(m.InstanceType), MinCount: aw.Int32(1), MaxCount: aw.Int32(1), ClientToken: aw.String(c.Owner + "-" + m.Name), UserData: aw.String(base64.StdEncoding.EncodeToString([]byte(ud))), MetadataOptions: &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)}, NetworkInterfaces: []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), DeleteOnTermination: aw.Bool(true), SubnetId: &ns.Subnet, Groups: []string{ns.SG}, AssociatePublicIpAddress: aw.Bool(false), PrivateIpAddress: &m.Address}}, BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: im.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(m.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}}, TagSpecifications: append(specs(t.ResourceTypeInstance, c.Owner, role), specs(t.ResourceTypeVolume, c.Owner, role)...)}
 	if len(m.NICs) > 0 {
@@ -659,6 +697,13 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if lc.Contains(m.Spec.Access, "desktop") {
 		in.IamInstanceProfile = &t.IamInstanceProfileSpecification{Name: aw.String(c.Environment.AWS.DesktopProfile)}
 	}
+	if m.Appliance == "panos" {
+		name, err := p.importApplianceKey(ctx, a, c)
+		if err != nil {
+			return lc.Result{}, err
+		}
+		in.KeyName = &name
+	}
 	instance, err := doEC2(ctx, p.Journal, c.Operation+"/instance", func() (string, error) {
 		out, err := a.RunInstances(ctx, in, noCreateRetries)
 		if err != nil {
@@ -688,6 +733,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err = p.routerNetworking(ctx, a, c, ns); err != nil {
 		return r, err
 	}
+	if m.Appliance != "" {
+		return p.waitAppliance(ctx, a, dialer, c, r)
+	}
 	if err = waitMachine(ctx, dialer, r.Resource.Address, c); err != nil {
 		return r, err
 	}
@@ -716,6 +764,9 @@ func (p *Provider) findMachine(ctx context.Context, a *ec2.Client, c lc.Command)
 		return lc.Result{}, fmt.Errorf("ownership_mismatch: machine")
 	}
 	resource := lc.Resource{Kind: "machine", Name: c.Machine.Name, ID: aw.ToString(i.InstanceId), Owner: c.Owner, Address: aw.ToString(i.PublicIpAddress), PrivateAddress: aw.ToString(i.PrivateIpAddress), Complete: true}
+	if c.Machine.Appliance != "" {
+		resource.Complete = false
+	}
 	if c.Gateway.Kind != "" {
 		resource.Address = resource.PrivateAddress
 		resource.Data, _ = json.Marshal(map[string]string{"role": role})
@@ -932,6 +983,9 @@ func (p *Provider) destroy(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 func (p *Provider) destroyNetwork(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
 	owner := c.Owner
 	if err := checkRecordedNetwork(ctx, a, c); err != nil {
+		return lc.Result{}, err
+	}
+	if err := p.cleanupApplianceKey(ctx, a, c); err != nil {
 		return lc.Result{}, err
 	}
 	v, err := a.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{VpcIds: []string{c.Prior.ID}})

@@ -86,7 +86,7 @@ egress. An optional `platforms` list restricts a lab to AWS, Proxmox or both.
   platform can install its desktop components.
 - **Machines** have an image, CPU, memory and disk (`Mi`/`Gi`; disks cannot shrink a
   base) and declare `ssh` and/or `desktop` access.
-- **Addresses** are host offsets 4–250, unique per network. Explicit offsets are
+- **Addresses** are host offsets 4–254, unique per network. Explicit offsets are
   reserved first; the rest are assigned from 11 in machine-name order.
 - **Name resolution:** `hostnamePeers` defaults to all peers, accepts a list, or `[]` for
   localhost only. It changes the initial hosts file, not firewall policy.
@@ -106,7 +106,23 @@ several networks joins them:
 - A peer's hostname resolves to its address on the first network both machines share
   (in the requester's NIC order), otherwise to the peer's first-NIC address.
 - Each machine has one default route, through its first NIC on an Internet-enabled
-  network. Other NICs carry connected and planned static routes.
+  network or an explicit `defaultRouter`. Other NICs carry connected and planned
+  static routes. PAN-OS keeps a separate data-plane default route.
+- AWS supports typed `vyos`/`panos` native appliance images, explicit private VIP
+  routes, and management-only first NICs excluded from the forwarding graph.
+  Appliance routing errors fail closed. Addresses and routes are platform owned;
+  bounded template vendor configuration supplies zones, security and NAT policy.
+  PAN-OS uses MGT-first mapping and a platform virtual router named `labcentral`.
+  Operator bases pin the appliance kind, AMI identity and vendor SSH user.
+- Native appliance SSH keys are attested through exact-instance EC2 console output.
+  VyOS publishes public host keys from its documented initial boot hook; PAN-OS
+  uses non-FIPS MD5 console fingerprints. The local client key is RSA for appliance
+  ranges. An owned shared EC2 public key pair seeds PAN-OS login and is retained in
+  the cleanup journal until confirmed absent. Vendor CLI uses a bounded verified
+  guest PTY. PAN-OS commits are journaled before submission and reconciled by a
+  unique committed receipt, never replayed after an unknown outcome. Native
+  readiness is bounded to 15 minutes. See the template and operator guides for
+  the configuration contract and AMI requirements.
 - Author CIDRs must be private IPv4 /16–/28 ranges. Only AWS implements them.
 
 Internet egress needs both the author's `egress: internet` on a network and the
@@ -324,8 +340,11 @@ flowchart TB
 
 **Layout.** Each lab owns one VPC in one availability zone. By default it is
 `10.77.0.0/16`; networks get `10.77.<n>.0/24` in name order and the gateway's edge
-subnet is `10.77.255.0/28`. With author CIDRs, the /16 containing them becomes the VPC
-and the edge subnet takes its highest free /28. Each network has its own subnet, route
+subnet is `10.77.255.0/28`. With author CIDRs, each distinct /16 becomes a VPC CIDR
+block (at most five, within one RFC1918 range). The first author range is primary,
+except that 172.31/16 or 10.0/16 is selected as primary when present to satisfy AWS
+secondary-association restrictions. The edge subnet takes the primary block's highest
+free /28. Plans disclose secondary blocks separately. Each network has its own subnet, route
 table and security group:
 
 - Routes to remote networks go through the local router's ENI (more specific than VPC
@@ -338,6 +357,15 @@ table and security group:
   admits ports 22 and 8443 from the gateway only.
 - Lab machines never get public addresses, and operator CIDRs are never added to their
   management ingress.
+
+Secondary CIDR associations use the provider intent journal before native submission,
+with SDK create retries disabled. Discovery verifies the exact VPC's ownership and
+matches the requested CIDR and recorded association ID. Subnet creation waits for
+`associated`; timeouts, changed identities and failed or unknown states retain intent.
+VPC deletion confirms final absence after child cleanup. Single-block layouts and
+their existing journal keys are unchanged. Planner and readiness unit checks cover
+the layout and state handling; secondary-CIDR recovery integration and native AWS
+qualification remain outstanding in a Linux operator environment.
 
 **Gateway.** One platform-owned gateway per lab, outside the author's inventory, holds
 the lab's only public IPv4 address (default `ubuntu-24.04` on `t3.micro`). It has one
@@ -590,6 +618,32 @@ without authoritative discovery need an operator to investigate.
 
 ## Hosted service
 
+Live Red vs. Blue scoring is a separate opt-in hosted read model. A pinned private
+instructor bundle declares `liveScoring` for a hidden Linux scorer VM's loopback
+HTTP JSON endpoint. Meeting creation atomically records an optional `live-red-blue`
+flag scoped to the new meeting ID. Omitted configuration and ordinary meetings do
+not poll any feed, mount the live scoreboard UI, or change teaching check behavior.
+Only verified guest SSH transports can reach the endpoint; requests accept no
+client-supplied URL, team identity, credentials or executable content. Redirects,
+oversized bodies, malformed projections and regressing completed rounds are
+rejected. Per-allocation reads coalesce and persist the last good snapshot, keyed
+by meeting, allocation, template source and feed contract. Failures preserve points
+as stale. Students receive standings plus their own service details; coaches see
+all service details. Authorization and allocation pins are checked after guest
+reads as well as before them. The bot owns probes, scoring rules and round history.
+See the hosted guide for bounds and the reference loopback file-feed helper.
+The first MWCCDC engine binding is the companion deployment kit's practice scorer.
+Its optional exporter records completion timestamps and public point weights in
+the scoring transaction, then publishes a sanitized atomic JSON projection. It
+does not copy scoring execution into LabCentral. Native scoring profiles validate
+independently of the kit's Proxmox deployment layout. The general feed contract
+allows a later engine change without changing hosted identity or range policy.
+
+Hidden-machine disclosure continues to require explicit peer lists and bounded
+source selection for visible image builds. Native appliances receive only their
+selected vendor configuration and never receive a build source bundle, so they
+can coexist with a hidden scorer without artificial image-build declarations.
+
 The `hosted` package uses the public library and adds identity, HTTP policy, jobs and
 the product's records. Operator configuration and credentials stay outside source and
 public APIs.
@@ -737,6 +791,33 @@ with DCV. noVNC supports scaling, guest resize, full screen and clipboard text w
 the native guest channel supports it.
 
 ### Single-console desktop holders and terminals
+
+Meeting access is per machine. Student inventory and desktop/terminal routes derive
+the team from current membership; only the coach routes accept a team ID, under
+administrator authorization. Both paths pin the current meeting, source and allocation.
+Author `access` controls desktop/SSH eligibility; hidden machines fail closed on
+student routes. `practice.desktopMachine` remains the default for personal learning
+and optional meeting quick launch, not a limit on meeting machine access.
+
+Every desktop has a `/sessions/ACCESS_ID/` URL namespace and a distinct secure,
+HTTP-only host cookie. Static assets, guest credentials, lessons and noVNC channels
+retain that namespace, so sibling tabs cannot replace one another's authentication.
+DCV uses its documented `httpExtraSearchParamsCallback` for authentication and channel
+requests at the origin root; the non-secret selector must match the appropriate
+cookie and is removed before forwarding upstream. No infrastructure identity or
+credential is accepted from that selector. Legacy root-cookie sessions remain
+readable during their existing lifetime. A machine close retains only that machine's
+cleanup intent; logout/team switching and the legacy close-all operation cover all
+the user's grants. Scoped grant authorization rechecks machine visibility and access.
+
+Students and coaches share the same bounded, pinned SSH/WebSocket transport with
+separate authorization. Student authorization is rechecked throughout the shell and
+ends on team switches; coaches additionally require current administrator status.
+The UI offers a separate terminal workspace per machine with allocation-pinned links,
+independent transcript state, reconnect and revocation handling. Eight simultaneous
+desktop identities and eight student terminal admissions have local hosted tests;
+desktop/mobile browser checks exercise real hosted HTTP with fixture DCV/SSH
+transports. Native multi-machine desktop and OIDC release acceptance remain required.
 
 The library still uses opaque per-principal access identities. Hosted policy adds a
 single holder for each meeting AWS Windows or Proxmox allocation/machine; AWS Linux keeps independent
@@ -957,6 +1038,18 @@ its retirement marker. Incomplete imports do not retire other names.
 
 ## Qualification status
 
+Native VyOS/PAN-OS range support has local planning, bootstrap, SSH identity,
+CLI error and lost-commit recovery tests. These are fixtures, not real AWS or vendor
+acceptance. Exact AMI boot, licensing, HTTPS management, routed NAT/VIP traffic and
+teardown must still be qualified in a disposable authorized AWS environment.
+The local browser range fixture passed with eight independent desktops and ten
+terminals, including both appliances, at 1366 and 390 pixel widths. AWS, guest, SSH
+and journal package race checks and affected hosted authorization checks passed.
+The broad root/hosted run is not green on this Windows checkout: conformance path
+handling, symlink privileges, Git/retained fixtures, SQLite cleanup and existing
+meeting preparation/maintenance expectations still fail. This is not release
+acceptance evidence for those paths.
+
 What has been verified on real platforms. Evidence applies to the source, environment
 and layout it was recorded with; detailed records stay outside this repository. Mocks,
 request capture, browser fixtures and local load models establish local behavior only.
@@ -1001,6 +1094,18 @@ Design intentions, not contracts. Each needs failure tests and live qualificatio
 explicitly configured environment.
 
 - **Proxmox:** wider storage/firmware coverage and the native failure matrix.
+- **Native AWS CCDC kit:** deployment source lives in the separate
+  Deployment-Kits-CCDC repository; LabCentral supplies the backend. The requested
+  target is individual EC2 guests, not a nested Proxmox host. Multi-range VPC
+  networking is implemented above; this alone does not make the existing kit
+  deployable. Typed appliance bootstrap/access and explicit next-hop/VIP routes
+  are implemented, with local failure tests; live AMI, licensing and complete
+  routed service-path qualification remain outstanding. Template work includes
+  guest-specific Linux networking, runtime role provisioning with dependencies
+  and reboot/domain-join recovery, vendor security/NAT policy, EC2-compatible
+  workstation images, and external service scoring. The old core /29, reserved .1/.2/.3
+  addresses and guest DHCP cannot be copied directly into native EC2. Keep
+  platform adaptations explicit and validate the complete routed scoring path.
 - **Windows:** Proxmox bootstrap and firmware bindings, more NICs, and an optional
   disposable Linux controller for Ansible targeting Windows (author code still only in
   guests).
