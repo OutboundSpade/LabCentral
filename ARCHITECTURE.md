@@ -825,10 +825,15 @@ separate authorization. Student authorization is rechecked throughout the shell 
 ends on team switches; coaches additionally require current administrator status.
 The UI offers a separate terminal workspace per machine with allocation-pinned links,
 independent transcript state, reconnect and revocation handling. Terminals admit
-without queuing into the shared total SSH pool, use at most half its slots, and
-enforce two sessions per user and eight per team, including coaches. The rest is
-reserved for desktop/control, provider readiness and scoring work; a one-slot
-budget disables terminals. Disconnect and revocation release all admission counts.
+without queuing into the shared total SSH pool. Participants use at most half its
+slots and enforce two sessions per user and eight per team (12 simultaneous
+participant terminals by default; 32 at the maximum aggregate setting of 64).
+Coaches use a separate service-wide allowance outside participant caps:
+`min(4, N - floor(N/2) - 1)` for an N-slot pool. Both allowances consume the total
+pool, reserving at least one slot for desktop/control, provider readiness and
+scoring work (eight at the default 24). A one-slot budget disables terminals.
+Disconnect and revocation release all admission counts. The 36-desktop sizing
+measurement below is separate from simultaneous shell capacity.
 Eight simultaneous desktop identities and bounded student terminal admissions have local hosted tests;
 desktop/mobile browser checks exercise real hosted HTTP with fixture DCV/SSH
 transports. Native multi-machine desktop and OIDC release acceptance remain required.
@@ -1057,7 +1062,8 @@ CLI error and lost-commit recovery tests. These are fixtures, not real AWS or ve
 acceptance. Exact AMI boot, licensing, HTTPS management, routed NAT/VIP traffic and
 teardown must still be qualified in a disposable authorized AWS environment.
 The local browser range fixture passed with eight independent desktops and ten
-terminals, including both appliances, at 1366 and 390 pixel widths. AWS, guest, SSH
+browser terminal tabs using mocked WebSockets, including both appliances, at 1366
+and 390 pixel widths. Those tabs do not represent ten server-admitted shells. AWS, guest, SSH
 and journal package race checks and affected hosted authorization checks passed.
 The address-boundary and instructor conformance checks pass, including offset 254
 and invalid 255. Affected hosted race tests cover participant opt-in, bounded

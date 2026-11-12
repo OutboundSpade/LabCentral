@@ -3,12 +3,210 @@ package hosted
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"github.com/coder/websocket"
 )
+
+func TestCoachTerminalAllowanceOverWebSocket(t *testing.T) {
+	for _, participants := range []int{0, 8, 12} {
+		t.Run(fmt.Sprintf("participants-%d", participants), func(t *testing.T) {
+			s, v, teams, engine := rangeAccessFixture(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			v.User.Admin = true
+			if err := s.Store.Put(ctx, "session", v.ID, v); err != nil {
+				t.Fatal(err)
+			}
+			// An existing template has no participant-terminal opt-in.
+			var bundle InstructorBundle
+			if err := s.Store.Get(ctx, "template-instructor", "pinned", &bundle); err != nil {
+				t.Fatal(err)
+			}
+			bundle.Visibility.ParticipantTerminals = nil
+			if err := s.Store.Put(ctx, "template-instructor", "pinned", bundle); err != nil {
+				t.Fatal(err)
+			}
+			for n := range participants {
+				team := teams[0].ID
+				if n >= 8 {
+					team = teams[1].ID
+				}
+				release, err := s.acquireTerminal(ctx, fmt.Sprint(n/2), team)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer release()
+			}
+			server := httptest.NewUnstartedServer(nil)
+			s.Config.Origin = "https://" + server.Listener.Addr().String()
+			server.Config.Handler = s.Handler()
+			server.StartTLS()
+			defer server.Close()
+			dial := func(machine string) *websocket.Conn {
+				t.Helper()
+				conn, _, err := websocket.Dial(ctx, server.URL+"/api/admin/teams/"+teams[0].ID+"/machines/"+machine+"/terminal", &websocket.DialOptions{HTTPClient: server.Client(), HTTPHeader: http.Header{"Origin": []string{s.Config.Origin}, "Cookie": []string{"__Host-labcentral=cookie"}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { conn.CloseNow() })
+				if err := conn.Write(ctx, websocket.MessageText, []byte(`{"csrf":"`+v.CSRF+`"}`)); err != nil {
+					t.Fatal(err)
+				}
+				return conn
+			}
+			waitAdmission := func(machine string) {
+				t.Helper()
+				select {
+				case got := <-engine.terminal:
+					if got != machine {
+						t.Fatal("wrong machine", got)
+					}
+				case <-ctx.Done():
+					t.Fatal("coach admission failed", ctx.Err())
+				}
+			}
+			var connections []*websocket.Conn
+			for _, machine := range lc.SortedMachineNames(engine.src.Lab)[:4] {
+				connections = append(connections, dial(machine))
+				waitAdmission(machine)
+			}
+			// All four are the same coach and allocation, including a third machine.
+			extra := dial("server")
+			refusal, stop := context.WithTimeout(ctx, time.Second)
+			_, _, err := extra.Read(refusal)
+			stop()
+			if websocket.CloseStatus(err) != websocket.StatusTryAgainLater {
+				t.Fatal("full coach allowance did not refuse promptly", err)
+			}
+			if len(engine.terminal) != 0 || len(s.sshSlots) != participants+4 {
+				t.Fatal("refused terminal consumed SSH capacity")
+			}
+			controlCtx, stop := context.WithTimeout(ctx, time.Second)
+			_, releaseControl, err := s.sshContext(controlCtx)
+			stop()
+			if err != nil {
+				t.Fatal("coach/participant saturation blocked control", err)
+			}
+			releaseControl()
+			connections[0].CloseNow()
+			waitCount := func(want int) {
+				t.Helper()
+				deadline := time.Now().Add(time.Second)
+				for {
+					s.terminalMu.Lock()
+					count := s.coachTerminals
+					s.terminalMu.Unlock()
+					if count == want {
+						return
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("coach leases: got %d, want %d", count, want)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			waitCount(3)
+			reconnected := dial("server")
+			waitAdmission("server")
+			reconnected.CloseNow()
+			for _, conn := range connections {
+				conn.CloseNow()
+			}
+			waitCount(0)
+			if len(s.sshSlots) != participants {
+				t.Fatal("coach disconnect leaked or released participant slots")
+			}
+		})
+	}
+}
+
+func TestCoachTerminalBoundPreservesControlForEveryPoolSize(t *testing.T) {
+	for size := 1; size <= 64; size++ {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			s := &Service{Config: Config{Aggregate: AggregateOptions{MaxSSHSessions: size}}}
+			ctx := context.Background()
+			var releases []func()
+			defer func() {
+				for _, release := range releases {
+					release()
+				}
+			}()
+			for n := range size / 2 {
+				release, err := s.acquireTerminal(ctx, fmt.Sprint(n), fmt.Sprint(n))
+				if err != nil {
+					t.Fatal(err)
+				}
+				releases = append(releases, release)
+			}
+			leases := make(chan func(), 20)
+			var wg sync.WaitGroup
+			for range 20 {
+				wg.Go(func() {
+					if release, err := s.acquireTerminalForRole(ctx, "coach", "team", true); err == nil {
+						leases <- release
+					}
+				})
+			}
+			wg.Wait()
+			close(leases)
+			for release := range leases {
+				// Double release must not free another active lease.
+				releases = append(releases, func() { release(); release() })
+			}
+			if s.coachTerminals != min(4, size-size/2-1) || len(s.sshSlots) >= size {
+				t.Fatal("coach allowance consumed control reserve", s.coachTerminals, len(s.sshSlots))
+			}
+			control, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+			release, err := s.acquireSSH(control)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+			for _, release := range releases {
+				release()
+			}
+			if len(s.sshSlots) != 0 || s.coachTerminals != 0 || s.terminalCount != 0 || len(s.terminalUsers) != 0 || len(s.terminalTeams) != 0 {
+				t.Fatal("release leaked admission state")
+			}
+		})
+	}
+}
+
+func TestCoachTerminalRespectsAggregateOccupancyAndCancellation(t *testing.T) {
+	s := &Service{Config: Config{Aggregate: AggregateOptions{MaxSSHSessions: 6}}}
+	ctx := context.Background()
+	for range 6 {
+		release, err := s.acquireSSH(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+	}
+	// The coach allowance is free, but control work already owns the entire pool.
+	start := time.Now()
+	if release, err := s.acquireTerminalForRole(ctx, "coach", "team", true); err == nil {
+		release()
+		t.Fatal("coach bypassed overall SSH limit")
+	}
+	if time.Since(start) > 100*time.Millisecond {
+		t.Fatal("coach admission queued behind control work")
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := s.acquireTerminalForRole(cancelled, "coach", "team", true); err != context.Canceled {
+		t.Fatal("coach cancellation ignored", err)
+	}
+	if s.coachTerminals != 0 || len(s.sshSlots) != 6 {
+		t.Fatal("failed coach admission changed occupancy")
+	}
+}
 
 type terminalControlProvider struct{ lc.Provider }
 

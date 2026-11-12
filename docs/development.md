@@ -134,8 +134,9 @@ Native appliance regression coverage includes `TestNativeApplianceChainKeepsMana
 `TestApplianceVIPRoutesAndSourceRejections`, `TestApplianceBootstrapUsesVendorFormats`,
 `TestConsoleAttestedSSHPinsRejectDifferentHosts`, and
 `TestPANOSCommitReceiptSurvivesLostResponseWithoutRecommit`. The range browser fixture
-covers eight desktops and ten terminals, including appliance cards, at desktop and
-mobile widths. These checks use local guest/API fixtures; they do not qualify AWS
+covers eight desktops and ten browser terminal tabs using mocked WebSockets,
+including appliance cards, at desktop and mobile widths. The tabs do not represent
+ten server-admitted shells. These checks use local guest/API fixtures; they do not qualify AWS
 AMI boot, licensing, or packet forwarding. Provider journals and private-key writes
 use flushed temporary files and directory sync on Unix, or synchronous Windows
 `MoveFileEx` publication, so local recovery checks do not fail after an already

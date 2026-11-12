@@ -108,10 +108,15 @@ func (s *Service) initSSH() error {
 	return nil
 }
 
-// Terminals consume the same total budget as control work, but can occupy at
-// most half of it. Admission never queues behind another long-lived session.
-// With a one-slot budget interactive shells are disabled to preserve control.
+// Participants use at most half the SSH pool, with per-user and per-team caps.
+// Coaches have a separate allowance of up to four, reduced for small pools to
+// retain at least one control slot even when both terminal allowances are full.
+// Admission never queues behind another long-lived session.
 func (s *Service) acquireTerminal(ctx context.Context, user, team string) (func(), error) {
+	return s.acquireTerminalForRole(ctx, user, team, false)
+}
+
+func (s *Service) acquireTerminalForRole(ctx context.Context, user, team string, coach bool) (func(), error) {
 	if err := s.initSSH(); err != nil {
 		return nil, err
 	}
@@ -120,7 +125,10 @@ func (s *Service) acquireTerminal(ctx context.Context, user, team string) (func(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if s.terminalCount >= cap(s.sshSlots)/2 || s.terminalUsers[user] >= 2 || s.terminalTeams[team] >= 8 {
+	participantLimit := cap(s.sshSlots) / 2
+	coachLimit := min(4, cap(s.sshSlots)-participantLimit-1)
+	if (coach && s.coachTerminals >= coachLimit) ||
+		(!coach && (s.terminalCount >= participantLimit || s.terminalUsers[user] >= 2 || s.terminalTeams[team] >= 8)) {
 		return nil, fmt.Errorf("terminal capacity reached")
 	}
 	select {
@@ -131,15 +139,23 @@ func (s *Service) acquireTerminal(ctx context.Context, user, team string) (func(
 	if s.terminalUsers == nil {
 		s.terminalUsers, s.terminalTeams = map[string]int{}, map[string]int{}
 	}
-	s.terminalCount++
-	s.terminalUsers[user]++
-	s.terminalTeams[team]++
+	if coach {
+		s.coachTerminals++
+	} else {
+		s.terminalCount++
+		s.terminalUsers[user]++
+		s.terminalTeams[team]++
+	}
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			s.terminalMu.Lock()
 			defer s.terminalMu.Unlock()
 			<-s.sshSlots
+			if coach {
+				s.coachTerminals--
+				return
+			}
 			s.terminalCount--
 			s.terminalUsers[user]--
 			if s.terminalUsers[user] == 0 {

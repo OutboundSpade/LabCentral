@@ -141,7 +141,7 @@ func (s *Service) machineTerminal(w http.ResponseWriter, r *http.Request, v Sess
 	if hello.Cols == 0 {
 		hello.Cols, hello.Rows = 100, 30
 	}
-	release, admit := s.acquireTerminal(ctx, v.User.ID, team.ID)
+	release, admit := s.acquireTerminalForRole(ctx, v.User.ID, team.ID, coach)
 	if admit != nil {
 		connection.Close(websocket.StatusTryAgainLater, "Terminal capacity reached. Close another terminal and reconnect.")
 		return

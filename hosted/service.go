@@ -38,6 +38,7 @@ type Service struct {
 	terminalUsers  map[string]int
 	terminalTeams  map[string]int
 	terminalCount  int
+	coachTerminals int
 	jobMu          sync.Mutex
 	activeJobs     map[string]runningJob
 	queuedClaims   map[string][]jobClaim

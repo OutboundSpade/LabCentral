@@ -282,11 +282,17 @@ team, ending the meeting or losing membership revokes access. Terminal tabs stay
 pinned to the original meeting, template revision and allocation; they never follow
 a replacement lab automatically.
 
-Terminals share the overall SSH budget but can occupy at most half its slots,
-with at most two sessions per user and eight per team, including coach sessions.
-Excess sessions are refused promptly; close a terminal before reconnecting.
-The remaining slots stay available for desktops, checks, scoring and provider
-create/discovery readiness. A one-slot budget disables interactive terminals.
+Participant terminals share the overall SSH budget and can occupy at most half
+its slots, with at most two sessions per user and eight per team. This permits
+12 simultaneous participant terminals by default, or 32 at the maximum aggregate
+setting of 64. Coaches have a separate service-wide allowance of four terminals,
+outside participant user/team caps, including on templates without participant
+terminal opt-in. For a pool of N slots the coach allowance is
+`min(4, N - floor(N/2) - 1)`, preserving at least one control slot in small pools.
+The default therefore permits 12 participant plus four coach terminals, with eight
+slots reserved for desktops, checks, scoring and provider create/discovery readiness.
+Both roles consume the overall SSH pool and excess sessions are refused promptly;
+close a terminal before reconnecting. A one-slot budget disables interactive terminals.
 
 Each desktop tab has a separate authenticated path and host-only cookie. Opening a
 second machine does not change the first window's guest. **Disconnect** on a machine
@@ -373,12 +379,14 @@ Other limits are optional; omitted or zero values use the defaults.
 | `engine.maxMachineConcurrency` | 4 | Parallel machine creates within one deployment |
 | `engine.maxCleanupConcurrency` | 4 | Parallel machine deletions within one cleanup |
 | `aggregate.maxNativeOperations` | 8 | Machine creates and deletes across all jobs |
-| `aggregate.maxSSHSessions` | 24 | All guest SSH work; terminals use at most half, two per user and eight per team |
+| `aggregate.maxSSHSessions` | 24 | All guest SSH work; participant terminals use at most half, two per user and eight per team; coaches have a separate bounded allowance (see above) |
 
 Worker concurrency and engine values accept 1–32 and aggregate budgets 1–64. Raising them does not
 raise your cloud provider's quotas. A meeting of 6 teams × 6 students with 36
 concurrent desktops has been verified with the defaults: desktops opened at once took
 6–41 seconds, because desktop operations share `aggregate.maxSSHSessions`.
+That desktop sizing measurement does not establish simultaneous shell capacity:
+desktop setup leases are temporary, whereas terminals hold SSH slots until closed.
 
 ## Operations
 
