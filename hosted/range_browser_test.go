@@ -2,6 +2,7 @@ package hosted
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	lc "github.com/OutboundSpade/LabCentral/v2"
 )
 
 // Real hosted HTTP policy and static UI, with guest desktop/SSH transport fixtures.
@@ -34,7 +37,30 @@ func TestHostedEightMachineBrowser(t *testing.T) {
 	defer app.Close()
 	defer display.Close()
 	s.Config.Origin, s.Config.DesktopOrigin = "https://"+app.Listener.Addr().String(), "https://"+display.Listener.Addr().String()
-	app.Config.Handler, display.Config.Handler = s.Handler(), s.Handler()
+	handler := s.Handler()
+	app.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_fixture/terminal-policy" {
+			var bundle InstructorBundle
+			if err := s.Store.Get(r.Context(), "template-instructor", "pinned", &bundle); err != nil {
+				t.Error(err)
+				w.WriteHeader(500)
+				return
+			}
+			bundle.Visibility.ParticipantTerminals = nil
+			if r.URL.Query().Get("enabled") == "true" {
+				bundle.Visibility.ParticipantTerminals = lc.SortedMachineNames(engine.src.Lab)
+			}
+			if err := s.Store.Put(r.Context(), "template-instructor", "pinned", bundle); err != nil {
+				t.Error(err)
+				w.WriteHeader(500)
+				return
+			}
+			w.WriteHeader(204)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
+	display.Config.Handler = s.Handler()
 	app.StartTLS()
 	display.StartTLS()
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)

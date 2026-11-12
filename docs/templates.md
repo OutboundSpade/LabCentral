@@ -135,10 +135,15 @@ summary shown on library cards.
 
 - `cpu`, `memory` (`Mi`/`Gi`) and `disk` are minimums. On AWS the planner picks the
   smallest allowed instance type that fits.
-- `access` is any of `ssh` and `desktop`. In team meetings, students can open a
-  separate browser terminal for each visible `ssh` machine and a separate browser
-  desktop for each visible `desktop` machine. Declaring both offers both controls.
-  SSH is an administrative guest shell (`lab` on Linux, `Administrator` on Windows).
+- `access` is any of `ssh` and `desktop`. A visible `desktop` machine offers a
+  separate browser desktop. Participant terminals additionally require an explicit
+  grant in `instructor.yaml`: `visibility.participantTerminals: [workstation, router]`.
+  Each listed machine must be visible and declare `ssh`. Omission grants no
+  participant terminals, including for existing pinned templates. Coaches retain
+  SSH access through coach routes. These shells use the operator account: `lab`
+  with passwordless sudo on AWS Linux, `Administrator` on Windows, or the vendor
+  administrative account on an appliance. Grant only where participants should
+  have that level of control; desktop users keep their existing account policy.
 - `hostnamePeers` controls which machines appear in each guest's `/etc/hosts`: `all`
   (the default), a list of names, or `[]` for none. Machine names resolve to their
   private lab addresses.
@@ -251,7 +256,7 @@ machines:
 
 `defaultRouter` sends that segment's default traffic through a declared router's
 data NIC. It cannot be combined with `egress: internet` on the same network.
-`routes` adds up to 16 private /16?/32 destinations, each targeting a forwarding
+`routes` adds up to 16 private /16 through /32 destinations, each targeting a forwarding
 machine on the source network. Explicit routes cannot overlap managed subnets.
 The VIP example describes an exercise address pool, not public Internet addresses.
 A route does not allocate a VIP or install NAT: the template must provide the
@@ -266,6 +271,12 @@ to a bypass path. Workstations receive a direct AWS route to the management subn
 so they can open the firewall's HTTPS UI independently of the exercise data plane.
 The hosted machine card displays its private management URL; open it in a lab
 workstation's browser and set a web login using the device terminal.
+Only PAN-OS NIC0 receives the dedicated HTTPS management destination security
+group. Non-appliance machines declaring `desktop` receive a client group on NIC0,
+with matching outbound TCP 443 to that destination group, including isolated
+workstation segments. The shared first-NIC management group admits gateway-only
+TCP 22/8443; it does not grant HTTPS to unrelated machines. Normal same-segment
+and declared exercise routing rules still apply independently.
 
 Configuration files contain one vendor `set` or `delete` command per line; `#`
 comments and blank lines are allowed. Files are limited to 12 KiB, 128 commands,

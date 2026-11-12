@@ -159,8 +159,24 @@ func (s *Service) readGuestScore(ctx context.Context, team Team, meeting Meeting
 
 // Coalesce students' polls and persist the last good snapshot across restarts.
 // The cache key changes with the meeting, allocation, source and feed contract.
-func (s *Service) cachedGuestScore(ctx context.Context, team Team, meeting Meeting, src lc.Source, config instructor.LiveScoring) scoreCache {
-	key := digest(meeting.ID + "\x00" + team.ID + "\x00" + team.InstanceID + "\x00" + meeting.Template + "\x00" + src.Digest + "\x00" + jsonValue(config))
+func guestScoreKey(team Team, meeting Meeting, src lc.Source, config instructor.LiveScoring) string {
+	return digest(meeting.ID + "\x00" + team.ID + "\x00" + team.InstanceID + "\x00" + meeting.Template + "\x00" + src.Digest + "\x00" + jsonValue(config))
+}
+
+func (s *Service) savedGuestScore(ctx context.Context, team Team, meeting Meeting, src lc.Source, config instructor.LiveScoring) scoreCache {
+	var cache scoreCache
+	err := s.Store.Get(ctx, "live-score-cache", guestScoreKey(team, meeting, src, config), &cache)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return scoreCache{Unavailable: true}
+	}
+	if cache.Snapshot != nil && validateScore(*cache.Snapshot, meeting, time.Now()) != nil {
+		return scoreCache{Unavailable: true}
+	}
+	return cache
+}
+
+func (s *Service) cachedGuestScore(ctx context.Context, team Team, meeting Meeting, src lc.Source, config instructor.LiveScoring, cache scoreCache) scoreCache {
+	key := guestScoreKey(team, meeting, src, config)
 	s.scoreMu.Lock()
 	if s.scoreFlights == nil {
 		s.scoreFlights = map[string]*scoreFlight{}
@@ -169,24 +185,38 @@ func (s *Service) cachedGuestScore(ctx context.Context, team Team, meeting Meeti
 		s.scoreMu.Unlock()
 		select {
 		case <-flight.done:
+			if flight.result.Snapshot == nil && cache.Snapshot != nil {
+				cache.Unavailable = true
+				return cache
+			}
 			return flight.result
 		case <-ctx.Done():
-			return scoreCache{Unavailable: true}
+			cache.Unavailable = true
+			return cache
 		}
 	}
 	flight := &scoreFlight{done: make(chan struct{})}
 	s.scoreFlights[key] = flight
 	s.scoreMu.Unlock()
 	defer func() { s.scoreMu.Lock(); delete(s.scoreFlights, key); close(flight.done); s.scoreMu.Unlock() }()
-	var cache scoreCache
-	err := s.Store.Get(ctx, "live-score-cache", key, &cache)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		flight.result = scoreCache{Unavailable: true}
-		return flight.result
-	}
-	if cache.Snapshot != nil && validateScore(*cache.Snapshot, meeting, time.Now()) != nil {
-		cache.Snapshot = nil
+	// Another leader may have completed between the request's initial saved
+	// projection and admission here. Recheck its persisted generation before
+	// validating a new round. A failed/cancelled read never replaces fallback.
+	var latest scoreCache
+	if err := s.Store.Get(ctx, "live-score-cache", key, &latest); err == nil {
+		if latest.Snapshot != nil && validateScore(*latest.Snapshot, meeting, time.Now()) == nil {
+			cache = latest
+		} else if cache.Snapshot == nil {
+			cache = latest
+			if cache.Snapshot != nil {
+				cache.Snapshot = nil
+				cache.Unavailable = true
+			}
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		cache.Unavailable = true
+		flight.result = cache
+		return cache
 	}
 	if time.Since(cache.Attempted) >= 10*time.Second {
 		snapshot, err := s.readGuestScore(ctx, team, meeting, src, config)
@@ -252,6 +282,9 @@ func (s *Service) liveScoreboard(w http.ResponseWriter, r *http.Request, v Sessi
 	slots := make(chan struct{}, 4)
 	var group sync.WaitGroup
 	for i, team := range teams {
+		// Saved totals are independent of the shorter refresh deadline and its
+		// four-slot admission queue. Never load fallback using a cancelled read.
+		cache := s.savedGuestScore(r.Context(), team, m, src, config)
 		group.Go(func() {
 			view := LiveTeamScore{TeamID: team.ID, Name: team.Name, Status: "waiting"}
 			if team.Status == "ready" && team.InstanceID != "" {
@@ -260,10 +293,13 @@ func (s *Service) liveScoreboard(w http.ResponseWriter, r *http.Request, v Sessi
 				case slots <- struct{}{}:
 					defer func() { <-slots }()
 				case <-ctx.Done():
-					out.Teams[i] = view
-					return
+					cache.Unavailable = true
 				}
-				cache := s.cachedGuestScore(ctx, team, m, src, config)
+				if ctx.Err() == nil {
+					cache = s.cachedGuestScore(ctx, team, m, src, config, cache)
+				} else {
+					cache.Unavailable = true
+				}
 				if snapshot := cache.Snapshot; snapshot != nil {
 					view.Status = "live"
 					view.Round = snapshot.Round

@@ -38,7 +38,7 @@ func annotateSchema(object, field string, s map[string]any) {
 		s["const"] = 3
 	case "Visibility.audience":
 		s["enum"] = []string{"students", "coaches"}
-	case "Visibility.hiddenMachines", "Step.guestHosts":
+	case "Visibility.hiddenMachines", "Visibility.participantTerminals", "Step.guestHosts":
 		items(0, 32)
 		s["uniqueItems"] = true
 		s["items"] = map[string]any{"type": "string", "pattern": idPattern.String()}

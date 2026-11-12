@@ -268,13 +268,25 @@ console during practice. AWS Linux keeps its per-user DCV sessions.
 ## Access to team machines
 
 An eight-machine template can expose eight independent desktops, terminals, or a
-mixture. The template's machine `access` entries determine the controls. Team members
+mixture. Machine `access` entries determine desktop eligibility; participant terminals
+also require `visibility.participantTerminals: [machine-name]` in the pinned
+`instructor.yaml`. Existing templates default to no participant terminals. Team members
 can access only their current ready team allocation and visible machines; organizer
 machines remain hidden. Browser terminals provide administrative guest SSH access,
-so expose `ssh` only on machines intended for participants. Signing out, changing
+using the operator account (`lab` with passwordless sudo on AWS Linux,
+`Administrator` on Windows, or the appliance vendor administrator). Grant participant
+terminals only where this privilege is intended. Coaches retain their separate
+SSH controls; administrators on the participant page follow participant grants
+and visibility. Signing out, changing
 team, ending the meeting or losing membership revokes access. Terminal tabs stay
 pinned to the original meeting, template revision and allocation; they never follow
 a replacement lab automatically.
+
+Terminals share the overall SSH budget but can occupy at most half its slots,
+with at most two sessions per user and eight per team, including coach sessions.
+Excess sessions are refused promptly; close a terminal before reconnecting.
+The remaining slots stay available for desktops, checks, scoring and provider
+create/discovery readiness. A one-slot budget disables interactive terminals.
 
 Each desktop tab has a separate authenticated path and host-only cookie. Opening a
 second machine does not change the first window's guest. **Disconnect** on a machine
@@ -361,7 +373,7 @@ Other limits are optional; omitted or zero values use the defaults.
 | `engine.maxMachineConcurrency` | 4 | Parallel machine creates within one deployment |
 | `engine.maxCleanupConcurrency` | 4 | Parallel machine deletions within one cleanup |
 | `aggregate.maxNativeOperations` | 8 | Machine creates and deletes across all jobs |
-| `aggregate.maxSSHSessions` | 24 | Guest SSH steps, coach terminals and desktop operations across all jobs |
+| `aggregate.maxSSHSessions` | 24 | All guest SSH work; terminals use at most half, two per user and eight per team |
 
 Worker concurrency and engine values accept 1–32 and aggregate budgets 1–64. Raising them does not
 raise your cloud provider's quotas. A meeting of 6 teams × 6 students with 36

@@ -49,6 +49,14 @@ func addRangeAppliances(t *testing.T, s *Service, e *rangeAccessEngine) {
 	if err := s.Store.Put(context.Background(), "source", "pinned", e.src); err != nil {
 		t.Fatal(err)
 	}
+	var bundle InstructorBundle
+	if err := s.Store.Get(context.Background(), "template-instructor", "pinned", &bundle); err != nil {
+		t.Fatal(err)
+	}
+	bundle.Visibility.ParticipantTerminals = append(bundle.Visibility.ParticipantTerminals, "vyos", "panos")
+	if err := s.Store.Put(context.Background(), "template-instructor", "pinned", bundle); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestApplianceInventoryExposesTerminalAndPrivateManagementHint(t *testing.T) {
@@ -110,6 +118,14 @@ func rangeAccessFixture(t *testing.T) (*Service, Session, []Team, *rangeAccessEn
 	}
 	e := &rangeAccessEngine{Engine: s.Engine, src: src, relay: original.relay, opened: map[string]string{}, closed: map[string]string{}, terminal: make(chan string, 8)}
 	s.Engine = e
+	var bundle InstructorBundle
+	if err := s.Store.Get(context.Background(), "template-instructor", "pinned", &bundle); err != nil {
+		t.Fatal(err)
+	}
+	bundle.Visibility.ParticipantTerminals = lc.SortedMachineNames(src.Lab)
+	if err := s.Store.Put(context.Background(), "template-instructor", "pinned", bundle); err != nil {
+		t.Fatal(err)
+	}
 	return s, v, teams, e
 }
 
@@ -206,7 +222,7 @@ func TestTeamMachineVisibilityAndAuthorization(t *testing.T) {
 	}
 }
 
-func TestEightTeamTerminalsRevokeOnTeamSwitch(t *testing.T) {
+func TestTeamTerminalsRevokeOnTeamSwitch(t *testing.T) {
 	s, v, teams, e := rangeAccessFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
@@ -216,7 +232,7 @@ func TestEightTeamTerminalsRevokeOnTeamSwitch(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 	var connections []*websocket.Conn
-	for _, name := range lc.SortedMachineNames(e.src.Lab) {
+	for _, name := range lc.SortedMachineNames(e.src.Lab)[:2] {
 		conn, _, err := websocket.Dial(ctx, server.URL+"/api/machines/"+name+"/terminal", &websocket.DialOptions{HTTPClient: server.Client(), HTTPHeader: http.Header{"Origin": []string{s.Config.Origin}, "Cookie": []string{"__Host-labcentral=cookie"}}})
 		if err != nil {
 			t.Fatal(err)
@@ -236,6 +252,21 @@ func TestEightTeamTerminalsRevokeOnTeamSwitch(t *testing.T) {
 			t.Fatal("student terminal not admitted", ctx.Err())
 		}
 	}
+	extra, _, err := websocket.Dial(ctx, server.URL+"/api/machines/server/terminal", &websocket.DialOptions{HTTPClient: server.Client(), HTTPHeader: http.Header{"Origin": []string{s.Config.Origin}, "Cookie": []string{"__Host-labcentral=cookie"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer extra.CloseNow()
+	if err := extra.Write(ctx, websocket.MessageText, []byte(`{"csrf":"`+v.CSRF+`"}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = extra.Read(ctx)
+	if websocket.CloseStatus(err) != websocket.StatusTryAgainLater {
+		t.Fatal("excess terminal was not promptly refused", err)
+	}
+	if len(e.terminal) != 0 {
+		t.Fatal("excess terminal reached SSH")
+	}
 	if err := s.Store.BeginSwitch(ctx, v.User.ID, teams[1].ID, "meeting"); err != nil {
 		t.Fatal(err)
 	}
@@ -244,6 +275,19 @@ func TestEightTeamTerminalsRevokeOnTeamSwitch(t *testing.T) {
 		if websocket.CloseStatus(err) != coachAccessRevoked {
 			t.Fatal("terminal survived team switch", err)
 		}
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		s.terminalMu.Lock()
+		active := s.terminalCount
+		s.terminalMu.Unlock()
+		if active == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("revocation retained terminal capacity", active)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

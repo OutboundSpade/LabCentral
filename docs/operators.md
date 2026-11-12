@@ -193,9 +193,19 @@ interface, route and template policy commands through a verified guest CLI. A
 journal is written before its commit; a committed configuration receipt reconciles
 a lost response. An unresolved commit remains `recovery_required`; do not clear
 its journal or blindly repeat the commit. Readiness is bounded to 15 minutes.
+The original CLI rejection reason is retained on subsequent recovery attempts.
+Recovery reconnects only to the owned instance with its attested SSH identity and
+looks for the matching committed receipt. An absent receipt does not prove that
+candidate configuration was rolled back. Inspect the owned device and candidate
+state before any manual intervention; use the ownership-checked destroy/redeploy
+workflow for a fresh attempt rather than clearing an unresolved journal.
 The firewall web login is configured through its terminal; no default password is
 published by LabCentral. Browser HTTPS access is from a lab workstation to the
 private MGT URL shown on its machine card.
+HTTPS uses dedicated PAN-OS NIC0 and desktop-client security groups with paired
+TCP 443 rules, so an isolated workstation can reach MGT without granting HTTPS
+to every guest's management interface. Group creation/recovery is journaled and
+cleanup retains groups whose ownership no longer matches the recorded resources.
 
 The bootstrap formats follow the vendor documentation for
 [VyOS initial boot hooks](https://docs.vyos.io/en/1.4/automation/cloud-init.html),

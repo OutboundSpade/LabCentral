@@ -28,6 +28,16 @@ func decodePolicy(raw, cached sql.NullString, exists bool) (InstructorBundle, er
 		}
 		seen[name] = true
 	}
+	if len(b.Visibility.ParticipantTerminals) > 32 {
+		return b, fmt.Errorf("invalid participant terminal policy")
+	}
+	terminals := map[string]bool{}
+	for _, name := range b.Visibility.ParticipantTerminals {
+		if !stepIDPattern.MatchString(name) || seen[name] || terminals[name] {
+			return b, fmt.Errorf("invalid participant terminal policy")
+		}
+		terminals[name] = true
+	}
 	if cached.Valid {
 		var v InstructorView
 		if err := json.Unmarshal([]byte(cached.String), &v); err != nil {
@@ -45,7 +55,7 @@ func decodePolicy(raw, cached sql.NullString, exists bool) (InstructorBundle, er
 	return b, nil
 }
 
-const policyJSON = `json_object('visibility',json_object('audience',coalesce(json_extract(b.body,'$.visibility.audience'),json_extract(b.body,'$.audience')),'hiddenMachines',coalesce(json_extract(b.body,'$.visibility.hiddenMachines'),json_extract(b.body,'$.hiddenMachines'))),'practice',json_extract(b.body,'$.practice'))`
+const policyJSON = `json_object('visibility',json_object('audience',coalesce(json_extract(b.body,'$.visibility.audience'),json_extract(b.body,'$.audience')),'hiddenMachines',coalesce(json_extract(b.body,'$.visibility.hiddenMachines'),json_extract(b.body,'$.hiddenMachines')),'participantTerminals',json_extract(b.body,'$.visibility.participantTerminals')),'practice',json_extract(b.body,'$.practice'))`
 const cachedPolicyJSON = `CASE WHEN json_extract(t.body,'$.instructor') IS NOT NULL THEN json_object('audience',json_extract(t.body,'$.instructor.audience'),'hiddenMachines',json_extract(t.body,'$.instructor.hiddenMachines')) END`
 
 func (s *Store) instructorPolicy(ctx context.Context, id string) (InstructorBundle, error) {

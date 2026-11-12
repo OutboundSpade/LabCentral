@@ -111,7 +111,7 @@ func TestLabConformance(t *testing.T) {
 					if strings.HasPrefix(line, "# ") {
 						parts := strings.SplitN(line[2:], ": ", 2)
 						if len(parts) == 2 {
-							metadata[parts[0]] = parts[1]
+							metadata[parts[0]] = strings.TrimSpace(parts[1])
 						}
 					}
 				}

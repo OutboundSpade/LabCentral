@@ -37,17 +37,19 @@ type networkSegment struct {
 	Egress string `json:"egress"`
 }
 type networkState struct {
-	VPC          string           `json:"vpc"`
-	Subnet       string           `json:"subnet"`
-	SG           string           `json:"sg"`
-	Route        string           `json:"route"`
-	Gateway      string           `json:"gateway"`
-	Endpoint     string           `json:"endpoint,omitempty"`
-	EdgeSubnet   string           `json:"edgeSubnet,omitempty"`
-	EdgeRoute    string           `json:"edgeRoute,omitempty"`
-	GatewaySG    string           `json:"gatewaySG,omitempty"`
-	ManagementSG string           `json:"managementSG,omitempty"`
-	Segments     []networkSegment `json:"segments,omitempty"`
+	VPC               string           `json:"vpc"`
+	Subnet            string           `json:"subnet"`
+	SG                string           `json:"sg"`
+	Route             string           `json:"route"`
+	Gateway           string           `json:"gateway"`
+	Endpoint          string           `json:"endpoint,omitempty"`
+	EdgeSubnet        string           `json:"edgeSubnet,omitempty"`
+	EdgeRoute         string           `json:"edgeRoute,omitempty"`
+	GatewaySG         string           `json:"gatewaySG,omitempty"`
+	ManagementSG      string           `json:"managementSG,omitempty"`
+	PANOSManagementSG string           `json:"panosManagementSG,omitempty"`
+	PANOSClientSG     string           `json:"panosClientSG,omitempty"`
+	Segments          []networkSegment `json:"segments,omitempty"`
 }
 
 func client(ctx context.Context, e lc.Environment) (*ec2.Client, *sts.Client, error) {
@@ -343,17 +345,10 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			return lc.Result{}, err
 		}
 	}
-	// Forwarded packets retain their original source. Guest and subnet routes
-	for _, image := range c.Source.Lab.Images {
-		if image.ApplianceKind() == "panos" {
-			for _, net := range planned {
-				if err = authorize(ctx, a, management, true, t.IpPermission{IpProtocol: aw.String("tcp"), FromPort: aw.Int32(443), ToPort: aw.Int32(443), IpRanges: []t.IpRange{{CidrIp: aw.String(net.CIDR)}}}); err != nil {
-					return lc.Result{}, err
-				}
-			}
-			break
-		}
+	if err = p.panosManagementNetwork(ctx, a, c, &ns); err != nil {
+		return lc.Result{}, err
 	}
+	// Forwarded packets retain their original source. Guest and subnet routes
 	// constrain them to the declared router paths; disconnected segments get no rule.
 	for j, n := range topology.Networks {
 		for _, r := range n.Routes {
@@ -653,6 +648,7 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, fmt.Errorf("EC2 user data exceeds 16 KiB")
 	}
 	in := &ec2.RunInstancesInput{ImageId: &m.NativeImage, InstanceType: t.InstanceType(m.InstanceType), MinCount: aw.Int32(1), MaxCount: aw.Int32(1), ClientToken: aw.String(c.Owner + "-" + m.Name), UserData: aw.String(base64.StdEncoding.EncodeToString([]byte(ud))), MetadataOptions: &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)}, NetworkInterfaces: []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), DeleteOnTermination: aw.Bool(true), SubnetId: &ns.Subnet, Groups: []string{ns.SG}, AssociatePublicIpAddress: aw.Bool(false), PrivateIpAddress: &m.Address}}, BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: im.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(m.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}}, TagSpecifications: append(specs(t.ResourceTypeInstance, c.Owner, role), specs(t.ResourceTypeVolume, c.Owner, role)...)}
+	in.NetworkInterfaces[0].Groups = panosManagementGroups(in.NetworkInterfaces[0].Groups, ns, m)
 	if len(m.NICs) > 0 {
 		in.NetworkInterfaces = nil
 		for j, nic := range m.NICs {
@@ -671,6 +667,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			groups := []string{seg.SG}
 			if j == 0 && ns.ManagementSG != "" {
 				groups = append(groups, ns.ManagementSG)
+			}
+			if j == 0 {
+				groups = panosManagementGroups(groups, ns, m)
 			}
 			in.NetworkInterfaces = append(in.NetworkInterfaces, t.InstanceNetworkInterfaceSpecification{DeviceIndex: aw.Int32(int32(j)), DeleteOnTermination: aw.Bool(true), SubnetId: aw.String(seg.Subnet), Groups: groups, AssociatePublicIpAddress: aw.Bool(false), PrivateIpAddress: aw.String(nic.Address)})
 		}
@@ -857,6 +856,14 @@ func (p *Provider) findNetwork(ctx context.Context, a *ec2.Client, c lc.Command)
 		return value, err
 	}
 	n.ManagementSG, err = loadChild("management-sg", "management-sg")
+	if err != nil {
+		return lc.Result{}, err
+	}
+	n.PANOSManagementSG, err = loadChild("panos-management-sg", "panos-management-sg")
+	if err != nil {
+		return lc.Result{}, err
+	}
+	n.PANOSClientSG, err = loadChild("panos-client-sg", "panos-client-sg")
 	if err != nil {
 		return lc.Result{}, err
 	}

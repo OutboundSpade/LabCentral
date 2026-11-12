@@ -58,10 +58,10 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 				inst, e := s.Engine.Inspect(ctx, team.InstanceID)
 				if e == nil {
 					for _, m := range inst.Plan.Machines {
-						if !v.User.Admin && lc.Contains(policy.Visibility.HiddenMachines, m.Name) {
+						if lc.Contains(policy.Visibility.HiddenMachines, m.Name) {
 							continue
 						}
-						view := Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, SSH: lc.Contains(m.Spec.Access, "ssh"), Desktop: lc.Contains(m.Spec.Access, "desktop")}
+						view := Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, SSH: lc.Contains(m.Spec.Access, "ssh") && lc.Contains(policy.Visibility.ParticipantTerminals, m.Name), Desktop: lc.Contains(m.Spec.Access, "desktop")}
 						view.Appliance = m.Appliance
 						if m.Appliance == "panos" {
 							view.ManagementURL = "https://" + m.Address + "/"

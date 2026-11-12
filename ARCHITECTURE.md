@@ -113,6 +113,10 @@ several networks joins them:
   Appliance routing errors fail closed. Addresses and routes are platform owned;
   bounded template vendor configuration supplies zones, security and NAT policy.
   PAN-OS uses MGT-first mapping and a platform virtual router named `labcentral`.
+  Dedicated PAN-OS MGT and desktop-client security groups pair inbound/outbound
+  TCP 443 on first NICs only, including isolated clients. The shared first-NIC
+  management group retains gateway-only TCP 22/8443. New groups have journaled
+  creation/discovery and ownership-checked cleanup like other network children.
   Operator bases pin the appliance kind, AMI identity and vendor SSH user.
 - Native appliance SSH keys are attested through exact-instance EC2 console output.
   VyOS publishes public host keys from its documented initial boot hook; PAN-OS
@@ -628,7 +632,9 @@ client-supplied URL, team identity, credentials or executable content. Redirects
 oversized bodies, malformed projections and regressing completed rounds are
 rejected. Per-allocation reads coalesce and persist the last good snapshot, keyed
 by meeting, allocation, template source and feed contract. Failures preserve points
-as stale. Students receive standings plus their own service details; coaches see
+as stale. Saved projections load through the request context before refresh-slot
+admission; slot, read and coalesced-flight timeouts retain those saved totals even
+after the refresh deadline expires. Students receive standings plus their own service details; coaches see
 all service details. Authorization and allocation pins are checked after guest
 reads as well as before them. The bot owns probes, scoring rules and round history.
 See the hosted guide for bounds and the reference loopback file-feed helper.
@@ -795,8 +801,12 @@ the native guest channel supports it.
 Meeting access is per machine. Student inventory and desktop/terminal routes derive
 the team from current membership; only the coach routes accept a team ID, under
 administrator authorization. Both paths pin the current meeting, source and allocation.
-Author `access` controls desktop/SSH eligibility; hidden machines fail closed on
-student routes. `practice.desktopMachine` remains the default for personal learning
+Author `access` controls desktop/SSH eligibility. Participant shells additionally
+require the pinned instructor `visibility.participantTerminals` allowlist, empty
+by default for both new and retained templates. Hidden machines fail closed on
+participant routes, including the admin participant page; coach controls remain
+separate. These shells use operator accounts, including passwordless sudo on AWS
+Linux and Administrator on Windows. `practice.desktopMachine` remains the default for personal learning
 and optional meeting quick launch, not a limit on meeting machine access.
 
 Every desktop has a `/sessions/ACCESS_ID/` URL namespace and a distinct secure,
@@ -814,8 +824,12 @@ Students and coaches share the same bounded, pinned SSH/WebSocket transport with
 separate authorization. Student authorization is rechecked throughout the shell and
 ends on team switches; coaches additionally require current administrator status.
 The UI offers a separate terminal workspace per machine with allocation-pinned links,
-independent transcript state, reconnect and revocation handling. Eight simultaneous
-desktop identities and eight student terminal admissions have local hosted tests;
+independent transcript state, reconnect and revocation handling. Terminals admit
+without queuing into the shared total SSH pool, use at most half its slots, and
+enforce two sessions per user and eight per team, including coaches. The rest is
+reserved for desktop/control, provider readiness and scoring work; a one-slot
+budget disables terminals. Disconnect and revocation release all admission counts.
+Eight simultaneous desktop identities and bounded student terminal admissions have local hosted tests;
 desktop/mobile browser checks exercise real hosted HTTP with fixture DCV/SSH
 transports. Native multi-machine desktop and OIDC release acceptance remain required.
 
@@ -1045,10 +1059,13 @@ teardown must still be qualified in a disposable authorized AWS environment.
 The local browser range fixture passed with eight independent desktops and ten
 terminals, including both appliances, at 1366 and 390 pixel widths. AWS, guest, SSH
 and journal package race checks and affected hosted authorization checks passed.
-The broad root/hosted run is not green on this Windows checkout: conformance path
-handling, symlink privileges, Git/retained fixtures, SQLite cleanup and existing
-meeting preparation/maintenance expectations still fail. This is not release
-acceptance evidence for those paths.
+The address-boundary and instructor conformance checks pass, including offset 254
+and invalid 255. Affected hosted race tests cover participant opt-in, bounded
+terminal admission/revocation and saved totals under a 19-team refresh deadline.
+The full AWS and instructor race suites pass. The full suite is not green on this
+Windows checkout: symlink privileges, missing Unix tools, Git/retained fixtures,
+SQLite cleanup and meeting preparation/maintenance expectations still fail.
+Linux CI and live platform acceptance remain required.
 
 What has been verified on real platforms. Evidence applies to the source, environment
 and layout it was recorded with; detailed records stay outside this repository. Mocks,

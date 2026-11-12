@@ -12,8 +12,9 @@ import (
 )
 
 type Visibility struct {
-	Audience       string   `json:"audience" yaml:"audience"`
-	HiddenMachines []string `json:"hiddenMachines,omitempty" yaml:"hiddenMachines,omitempty"`
+	ParticipantTerminals []string `json:"participantTerminals,omitempty" yaml:"participantTerminals,omitempty"`
+	Audience             string   `json:"audience" yaml:"audience"`
+	HiddenMachines       []string `json:"hiddenMachines,omitempty" yaml:"hiddenMachines,omitempty"`
 }
 type Practice struct {
 	DesktopMachine string `json:"desktopMachine" yaml:"desktopMachine"`

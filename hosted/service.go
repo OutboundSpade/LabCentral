@@ -34,6 +34,10 @@ type Service struct {
 	userLocks      map[string]*sessionLock
 	sshOnce        sync.Once
 	sshSlots       chan struct{}
+	terminalMu     sync.Mutex
+	terminalUsers  map[string]int
+	terminalTeams  map[string]int
+	terminalCount  int
 	jobMu          sync.Mutex
 	activeJobs     map[string]runningJob
 	queuedClaims   map[string][]jobClaim

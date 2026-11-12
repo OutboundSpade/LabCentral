@@ -10,6 +10,7 @@ try {
   const errors=[];
   context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));
   await context.addCookies([{name:'__Host-labcentral',value:'cookie',url:app,secure:true,httpOnly:true,sameSite:'Strict'}]);
+  await context.request.get(app+'/_fixture/terminal-policy?enabled=true');
   await context.route('**/favicon.ico',r=>r.fulfill({status:204}));
   let shells=0;
   await context.routeWebSocket('**/api/machines/*/terminal',ws=>{
@@ -69,6 +70,11 @@ try {
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Lab overflows horizontally');
   if(evidence){fs.mkdirSync(evidence,{recursive:true});await page.screenshot({path:`${evidence}/range-${width}.png`,fullPage:true});await terminals[0].screenshot({path:`${evidence}/range-terminal-${width}.png`});}
   assert.deepEqual(errors,[]);
+  await context.request.get(app+'/_fixture/terminal-policy?enabled=false');
+  await page.reload();
+  await page.getByRole('heading',{name:'Team machines',exact:true}).waitFor();
+  assert.equal(await page.getByRole('link',{name:/^Open .* terminal$/}).count(),0,'Legacy templates exposed participant terminals');
+  assert.equal(await page.getByRole('button',{name:/^Open .* desktop$/}).count(),8,'Terminal opt-in changed desktops');
   await context.close();
  }
  console.log('Eight independent desktop launches through real hosted HTTP, per-machine credentials/cookies, sibling-preserving disconnect, ten student terminal tabs including VyOS/PAN-OS, private firewall management hints and desktop/mobile layout passed. DCV and SSH transports are fixtures; no live platform or OIDC acceptance claim.');

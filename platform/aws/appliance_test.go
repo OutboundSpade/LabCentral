@@ -186,3 +186,32 @@ func TestApplianceCLIRejectsErrorsAndStopsOnCancellation(t *testing.T) {
 		t.Fatal("cancelled CLI completed")
 	}
 }
+
+func TestPANOSRecoveryRetainsOriginalRejectionWithoutReplay(t *testing.T) {
+	var mu sync.Mutex
+	configures := 0
+	client := applianceCLIFixture(t, func(command string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		if command == "configure" {
+			configures++
+			return "Invalid syntax"
+		}
+		return command
+	})
+	p := &Provider{Journal: journal.Journal{Root: t.TempDir()}}
+	c := lc.Command{Owner: "owner", Operation: "owner/palo", Machine: lc.PlannedMachine{Name: "palo"}}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for range 2 {
+		err := p.configurePANOS(ctx, client, c, nil)
+		if err == nil || !strings.Contains(err.Error(), "appliance rejected configuration step 3") {
+			t.Fatal("original rejection lost", err)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if configures != 1 {
+		t.Fatal("uncertain candidate configuration replayed", configures)
+	}
+}

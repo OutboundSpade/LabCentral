@@ -35,7 +35,7 @@ func (s *Service) machineAllowed(ctx context.Context, template string, src lc.So
 		return true
 	}
 	policy, err := s.Store.instructorPolicy(ctx, template)
-	return err == nil && !lc.Contains(policy.Visibility.HiddenMachines, name)
+	return err == nil && !lc.Contains(policy.Visibility.HiddenMachines, name) && (access != "ssh" || lc.Contains(policy.Visibility.ParticipantTerminals, name))
 }
 
 func (s *Service) machineRecordAllowed(ctx context.Context, a accessRecord) bool {
@@ -86,7 +86,7 @@ func (s *Service) machineInventory(w http.ResponseWriter, r *http.Request, v Ses
 			continue
 		}
 		spec := src.Lab.Machines[m.Name]
-		view := Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, SSH: lc.Contains(spec.Access, "ssh"), Desktop: lc.Contains(spec.Access, "desktop"), Appliance: m.Appliance}
+		view := Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, SSH: s.machineAllowed(r.Context(), meeting.Template, src, m.Name, "ssh", coach), Desktop: lc.Contains(spec.Access, "desktop"), Appliance: m.Appliance}
 		if m.Appliance == "panos" {
 			view.ManagementURL = "https://" + m.Address + "/"
 		}

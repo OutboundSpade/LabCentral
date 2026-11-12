@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"sync"
 )
 
 // AggregateOptions bound service-wide effects across independent engine jobs.
@@ -89,15 +90,67 @@ func (p *BudgetedProvider) Execute(ctx context.Context, c lc.Command, o lc.Obser
 	return p.Provider.Execute(ctx, c, o)
 }
 func (s *Service) acquireSSH(ctx context.Context) (func(), error) {
-	if err := s.Config.Aggregate.Validate(); err != nil {
+	if err := s.initSSH(); err != nil {
 		return nil, err
+	}
+	return acquireSlot(ctx, s.sshSlots)
+}
+
+func (s *Service) initSSH() error {
+	if err := s.Config.Aggregate.Validate(); err != nil {
+		return err
 	}
 	s.sshOnce.Do(func() {
 		if s.sshSlots == nil {
 			s.sshSlots = make(chan struct{}, s.Config.Aggregate.Effective().MaxSSHSessions)
 		}
 	})
-	return acquireSlot(ctx, s.sshSlots)
+	return nil
+}
+
+// Terminals consume the same total budget as control work, but can occupy at
+// most half of it. Admission never queues behind another long-lived session.
+// With a one-slot budget interactive shells are disabled to preserve control.
+func (s *Service) acquireTerminal(ctx context.Context, user, team string) (func(), error) {
+	if err := s.initSSH(); err != nil {
+		return nil, err
+	}
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if s.terminalCount >= cap(s.sshSlots)/2 || s.terminalUsers[user] >= 2 || s.terminalTeams[team] >= 8 {
+		return nil, fmt.Errorf("terminal capacity reached")
+	}
+	select {
+	case s.sshSlots <- struct{}{}:
+	default:
+		return nil, fmt.Errorf("SSH capacity reached")
+	}
+	if s.terminalUsers == nil {
+		s.terminalUsers, s.terminalTeams = map[string]int{}, map[string]int{}
+	}
+	s.terminalCount++
+	s.terminalUsers[user]++
+	s.terminalTeams[team]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.terminalMu.Lock()
+			defer s.terminalMu.Unlock()
+			<-s.sshSlots
+			s.terminalCount--
+			s.terminalUsers[user]--
+			if s.terminalUsers[user] == 0 {
+				delete(s.terminalUsers, user)
+			}
+			s.terminalTeams[team]--
+			if s.terminalTeams[team] == 0 {
+				delete(s.terminalTeams, team)
+			}
+		})
+	}, nil
 }
 
 type sshBudgetKey struct{}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -16,8 +17,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-var appliancePrompt = regexp.MustCompile(`(?:^|\r?\n)[a-zA-Z0-9_.@:/()\-]+[>#\$][ \t]*$`)
-var applianceANSI = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
+var appliancePrompt = regexp.MustCompile(`(?:^|[\r\n])([a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+)(?:\([a-zA-Z0-9_-]+\))?(?::[~/a-zA-Z0-9_.()\-]+)?[>#\$][ \t]*$`)
+var applianceANSI = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
 // Vendor CLI runs in the verified guest PTY. There is no local shell or
 // author-controlled executable on the operator. Each prompt/output is bounded.
@@ -65,6 +66,7 @@ func applianceCLI(ctx context.Context, client *ssh.Client, commands []string) (s
 			}
 		}
 	}()
+	identity := ""
 	read := func() (string, error) {
 		var b strings.Builder
 		for {
@@ -79,7 +81,9 @@ func applianceCLI(ctx context.Context, client *ssh.Client, commands []string) (s
 				}
 				b.Write(chunk)
 				clean := applianceANSI.ReplaceAllString(b.String(), "")
-				if appliancePrompt.MatchString(clean) {
+				match := appliancePrompt.FindStringSubmatch(clean)
+				if len(match) > 1 && (identity == "" || match[1] == identity) {
+					identity = match[1]
 					return clean, nil
 				}
 			}
@@ -130,7 +134,9 @@ func (p *Provider) configurePANOS(ctx context.Context, client *ssh.Client, c lc.
 		batch = append(batch, commands...)
 		batch = append(batch, "set shared tag "+marker+" comments 'LabCentral configuration receipt'", "commit", "exit")
 		if _, err := applianceCLI(ctx, client, batch); err != nil {
-			return "", err
+			// Retain the bounded driver reason separately from the unresolved
+			// mutation. Candidate state can survive; this never permits replay.
+			return "", errors.Join(err, p.Journal.Save(c.Operation+"/appliance-config-error", err.Error()))
 		}
 		for attempt := 0; attempt < 120; attempt++ {
 			_, found, err := find()
@@ -146,5 +152,11 @@ func (p *Provider) configurePANOS(ctx context.Context, client *ssh.Client, c lc.
 		}
 		return "", fmt.Errorf("recovery_required: firewall commit remains unconfirmed")
 	}, find)
+	if err != nil {
+		var reason string
+		if p.Journal.Load(c.Operation+"/appliance-config-error", &reason) == nil {
+			err = fmt.Errorf("%w; original appliance failure: %s", err, reason)
+		}
+	}
 	return err
 }

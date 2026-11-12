@@ -141,6 +141,13 @@ func (s *Service) machineTerminal(w http.ResponseWriter, r *http.Request, v Sess
 	if hello.Cols == 0 {
 		hello.Cols, hello.Rows = 100, 30
 	}
+	release, admit := s.acquireTerminal(ctx, v.User.ID, team.ID)
+	if admit != nil {
+		connection.Close(websocket.StatusTryAgainLater, "Terminal capacity reached. Close another terminal and reconnect.")
+		return
+	}
+	defer release()
+	ctx = context.WithValue(ctx, sshBudgetKey{}, s.sshSlots)
 	type frame struct {
 		kind websocket.MessageType
 		data []byte
@@ -198,11 +205,6 @@ func (s *Service) machineTerminal(w http.ResponseWriter, r *http.Request, v Sess
 			}
 		}
 	}()
-	release, admit := s.acquireSSH(ctx)
-	if admit != nil {
-		return
-	}
-	defer release()
 	err = engine.WithSSHSession(ctx, team.InstanceID, name, func(inst lc.Instance, m lc.PlannedMachine, res lc.Resource, key []byte) error {
 		if !authorized(ctx) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) || lc.OSFamily(m.OS) != lc.OSFamily(src.Lab.Images[spec.Image].OS) {
 			cancel(errCoachRevoked)

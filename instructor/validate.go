@@ -45,6 +45,14 @@ func (b Bundle) Validate(src lc.Source) error {
 	return err
 }
 func (b Bundle) validate(src lc.Source) error {
+	terminals := map[string]bool{}
+	for _, name := range b.Visibility.ParticipantTerminals {
+		machine, ok := src.Lab.Machines[name]
+		if !ok || !lc.Contains(machine.Access, "ssh") || lc.Contains(b.Visibility.HiddenMachines, name) || terminals[name] {
+			return invalid("visibility.participantTerminals", "requires unique visible machines with declared SSH access")
+		}
+		terminals[name] = true
+	}
 	if b.LiveScoring != nil {
 		if err := b.LiveScoring.Validate(src, b.Visibility.HiddenMachines); err != nil {
 			return err
