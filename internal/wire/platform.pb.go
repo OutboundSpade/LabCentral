@@ -1356,19 +1356,20 @@ func (x *HostEntry) GetAddress() string {
 }
 
 type Machine struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Image         string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
-	Cpu           int32                  `protobuf:"varint,2,opt,name=cpu,proto3" json:"cpu,omitempty"`
-	Memory        string                 `protobuf:"bytes,3,opt,name=memory,proto3" json:"memory,omitempty"`
-	Disk          string                 `protobuf:"bytes,4,opt,name=disk,proto3" json:"disk,omitempty"`
-	Access        []string               `protobuf:"bytes,5,rep,name=access,proto3" json:"access,omitempty"`
-	Nics          []*NIC                 `protobuf:"bytes,7,rep,name=nics,proto3" json:"nics,omitempty"`
-	Forwarding    bool                   `protobuf:"varint,8,opt,name=forwarding,proto3" json:"forwarding,omitempty"`
-	HostnamePeers *HostnamePeers         `protobuf:"bytes,9,opt,name=hostname_peers,json=hostnamePeers,proto3" json:"hostname_peers,omitempty"`
-	Platform      *MachinePlatform       `protobuf:"bytes,10,opt,name=platform,proto3" json:"platform,omitempty"`
-	Extensions    map[string][]byte      `protobuf:"bytes,11,rep,name=extensions,proto3" json:"extensions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Image             string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	Cpu               int32                  `protobuf:"varint,2,opt,name=cpu,proto3" json:"cpu,omitempty"`
+	Memory            string                 `protobuf:"bytes,3,opt,name=memory,proto3" json:"memory,omitempty"`
+	Disk              string                 `protobuf:"bytes,4,opt,name=disk,proto3" json:"disk,omitempty"`
+	Access            []string               `protobuf:"bytes,5,rep,name=access,proto3" json:"access,omitempty"`
+	Nics              []*NIC                 `protobuf:"bytes,7,rep,name=nics,proto3" json:"nics,omitempty"`
+	Forwarding        bool                   `protobuf:"varint,8,opt,name=forwarding,proto3" json:"forwarding,omitempty"`
+	HostnamePeers     *HostnamePeers         `protobuf:"bytes,9,opt,name=hostname_peers,json=hostnamePeers,proto3" json:"hostname_peers,omitempty"`
+	Platform          *MachinePlatform       `protobuf:"bytes,10,opt,name=platform,proto3" json:"platform,omitempty"`
+	Extensions        map[string][]byte      `protobuf:"bytes,11,rep,name=extensions,proto3" json:"extensions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ManagementClients []string               `protobuf:"bytes,12,rep,name=management_clients,json=managementClients,proto3" json:"management_clients,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Machine) Reset() {
@@ -1467,6 +1468,13 @@ func (x *Machine) GetPlatform() *MachinePlatform {
 func (x *Machine) GetExtensions() map[string][]byte {
 	if x != nil {
 		return x.Extensions
+	}
+	return nil
+}
+
+func (x *Machine) GetManagementClients() []string {
+	if x != nil {
+		return x.ManagementClients
 	}
 	return nil
 }
@@ -3591,7 +3599,7 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	"\tappliance\x18\x11 \x01(\tR\tappliance\"9\n" +
 	"\tHostEntry\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\"\xe7\x03\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\"\x96\x04\n" +
 	"\aMachine\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x10\n" +
 	"\x03cpu\x18\x02 \x01(\x05R\x03cpu\x12\x16\n" +
@@ -3607,7 +3615,8 @@ const file_api_plugin_v2_platform_proto_rawDesc = "" +
 	" \x01(\v2%.labcentral.plugin.v2.MachinePlatformR\bplatform\x12M\n" +
 	"\n" +
 	"extensions\x18\v \x03(\v2-.labcentral.plugin.v2.Machine.ExtensionsEntryR\n" +
-	"extensions\x1a=\n" +
+	"extensions\x12-\n" +
+	"\x12management_clients\x18\f \x03(\tR\x11managementClients\x1a=\n" +
 	"\x0fExtensionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01J\x04\b\x06\x10\a\"j\n" +

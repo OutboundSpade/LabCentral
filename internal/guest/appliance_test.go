@@ -29,6 +29,35 @@ func TestApplianceBootstrapUsesVendorFormats(t *testing.T) {
 	if strings.Contains(raw, "PRIVATE KEY") || strings.Contains(raw, "runcmd:") || !strings.Contains(raw, "next-hop '172.16.0.10'") || !strings.Contains(raw, "eth1 address '172.16.0.254/24'") {
 		t.Fatal("incorrect VyOS bootstrap", raw)
 	}
+	wantRoutes := []string{"set protocols static route 0.0.0.0/0 next-hop '172.31.26.1'", "set protocols static route 172.20.240.0/24 next-hop '172.16.0.10'"}
+	var routes []string
+	for index, command := range cfg.Commands {
+		if !lc.ValidVyOSCommandGrammar(command) {
+			t.Fatal("generated command does not match vendor grammar", command)
+		}
+		if strings.HasPrefix(command, "set protocols static route ") {
+			routes = append(routes, command)
+		}
+		if strings.HasPrefix(command, "set system login user vyos authentication plaintext-password ") {
+			t.Fatal("bootstrap creates fallback password")
+		}
+		if strings.Contains(command, "disable-password-authentication") && index == 0 {
+			t.Fatal("hardening must follow author policy")
+		}
+	}
+	if len(routes) != len(wantRoutes) {
+		t.Fatal("wrong route count", routes)
+	}
+	for index, want := range wantRoutes {
+		if routes[index] != want {
+			t.Fatal("route path/value folded by vendor parser", routes)
+		}
+	}
+	for _, want := range []string{"set service ssh disable-password-authentication", "delete system login user vyos authentication plaintext-password", "set system login user vyos authentication encrypted-password '*'"} {
+		if !lc.Contains(cfg.Commands, want) {
+			t.Fatal("password authentication not locked", want)
+		}
+	}
 	m.Appliance = "panos"
 	raw, err = ApplianceUserData(m, "owned-instance", nil)
 	if err != nil || !strings.HasPrefix(raw, "type=dhcp-client\n") || strings.Contains(raw, "cloud-config") {

@@ -37,19 +37,21 @@ type networkSegment struct {
 	Egress string `json:"egress"`
 }
 type networkState struct {
-	VPC               string           `json:"vpc"`
-	Subnet            string           `json:"subnet"`
-	SG                string           `json:"sg"`
-	Route             string           `json:"route"`
-	Gateway           string           `json:"gateway"`
-	Endpoint          string           `json:"endpoint,omitempty"`
-	EdgeSubnet        string           `json:"edgeSubnet,omitempty"`
-	EdgeRoute         string           `json:"edgeRoute,omitempty"`
-	GatewaySG         string           `json:"gatewaySG,omitempty"`
-	ManagementSG      string           `json:"managementSG,omitempty"`
-	PANOSManagementSG string           `json:"panosManagementSG,omitempty"`
-	PANOSClientSG     string           `json:"panosClientSG,omitempty"`
-	Segments          []networkSegment `json:"segments,omitempty"`
+	VPC          string `json:"vpc"`
+	Subnet       string `json:"subnet"`
+	SG           string `json:"sg"`
+	Route        string `json:"route"`
+	Gateway      string `json:"gateway"`
+	Endpoint     string `json:"endpoint,omitempty"`
+	EdgeSubnet   string `json:"edgeSubnet,omitempty"`
+	EdgeRoute    string `json:"edgeRoute,omitempty"`
+	GatewaySG    string `json:"gatewaySG,omitempty"`
+	ManagementSG string `json:"managementSG,omitempty"`
+	// Legacy range-wide groups are retained only for discovery and owned cleanup.
+	PANOSManagementSG string                 `json:"panosManagementSG,omitempty"`
+	PANOSClientSG     string                 `json:"panosClientSG,omitempty"`
+	PANOSManagement   []panosManagementGrant `json:"panosManagement,omitempty"`
+	Segments          []networkSegment       `json:"segments,omitempty"`
 }
 
 func client(ctx context.Context, e lc.Environment) (*ec2.Client, *sts.Client, error) {
@@ -238,6 +240,9 @@ func (p *Provider) check(ctx context.Context, a *ec2.Client, c lc.Command) (lc.R
 	return lc.Result{Message: "account, zone, base AMIs and instance types verified"}, nil
 }
 func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc.Result, error) {
+	if err := lc.ValidatePANOSManagement(c.Source.Lab); err != nil {
+		return lc.Result{}, err
+	}
 	if err := lc.CheckCapabilities(c.Source.Lab, "aws"); err != nil {
 		return lc.Result{}, err
 	}
@@ -345,9 +350,6 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			return lc.Result{}, err
 		}
 	}
-	if err = p.panosManagementNetwork(ctx, a, c, &ns); err != nil {
-		return lc.Result{}, err
-	}
 	// Forwarded packets retain their original source. Guest and subnet routes
 	// constrain them to the declared router paths; disconnected segments get no rule.
 	for j, n := range topology.Networks {
@@ -415,6 +417,9 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		}
 	}
 
+	if err = p.panosManagementNetwork(ctx, a, c, &ns); err != nil {
+		return lc.Result{}, err
+	}
 	b, _ := json.Marshal(ns)
 	return lc.Result{Resource: lc.Resource{Kind: "network", Name: "private", ID: vpc, Owner: owner, Complete: true, Data: b}}, nil
 }
@@ -649,6 +654,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	}
 	in := &ec2.RunInstancesInput{ImageId: &m.NativeImage, InstanceType: t.InstanceType(m.InstanceType), MinCount: aw.Int32(1), MaxCount: aw.Int32(1), ClientToken: aw.String(c.Owner + "-" + m.Name), UserData: aw.String(base64.StdEncoding.EncodeToString([]byte(ud))), MetadataOptions: &t.InstanceMetadataOptionsRequest{HttpTokens: t.HttpTokensStateRequired, HttpPutResponseHopLimit: aw.Int32(1)}, NetworkInterfaces: []t.InstanceNetworkInterfaceSpecification{{DeviceIndex: aw.Int32(0), DeleteOnTermination: aw.Bool(true), SubnetId: &ns.Subnet, Groups: []string{ns.SG}, AssociatePublicIpAddress: aw.Bool(false), PrivateIpAddress: &m.Address}}, BlockDeviceMappings: []t.BlockDeviceMapping{{DeviceName: im.Images[0].RootDeviceName, Ebs: &t.EbsBlockDevice{VolumeSize: aw.Int32(int32(m.DiskGiB)), VolumeType: t.VolumeTypeGp3, Encrypted: aw.Bool(true), DeleteOnTermination: aw.Bool(true)}}}, TagSpecifications: append(specs(t.ResourceTypeInstance, c.Owner, role), specs(t.ResourceTypeVolume, c.Owner, role)...)}
 	in.NetworkInterfaces[0].Groups = panosManagementGroups(in.NetworkInterfaces[0].Groups, ns, m)
+	if len(in.NetworkInterfaces[0].Groups) == 0 || len(in.NetworkInterfaces[0].Groups) > lc.AWSMaxGroupsPerNIC {
+		return lc.Result{}, fmt.Errorf("PAN-OS management identity or security-group capacity is unavailable")
+	}
 	if len(m.NICs) > 0 {
 		in.NetworkInterfaces = nil
 		for j, nic := range m.NICs {
@@ -670,6 +678,9 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 			}
 			if j == 0 {
 				groups = panosManagementGroups(groups, ns, m)
+			}
+			if len(groups) == 0 || len(groups) > lc.AWSMaxGroupsPerNIC {
+				return lc.Result{}, fmt.Errorf("PAN-OS management identity or security-group capacity is unavailable")
 			}
 			in.NetworkInterfaces = append(in.NetworkInterfaces, t.InstanceNetworkInterfaceSpecification{DeviceIndex: aw.Int32(int32(j)), DeleteOnTermination: aw.Bool(true), SubnetId: aw.String(seg.Subnet), Groups: groups, AssociatePublicIpAddress: aw.Bool(false), PrivateIpAddress: aw.String(nic.Address)})
 		}
@@ -866,6 +877,24 @@ func (p *Provider) findNetwork(ctx context.Context, a *ec2.Client, c lc.Command)
 	n.PANOSClientSG, err = loadChild("panos-client-sg", "panos-client-sg")
 	if err != nil {
 		return lc.Result{}, err
+	}
+	for _, name := range lc.SortedMachineNames(c.Source.Lab) {
+		machine := c.Source.Lab.Machines[name]
+		if c.Source.Lab.Images[machine.Image].ApplianceKind() != "panos" {
+			continue
+		}
+		grant := panosManagementGrant{Firewall: name, Clients: append([]string(nil), machine.ManagementClients...)}
+		component := panosGroupComponent(name, false)
+		grant.DestinationSG, err = loadChild(component, component)
+		if err != nil {
+			return lc.Result{}, err
+		}
+		component = panosGroupComponent(name, true)
+		grant.ClientSG, err = loadChild(component, component)
+		if err != nil {
+			return lc.Result{}, err
+		}
+		n.PANOSManagement = append(n.PANOSManagement, grant)
 	}
 	for j, net := range planned {
 		seg := networkSegment{Name: net.Name, CIDR: net.CIDR, Egress: net.Egress}

@@ -375,15 +375,15 @@ func PlanNetworks(p *Plan, vlans []int) error {
 			}
 			if m.Appliance == "" {
 				for _, peer := range p.Machines {
-					if peer.Appliance == "panos" && len(peer.NICs) > 0 {
+					if peer.Appliance == "panos" && Contains(peer.Spec.ManagementClients, m.Name) && len(peer.NICs) > 0 {
 						mgmt := peer.NICs[0]
 						if mgmt.Network != first.Network {
 							duplicate := false
 							for _, r := range first.Routes {
-								duplicate = duplicate || r.CIDR == mgmt.CIDR
+								duplicate = duplicate || r.CIDR == mgmt.Address+"/32"
 							}
 							if !duplicate {
-								first.Routes = append(first.Routes, PlannedRoute{CIDR: mgmt.CIDR, Via: managementGateway})
+								first.Routes = append(first.Routes, PlannedRoute{CIDR: mgmt.Address + "/32", Via: managementGateway})
 							}
 						}
 					}

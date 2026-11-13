@@ -44,6 +44,14 @@ flowchart TD
 | `hosted` | Product policy: users, sessions, meetings, attempts, jobs and desktop authorization. |
 | `web` | The static UI served by the hosted service. |
 
+Ownership of native appliance behavior is explicit: the provider owns bootstrap
+and verified identity; the platform owns cloud infrastructure and topology
+rendering; the lab owns selected device policy and exercise behavior. Probes,
+weights, penalties, scenario content and private teaching material remain in the
+lab/scorer. Author Ansible runs locally inside its target guest; a network-device
+controller/runtime workflow, lab-managed routing and extra policy capabilities
+require separate designs.
+
 Rules that hold across the codebase:
 
 - **Author code runs only in guests.** Playbooks, PowerShell scripts, checks and breaks
@@ -113,9 +121,15 @@ several networks joins them:
   Appliance routing errors fail closed. Addresses and routes are platform owned;
   bounded template vendor configuration supplies zones, security and NAT policy.
   PAN-OS uses MGT-first mapping and a platform virtual router named `labcentral`.
-  Dedicated PAN-OS MGT and desktop-client security groups pair inbound/outbound
-  TCP 443 on first NICs only, including isolated clients. The shared first-NIC
-  management group retains gateway-only TCP 22/8443. New groups have journaled
+  PAN-OS `managementClients` is an explicit per-firewall list, empty by default,
+  accepting named non-appliance clients regardless of desktop capability. Each
+  firewall gets its own destination and client groups; first-NIC membership and
+  paired TCP 443 rules enforce individual grants without authorizing their union.
+  Only listed clients receive a direct /32 route to that firewall's MGT address.
+  MGT NIC0 omits segment self/routed ingress, protecting against unlisted neighbors
+  on the management subnet. The shared management group retains gateway-only
+  TCP 22/8443. Planning and provider admission enforce five groups per ENI (two
+  base groups plus at most three firewall grants for each client). Groups have journaled
   creation/discovery and ownership-checked cleanup like other network children.
   Operator bases pin the appliance kind, AMI identity and vendor SSH user.
 - Native appliance SSH keys are attested through exact-instance EC2 console output.
@@ -368,8 +382,9 @@ matches the requested CIDR and recorded association ID. Subnet creation waits fo
 `associated`; timeouts, changed identities and failed or unknown states retain intent.
 VPC deletion confirms final absence after child cleanup. Single-block layouts and
 their existing journal keys are unchanged. Planner and readiness unit checks cover
-the layout and state handling; secondary-CIDR recovery integration and native AWS
-qualification remain outstanding in a Linux operator environment.
+the layout and state handling. The maintainer-reported native CIDR-association
+response-loss check is scoped under [Qualification status](#qualification-status);
+it does not establish the complete native association failure matrix.
 
 **Gateway.** One platform-owned gateway per lab, outside the author's inventory, holds
 the lab's only public IPv4 address (default `ubuntu-24.04` on `t3.micro`). It has one
@@ -638,12 +653,10 @@ after the refresh deadline expires. Students receive standings plus their own se
 all service details. Authorization and allocation pins are checked after guest
 reads as well as before them. The bot owns probes, scoring rules and round history.
 See the hosted guide for bounds and the reference loopback file-feed helper.
-The first MWCCDC engine binding is the companion deployment kit's practice scorer.
-Its optional exporter records completion timestamps and public point weights in
-the scoring transaction, then publishes a sanitized atomic JSON projection. It
-does not copy scoring execution into LabCentral. Native scoring profiles validate
-independently of the kit's Proxmox deployment layout. The general feed contract
-allows a later engine change without changing hosted identity or range policy.
+The lab/scorer owns engine selection and installation, probes, weights, penalties,
+round history, scenario content and private teaching material. Engine-specific
+setup stays in its lab or kit repository. The generic projection supports different
+scorers without changing hosted identity or range policy.
 
 Hidden-machine disclosure continues to require explicit peer lists and bounded
 source selection for visible image builds. Native appliances receive only their
@@ -1057,10 +1070,10 @@ its retirement marker. Incomplete imports do not retire other names.
 
 ## Qualification status
 
-Native VyOS/PAN-OS range support has local planning, bootstrap, SSH identity,
-CLI error and lost-commit recovery tests. These are fixtures, not real AWS or vendor
-acceptance. Exact AMI boot, licensing, HTTPS management, routed NAT/VIP traffic and
-teardown must still be qualified in a disposable authorized AWS environment.
+Native appliance acceptance is scoped to the provider build and image. Local
+planning, bootstrap, SSH identity, CLI error and lost-commit recovery fixtures
+establish local behavior. The reported native VyOS subset below does not qualify
+all vendor AMIs, licensing modes or the PAN-OS management contract.
 The local browser range fixture passed with eight independent desktops and ten
 browser terminal tabs using mocked WebSockets, including both appliances, at 1366
 and 390 pixel widths. Those tabs do not represent ten server-admitted shells. AWS, guest, SSH
@@ -1068,10 +1081,25 @@ and journal package race checks and affected hosted authorization checks passed.
 The address-boundary and instructor conformance checks pass, including offset 254
 and invalid 255. Affected hosted race tests cover participant opt-in, bounded
 terminal admission/revocation and saved totals under a 19-team refresh deadline.
-The full AWS and instructor race suites pass. The full suite is not green on this
-Windows checkout: symlink privileges, missing Unix tools, Git/retained fixtures,
-SQLite cleanup and meeting preparation/maintenance expectations still fail.
-Linux CI and live platform acceptance remain required.
+The full AWS and instructor race suites pass locally. Windows full-suite runs
+still encounter symlink privileges, missing Unix tools, Git/retained fixtures,
+SQLite cleanup and meeting preparation/maintenance expectations. Linux CI at
+`f1892611` passed Go vet, the full race suite, the fault-injection matrix, generated
+files, examples and frontend checks/build ([run 43235482964](https://github.com/OutboundSpade/LabCentral/actions/runs/43235482964)).
+That run predates the subsequent bootstrap and explicit management-grant fixes;
+each new revision requires its own CI run.
+
+The [maintainer's review](https://github.com/OutboundSpade/LabCentral/pull/1#issuecomment-6839294347)
+reports native AWS acceptance on a private build of that head plus four VyOS fixes:
+boot, console-pinned SSH, HTTP/VIP/NAT return paths, score-shaped JSON delivery,
+isolated-client denial, lost router-create result adoption, password/configuration
+assertions, reboot persistence and ownership-verified cleanup. A separate native
+CIDR-association response-loss check used PR-head fault-injection source. These
+are attributed results for those builds, not live validation of this checkout or
+the later PAN-OS management contract. The private hybrid image used an upstream
+nightly ISO with its asset digest checked; no detached signature was verified.
+Official vendor AMIs/stable releases, native PAN-OS, real OIDC, rendered DCV and
+hosted scoring-feed ingestion remain unverified for these changes.
 
 What has been verified on real platforms. Evidence applies to the source, environment
 and layout it was recorded with; detailed records stay outside this repository. Mocks,
@@ -1117,18 +1145,9 @@ Design intentions, not contracts. Each needs failure tests and live qualificatio
 explicitly configured environment.
 
 - **Proxmox:** wider storage/firmware coverage and the native failure matrix.
-- **Native AWS CCDC kit:** deployment source lives in the separate
-  Deployment-Kits-CCDC repository; LabCentral supplies the backend. The requested
-  target is individual EC2 guests, not a nested Proxmox host. Multi-range VPC
-  networking is implemented above; this alone does not make the existing kit
-  deployable. Typed appliance bootstrap/access and explicit next-hop/VIP routes
-  are implemented, with local failure tests; live AMI, licensing and complete
-  routed service-path qualification remain outstanding. Template work includes
-  guest-specific Linux networking, runtime role provisioning with dependencies
-  and reboot/domain-join recovery, vendor security/NAT policy, EC2-compatible
-  workstation images, and external service scoring. The old core /29, reserved .1/.2/.3
-  addresses and guest DHCP cannot be copied directly into native EC2. Keep
-  platform adaptations explicit and validate the complete routed scoring path.
+- **Native appliances:** additional vendor AMI qualification and native failure
+  matrices. A network-device Ansible controller/runtime workflow, an optional
+  lab-managed routing mode and additional policy features require separate designs.
 - **Windows:** Proxmox bootstrap and firmware bindings, more NICs, and an optional
   disposable Linux controller for Ansible targeting Windows (author code still only in
   guests).

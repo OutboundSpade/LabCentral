@@ -4,8 +4,17 @@ import (
 	"fmt"
 	"io/fs"
 	"net/netip"
+	"regexp"
 	"strings"
 )
+
+// Cloud-init's VyOS parser splits an unquoted path from one optional quoted
+// final value. Quoted path tokens are not shell quoting and corrupt that split.
+var vyosCommandGrammar = regexp.MustCompile(`^(set|delete) [^'"\t\r\n]+(?: '[^'\r\n]*')?$`)
+
+func ValidVyOSCommandGrammar(command string) bool {
+	return vyosCommandGrammar.MatchString(command)
+}
 
 func (i Image) ApplianceKind() string {
 	if i.Appliance == nil {
@@ -45,6 +54,9 @@ func ApplianceCommands(kind string, raw []byte) ([]string, error) {
 		if len(commands) >= 128 || len(line) > 1024 || control || strings.ContainsAny(line, ";&|`$\\<>") || strings.Count(line, "'")%2 != 0 || strings.Count(line, `"`)%2 != 0 {
 			return nil, fmt.Errorf("invalid or excessive appliance configuration")
 		}
+		if kind == "vyos" && !ValidVyOSCommandGrammar(line) {
+			return nil, fmt.Errorf("VyOS requires an unquoted command path and at most one single-quoted final value")
+		}
 		body, ok := strings.CutPrefix(line, "set ")
 		if !ok {
 			body, ok = strings.CutPrefix(line, "delete ")
@@ -56,8 +68,10 @@ func ApplianceCommands(kind string, raw []byte) ([]string, error) {
 		for _, prefix := range prefixes {
 			allowed = allowed || strings.HasPrefix(body, prefix)
 		}
-		if kind == "vyos" && strings.HasPrefix(body, "interfaces ") && !strings.Contains(body, " firewall ") {
-			allowed = false
+		if kind == "vyos" && strings.HasPrefix(body, "interfaces ") {
+			path, _, _ := strings.Cut(body, " '")
+			parts := strings.Fields(path)
+			allowed = len(parts) >= 4 && parts[0] == "interfaces" && parts[1] == "ethernet" && parts[3] == "firewall"
 		}
 		if !allowed {
 			return nil, fmt.Errorf("configuration must contain network, firewall or NAT policy; management and identity are platform owned")
@@ -69,6 +83,9 @@ func ApplianceCommands(kind string, raw []byte) ([]string, error) {
 
 func ValidateAppliances(s Source) error {
 	l := s.Lab
+	if err := ValidatePANOSManagement(l); err != nil {
+		return err
+	}
 	for _, name := range sortedKeys(l.Images) {
 		i := l.Images[name]
 		if i.Appliance == nil {
@@ -177,6 +194,52 @@ func ValidateAppliances(s Source) error {
 			}
 			if err := checkRouter(route.Router); err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+// PANOSManagementGrants returns the lab's exact per-firewall client sets. Missing
+// lists grant nothing; desktop capability has no bearing on authorization.
+func PANOSManagementGrants(l Lab) map[string][]string {
+	grants := map[string][]string{}
+	for name, m := range l.Machines {
+		if l.Images[m.Image].ApplianceKind() == "panos" {
+			grants[name] = append([]string(nil), m.ManagementClients...)
+		}
+	}
+	return grants
+}
+
+// Five groups per ENI is the supported AWS default quota. Two groups cover a
+// normal guest's segment and gateway management, leaving three firewall grants.
+const AWSMaxGroupsPerNIC = 5
+
+func ValidatePANOSManagement(l Lab) error {
+	counts := map[string]int{}
+	for _, name := range sortedKeys(l.Machines) {
+		machine := l.Machines[name]
+		if len(machine.ManagementClients) == 0 {
+			continue
+		}
+		field := "machines." + name + ".managementClients"
+		if l.Images[machine.Image].ApplianceKind() != "panos" {
+			return problem(Invalid, field, "management clients are supported only on PAN-OS firewalls")
+		}
+		if len(machine.ManagementClients) > 32 {
+			return problem(Invalid, field, "at most 32 named clients")
+		}
+		seen := map[string]bool{}
+		for _, client := range machine.ManagementClients {
+			m, ok := l.Machines[client]
+			if !ok || seen[client] || client == name || l.Images[m.Image].ApplianceKind() != "" {
+				return problem(Invalid, field, "expected unique declared non-appliance client machines")
+			}
+			seen[client] = true
+			counts[client]++
+			if counts[client]+2 > AWSMaxGroupsPerNIC {
+				return problem(Invalid, "machines."+client, "PAN-OS management grants exceed the supported five security groups per first NIC (two base groups plus three firewall grants)")
 			}
 		}
 	}

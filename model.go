@@ -105,16 +105,17 @@ type MachinePlatform struct {
 	Proxmox *ProxmoxMachineOptions `yaml:"proxmox,omitempty" json:"proxmox,omitempty"`
 }
 type Machine struct {
-	Image         string          `yaml:"image" json:"image"`
-	CPU           int             `yaml:"cpu" json:"cpu"`
-	Memory        string          `yaml:"memory" json:"memory"`
-	Disk          string          `yaml:"disk" json:"disk"`
-	Access        []string        `yaml:"access,omitempty" json:"access,omitempty"`
-	NICs          []NIC           `yaml:"nics,omitempty" json:"nics,omitempty" proto:"7"`
-	Forwarding    bool            `yaml:"forwarding,omitempty" json:"forwarding,omitempty" proto:"8"`
-	HostnamePeers HostnamePeers   `yaml:"hostnamePeers,omitempty" json:"hostnamePeers" proto:"9"`
-	Platform      MachinePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"10"`
-	Extensions    Extensions      `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"11"`
+	Image             string          `yaml:"image" json:"image"`
+	CPU               int             `yaml:"cpu" json:"cpu"`
+	Memory            string          `yaml:"memory" json:"memory"`
+	Disk              string          `yaml:"disk" json:"disk"`
+	Access            []string        `yaml:"access,omitempty" json:"access,omitempty"`
+	NICs              []NIC           `yaml:"nics,omitempty" json:"nics,omitempty" proto:"7"`
+	Forwarding        bool            `yaml:"forwarding,omitempty" json:"forwarding,omitempty" proto:"8"`
+	HostnamePeers     HostnamePeers   `yaml:"hostnamePeers,omitempty" json:"hostnamePeers" proto:"9"`
+	Platform          MachinePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"10"`
+	Extensions        Extensions      `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"11"`
+	ManagementClients []string        `yaml:"managementClients,omitempty" json:"managementClients,omitempty" proto:"12"`
 }
 
 // Explicit distinguishes an empty peer list from the default all-peer inventory.

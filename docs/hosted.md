@@ -438,9 +438,9 @@ See the [feed contract and guest helper](../examples/scoring-feed/README.md).
 Configure the adapter through your template's guest provisioning. An engine-specific
 exporter must map completed rounds into the documented projection; the helper does
 not scrape a bot dashboard, replace bot authentication or calculate scores.
-The initial MWCCDC integration uses the existing companion kit's practice scorer;
-its opt-in `ccdc.labcentral` exporter implements this projection. Other engines can
-use the same feed contract without changing LabCentral's scoreboard API.
+Scorer selection, probes, weights, penalties and engine installation belong to the
+lab/scorer. Keep engine-specific package commands and private teaching material in
+the lab or kit repository; engines share the same generic scoreboard API.
 
 The UI polls every 15 seconds. Requests coalesce per pinned allocation, with at
 most one guest read every 10 seconds and four range reads concurrently per request,

@@ -59,7 +59,11 @@ func applianceEnvironment() Environment {
 }
 
 func TestNativeApplianceChainKeepsManagementSeparate(t *testing.T) {
-	p, err := PlanLab(applianceSource(t, nil), applianceEnvironment(), nil)
+	p, err := PlanLab(applianceSource(t, func(l *Lab) {
+		m := l.Machines["palo"]
+		m.ManagementClients = []string{"server"}
+		l.Machines["palo"] = m
+	}), applianceEnvironment(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +85,7 @@ func TestNativeApplianceChainKeepsManagementSeparate(t *testing.T) {
 			}
 		}
 	}
-	want := map[string]string{p.EdgeCIDR: "172.20.240.1", "172.30.0.0/24": "172.20.240.1", "172.16.0.0/24": "172.20.240.254", "172.17.0.0/24": "172.20.240.254"}
+	want := map[string]string{p.EdgeCIDR: "172.20.240.1", "172.30.0.200/32": "172.20.240.1", "172.16.0.0/24": "172.20.240.254", "172.17.0.0/24": "172.20.240.254"}
 	for _, r := range server.NICs[0].Routes {
 		if next, ok := want[r.CIDR]; ok {
 			if r.Via != next {

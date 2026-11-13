@@ -151,6 +151,10 @@ func annotateSchema(object, field string, s map[string]any) {
 	case "Machine.access":
 		s["uniqueItems"] = true
 		s["items"] = map[string]any{"enum": []string{"ssh", "desktop"}}
+	case "Machine.managementClients":
+		s["maxItems"] = 32
+		s["uniqueItems"] = true
+		s["items"] = map[string]any{"type": "string", "pattern": namePattern.String()}
 	case "Machine.nics":
 		s["minItems"] = 1
 	case "NIC.address":

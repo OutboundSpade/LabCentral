@@ -188,7 +188,13 @@ network destruction removes that exact key after checking ownership. Grant
 SSH host identity is obtained through the authenticated EC2 console API. Missing
 fingerprints or a mismatched host key never result in an unverified connection.
 
-VyOS receives native cloud-config. PAN-OS receives basic vendor user data and then
+VyOS receives native cloud-config. Its managed commands follow author policy,
+disable password SSH, delete the fallback plaintext password and lock the encrypted
+password to `*`. Qualify every chosen AMI: verify a successful boot commit, no
+plaintext password, a locked encrypted password, no cloud-init command errors,
+successful managed-key login and rejected password authentication. Unit tests of
+generated commands do not establish those native assertions.
+PAN-OS receives basic vendor user data and then
 interface, route and template policy commands through a verified guest CLI. A
 journal is written before its commit; a committed configuration receipt reconciles
 a lost response. An unresolved commit remains `recovery_required`; do not clear
@@ -202,10 +208,15 @@ workflow for a fresh attempt rather than clearing an unresolved journal.
 The firewall web login is configured through its terminal; no default password is
 published by LabCentral. Browser HTTPS access is from a lab workstation to the
 private MGT URL shown on its machine card.
-HTTPS uses dedicated PAN-OS NIC0 and desktop-client security groups with paired
-TCP 443 rules, so an isolated workstation can reach MGT without granting HTTPS
-to every guest's management interface. Group creation/recovery is journaled and
-cleanup retains groups whose ownership no longer matches the recorded resources.
+HTTPS uses an explicit `managementClients` list on each firewall, empty by default.
+Named headless or desktop clients receive their firewall-specific group and a /32
+MGT route; each firewall's dedicated group admits TCP 443 only from that matching
+client group. MGT NIC0 omits segment ingress, including same-subnet self rules.
+Client grants are limited to three firewalls by the supported five-group ENI
+budget, checked before provisioning. Group creation/recovery is journaled and
+cleanup retains groups whose ownership no longer matches recorded resources.
+Ranges made with the old implicit range-wide groups require ownership-checked
+teardown/redeployment; recovery retains their journals and refuses silent migration.
 
 The bootstrap formats follow the vendor documentation for
 [VyOS initial boot hooks](https://docs.vyos.io/en/1.4/automation/cloud-init.html),

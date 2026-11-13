@@ -18,7 +18,7 @@ import (
 )
 
 var appliancePrompt = regexp.MustCompile(`(?:^|[\r\n])([a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+)(?:\([a-zA-Z0-9_-]+\))?(?::[~/a-zA-Z0-9_.()\-]+)?[>#\$][ \t]*$`)
-var applianceANSI = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+var applianceANSI = regexp.MustCompile(`\x1b[=>]|\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
 // Vendor CLI runs in the verified guest PTY. There is no local shell or
 // author-controlled executable on the operator. Each prompt/output is bounded.

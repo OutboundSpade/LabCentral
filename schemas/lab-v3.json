@@ -326,6 +326,15 @@
             "pattern": "^[a-z][a-z0-9-]{0,47}$",
             "type": "string"
           },
+          "managementClients": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9-]{0,47}$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array",
+            "uniqueItems": true
+          },
           "memory": {
             "pattern": "^([1-9][0-9]*)(Mi|Gi)$",
             "type": "string"

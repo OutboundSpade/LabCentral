@@ -23,14 +23,14 @@ func TestApplianceVendorPromptsAndOutputBoundaries(t *testing.T) {
 	for _, prompt := range []string{"vyos@edge:~$ ", "vyos@edge:/config$ ", "admin@firewall> ", "admin@firewall(active)# "} {
 		t.Run(prompt, func(t *testing.T) {
 			server := sshtest.NewShell(t, func(ch ssh.Channel) {
-				io.WriteString(ch, "\x1b]0;vendor title\x07\x1b[?2004h\r\x1b[2K\x1b[32m"+prompt+"\x1b[0m")
+				io.WriteString(ch, "\x1b]0;vendor title\x07\x1b=\x1b[?2004h\r\x1b[2K\x1b[32m"+prompt+"\x1b[0m")
 				scanner := bufio.NewScanner(ch)
 				for scanner.Scan() {
 					io.WriteString(ch, "\r\nprogress#")
 					time.Sleep(20 * time.Millisecond)
 					io.WriteString(ch, "\r\nother@machine> ")
 					time.Sleep(20 * time.Millisecond)
-					io.WriteString(ch, "\r\nfinished "+scanner.Text()+"\r\n\x1b[?2004l"+prompt)
+					io.WriteString(ch, "\r\nfinished "+scanner.Text()+"\r\x1b[K\x1b[?1l\x1b>\x1b[?2004h"+prompt)
 				}
 			})
 			key, _ := sshtest.Key(t)
@@ -63,7 +63,7 @@ func TestWaitVyOSStandardPromptAndPinnedIdentity(t *testing.T) {
 					if ready {
 						output = "Version: VyOS 1.4.0"
 					}
-					io.WriteString(ch, "\r\n"+output+"\r\nvyos@edge:~$ ")
+					io.WriteString(ch, "\r\n"+output+"\r\x1b[K\x1b[?1l\x1b>\x1b[?2004hvyos@edge:~$ ")
 				}
 			})
 			key, _ := sshtest.Key(t)

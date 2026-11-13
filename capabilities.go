@@ -72,6 +72,9 @@ func CheckCapabilities(l Lab, platform string) error {
 	for _, n := range sortedKeys(l.Machines) {
 		v := l.Machines[n]
 		f := "machines." + n
+		if platform != "aws" && len(v.ManagementClients) > 0 {
+			return problem(Unsupported, f+".managementClients", "PAN-OS management grants are implemented only on AWS")
+		}
 		if l.Images[v.Image].OS == "windows" {
 			if len(n) > 15 {
 				return problem(Unsupported, f, "Windows computer names must be at most 15 characters")

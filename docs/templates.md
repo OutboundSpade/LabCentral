@@ -247,6 +247,7 @@ machines:
     memory: 16Gi
     disk: 60Gi
     forwarding: true
+    managementClients: []
     nics:
       - {network: management, address: 200, management: true}
       - {network: transit, address: 10}
@@ -267,16 +268,24 @@ the standard mapping: first NIC is MGT, second is `ethernet1/1`, third is
 `ethernet1/2`. VyOS uses `eth0`, `eth1`, and so on. LabCentral owns addresses, static
 routes, management identity and the PAN-OS virtual router named `labcentral`.
 Appliance route-installation errors fail deployment; they do not silently fall back
-to a bypass path. Workstations receive a direct AWS route to the management subnet
-so they can open the firewall's HTTPS UI independently of the exercise data plane.
-The hosted machine card displays its private management URL; open it in a lab
-workstation's browser and set a web login using the device terminal.
-Only PAN-OS NIC0 receives the dedicated HTTPS management destination security
-group. Non-appliance machines declaring `desktop` receive a client group on NIC0,
-with matching outbound TCP 443 to that destination group, including isolated
-workstation segments. The shared first-NIC management group admits gateway-only
-TCP 22/8443; it does not grant HTTPS to unrelated machines. Normal same-segment
-and declared exercise routing rules still apply independently.
+to a bypass path. PAN-OS `managementClients` names the declared non-appliance
+machines allowed to use that firewall's HTTPS management. The default is empty;
+desktop access does not grant management access. Headless automation clients are
+supported. For example, on a firewall with existing clients named `workstation`
+and `automation`, set `managementClients: [workstation, automation]`.
+
+Each authorized client gets a direct /32 route to that firewall's MGT address and
+a first-NIC security group with outbound TCP 443 to its dedicated destination
+group. Each firewall has a separate group pair, so disjoint grants stay disjoint.
+PAN-OS NIC0 omits the segment's self/routed ingress group: an unlisted machine on
+the management subnet is denied too. The shared management group retains only
+gateway TCP 22/8443 ingress. Data NIC routing/security policy stays separate.
+The supported five-group limit per ENI leaves room for at most three firewall
+grants per client, after its two base groups; validation rejects excess grants
+before provisioning even if an operator has increased the AWS quota.
+The machine card displays the private URL; open it from an authorized client and
+set the web login using the device terminal. Existing implicit-management networks
+need ownership-checked teardown/redeployment rather than in-place grant migration.
 
 Configuration files contain one vendor `set` or `delete` command per line; `#`
 comments and blank lines are allowed. Files are limited to 12 KiB, 128 commands,
@@ -284,7 +293,13 @@ and 1,024 bytes per command. VyOS permits firewall, NAT, policy, zone-policy and
 interface firewall attachment settings. PAN-OS permits zones, rulebase, address and
 service objects/groups, and tags. Interface/route/authentication overrides, shell
 commands, control operators and the reserved `labcentral` namespace are rejected.
-Use the syntax for the selected vendor version, including quoted VyOS values.
+VyOS uses an unquoted command path and at most one single-quoted final value.
+For example, `set firewall ipv4 name LAN-IN default-action 'drop'` is supported;
+quoting `LAN-IN` before that value, double-quoted paths, embedded single quotes,
+or tokens after a quoted value are rejected before provisioning. Commands that
+set/delete a node without a value may remain entirely unquoted. See the
+[vendor cloud-init grammar](https://docs.vyos.io/en/1.4/automation/cloud-init.html).
+Generated addresses, keys and route next hops follow this same format.
 For example:
 
 ```text
@@ -306,6 +321,14 @@ LabCentral does not supply Marketplace subscriptions, PAN-OS licenses, guest DHC
 AD/domain-join orchestration, or external competition scoring. Qualify the selected
 AMI versions and the complete service path in a disposable AWS range before use.
 The native appliance path is AWS-only; Proxmox rejects these fields.
+
+The provider owns bootstrap and verified identity. The platform renders cloud
+infrastructure and topology-derived addresses/routes. The lab owns device policy
+and exercise behavior through its selected policy files; probes, weights, penalties,
+scenario content and private teaching material belong to the lab/scorer.
+Ansible currently executes locally inside the configured guest. Network-device
+Ansible needs a separate guest controller/runtime design. Lab-managed routing and
+additional policy features are also separate designs.
 
 ### Live competition scoring
 

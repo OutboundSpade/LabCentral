@@ -132,6 +132,16 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 	}
 	subnets := []string{n.Subnet, n.EdgeSubnet}
 	groups := []string{n.SG, n.GatewaySG, n.ManagementSG, n.PANOSManagementSG, n.PANOSClientSG}
+	components := map[string]string{}
+	for _, grant := range n.PANOSManagement {
+		groups = append(groups, grant.DestinationSG, grant.ClientSG)
+		if grant.DestinationSG != "" {
+			components[grant.DestinationSG] = panosGroupComponent(grant.Firewall, false)
+		}
+		if grant.ClientSG != "" {
+			components[grant.ClientSG] = panosGroupComponent(grant.Firewall, true)
+		}
+	}
 	tables := []string{n.Route, n.EdgeRoute}
 	for _, seg := range n.Segments {
 		subnets = append(subnets, seg.Subnet)
@@ -164,7 +174,7 @@ func checkRecordedNetwork(ctx context.Context, a *ec2.Client, c lc.Command) erro
 					if e = check(v.Tags, sg); e != nil {
 						return e
 					}
-					component := ""
+					component := components[sg]
 					if sg == n.PANOSManagementSG {
 						component = "panos-management-sg"
 					}

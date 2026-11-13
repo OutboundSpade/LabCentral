@@ -1,23 +1,6 @@
 # In-lab scoreboard feed
 
-For the initial MWCCDC practice, use the existing **MWCCDC practice scorer** in the
-companion `Deployment-Kits-CCDC` repository. Its updated `ccdc.score` worker can
-publish this exact feed with `--labcentral-feed /var/lib/ccdc/labcentral/scoreboard.json`.
-It preserves the practice's 21 external functional checks, four signed internal
-checks, cumulative points and round history. The exporter records completion time
-and weights with each committed round, whitelists public fields, and retains the
-previous file if publication fails. No scorer login or raw admin API is exposed.
-
-Install the updated `ccdc` package in the scorer guest and run this file server as
-the same Unix user as the scoring worker. Supply the native template's scoring
-profile; `--labcentral-feed` selects a scoring-only validator without Proxmox
-placement/NIC assumptions. For the signed probe receiver or organizer web service,
-the scorer's `web --native-profile` mode uses that same validator. Its original
-standalone mode remains unchanged when these options are omitted. See the kit's
-`Proxmox/MWCCDC-INVITES-2026/docs/SETUP.md` for the service commands. Native AWS
-provisioning remains in your separate template, not the Proxmox deployment runner.
-
-This optional adapter runs **inside a hidden Linux scorer VM**. It serves a file
+This optional helper runs **inside a hidden Linux scorer VM**. It serves a file
 produced by the scoring engine on `127.0.0.1:18080/scoreboard.json`. LabCentral reads
 it through verified SSH. Install and supervise it through your template's guest
 provisioning; it requires Python 3 and no additional packages:
@@ -68,11 +51,15 @@ readable by the adapter process. Do not reset `generatedAt` whenever it is read:
 stopped scoring must become stale. The bot retains its own round history; LabCentral
 persists the last good snapshot, not a second scoring database.
 
-For a different scoring engine, supply an exporter for its database/API. Do not point
+For your scoring engine, supply an exporter for its database/API. Do not point
 LabCentral at a bot login page or a raw admin API. This file contains **only** the
 fields shown: no passwords, target IPs, probe details, HTML, cookies, or admin actions.
 LabCentral derives the range/team identity from the pinned allocation; the feed
 does not name a team. All ranges should use the same points rules.
+The lab/scorer owns probes, weights, penalties, round history and exercise content.
+Engine installation, package commands, adapter setup and private teaching material
+belong in the lab or kit repository. LabCentral owns the bounded, read-only
+projection and its authenticated display.
 
 Finally, select **Live Red vs. Blue** when creating a meeting from this template.
 The student meeting page displays standings and the student's service breakdown;

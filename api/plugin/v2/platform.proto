@@ -144,6 +144,7 @@ message Machine {
   HostnamePeers hostname_peers = 9 [json_name = "hostnamePeers"];
   MachinePlatform platform = 10 [json_name = "platform"];
   map<string, bytes> extensions = 11 [json_name = "extensions"];
+  repeated string management_clients = 12 [json_name = "managementClients"];
   reserved 6;
 }
 message NIC {
