@@ -26,10 +26,10 @@ function identifier(value: unknown): value is string {
   );
 }
 
-export function terminalURL(target: TerminalTarget) {
+export function terminalURL(target: TerminalTarget, coach = true) {
   const query = new URLSearchParams();
   for (const key of KEYS) query.set(key, target[key]);
-  return `${TERMINAL_PATH}?${query}`;
+  return `${coach ? TERMINAL_PATH : "/terminal/"}?${query}`;
 }
 
 export function parseTarget(search: string): TerminalTarget | null {
@@ -53,7 +53,9 @@ export function parseInventory(value: unknown): TerminalInventory | null {
     if (!item || !identifier(item.name) || typeof item.status !== "string" || typeof item.desktop !== "boolean") return null;
     const os = item.os ?? "linux";
     if (os !== "linux" && os !== "windows") return null;
-    machines.push({ name: item.name, status: item.status, desktop: item.desktop, os });
+    const appliance = item.appliance;
+    if (appliance !== undefined && appliance !== "vyos" && appliance !== "panos") return null;
+    machines.push({ name: item.name, status: item.status, desktop: item.desktop, os, ssh: item.ssh !== false, ...(appliance ? {appliance} : {}) });
   }
   return {
     teamID: v.teamID as string,
@@ -247,6 +249,7 @@ export class TerminalConnection {
     readonly target: TerminalTarget,
     private screen: TerminalScreen,
     private publish: (state: TerminalState) => void,
+    private coach = true,
   ) {}
 
   #set(patch: Partial<TerminalState>) {
@@ -276,7 +279,7 @@ export class TerminalConnection {
   start() {
     if (this.#disposed) return;
     this.#retries = 0;
-    void this.#run("Checking your administrator session…");
+    void this.#run("Checking your machine access…");
   }
   // Explicit reset from any state: drop the current shell, restore the retry
   // budget and authorize a fresh one for the same pinned allocation.
@@ -341,8 +344,10 @@ export class TerminalConnection {
         true,
         false,
       );
-    if (!value.user.admin)
+    if (this.coach && !value.user.admin)
       return this.#deny("This account is no longer a meeting administrator. The console closed and its transcript was cleared.", true, false);
+    if (!this.coach && (value.membership?.switching || value.lab?.team?.id !== this.target.team || value.lab.instanceID !== this.target.instance))
+      return this.#deny("Your team or allocation changed. The console closed and its transcript was cleared.", true, false);
     const problem = meetingProblem(value, this.target);
     // A non-final problem stays stopped; repeated polls do not re-clear it.
     if (problem && !(this.state.phase === "denied" && !problem.final)) this.#deny(problem.message, true, !problem.final);
@@ -433,16 +438,18 @@ export class TerminalConnection {
           true,
           false,
         );
-      if (!who.user.admin)
+      if (this.coach && !who.user.admin)
         return this.#deny("Only meeting administrators can open machine consoles.", true, false);
+      if (!this.coach && (who.membership?.switching || who.lab?.team?.id !== team || who.lab.instanceID !== instance))
+        return this.#deny("This machine is no longer in your current team allocation.", true, false);
       this.#owner = who.user.id;
       const problem = meetingProblem(who, this.target);
       if (problem) return this.#deny(`${problem.message} Open SSH again from the meeting page.`, true, !problem.final);
       csrf = who.csrf;
-      const list = await this.#get(`/api/admin/teams/${encodeURIComponent(team)}/machines`, abort);
+      const list = await this.#get(this.coach ? `/api/admin/teams/${encodeURIComponent(team)}/machines` : "/api/machines", abort);
       if (!live()) return;
       if (list.status === 401 || list.status === 403)
-        return this.#deny("Your administrator access was not accepted. Sign in again as a meeting administrator.", true, false);
+        return this.#deny("Your machine access was not accepted. Return to your lab and sign in again.", true, false);
       if ([400, 404, 409, 410].includes(list.status)) {
         const reason = (list.body as { error?: unknown } | null)?.error;
         return this.#deny(
@@ -466,7 +473,7 @@ export class TerminalConnection {
           false,
         );
       const found = parsed.machines.find((m) => m.name === machine);
-      if (!found)
+      if (!found || !found.ssh)
         return this.#deny(`${machine} is not an SSH machine in this revision.`, true, false);
       inventory = parsed;
       this.#set({ inventory });
@@ -481,7 +488,7 @@ export class TerminalConnection {
   #open(generation: number, csrf: string, inventory: TerminalInventory) {
     const { team, machine, meeting, template, instance } = this.target;
     const url = new URL(
-      `/api/admin/teams/${encodeURIComponent(team)}/machines/${encodeURIComponent(machine)}/terminal`,
+      this.coach ? `/api/admin/teams/${encodeURIComponent(team)}/machines/${encodeURIComponent(machine)}/terminal` : `/api/machines/${encodeURIComponent(machine)}/terminal`,
       location.href,
     );
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";

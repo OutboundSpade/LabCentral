@@ -21,6 +21,8 @@
     WifiOff,
   } from "@lucide/svelte";
   import { session } from "$lib/api";
+  let { coach = true }: { coach?: boolean } = $props();
+  const backHref = $derived(coach ? "/admin/" : "/lab/");
   import {
     RETRY_DELAYS,
     TerminalConnection,
@@ -294,7 +296,7 @@
           );
         },
       };
-      connection = new TerminalConnection(pinned, screen, (state) => (view = state));
+      connection = new TerminalConnection(pinned, screen, (state) => (view = state), coach);
       view = connection.state;
       unsubscribe = session.subscribe((value) => connection?.session(value));
       observer.observe(host);
@@ -335,9 +337,9 @@
     >
     <h1 class="mt-4 text-lg font-semibold">This console link is incomplete</h1>
     <p class="mt-2 text-sm leading-relaxed text-base-content/70">
-      Choose the team and machine again in Coach machine access, then open SSH.
+      Choose the machine again from your lab, then open its terminal.
     </p>
-    <a href="/admin/" class="btn btn-sm btn-primary mt-6 min-h-11">Choose a machine</a>
+    <a href={backHref} class="btn btn-sm btn-primary mt-6 min-h-11">Choose a machine</a>
   </section>
 {:else}
   <section
@@ -348,7 +350,7 @@
   >
     <div class="border-b border-base-content/10 bg-base-100 px-3 py-1.5 sm:px-4">
       <PageHeader compact title={`${target?.machine ?? "Machine"} · SSH`} titleId="terminal-title">
-        {#snippet eyebrow()}{#if !compact}<a class="link link-hover" href="/admin/">{meetingLabel}</a> · <span>{teamLabel}</span> · <span class="inline-block max-w-48 truncate align-bottom font-mono" title={target?.template}>Revision {target?.template ?? ""}</span>{/if}{/snippet}
+        {#snippet eyebrow()}{#if !compact}<a class="link link-hover" href={backHref}>{meetingLabel}</a> · <span>{teamLabel}</span> · <span class="inline-block max-w-48 truncate align-bottom font-mono" title={target?.template}>Revision {target?.template ?? ""}</span>{/if}{/snippet}
         <div data-terminal-actions class="flex flex-wrap items-center gap-2">
         <span
           class={[
@@ -436,8 +438,8 @@
             ? `Stopped after ${RETRY_DELAYS.length} automatic retries. ${view?.message} Reconnect when the machine is available.`
             : view?.message}</span
         >
-        {#if phase === "denied" && !view?.canReconnect}<a href="/admin/" class="btn btn-sm min-h-11"
-            >Meeting admin</a
+        {#if phase === "denied" && !view?.canReconnect}<a href={backHref} class="btn btn-sm min-h-11"
+            >Back to lab</a
           >{/if}
       </div>
     {/if}

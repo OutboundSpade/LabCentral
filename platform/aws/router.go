@@ -8,6 +8,7 @@ import (
 	aw "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	t "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"strings"
 )
 
 func networkVPC(resource lc.Resource) string {
@@ -44,8 +45,10 @@ func (p *Provider) routerNetworking(ctx context.Context, a *ec2.Client, c lc.Com
 		}
 		id := aw.ToString(eni.NetworkInterfaceId)
 		enis[index] = id
-		if _, err = a.ModifyNetworkInterfaceAttribute(ctx, &ec2.ModifyNetworkInterfaceAttributeInput{NetworkInterfaceId: &id, SourceDestCheck: &t.AttributeBooleanValue{Value: aw.Bool(false)}}); err != nil {
-			return err
+		if !c.Machine.NICs[index].Management {
+			if _, err = a.ModifyNetworkInterfaceAttribute(ctx, &ec2.ModifyNetworkInterfaceAttributeInput{NetworkInterfaceId: &id, SourceDestCheck: &t.AttributeBooleanValue{Value: aw.Bool(false)}}); err != nil {
+				return err
+			}
 		}
 	}
 	if len(enis) != len(c.Machine.NICs) {
@@ -73,7 +76,7 @@ func (p *Provider) routerNetworking(ctx context.Context, a *ec2.Client, c lc.Com
 			err = ensureDestinationRoute(ctx, a, c.Owner, ns.VPC, table, route.CIDR, enis[route.RouterNIC], true, waitRouteRetry)
 			// Only a confirmed unsupported destination/target falls back. Guest routes
 			// already exist on all machines. Timeout and authorization failures stay unknown.
-			if err != nil && !apiCode(err, "InvalidParameterValue") && !apiCode(err, "InvalidParameterCombination") {
+			if err != nil && (lc.HasAppliances(c.Source.Lab) || strings.HasPrefix(route.Network, "route:") || (!apiCode(err, "InvalidParameterValue") && !apiCode(err, "InvalidParameterCombination"))) {
 				return err
 			}
 		}

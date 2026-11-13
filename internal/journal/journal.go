@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/OutboundSpade/LabCentral/v2/internal/durablefile"
 	"os"
 	"path/filepath"
 )
@@ -49,15 +50,7 @@ func (j Journal) write(path string, r record) error {
 	if e != nil {
 		return e
 	}
-	if e = os.Rename(f.Name(), path); e != nil {
-		return e
-	}
-	d, e := os.Open(j.Root)
-	if e != nil {
-		return e
-	}
-	defer d.Close()
-	return d.Sync()
+	return durablefile.Rename(f.Name(), path)
 }
 
 // Do never retries an uncertain create. find must return its exact owned result.

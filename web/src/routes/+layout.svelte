@@ -79,7 +79,7 @@
       : []),
   ]);
   // The coach console tab is a full-width workspace without the phone tab bar.
-  const workspace = $derived(page.url.pathname.startsWith("/admin/terminal/"));
+  const workspace = $derived(page.url.pathname.startsWith("/admin/terminal/") || page.url.pathname.startsWith("/terminal/"));
   function active(within: string[]) {
     return within.some((prefix) => page.url.pathname.startsWith(prefix));
   }

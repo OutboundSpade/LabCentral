@@ -26,6 +26,9 @@ func PlatformCapabilities(platform string) (Capabilities, bool) {
 	return c, true
 }
 func CheckCapabilities(l Lab, platform string) error {
+	if platform != "aws" && HasAppliances(l) {
+		return problem(Unsupported, "images.appliance", "native appliances are implemented only on AWS")
+	}
 	c, ok := PlatformCapabilities(platform)
 	if !ok {
 		return problem(Unsupported, "environment.platform", "unknown platform")
@@ -36,6 +39,9 @@ func CheckCapabilities(l Lab, platform string) error {
 	for index, n := range sortedKeys(l.Networks) {
 		f := "networks." + n
 		v := l.Networks[n]
+		if platform != "aws" && (v.DefaultRouter != "" || len(v.Routes) > 0) {
+			return problem(Unsupported, f, "explicit appliance routing is implemented only on AWS")
+		}
 		if index >= c.MaxNetworks {
 			return problem(Unsupported, f, "network count exceeds platform limit")
 		}
@@ -66,6 +72,9 @@ func CheckCapabilities(l Lab, platform string) error {
 	for _, n := range sortedKeys(l.Machines) {
 		v := l.Machines[n]
 		f := "machines." + n
+		if platform != "aws" && len(v.ManagementClients) > 0 {
+			return problem(Unsupported, f+".managementClients", "PAN-OS management grants are implemented only on AWS")
+		}
 		if l.Images[v.Image].OS == "windows" {
 			if len(n) > 15 {
 				return problem(Unsupported, f, "Windows computer names must be at most 15 characters")

@@ -54,9 +54,9 @@ func TestHostedBrowserLaunch(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(s.Config.SDKRoot, "dcv.js"), sdk, 0600); err != nil {
 		t.Fatal(err)
 	}
-	desktop := &desktopSession{record: accessRecord{ID: "access", UserID: session.User.ID, SessionID: session.ID, TeamID: teams[0].ID, InstanceID: teams[0].InstanceID, Expires: time.Now().Add(time.Hour)}, ctx: ctx, cancel: cancel, cookie: "browser-desktop-cookie"}
-	s.desktops["access"] = desktop
-	s.tickets[digest("browser-ticket")] = launchTicket{"access", session.ID, time.Now().Add(time.Minute)}
+	desktop := &desktopSession{record: accessRecord{ID: "aaaaaaaaaaaaaaaaaaaaaaaa", UserID: session.User.ID, SessionID: session.ID, TeamID: teams[0].ID, InstanceID: teams[0].InstanceID, Expires: time.Now().Add(time.Hour)}, ctx: ctx, cancel: cancel, cookie: "browser-desktop-cookie"}
+	s.desktops[desktop.record.ID] = desktop
+	s.tickets[digest("browser-ticket")] = launchTicket{desktop.record.ID, session.ID, time.Now().Add(time.Minute)}
 	// Both origins use the real HTTP policy and launch endpoint.
 	app := httptest.NewUnstartedServer(nil)
 	defer app.Close()

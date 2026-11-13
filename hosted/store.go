@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/OutboundSpade/LabCentral/v2/internal/store"
-	"net/url"
 	"path/filepath"
 	"time"
 )
@@ -39,7 +38,7 @@ func OpenStore(root string) (*Store, error) {
 	if e = s.DB.Close(); e != nil {
 		return nil, e
 	}
-	uri := (&url.URL{Scheme: "file", Path: filepath.Join(s.Root, "state.db")}).String()
+	uri := store.SQLiteURI(filepath.Join(s.Root, "state.db"))
 	writer, e := sql.Open("sqlite", uri+"?_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(FULL)")
 	if e != nil {
 		return nil, e
@@ -144,7 +143,7 @@ func (s *Store) FinishSwitch(ctx context.Context, user string) error {
 	_, e := s.DB.ExecContext(ctx, `UPDATE memberships SET team_id=pending_team,pending_team='',switching=0 WHERE user_id=? AND switching=1`, user)
 	return e
 }
-func (s *Store) CreateMeeting(ctx context.Context, m Meeting, count, capacity int) error {
+func (s *Store) CreateMeeting(ctx context.Context, m Meeting, count, capacity int, liveRedBlue ...bool) error {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return e
@@ -180,6 +179,11 @@ func (s *Store) CreateMeeting(ctx context.Context, m Meeting, count, capacity in
 	_, e = tx.ExecContext(ctx, `INSERT INTO objects VALUES('meeting','current',?) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body`, b)
 	if e != nil {
 		return e
+	}
+	if len(liveRedBlue) > 0 && liveRedBlue[0] {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO objects VALUES('live-red-blue',?,?)`, m.ID, []byte("true")); e != nil {
+			return e
+		}
 	}
 	return tx.Commit()
 }

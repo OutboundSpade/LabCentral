@@ -21,6 +21,15 @@ type Store struct {
 	Root string
 }
 
+// SQLiteURI uses a URL path on every host, including Windows drive paths.
+func SQLiteURI(path string) string {
+	path = filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
 func Open(root string) (*Store, error) {
 	var err error
 	root, err = filepath.Abs(root)
@@ -36,7 +45,7 @@ func Open(root string) (*Store, error) {
 	// Immediate transactions take the write lock at BEGIN and wait for it, instead of
 	// failing with SQLITE_BUSY when a read transaction later needs to write while another
 	// process (for example a second CLI command on the same state) is writing.
-	db, e := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: filepath.Join(root, "state.db")}).String()+"?_txlock=immediate&_pragma=busy_timeout(30000)&_pragma=foreign_keys(1)&_pragma=synchronous(FULL)")
+	db, e := sql.Open("sqlite", SQLiteURI(filepath.Join(root, "state.db"))+"?_txlock=immediate&_pragma=busy_timeout(30000)&_pragma=foreign_keys(1)&_pragma=synchronous(FULL)")
 	if e != nil {
 		return nil, e
 	}

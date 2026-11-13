@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -511,7 +512,7 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
 		return err
 	}
-	pub, err := ensureKey(filepath.Join(keyDir, "id_ed25519"))
+	pub, err := ensureKey(filepath.Join(keyDir, "id_ed25519"), HasAppliances(i.Plan.Source.Lab))
 	if err != nil {
 		return err
 	}
@@ -533,19 +534,29 @@ func (e *Engine) prepare(ctx context.Context, i *Instance) error {
 	}
 	return e.state.Put(ctx, "instance", i.ID, i)
 }
-func ensureKey(path string) (string, error) {
+func ensureKey(path string, useRSA ...bool) (string, error) {
 	if b, e := os.ReadFile(path); e == nil {
 		key, e := ssh.ParsePrivateKey(b)
 		if e != nil {
 			return "", e
 		}
+		if len(useRSA) > 0 && useRSA[0] && key.PublicKey().Type() != ssh.KeyAlgoRSA {
+			return "", problem(RecoveryRequired, "credentials", "native appliances require the original RSA client key; refusing to replace an existing key")
+		}
 		return string(ssh.MarshalAuthorizedKey(key.PublicKey())), nil
 	} else if !os.IsNotExist(e) {
 		return "", e
 	}
-	_, priv, e := ed25519.GenerateKey(rand.Reader)
+	_, generated, e := ed25519.GenerateKey(rand.Reader)
 	if e != nil {
 		return "", e
+	}
+	var priv any = generated
+	if len(useRSA) > 0 && useRSA[0] {
+		priv, e = rsa.GenerateKey(rand.Reader, 3072)
+		if e != nil {
+			return "", e
+		}
 	}
 	block, e := ssh.MarshalPrivateKey(priv, "")
 	if e != nil {
@@ -554,8 +565,11 @@ func ensureKey(path string) (string, error) {
 	if e = privatefile.Write(path, pem.EncodeToMemory(block)); e != nil {
 		return "", e
 	}
-	pub, _ := ssh.NewPublicKey(priv.Public())
-	return string(ssh.MarshalAuthorizedKey(pub)), nil
+	signer, e := ssh.NewSignerFromKey(priv)
+	if e != nil {
+		return "", e
+	}
+	return string(ssh.MarshalAuthorizedKey(signer.PublicKey())), nil
 }
 
 // execute covers a lost provider result before the library can commit it.
@@ -972,6 +986,12 @@ func (e *Engine) SSHMaterial(ctx context.Context, instance, machine string) (Ins
 		if m.Name == machine {
 			for _, r := range i.Resources {
 				if r.Kind == "machine" && r.Name == machine {
+					if m.Appliance != "" {
+						if r.HostPublicKey == "" {
+							return i, m, r, nil, problem(RecoveryRequired, machine, "appliance host identity is not confirmed")
+						}
+						m.HostPublicKey = r.HostPublicKey
+					}
 					b, err := os.ReadFile(filepath.Join(e.state.Root, "credentials", instance, "id_ed25519"))
 					return i, m, r, b, err
 				}
@@ -1067,7 +1087,11 @@ func (e *Engine) prepareCredentials(instance string, machines []PlannedMachine) 
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	if _, err := ensureKey(filepath.Join(dir, "id_ed25519")); err != nil {
+	appliances := false
+	for _, m := range machines {
+		appliances = appliances || m.Appliance != ""
+	}
+	if _, err := ensureKey(filepath.Join(dir, "id_ed25519"), appliances); err != nil {
 		return err
 	}
 	for _, m := range machines {

@@ -41,6 +41,7 @@ message Base {
   string user = 2 [json_name = "user"];
   int32 disk_gi_b = 3 [json_name = "diskGiB"];
   string identity = 4 [json_name = "identity"];
+  string appliance = 6 [json_name = "appliance"];
 }
 message AWSConfig {
   string region = 1 [json_name = "region"];
@@ -126,6 +127,7 @@ message PlannedMachine {
   repeated PlannedNIC nics = 14 [json_name = "nics"];
   string resolver = 15 [json_name = "resolver"];
   string os = 16 [json_name = "os"];
+  string appliance = 17 [json_name = "appliance"];
 }
 message HostEntry {
   string name = 1 [json_name = "name"];
@@ -142,11 +144,13 @@ message Machine {
   HostnamePeers hostname_peers = 9 [json_name = "hostnamePeers"];
   MachinePlatform platform = 10 [json_name = "platform"];
   map<string, bytes> extensions = 11 [json_name = "extensions"];
+  repeated string management_clients = 12 [json_name = "managementClients"];
   reserved 6;
 }
 message NIC {
   string network = 1 [json_name = "network"];
   optional int32 address = 2 [json_name = "address"];
+  bool management = 3 [json_name = "management"];
 }
 message HostnamePeers {
   bool explicit = 1 [json_name = "explicit"];
@@ -179,6 +183,7 @@ message PlannedNIC {
   string gateway = 5 [json_name = "gateway"];
   bool default = 6 [json_name = "default"];
   repeated PlannedRoute routes = 7 [json_name = "routes"];
+  bool management = 8 [json_name = "management"];
 }
 message PlannedRoute {
   string network = 1 [json_name = "network"];
@@ -220,6 +225,7 @@ message Image {
   ImageBuild build = 5 [json_name = "build"];
   ImagePlatform platform = 6 [json_name = "platform"];
   map<string, bytes> extensions = 7 [json_name = "extensions"];
+  ApplianceImage appliance = 8 [json_name = "appliance"];
   reserved 2;
   reserved 3;
 }
@@ -237,6 +243,10 @@ message AWSImageOptions {
 }
 message ProxmoxImageOptions {
 }
+message ApplianceImage {
+  string kind = 1 [json_name = "kind"];
+  string configuration = 2 [json_name = "configuration"];
+}
 message Input {
   string type = 1 [json_name = "type"];
   bool required = 3 [json_name = "required"];
@@ -251,7 +261,13 @@ message Network {
   string egress = 2 [json_name = "egress"];
   string cidr = 3 [json_name = "cidr"];
   map<string, bytes> extensions = 4 [json_name = "extensions"];
+  string default_router = 5 [json_name = "defaultRouter"];
+  repeated NetworkRoute routes = 6 [json_name = "routes"];
   reserved 1;
+}
+message NetworkRoute {
+  string cidr = 1 [json_name = "cidr"];
+  string router = 2 [json_name = "router"];
 }
 message File {
   string path = 1 [json_name = "path"];
@@ -272,6 +288,7 @@ message Resource {
   repeated NativeResource children = 7 [json_name = "children"];
   bool complete = 8 [json_name = "complete"];
   bytes data = 9 [json_name = "data"];
+  string host_public_key = 10 [json_name = "hostPublicKey"];
 }
 message NativeResource {
   string kind = 1 [json_name = "kind"];

@@ -13,7 +13,7 @@ import (
 // temporarily empty tag query never proves an uncertain create did not happen.
 func findNetworkChild(ctx context.Context, a *ec2.Client, owner, kind string, cidrs ...string) (string, bool, error) {
 	f := filters(owner, "network")
-	if strings.HasPrefix(kind, "segment-") || kind == "management-sg" {
+	if strings.HasPrefix(kind, "segment-") || kind == "management-sg" || strings.HasPrefix(kind, "panos-") {
 		f = componentFilters(owner, kind)
 		if strings.HasSuffix(kind, "-subnet") {
 			kind = "subnet-component"

@@ -12,8 +12,9 @@ import (
 )
 
 type Visibility struct {
-	Audience       string   `json:"audience" yaml:"audience"`
-	HiddenMachines []string `json:"hiddenMachines,omitempty" yaml:"hiddenMachines,omitempty"`
+	ParticipantTerminals []string `json:"participantTerminals,omitempty" yaml:"participantTerminals,omitempty"`
+	Audience             string   `json:"audience" yaml:"audience"`
+	HiddenMachines       []string `json:"hiddenMachines,omitempty" yaml:"hiddenMachines,omitempty"`
 }
 type Practice struct {
 	DesktopMachine string `json:"desktopMachine" yaml:"desktopMachine"`
@@ -145,19 +146,29 @@ type Variant struct {
 	Stages     []string `json:"stages" yaml:"stages"`
 }
 type Bundle struct {
-	Version    int           `json:"version" yaml:"version"`
-	Visibility Visibility    `json:"visibility" yaml:"visibility"`
-	Practice   *Practice     `json:"practice,omitempty" yaml:"practice,omitempty"`
-	Library    *Library      `json:"library,omitempty" yaml:"library,omitempty"`
-	Notes      string        `json:"notes,omitempty" yaml:"notes,omitempty"`
-	Extensions lc.Extensions `json:"extensions,omitempty" yaml:"extensions,omitempty"`
-	Reset      []Step        `json:"reset,omitempty" yaml:"reset,omitempty"`
-	Checks     []Check       `json:"checks,omitempty" yaml:"checks,omitempty"`
-	Breaks     []Break       `json:"breaks,omitempty" yaml:"breaks,omitempty"`
-	Stages     []Stage       `json:"stages,omitempty" yaml:"stages,omitempty"`
-	Scenarios  []Scenario    `json:"scenarios,omitempty" yaml:"scenarios,omitempty"`
-	Files      []lc.File     `json:"files" yaml:"-"`
-	raw        []byte
+	LiveScoring *LiveScoring  `json:"liveScoring,omitempty" yaml:"liveScoring,omitempty"`
+	Version     int           `json:"version" yaml:"version"`
+	Visibility  Visibility    `json:"visibility" yaml:"visibility"`
+	Practice    *Practice     `json:"practice,omitempty" yaml:"practice,omitempty"`
+	Library     *Library      `json:"library,omitempty" yaml:"library,omitempty"`
+	Notes       string        `json:"notes,omitempty" yaml:"notes,omitempty"`
+	Extensions  lc.Extensions `json:"extensions,omitempty" yaml:"extensions,omitempty"`
+	Reset       []Step        `json:"reset,omitempty" yaml:"reset,omitempty"`
+	Checks      []Check       `json:"checks,omitempty" yaml:"checks,omitempty"`
+	Breaks      []Break       `json:"breaks,omitempty" yaml:"breaks,omitempty"`
+	Stages      []Stage       `json:"stages,omitempty" yaml:"stages,omitempty"`
+	Scenarios   []Scenario    `json:"scenarios,omitempty" yaml:"scenarios,omitempty"`
+	Files       []lc.File     `json:"files" yaml:"-"`
+	raw         []byte
+}
+
+// LiveScoring is a read-only JSON endpoint on loopback inside the scorer guest.
+// It never identifies a host reachable directly from the hosted server.
+type LiveScoring struct {
+	Machine           string `json:"machine" yaml:"machine"`
+	Port              int    `json:"port" yaml:"port"`
+	Path              string `json:"path" yaml:"path"`
+	StaleAfterSeconds int    `json:"staleAfterSeconds,omitempty" yaml:"staleAfterSeconds,omitempty"`
 }
 
 func (*Bundle) StrictYAMLShape() {}

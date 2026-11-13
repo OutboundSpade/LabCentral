@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ type accessRecord struct {
 	Machine, OS, UserName                     string
 	Platform                                  string
 	Coach                                     bool
+	MachineScoped                             bool
 }
 type desktopSession struct {
 	record  accessRecord
@@ -54,6 +56,7 @@ func (s *Service) launchDesktop(w http.ResponseWriter, r *http.Request, v Sessio
 		return
 	}
 	record := accessRecord{ID: id, UserID: v.User.ID, SessionID: v.ID, TeamID: team.ID, InstanceID: team.InstanceID, Expires: expiry, Machine: machine, OS: os, Platform: s.env.Platform, UserName: v.User.Name, Coach: r.PathValue("id") != "" && v.User.Admin}
+	record.MachineScoped = r.PathValue("machine") != ""
 	if key := record.consoleKey(); key != "" {
 		unlock, err := s.lockConsole(r.Context(), key)
 		if err != nil {
@@ -174,11 +177,22 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		s.acceptLaunch(w, r)
 		return
 	}
+	var id, base string
+	var pathErr error
+	r, id, base, pathErr = desktopRequest(r)
+	if pathErr != nil {
+		http.NotFound(w, r)
+		return
+	}
 	if origin := r.Header.Get("Origin"); (origin != "" || r.URL.Path == "/websocket") && origin != s.Config.DesktopOrigin {
 		http.Error(w, "invalid origin", 403)
 		return
 	}
-	cookie, e := r.Cookie("__Host-labcentral_desktop")
+	cookieName := "__Host-labcentral_desktop"
+	if id != "" {
+		cookieName = desktopCookieName(id)
+	}
+	cookie, e := r.Cookie(cookieName)
 	if e != nil {
 		http.Error(w, "Open your desktop from LabCentral.", 401)
 		return
@@ -186,13 +200,13 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 	s.desktopMu.Lock()
 	var d *desktopSession
 	for _, candidate := range s.desktops {
-		if candidate.cookie == cookie.Value {
+		if candidate.cookie == cookie.Value && (id == "" || candidate.record.ID == id) {
 			d = candidate
 			break
 		}
 	}
 	s.desktopMu.Unlock()
-	if (r.URL.Path == "/status" || d == nil || d.ctx.Err() != nil) && s.desktopCookieStatus(w, r, cookie.Value) {
+	if (r.URL.Path == "/status" || d == nil || d.ctx.Err() != nil) && s.desktopCookieStatus(w, r, cookie.Value, id) {
 		return
 	}
 	if d == nil {
@@ -209,11 +223,17 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/lesson-client.js" {
-		http.ServeFile(w, r, filepath.Join(s.Config.WebRoot, "lesson.js"))
+		program, err := os.ReadFile(filepath.Join(s.Config.WebRoot, "lesson.js"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/javascript")
+		_, _ = w.Write([]byte(desktopProgram(string(program), base)))
 		return
 	}
 	if r.URL.Path == "/lesson-ui.css" {
-		s.desktopLessonStyles(w, r)
+		s.desktopLessonStyles(w, r, base)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/_app/") {
@@ -230,7 +250,7 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		if d.record.Platform == "proxmox" {
 			page = strings.Replace(page, `<link rel="stylesheet" href="/desktop.css">`, `<link rel="stylesheet" href="/lesson-ui.css"><link rel="stylesheet" href="/desktop.css">`, 1)
 		}
-		_, _ = w.Write([]byte(page))
+		_, _ = w.Write([]byte(desktopDocument(page, base)))
 		return
 	}
 	if r.URL.Path == "/desktop.css" {
@@ -243,8 +263,11 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 		client := desktopJS
 		if d.record.Platform == "proxmox" {
 			client = novncJS
+			if base != "" {
+				client = strings.ReplaceAll(client, "location.origin", "(location.origin+'"+base+"')")
+			}
 		}
-		_, _ = w.Write([]byte(client))
+		_, _ = w.Write([]byte(desktopProgram(client, base)))
 		return
 	}
 	if r.URL.Path == "/credentials" {
@@ -271,7 +294,20 @@ func (s *Service) desktopHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	stop := context.AfterFunc(d.ctx, cancel)
 	defer stop()
-	d.proxy.ServeHTTP(w, r.WithContext(ctx))
+	proxy := *d.proxy
+	modify := proxy.ModifyResponse
+	proxy.ModifyResponse = func(response *http.Response) error {
+		if modify != nil {
+			if err := modify(response); err != nil {
+				return err
+			}
+		}
+		if location := response.Header.Get("Location"); base != "" && strings.HasPrefix(location, "/") && !strings.HasPrefix(location, "//") {
+			response.Header.Set("Location", base+location)
+		}
+		return nil
+	}
+	proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 func (s *Service) acceptLaunch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" || r.Header.Get("Origin") != s.Config.Origin {
@@ -293,8 +329,8 @@ func (s *Service) acceptLaunch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Launch link expired. Open the desktop again from your lab.", 403)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "__Host-labcentral_desktop", Value: d.cookie, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: d.record.Expires})
-	http.Redirect(w, r, "/", 303)
+	http.SetCookie(w, &http.Cookie{Name: desktopCookieName(d.record.ID), Value: d.cookie, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, Expires: d.record.Expires})
+	http.Redirect(w, r, desktopPath(d.record.ID)+"/", 303)
 }
 func (s *Service) desktopAuthorized(ctx context.Context, d *desktopSession) bool {
 	if d.ctx.Err() != nil || !d.record.Expires.After(time.Now()) {
@@ -305,6 +341,9 @@ func (s *Service) desktopAuthorized(ctx context.Context, d *desktopSession) bool
 		return false
 	}
 	ctx = context.WithValue(ctx, verifiedUserKey{}, v.User)
+	if !s.machineRecordAllowed(ctx, d.record) {
+		return false
+	}
 	if strings.HasPrefix(d.record.TeamID, "practice:") {
 		run, err := s.Store.practice(ctx, strings.TrimPrefix(d.record.TeamID, "practice:"))
 		publicationErr := s.practiceDisclosure(ctx, run.LabID)
@@ -407,6 +446,8 @@ func (s *Service) revalidateDesktops(ctx context.Context) {
 const desktopHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/desktop.css"><title>Your lab desktop · LabCentral</title></head><body data-practice-run="{{practiceRun}}"><header><a href="{{origin}}/lab/">← Your lab</a><p id="status" role="status">Connecting…</p><button id="clipboard" type="button" disabled title="Copy from the desktop. Paste with Ctrl+V or ⌘V.">Copy from desktop</button><button id="paste" type="button" disabled>Paste to desktop</button><button id="fullscreen" type="button">Full screen</button></header><main id="desktop-viewport" aria-label="Remote desktop"><div id="dcv-display"></div></main><dialog id="paste-dialog" aria-labelledby="paste-title"><h2 id="paste-title">Paste to desktop</h2><p><label for="paste-text">Paste text here with Ctrl+V or ⌘V.</label></p><textarea id="paste-text" rows="4" cols="28" spellcheck="false" autocomplete="off" aria-describedby="paste-help"></textarea><p id="paste-help">Then paste inside the desktop.<br>Terminals use Ctrl+Shift+V.</p><form method="dialog"><button>Cancel</button></form></dialog><script type="module" src="/client.js"></script></body></html>`
 const desktopCSS = `:root{font-family:system-ui,sans-serif;color-scheme:dark;color:#eceaf0;background:#15141b}*{box-sizing:border-box}body{margin:0;height:100dvh;display:flex;flex-direction:column}header{display:flex;align-items:center;gap:1rem;padding:.65rem 1rem;background:#1c1a24;flex-wrap:wrap;font-size:.85rem}header p{flex:1;margin:0}a{color:#c5a3ef;font-weight:600}button{border:1px solid #454051;border-radius:.5rem;padding:.4rem .7rem;background:#25222f;color:inherit;cursor:pointer}a:focus-visible,button:focus-visible{outline:3px solid #c5a3ef;outline-offset:3px}main{flex:1;min-height:0;overflow:hidden;position:relative}#dcv-display{width:100%;height:100%;transform-origin:top left}main:fullscreen{width:100vw;height:100vh} @media(max-width:480px){header{gap:.5rem;font-size:.75rem}header p{flex-basis:45%}button:disabled{opacity:.5;cursor:default}}`
 const desktopJS = `import dcv from '/dcvjs/dcv.js';
+const desktopAccessID=location.pathname.match(/^\/sessions\/([a-f0-9]{24})\//)?.[1]||'';
+const desktopRoute=()=>new URLSearchParams(desktopAccessID?{labcentralDesktop:desktopAccessID}:{});
 const status=document.getElementById('status');
 let credentials,connection;
 const copy=document.getElementById('clipboard');
@@ -431,10 +472,10 @@ dcv.setLogLevel(dcv.LogLevel.ERROR);
 try {
  const response=await fetch('/credentials',{cache:'no-store'});
  if(!response.ok)throw new Error('Access ended');credentials=await response.json();
- dcv.authenticate(location.origin,{promptCredentials:(auth)=>auth.sendCredentials({username:credentials.username,password:credentials.password}),error:()=>{credentials=null;ended('Connection ended. Return to your lab to reconnect.')},success:async(_,sessions)=>{
+ dcv.authenticate(location.origin,{httpExtraSearchParamsCallback:desktopRoute,promptCredentials:(auth)=>auth.sendCredentials({username:credentials.username,password:credentials.password}),error:()=>{credentials=null;ended('Connection ended. Return to your lab to reconnect.')},success:async(_,sessions)=>{
  const session=sessions.find(s=>s.sessionId===credentials.sessionID);credentials=null;
  if(!session){status.textContent='Your desktop is unavailable. Return to your lab to reconnect.';return}
- try{connection=await dcv.connect({url:location.origin,sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false;paste.disabled=false}else if(event.name==='paste'&&pasteDialog.open){pasteDialog.close();status.textContent='Connected · clipboard ready; paste inside the desktop.'}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;paste.disabled=true;pasteDialog.close();pasteText.value='';connection=null;ended('Disconnected. Return to your lab to reconnect.')}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
+ try{connection=await dcv.connect({url:location.origin,resourceBaseUrl:location.origin+(desktopAccessID?'/sessions/'+desktopAccessID:''),sessionId:session.sessionId,authToken:session.authToken,divId:'dcv-display',clipboardAutoSync:true,callbacks:{httpExtraSearchParamsCallback:desktopRoute,clipboardEvent:(client,event)=>{if(event.name==='established'){client.captureClipboardEvents(true);copy.disabled=false;paste.disabled=false}else if(event.name==='paste'&&pasteDialog.open){pasteDialog.close();status.textContent='Connected · clipboard ready; paste inside the desktop.'}},firstFrame:()=>{resize();status.textContent='Connected'},disconnect:()=>{copy.disabled=true;paste.disabled=true;pasteDialog.close();pasteText.value='';connection=null;ended('Disconnected. Return to your lab to reconnect.')}}});resize()}catch{status.textContent='Connection failed. Return to your lab to reconnect.'}
  }});
 }catch{ended('Access ended. Return to your lab to reconnect.')}`
 

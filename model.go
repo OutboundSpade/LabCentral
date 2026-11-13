@@ -44,11 +44,19 @@ type PlatformList struct {
 	Names []string `json:"names"`
 }
 type Image struct {
-	Base       string        `yaml:"base" json:"base"`
-	OS         string        `yaml:"os,omitempty" json:"os,omitempty" proto:"4"`
-	Build      *ImageBuild   `yaml:"build,omitempty" json:"build,omitempty" proto:"5"`
-	Platform   ImagePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"6"`
-	Extensions Extensions    `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"7"`
+	Base       string          `yaml:"base" json:"base"`
+	OS         string          `yaml:"os,omitempty" json:"os,omitempty" proto:"4"`
+	Build      *ImageBuild     `yaml:"build,omitempty" json:"build,omitempty" proto:"5"`
+	Platform   ImagePlatform   `yaml:"platform,omitempty" json:"platform,omitempty" proto:"6"`
+	Extensions Extensions      `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"7"`
+	Appliance  *ApplianceImage `yaml:"appliance,omitempty" json:"appliance,omitempty" proto:"8"`
+}
+
+// ApplianceImage selects a platform-owned native bootstrap, not an OS build.
+// Configuration contains bounded vendor CLI configuration, executed only in the guest.
+type ApplianceImage struct {
+	Kind          string `yaml:"kind" json:"kind"`
+	Configuration string `yaml:"configuration,omitempty" json:"configuration,omitempty"`
 }
 type ImageBuild struct {
 	Playbook string   `yaml:"playbook,omitempty" json:"playbook"`
@@ -97,16 +105,17 @@ type MachinePlatform struct {
 	Proxmox *ProxmoxMachineOptions `yaml:"proxmox,omitempty" json:"proxmox,omitempty"`
 }
 type Machine struct {
-	Image         string          `yaml:"image" json:"image"`
-	CPU           int             `yaml:"cpu" json:"cpu"`
-	Memory        string          `yaml:"memory" json:"memory"`
-	Disk          string          `yaml:"disk" json:"disk"`
-	Access        []string        `yaml:"access,omitempty" json:"access,omitempty"`
-	NICs          []NIC           `yaml:"nics,omitempty" json:"nics,omitempty" proto:"7"`
-	Forwarding    bool            `yaml:"forwarding,omitempty" json:"forwarding,omitempty" proto:"8"`
-	HostnamePeers HostnamePeers   `yaml:"hostnamePeers,omitempty" json:"hostnamePeers" proto:"9"`
-	Platform      MachinePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"10"`
-	Extensions    Extensions      `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"11"`
+	Image             string          `yaml:"image" json:"image"`
+	CPU               int             `yaml:"cpu" json:"cpu"`
+	Memory            string          `yaml:"memory" json:"memory"`
+	Disk              string          `yaml:"disk" json:"disk"`
+	Access            []string        `yaml:"access,omitempty" json:"access,omitempty"`
+	NICs              []NIC           `yaml:"nics,omitempty" json:"nics,omitempty" proto:"7"`
+	Forwarding        bool            `yaml:"forwarding,omitempty" json:"forwarding,omitempty" proto:"8"`
+	HostnamePeers     HostnamePeers   `yaml:"hostnamePeers,omitempty" json:"hostnamePeers" proto:"9"`
+	Platform          MachinePlatform `yaml:"platform,omitempty" json:"platform,omitempty" proto:"10"`
+	Extensions        Extensions      `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"11"`
+	ManagementClients []string        `yaml:"managementClients,omitempty" json:"managementClients,omitempty" proto:"12"`
 }
 
 // Explicit distinguishes an empty peer list from the default all-peer inventory.
@@ -115,13 +124,21 @@ type HostnamePeers struct {
 	Names    []string `json:"names,omitempty"`
 }
 type NIC struct {
-	Network string `yaml:"network" json:"network"`
-	Address *int   `yaml:"address,omitempty" json:"address,omitempty"`
+	Network    string `yaml:"network" json:"network"`
+	Address    *int   `yaml:"address,omitempty" json:"address,omitempty"`
+	Management bool   `yaml:"management,omitempty" json:"management,omitempty"`
 }
 type Network struct {
-	Egress     string     `yaml:"egress,omitempty" json:"egress,omitempty" proto:"2"`
-	CIDR       string     `yaml:"cidr,omitempty" json:"cidr,omitempty" proto:"3"`
-	Extensions Extensions `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"4"`
+	Egress        string         `yaml:"egress,omitempty" json:"egress,omitempty" proto:"2"`
+	CIDR          string         `yaml:"cidr,omitempty" json:"cidr,omitempty" proto:"3"`
+	Extensions    Extensions     `yaml:"extensions,omitempty" json:"extensions,omitempty" proto:"4"`
+	DefaultRouter string         `yaml:"defaultRouter,omitempty" json:"defaultRouter,omitempty" proto:"5"`
+	Routes        []NetworkRoute `yaml:"routes,omitempty" json:"routes,omitempty" proto:"6"`
+}
+
+type NetworkRoute struct {
+	CIDR   string `yaml:"cidr" json:"cidr"`
+	Router string `yaml:"router" json:"router"`
 }
 type Input struct {
 	Type        string    `yaml:"type" json:"type"`
@@ -155,11 +172,12 @@ type Environment struct {
 	Build         BuildConfig     `yaml:"build" json:"build"`
 }
 type Base struct {
-	OS       string `yaml:"os,omitempty" json:"os,omitempty" proto:"5"`
-	ID       string `yaml:"id" json:"id" proto:"1"`
-	User     string `yaml:"user" json:"user" proto:"2"`
-	DiskGiB  int    `yaml:"diskGiB" json:"diskGiB" proto:"3"`
-	Identity string `yaml:"identity" json:"identity" proto:"4"`
+	OS        string `yaml:"os,omitempty" json:"os,omitempty" proto:"5"`
+	ID        string `yaml:"id" json:"id" proto:"1"`
+	User      string `yaml:"user" json:"user" proto:"2"`
+	DiskGiB   int    `yaml:"diskGiB" json:"diskGiB" proto:"3"`
+	Identity  string `yaml:"identity" json:"identity" proto:"4"`
+	Appliance string `yaml:"appliance,omitempty" json:"appliance,omitempty" proto:"6"`
 }
 type AWSGatewayConfig struct {
 	Base         string `yaml:"base,omitempty" json:"base,omitempty"`
@@ -267,13 +285,14 @@ type PlannedRoute struct {
 	RouterNIC int    `json:"routerNIC"`
 }
 type PlannedNIC struct {
-	Network string         `json:"network"`
-	CIDR    string         `json:"cidr"`
-	Address string         `json:"address"`
-	VLAN    int            `json:"vlan,omitempty"`
-	Gateway string         `json:"gateway,omitempty"`
-	Default bool           `json:"default,omitempty"`
-	Routes  []PlannedRoute `json:"routes,omitempty"`
+	Network    string         `json:"network"`
+	CIDR       string         `json:"cidr"`
+	Address    string         `json:"address"`
+	VLAN       int            `json:"vlan,omitempty"`
+	Gateway    string         `json:"gateway,omitempty"`
+	Default    bool           `json:"default,omitempty"`
+	Routes     []PlannedRoute `json:"routes,omitempty"`
+	Management bool           `json:"management,omitempty"`
 }
 type PlannedMachine struct {
 	Hosts          []HostEntry  `json:"hosts,omitempty"`
@@ -292,6 +311,7 @@ type PlannedMachine struct {
 	NICs           []PlannedNIC `json:"nics,omitempty"`
 	Resolver       string       `json:"resolver,omitempty"`
 	OS             string       `json:"os,omitempty"`
+	Appliance      string       `json:"appliance,omitempty"`
 }
 type PlannedImage struct {
 	Name              string `json:"name"`
@@ -315,6 +335,7 @@ type Plan struct {
 	Networks          []PlannedNetwork `json:"networks,omitempty"`
 	VPCCIDR           string           `json:"vpcCIDR,omitempty"`
 	EdgeCIDR          string           `json:"edgeCIDR,omitempty"`
+	SecondaryVPCCIDRs []string         `json:"secondaryVPCCIDRs,omitempty"`
 }
 type Resource struct {
 	Kind           string           `json:"kind"`
@@ -326,6 +347,7 @@ type Resource struct {
 	Children       []NativeResource `json:"children,omitempty"`
 	Complete       bool             `json:"complete"`
 	Data           json.RawMessage  `json:"data,omitempty"`
+	HostPublicKey  string           `json:"hostPublicKey,omitempty"`
 }
 type NativeResource struct {
 	Kind string `json:"kind"`

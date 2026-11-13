@@ -40,6 +40,7 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 		for _, team := range out.Teams {
 			if team.ID == out.Membership.TeamID && !out.Membership.Switching {
 				out.Lab.Team = &team
+				out.Lab.InstanceID = team.InstanceID
 				out.Lab.Teammates, err = s.Store.Teammates(ctx, team.ID)
 				if err != nil {
 					writeError(w, 503, "Team information is unavailable.")
@@ -57,16 +58,29 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 				inst, e := s.Engine.Inspect(ctx, team.InstanceID)
 				if e == nil {
 					for _, m := range inst.Plan.Machines {
-						if !v.User.Admin && lc.Contains(policy.Visibility.HiddenMachines, m.Name) {
+						if lc.Contains(policy.Visibility.HiddenMachines, m.Name) {
 							continue
 						}
-						out.Lab.Machines = append(out.Lab.Machines, Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, Desktop: lc.Contains(m.Spec.Access, "desktop")})
+						view := Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, SSH: lc.Contains(m.Spec.Access, "ssh") && lc.Contains(policy.Visibility.ParticipantTerminals, m.Name), Desktop: lc.Contains(m.Spec.Access, "desktop")}
+						view.Appliance = m.Appliance
+						if m.Appliance == "panos" {
+							view.ManagementURL = "https://" + m.Address + "/"
+						}
+						if view.Desktop && team.Status == "ready" {
+							view.DesktopState, view.DesktopActive, err = s.machineDesktopState(ctx, v, team, m.Name, view.OS)
+							if err != nil {
+								writeError(w, 503, "Machine desktop state is unavailable.")
+								return
+							}
+						}
+						out.Lab.Machines = append(out.Lab.Machines, view)
 					}
 				}
 			}
 		}
 	}
 	if out.Lab.Team != nil && out.Meeting != nil && !out.Membership.Switching && out.Meeting.Status != "ending" && out.Meeting.Status != "ended" && out.Meeting.Expires.After(time.Now()) {
+		out.Lab.LiveScoring = s.liveRedBlue(ctx, out.Meeting.ID)
 		s.desktopMu.Lock()
 		for _, d := range s.desktops {
 			if desktopAvailable(d, time.Now()) && d.record.UserID == v.User.ID && d.record.SessionID == v.ID && d.record.TeamID == out.Lab.Team.ID && d.record.InstanceID == out.Lab.Team.InstanceID {
@@ -77,6 +91,7 @@ func (s *Service) overview(w http.ResponseWriter, r *http.Request, v Session) {
 		s.desktopMu.Unlock()
 		machine, e := s.desktopMachine(ctx, out.Meeting.Template)
 		if e == nil {
+			out.Lab.DefaultDesktopMachine = machine
 			os, e := s.desktopOS(ctx, *out.Lab.Team, machine)
 			if e == nil && (os == "windows" || s.env.Platform == "proxmox") {
 				a := accessRecord{ID: digest(out.Lab.Team.InstanceID + "\x00" + machine + "\x00" + v.User.ID)[:24], UserID: v.User.ID, TeamID: out.Lab.Team.ID, InstanceID: out.Lab.Team.InstanceID, Machine: machine, OS: os, Platform: s.env.Platform}
@@ -148,6 +163,9 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 	out := AdminView{RepositoryURL: repositoryURL(s.Config.Repository), TeamDesktops: []TeamDesktopCount{}, Teams: []Team{}, Jobs: []Job{}, Templates: []Template{}, CheckRuns: []CheckRun{}, BreakRuns: []BreakRun{}, Breaks: []BreakDefinition{}, ImportFailures: []TemplateImportFailure{}}
 	var err error
 	out.Meeting, err = s.Store.Meeting(ctx)
+	if out.Meeting != nil {
+		out.LiveRedBlue = s.liveRedBlue(ctx, out.Meeting.ID)
+	}
 	if err == nil {
 		var report TemplateImportReport
 		e := s.Store.Get(ctx, "template-import-report", "current", &report)
@@ -270,8 +288,16 @@ func (s *Service) createMeetingDecision(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	now := time.Now().UTC()
+	if q.LiveRedBlue {
+		var b InstructorBundle
+		var src lc.Source
+		if s.Store.Get(r.Context(), "template-instructor", q.Template, &b) != nil || b.LiveScoring == nil || s.Store.Get(r.Context(), "source", q.Template, &src) != nil || b.LiveScoring.Validate(src, b.Visibility.HiddenMachines) != nil {
+			writeError(w, 409, "This template needs a valid live scoring feed before starting Red vs. Blue.")
+			return
+		}
+	}
 	m := Meeting{randomID(12), q.Name, q.Template, "waiting", now, now.Add(time.Duration(q.Hours) * time.Hour)}
-	e := s.Store.CreateMeeting(r.Context(), m, q.TeamCount, q.Capacity)
+	e := s.Store.CreateMeeting(r.Context(), m, q.TeamCount, q.Capacity, q.LiveRedBlue)
 	if e != nil {
 		writeError(w, 409, e.Error())
 		return

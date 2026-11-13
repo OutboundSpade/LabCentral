@@ -10,7 +10,11 @@ import (
 
 // The panel uses the same built daisyUI/Tailwind stylesheet as the static UI.
 // Assets stay on the authenticated desktop origin; no third-party CDN is needed.
-func (s *Service) desktopLessonStyles(w http.ResponseWriter, r *http.Request) {
+func (s *Service) desktopLessonStyles(w http.ResponseWriter, r *http.Request, prefix ...string) {
+	base := ""
+	if len(prefix) > 0 {
+		base = prefix[0]
+	}
 	paths, err := filepath.Glob(filepath.Join(s.Config.WebRoot, "_app", "immutable", "assets", "*.css"))
 	if err != nil || len(paths) == 0 {
 		http.Error(w, "Lesson styles are unavailable.", 503)
@@ -19,7 +23,7 @@ func (s *Service) desktopLessonStyles(w http.ResponseWriter, r *http.Request) {
 	if len(paths) == 1 {
 		// Preserve Vite's relative font URLs by keeping the stylesheet at its
 		// original asset URL on the desktop origin.
-		http.Redirect(w, r, "/_app/immutable/assets/"+filepath.Base(paths[0]), http.StatusTemporaryRedirect)
+		http.Redirect(w, r, base+"/_app/immutable/assets/"+filepath.Base(paths[0]), http.StatusTemporaryRedirect)
 		return
 	}
 	var data []byte
@@ -29,7 +33,7 @@ func (s *Service) desktopLessonStyles(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Lesson styles are unavailable.", 503)
 			return
 		}
-		rebased := strings.NewReplacer("url(./", "url(/_app/immutable/assets/", `url("./`, `url("/_app/immutable/assets/`, "url('./", "url('/_app/immutable/assets/").Replace(string(raw))
+		rebased := strings.NewReplacer("url(./", "url("+base+"/_app/immutable/assets/", `url("./`, `url("`+base+`/_app/immutable/assets/`, "url('./", "url('"+base+"/_app/immutable/assets/").Replace(string(raw))
 		data = append(data, rebased...)
 		data = append(data, '\n')
 	}

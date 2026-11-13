@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -42,7 +43,11 @@ func TestAllocationClaimsRemainDistinctAcrossOwners(t *testing.T) {
 
 func TestRelativeStatePathWithURICharacters(t *testing.T) {
 	t.Chdir(t.TempDir())
-	s, err := Open("state ?#plus+")
+	name := "state ?#plus+"
+	if runtime.GOOS == "windows" {
+		name = "state #plus+"
+	} // '?' is not a valid Windows filename.
+	s, err := Open(name)
 	if err != nil {
 		t.Fatal(err)
 	}

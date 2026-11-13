@@ -36,6 +36,12 @@ func (i PlannedImage) BuildProgram() string {
 	return i.Playbook
 }
 func (m PlannedMachine) SSHUser() string {
+	if m.Appliance == "vyos" {
+		return "vyos"
+	}
+	if m.Appliance == "panos" {
+		return "admin"
+	}
 	if m.OS == "windows" {
 		return "Administrator"
 	}
