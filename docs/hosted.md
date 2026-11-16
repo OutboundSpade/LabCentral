@@ -438,6 +438,12 @@ rollback leaves the previous generation valid. Identical concurrent reads coales
 Current session, membership, practice availability, holder and user progress checks
 remain per request; shared template results are filtered by the caller's role.
 
+`GET /api/admin` includes instructor material only for the current meeting's
+revision; a template page loads the material for the revision it shows from
+`GET /api/admin/templates/{id}/instructor` (administrators only). Cached plans and
+source format versions survive snapshot boundaries, so a rebuild does not re-parse
+stored sources.
+
 Only open admin pages poll `GET /api/admin`: every five seconds, or every two seconds
 while jobs are queued or running or a meeting is preparing or ending. Background tabs
 stop polling and refresh as soon as they are visible again. Admin polls share local

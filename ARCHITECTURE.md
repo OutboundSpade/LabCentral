@@ -710,7 +710,12 @@ progress and holder decisions stay outside shared read models; role filtering fo
 the shared public projection.
 
 Admin template readiness and the image summary share one generation-keyed model and
-a five-second on-demand engine snapshot. Lifecycle/build queue, status and allocation
+a five-second on-demand engine snapshot. Rebuilding that model at a snapshot boundary
+reuses per-revision plans (including deterministic planning failures) and source
+format versions memoized by source generation; memos evict single entries rather than
+resetting, since installations keep hundreds of revisions. Admin polls carry
+instructor material only for the meeting's revision; template pages read one
+revision's material from `GET /api/admin/templates/{id}/instructor`. Lifecycle/build queue, status and allocation
 writes invalidate that snapshot. Engine Images, List and Builds decode local journals
 and do not call provider discovery. Mutation, capacity and cleanup decisions continue
 to use authoritative journals and existing transactional claims. Snapshot staleness

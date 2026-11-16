@@ -2,12 +2,16 @@ package hosted
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"sync"
 	"time"
 )
+
+const readMemoLimit = 2048
 
 // readMemo bounds retained entries and coalesces identical concurrent work. Values
 // are immutable; callers copy slices or pointers they need to modify. Errors are
@@ -39,8 +43,18 @@ func (m *readMemo[T]) get(ctx context.Context, generation, key string, fn func()
 			return zero, ctx.Err()
 		}
 	}
-	if len(m.entries) >= 128 {
-		m.entries = nil
+	// Entries are per revision; installations keep hundreds of revisions. Evict a
+	// finished entry at a time instead of clearing, so a full memo never thrashes.
+	if len(m.entries) >= readMemoLimit {
+		for k, e := range m.entries {
+			select {
+			case <-e.done:
+				delete(m.entries, k)
+			default:
+				continue
+			}
+			break
+		}
 	}
 	if m.entries == nil {
 		m.entries = map[string]*readEntry[T]{}
@@ -220,4 +234,33 @@ func (s *Store) sourceMetadata(ctx context.Context, id string) (lc.Source, error
 		return lc.Source{}, err
 	}
 	return s.sourceMetadataMemo.get(ctx, fmt.Sprint(generation), id, read)
+}
+
+// sourceVersion reads a pinned source's format version. Extracting it parses the
+// whole stored source, which can be megabytes, so reads outside transactions are
+// memoized per source generation. A missing source returns sql.ErrNoRows.
+func (s *Store) sourceVersion(ctx context.Context, id string) (int, error) {
+	read := func() (int, error) {
+		var version int
+		err := s.DB.QueryRowContext(ctx, `SELECT coalesce(json_extract(body,'$.lab.version'),0) FROM objects WHERE kind='source' AND id=?`, id).Scan(&version)
+		if errors.Is(err, sql.ErrNoRows) {
+			return -1, nil
+		}
+		return version, err
+	}
+	var version int
+	var err error
+	if s.DB.current(ctx) != nil {
+		version, err = read()
+	} else {
+		var generation int64
+		if generation, err = s.readGeneration(ctx, "source"); err != nil {
+			return 0, err
+		}
+		version, err = s.sourceVersionMemo.get(ctx, fmt.Sprint(generation), id, read)
+	}
+	if err == nil && version < 0 {
+		return 0, sql.ErrNoRows
+	}
+	return version, err
 }

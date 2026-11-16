@@ -31,7 +31,7 @@
     Server,
     Shuffle,
   } from "@lucide/svelte";
-  import { api, APIError, session, refresh, date, adminView } from "$lib/api";
+  import { api, APIError, session, refresh, date } from "$lib/api";
   import { sessionScope, learnPath, kindLabel } from "$lib/learning";
   import {
     attempts as ownAttempts,
@@ -49,7 +49,7 @@
     type LibraryTemplate,
     type TemplateBase,
   } from "$lib/library";
-  import type { TemplateRevisionList, TemplateRevisionSummary } from "$lib/types";
+  import type { InstructorView, TemplateRevisionList, TemplateRevisionSummary } from "$lib/types";
   import { render, prose } from "$lib/markdown";
   import Notice from "$lib/Notice.svelte";
   import AttemptButton from "$lib/AttemptButton.svelte";
@@ -302,9 +302,26 @@
     const title = revision.commitTitle || "Imported revision";
     return `${revision.commit.slice(0, 7)} · ${title.length > 26 ? `${title.slice(0, 25).trimEnd()}…` : title}`;
   }
-  const instructor = $derived(
-    $adminView?.templates.find((t) => t.id === template?.id)?.instructor,
-  );
+  // Admin polls carry instructor material only for the meeting's revision, so the
+  // detail page loads it for the revision on screen.
+  let instructor = $state<InstructorView | null>(null);
+  let instructorFor = "";
+  $effect(() => {
+    const id = template?.id ?? "";
+    const allowed = management && !!$session?.user.admin;
+    untrack(() => {
+      const key = allowed ? `${audienceScope}\n${id}` : "";
+      if (key === instructorFor) return;
+      instructorFor = key;
+      instructor = null;
+      if (!key || !id) return;
+      api<InstructorView>(`/api/admin/templates/${encodeURIComponent(id)}/instructor`)
+        .then((v) => {
+          if (instructorFor === key) instructor = v;
+        })
+        .catch(() => {});
+    });
+  });
   const scenarioTitle = (scenarioID?: string) =>
     scenarioList(template).find((s) => s.id === scenarioID)?.title ??
     "Randomized scenario";

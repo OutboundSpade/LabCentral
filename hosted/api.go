@@ -241,7 +241,30 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 		writeError(w, 503, "Administrator data is unavailable.")
 		return
 	}
+	// Instructor material for every revision made each poll megabytes long. Polls
+	// carry it only for the meeting's revision; template pages load it on demand.
+	// The slice is a per-request copy, so clearing fields leaves the cache intact.
+	for n := range out.Templates {
+		if out.Meeting == nil || out.Templates[n].ID != out.Meeting.Template {
+			out.Templates[n].Instructor = nil
+		}
+	}
 	writeJSON(w, 200, out)
+}
+
+// templateInstructor returns one revision's instructor view for administrators.
+func (s *Service) templateInstructor(w http.ResponseWriter, r *http.Request, v Session) {
+	var t Template
+	err := s.Store.Get(r.Context(), "template", r.PathValue("id"), &t)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && t.Instructor == nil {
+		writeError(w, 404, "This revision has no instructor material.")
+		return
+	}
+	if err != nil {
+		writeError(w, 503, "Instructor material is unavailable. Please retry.")
+		return
+	}
+	writeJSON(w, 200, t.Instructor)
 }
 func (s *Service) createMeetingDecision(w http.ResponseWriter, r *http.Request, v Session) {
 	var q CreateMeeting
@@ -427,17 +450,41 @@ func (s *Service) plan(ctx context.Context, id string) (lc.Plan, error) {
 		if err != nil {
 			return lc.Plan{}, err
 		}
-		return s.planMemo.get(ctx, fmt.Sprintf("%d/%s", generation, jsonValue(s.env)), id, func() (lc.Plan, error) { return s.uncachedPlan(ctx, id) })
+		// Planning is deterministic for a source generation and environment, so
+		// planning failures are cached with their result. Read errors are not.
+		r, err := s.planMemo.get(ctx, fmt.Sprintf("%d/%s", generation, jsonValue(s.env)), id, func() (planResult, error) {
+			src, err := s.actionableSource(ctx, id)
+			if err != nil {
+				return planResult{}, err
+			}
+			p, err := s.planSource(src)
+			return planResult{p, err}, nil
+		})
+		if err != nil {
+			return lc.Plan{}, err
+		}
+		return r.plan, r.err
 	}
 	return s.uncachedPlan(ctx, id)
 }
-func (s *Service) uncachedPlan(ctx context.Context, id string) (lc.Plan, error) {
-	if err := s.actionableRevision(ctx, id); err != nil {
-		return lc.Plan{}, err
-	}
+
+type planResult struct {
+	plan lc.Plan
+	err  error
+}
+
+func (s *Service) actionableSource(ctx context.Context, id string) (lc.Source, error) {
 	var src lc.Source
-	if e := s.Store.Get(ctx, "source", id, &src); e != nil {
-		return lc.Plan{}, e
+	if err := s.actionableRevision(ctx, id); err != nil {
+		return src, err
+	}
+	err := s.Store.Get(ctx, "source", id, &src)
+	return src, err
+}
+func (s *Service) uncachedPlan(ctx context.Context, id string) (lc.Plan, error) {
+	src, err := s.actionableSource(ctx, id)
+	if err != nil {
+		return lc.Plan{}, err
 	}
 	return s.planSource(src)
 }

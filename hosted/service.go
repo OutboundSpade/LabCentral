@@ -21,7 +21,7 @@ type Service struct {
 	inventoryMemo  readMemo[*inventorySnapshot]
 	adminMemo      readMemo[adminTemplatesRead]
 	projectionMemo readMemo[[]PublicTemplate]
-	planMemo       readMemo[lc.Plan]
+	planMemo       readMemo[planResult]
 
 	scoreMu        sync.Mutex
 	scoreFlights   map[string]*scoreFlight
@@ -105,6 +105,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/templates", s.authorized(false, s.templateCatalog))
 	mux.HandleFunc("GET /api/template-revisions/{name}", s.authorized(false, s.templateRevisions))
 	mux.HandleFunc("GET /api/templates/{id}", s.authorized(false, s.templateExplorer))
+	mux.HandleFunc("GET /api/admin/templates/{id}/instructor", s.authorized(true, s.templateInstructor))
 	mux.HandleFunc("POST /api/templates/{id}/attempt", s.authorized(false, s.createTemplateAttempt))
 	mux.HandleFunc("GET /api/learning", s.authorized(false, s.learningCatalog))
 	mux.HandleFunc("GET /api/learning/{id}", s.authorized(false, s.learningView))

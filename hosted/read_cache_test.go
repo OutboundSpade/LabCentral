@@ -2,6 +2,7 @@ package hosted
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -203,5 +204,157 @@ func TestDiagnosticsLoopbackAndSlowLogPrivacy(t *testing.T) {
 	s, _, _ := serviceFor(t)
 	if request(s, "GET", "/debug/pprof/", "", "", "").Code != 404 {
 		t.Fatal("public profiling")
+	}
+}
+
+func TestReadMemoEvictsOneEntryAtLimit(t *testing.T) {
+	var m readMemo[int]
+	var misses atomic.Int64
+	get := func(n int) {
+		v, err := m.get(context.Background(), "g", fmt.Sprint(n), func() (int, error) { misses.Add(1); return n, nil })
+		if err != nil || v != n {
+			t.Fatal(v, err)
+		}
+	}
+	for n := range readMemoLimit + 10 {
+		get(n)
+	}
+	if len(m.entries) != readMemoLimit {
+		t.Fatal("memo size", len(m.entries))
+	}
+	// Installations hold hundreds of revisions; a full memo must not reset itself.
+	before := misses.Load()
+	for n := readMemoLimit - 100; n < readMemoLimit+10; n++ {
+		get(n)
+	}
+	// Each miss evicts one arbitrary entry; clearing the memo would miss all 110.
+	if delta := misses.Load() - before; delta > 10 {
+		t.Fatal("full memo reset instead of evicting single entries", delta)
+	}
+}
+
+// Snapshot rollover rebuilds the admin model; it must reuse cached plans and
+// source versions instead of re-parsing every stored source.
+func TestAdminRebuildReusesPlansAcrossSnapshots(t *testing.T) {
+	s, _, _ := meetingReadFixture(t)
+	now := time.Now()
+	s.inventoryClock = func() time.Time { return now }
+	ctx := context.Background()
+	warm, _, err := s.adminTemplates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Without triggers, rewriting sources leaves the source generation unchanged,
+	// so any re-read of a source would expose the rewritten body.
+	rows, err := s.Store.DB.Query(`SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'hosted_%_objects_%'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var triggers []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		triggers = append(triggers, name)
+	}
+	rows.Close()
+	for _, name := range triggers {
+		if _, err = s.Store.DB.Exec("DROP TRIGGER " + name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = s.Store.DB.Exec(`UPDATE objects SET body='{"lab":{"version":3}}' WHERE kind='source'`); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(6 * time.Second)
+	rebuilt, _, err := s.adminTemplates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rebuilt) != len(warm) {
+		t.Fatal(len(rebuilt), len(warm))
+	}
+	for n := range warm {
+		if rebuilt[n].ImagesTotal != warm[n].ImagesTotal || rebuilt[n].Problem != warm[n].Problem {
+			t.Fatalf("revision %s was re-planned after snapshot rollover", warm[n].ID)
+		}
+	}
+}
+
+func TestPlanErrorsAreCachedPerGeneration(t *testing.T) {
+	s, _, _ := meetingReadFixture(t)
+	templates, err := s.rawTemplates(context.Background())
+	if err != nil || len(templates) == 0 {
+		t.Fatal(err)
+	}
+	ctx := context.WithValue(context.Background(), inventoryReadKey{}, &inventorySnapshot{})
+	var failing string
+	delete(s.env.Bases, "windows-2022")
+	for _, tpl := range templates {
+		if _, err = s.plan(ctx, tpl.ID); err != nil {
+			failing = tpl.ID
+			break
+		}
+	}
+	if failing == "" {
+		t.Fatal("fixture has no revision that fails without the Windows base")
+	}
+	if _, err = s.Store.DB.Exec(`DROP TRIGGER hosted_source_objects_UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Store.DB.Exec(`UPDATE objects SET body='{"lab":{"version":3}}' WHERE kind='source' AND id=?`, failing); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.plan(ctx, failing); err == nil {
+		t.Fatal("a deterministic planning failure was recomputed instead of cached")
+	}
+}
+
+func TestAdminPollCarriesOnlyMeetingInstructorMaterial(t *testing.T) {
+	s, _, cookies := meetingReadFixture(t)
+	h := s.Handler()
+	get := func(path, cookie string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", s.Config.Origin+path, nil)
+		r.AddCookie(&http.Cookie{Name: "__Host-labcentral", Value: cookie})
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	w := get("/api/admin", cookies[36])
+	var view AdminView
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &view) != nil || view.Meeting == nil {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var other string
+	for _, tpl := range view.Templates {
+		if (tpl.Instructor != nil) != (tpl.ID == view.Meeting.Template) {
+			t.Fatal("instructor material on revision", tpl.ID)
+		}
+		if tpl.ID != view.Meeting.Template {
+			other = tpl.ID
+		}
+	}
+	if len(view.Breaks) == 0 {
+		t.Fatal("meeting breaks were dropped")
+	}
+	// The cached model still holds every revision's material.
+	cached, _, err := s.adminTemplates(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tpl := range cached {
+		if tpl.ID == other && tpl.Instructor == nil {
+			t.Fatal("stripping the response mutated the shared cache")
+		}
+	}
+	if w = get("/api/admin/templates/"+other+"/instructor", cookies[36]); w.Code != 200 || !strings.Contains(w.Body.String(), "breaks") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w = get("/api/admin/templates/"+other+"/instructor", cookies[0]); w.Code != 403 {
+		t.Fatal("student read instructor material", w.Code)
+	}
+	if w = get("/api/admin/templates/missing/instructor", cookies[36]); w.Code != 404 {
+		t.Fatal(w.Code)
 	}
 }

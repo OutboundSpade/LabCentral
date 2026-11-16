@@ -161,13 +161,12 @@ var errRetainedRevision = errors.New(retainedRevisionMessage)
 // Read the version without materializing guest files. Cleanup must never call
 // this guard: it operates on saved allocation and image identities.
 func (s *Service) actionableRevision(ctx context.Context, id string) error {
-	var version int
-	if err := s.Store.DB.QueryRowContext(ctx, `SELECT coalesce(json_extract(body,'$.lab.version'),0) FROM objects WHERE kind='source' AND id=?`, id).Scan(&version); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// This is a historical-format guard. The caller's existing source
-			// availability and planning checks still govern missing snapshots.
-			return nil
-		}
+	version, err := s.Store.sourceVersion(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		// This is a historical-format guard. The caller's existing source
+		// availability and planning checks still govern missing snapshots.
+		return nil
+	} else if err != nil {
 		return err
 	}
 	if version == 1 || version == 2 {

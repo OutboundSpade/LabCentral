@@ -15,6 +15,7 @@ import (
 type Store struct {
 	policyMemo         readMemo[InstructorBundle]
 	sourceMetadataMemo readMemo[lc.Source]
+	sourceVersionMemo  readMemo[int]
 	*store.Store
 	DB   *hostedDatabase
 	wake chan struct{}

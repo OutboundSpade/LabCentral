@@ -203,7 +203,11 @@ func TestV2StateHistoryAndAuthorization(t *testing.T) {
 		}
 	}
 	for _, tpl := range admin.Templates {
-		if tpl.Instructor == nil || len(tpl.Instructor.Breaks) == 0 {
+		// Polls carry only the meeting revision's material; each revision's
+		// retained material is read from its instructor route.
+		view := decodeLearning[InstructorView](t, request(s, "GET", "/api/admin/templates/"+tpl.ID+"/instructor", "", "", ""), 200)
+		tpl.Instructor = &view
+		if len(tpl.Instructor.Breaks) == 0 {
 			t.Fatal("lost instructor breaks", tpl.Name)
 		}
 		if tpl.ID != "retained-instructor-v1" && tpl.Name != "branch-services-ir" && (len(tpl.Instructor.Stages) == 0 || tpl.Instructor.Stages[0].Kind() == "instructor") {
