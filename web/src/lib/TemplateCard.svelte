@@ -43,7 +43,7 @@
       </h2>
       {@render badge?.()}
     </div>
-    <p class="line-clamp-2 min-h-[2lh] text-sm leading-relaxed text-base-content/70">
+    <p class="line-clamp-2 min-h-[2lh] grow-0 text-sm leading-relaxed text-base-content/70">
       {t.description || "No description."}
     </p>
     {#if t.coachOnly || windows || meta?.difficulty || meta?.estimatedMinutes || meta?.category}<div
@@ -59,7 +59,7 @@
         >{/if}
       {#if meta?.category}<span class="badge badge-sm badge-ghost">{meta.category}</span>{/if}
     </div>{/if}
-    <p class="text-xs tabular-nums text-base-content/60">
+    <p class="grow-0 text-xs tabular-nums text-base-content/60">
       {plural(t.machines.length, "machine")} · {plural(t.stageCount, "stage")}{#if count}{" · "}{plural(count, "scenario")}{/if}
     </p>
     <div
