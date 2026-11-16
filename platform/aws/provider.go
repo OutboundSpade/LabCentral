@@ -64,7 +64,8 @@ func client(ctx context.Context, e lc.Environment) (*ec2.Client, *sts.Client, er
 		return nil, nil, err
 	}
 	// Reads and idempotent operations retain bounded SDK retry handling. Guarded
-	// creates override it per request, before journal reconciliation.
+	// creates override it per request; the journal guard retries only definitive
+	// throttles and reconciles all uncertain outcomes before another submission.
 	return ec2.NewFromConfig(c, func(o *ec2.Options) { o.RetryMaxAttempts = 3 }, faultOptions), sts.NewFromConfig(c), nil
 }
 func noCreateRetries(o *ec2.Options) { o.RetryMaxAttempts = 1 }
@@ -456,8 +457,10 @@ func (p *Provider) networkSegment(ctx context.Context, a *ec2.Client, c lc.Comma
 		return networkSegment{}, err
 	}
 
+	// Retain the SDK-generated idempotency token across guarded throttle retries.
+	routeInput := &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, owner, routeComponent)}
 	route, err := doEC2(ctx, p.Journal, key+"/"+routeKey, func() (string, error) {
-		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &vpc, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, owner, routeComponent)}, noCreateRetries)
+		r, e := a.CreateRouteTable(ctx, routeInput, noCreateRetries)
 		if e != nil {
 			return "", e
 		}

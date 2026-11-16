@@ -553,8 +553,22 @@ restored one starts.
   owner. Ambiguous results keep their allocations and recovery intent.
 - An authorization/validation rejection or an explicit throttle and an uncertain
   transport/server failure are different outcomes. Only definite pre-mutation
-  rejections release the native create checkpoint for another submission. Guarded EC2 creates use
-  one SDK attempt; reads and idempotent operations keep bounded SDK retries. Documented
+  rejections release the native create checkpoint for another submission. Guarded EC2
+  creates use one SDK attempt per submission. A shared journal guard retries only
+  API error codes `RequestLimitExceeded`, `Throttling`, `ThrottlingException` and
+  `EC2ThrottledException`, including responses with HTTP 503. It makes at most six
+  submissions with full jitter under exponential delay ceilings of 1, 2, 4, 8 and
+  16 seconds, bounded by the caller's context and deadline. Native client tokens
+  remain unchanged, intent precedes the first submission, and only success writes
+  a result. This covers network children, CIDR associations, guest/gateway launches,
+  key imports and the Packer create/capture guard. Exhausted throttles and cancellation
+  during throttle backoff record definite rejection, allowing a later retry without
+  leaving uncertain native create intent. The library retains the original deployment
+  identity and any earlier successful children for recovery or cleanup; hosted preparation
+  exposes the failure as retryable. Plain 503/unavailable responses, other server
+  errors, transport failures and timeouts remain unknown and are never retried by this
+  guard. Reads (including waiter Describe calls), termination and cleanup keep bounded
+  SDK retries; cleanup still requires confirmed absence. Documented
   launch quota/capacity denials are definite rejections, scoped to their native action;
   reconciliation precedes any further create after an unknown outcome.
 - The pinned Packer builders use a private loopback capability to reach their native

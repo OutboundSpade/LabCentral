@@ -80,7 +80,7 @@ func TestConfiguredEC2ReadsRetryThrottleAndRemainBounded(t *testing.T) {
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_ = r.ParseForm()
-				if r.Form.Get("Action") != "DescribeVolumes" {
+				if r.Form.Get("Action") != "DescribeInstances" {
 					t.Errorf("unexpected native action")
 				}
 				n := calls.Add(1)
@@ -90,7 +90,7 @@ func TestConfiguredEC2ReadsRetryThrottleAndRemainBounded(t *testing.T) {
 					io.WriteString(w, `<Response><Errors><Error><Code>RequestLimitExceeded</Code><Message>throttled</Message></Error></Errors></Response>`)
 					return
 				}
-				io.WriteString(w, `<DescribeVolumesResponse><volumeSet/></DescribeVolumesResponse>`)
+				io.WriteString(w, `<DescribeInstancesResponse><reservationSet/></DescribeInstancesResponse>`)
 			}))
 			defer server.Close()
 			t.Setenv("AWS_ENDPOINT_URL_EC2", server.URL)
@@ -98,7 +98,7 @@ func TestConfiguredEC2ReadsRetryThrottleAndRemainBounded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = api.DescribeVolumes(context.Background(), &ec2.DescribeVolumesInput{})
+			_, err = api.DescribeInstances(context.Background(), &ec2.DescribeInstancesInput{})
 			if recover && (err != nil || calls.Load() != 2) {
 				t.Fatal("read did not retry", err, calls.Load())
 			}

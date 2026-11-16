@@ -44,8 +44,9 @@ func (p *Provider) edgeNetwork(ctx context.Context, a *ec2.Client, c lc.Command,
 	if err != nil {
 		return err
 	}
+	routeInput := &ec2.CreateRouteTableInput{VpcId: &n.VPC, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, c.Owner, "edge-route")}
 	n.EdgeRoute, err = doEC2(ctx, p.Journal, c.Operation+"/edge-route", func() (string, error) {
-		r, e := a.CreateRouteTable(ctx, &ec2.CreateRouteTableInput{VpcId: &n.VPC, TagSpecifications: networkSpecs(t.ResourceTypeRouteTable, c.Owner, "edge-route")}, noCreateRetries)
+		r, e := a.CreateRouteTable(ctx, routeInput, noCreateRetries)
 		if e != nil {
 			return "", e
 		}

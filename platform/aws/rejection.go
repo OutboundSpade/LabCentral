@@ -11,8 +11,11 @@ import (
 // an unknown code, transport error or server failure never proves rejection.
 // https://docs.aws.amazon.com/ec2/latest/devguide/errors-overview.html
 func definiteEC2Rejection(action, code string) bool {
+	if throttledEC2Code(code) {
+		return true
+	}
 	switch code {
-	case "UnauthorizedOperation", "AuthFailure", "InvalidParameterValue", "InvalidParameterCombination", "MissingParameter", "RequestLimitExceeded", "Throttling", "ThrottlingException":
+	case "UnauthorizedOperation", "AuthFailure", "InvalidParameterValue", "InvalidParameterCombination", "MissingParameter":
 		return true
 	}
 	var codes []string
@@ -42,6 +45,24 @@ func definiteEC2Rejection(action, code string) bool {
 		}
 	}
 	return false
+}
+
+// EC2 documents RequestLimitExceeded; AWS's retry reference also documents the
+// generic throttle codes and EC2ThrottledException. Do not infer rejection from
+// an HTTP status or from the SDK's broader transient/retryable classification.
+// https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-throttling.html
+// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+func throttledEC2Code(code string) bool {
+	switch code {
+	case "RequestLimitExceeded", "Throttling", "ThrottlingException", "EC2ThrottledException":
+		return true
+	}
+	return false
+}
+
+func throttledEC2Error(err error) bool {
+	var api smithy.APIError
+	return errors.As(err, &api) && throttledEC2Code(api.ErrorCode())
 }
 func rejectedEC2Error(err error) bool {
 	var operation *smithy.OperationError

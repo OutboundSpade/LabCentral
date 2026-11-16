@@ -18,6 +18,7 @@ import (
 	aw "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	t "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 )
 
 type buildMutation struct{ Key, Action, Token, Name string }
@@ -30,6 +31,22 @@ type buildNativeReplyError struct{ Reply nativeproxy.Reply }
 func (e *buildNativeReplyError) Error() string {
 	return "builder native request returned an error response"
 }
+
+// Adapt the proxy's EC2 Query error to the same APIError code contract used by
+// the SDK guard. An absent or malformed code stays an unknown outcome.
+func (e *buildNativeReplyError) ErrorCode() string {
+	var result struct {
+		Errors []struct {
+			Code string `xml:"Code"`
+		} `xml:"Errors>Error"`
+	}
+	if xml.Unmarshal(e.Reply.Body, &result) == nil && len(result.Errors) == 1 {
+		return result.Errors[0].Code
+	}
+	return ""
+}
+func (e *buildNativeReplyError) ErrorMessage() string          { return e.Error() }
+func (e *buildNativeReplyError) ErrorFault() smithy.ErrorFault { return smithy.FaultUnknown }
 
 func (g *buildGuard) mutations() ([]buildMutation, error) {
 	var requests []buildMutation
@@ -68,20 +85,7 @@ func (g *buildGuard) registerMutation(body []byte) (buildMutation, bool, error) 
 	return request, true, g.p.Journal.Save(g.c.Owner+"/build-mutations", requests)
 }
 func rejectedBuildReply(action string, reply nativeproxy.Reply) bool {
-	var result struct {
-		Errors []struct {
-			Code string `xml:"Code"`
-		} `xml:"Errors>Error"`
-	}
-	if xml.Unmarshal(reply.Body, &result) != nil {
-		return false
-	}
-	for _, e := range result.Errors {
-		if definiteEC2Rejection(action, e.Code) {
-			return true
-		}
-	}
-	return false
+	return definiteEC2Rejection(action, (&buildNativeReplyError{reply}).ErrorCode())
 }
 func (g *buildGuard) discoverMutation(ctx context.Context, request buildMutation) (buildMutationResult, bool, error) {
 	var resource lc.Resource
@@ -159,7 +163,13 @@ func (g *buildGuard) do(ctx context.Context, r *http.Request, body []byte, perfo
 		return perform(ctx)
 	}
 	result, err := journal.Do(ctx, g.p.Journal, request.Key, func() (buildMutationResult, error) {
-		reply, err := perform(ctx)
+		reply, err := retryEC2Mutation(ctx, func() (nativeproxy.Reply, error) {
+			reply, err := perform(ctx)
+			if err == nil && reply.Status >= 400 {
+				err = &buildNativeReplyError{reply}
+			}
+			return reply, err
+		}, waitRouteRetry)
 		if err != nil {
 			if nativeproxy.IsBeforeSubmission(err) {
 				return buildMutationResult{}, journal.Rejected(err)
@@ -167,19 +177,16 @@ func (g *buildGuard) do(ctx context.Context, r *http.Request, body []byte, perfo
 			if status := faultinject.Status(err); status == 400 || status == 403 || status == 429 {
 				return buildMutationResult{}, journal.Rejected(err)
 			}
-			return buildMutationResult{}, err
-		}
-		if reply.Status >= 400 {
-			failure := &buildNativeReplyError{reply}
-			if rejectedBuildReply(request.Action, reply) {
-				return buildMutationResult{}, journal.Rejected(failure)
+			var response *buildNativeReplyError
+			if errors.As(err, &response) && rejectedBuildReply(request.Action, response.Reply) {
+				return buildMutationResult{}, journal.Rejected(err)
 			}
-			return buildMutationResult{}, failure
+			return buildMutationResult{}, err
 		}
 		return buildMutationResult{Reply: reply}, nil
 	}, func() (buildMutationResult, bool, error) { return g.discoverMutation(ctx, request) })
 	var response *buildNativeReplyError
-	if errors.As(err, &response) {
+	if errors.As(err, &response) && ctx.Err() == nil {
 		return response.Reply, nil
 	}
 	if err != nil {

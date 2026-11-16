@@ -20,7 +20,7 @@ import (
 
 func TestAWSBuilderCreateJournalMatrix(t *testing.T) {
 	for _, action := range []string{"RunInstances", "CreateImage"} {
-		for _, fault := range []string{"success", "preflight", "response-loss", "empty-unknown", "foreign", "authorization", "validation", "throttle", "server"} {
+		for _, fault := range []string{"success", "preflight", "response-loss", "empty-unknown", "foreign", "authorization", "validation", "throttle", "server", "unavailable", "service-unavailable", "empty-server"} {
 			t.Run(action+"/"+fault, func(t *testing.T) {
 				ctx := context.Background()
 				inventory, api := cleanupMatrixFixture(t)
@@ -47,9 +47,16 @@ func TestAWSBuilderCreateJournalMatrix(t *testing.T) {
 						return nativeproxy.Reply{}, nativeproxy.BeforeSubmission(errors.New("ownership_mismatch: guard"))
 					case "response-loss", "empty-unknown", "foreign":
 						return nativeproxy.Reply{}, errors.New("lost after send")
-					case "authorization", "validation", "throttle", "server":
-						code := map[string]string{"authorization": "UnauthorizedOperation", "validation": "InvalidParameterValue", "throttle": "RequestLimitExceeded", "server": "InternalError"}[fault]
-						return nativeproxy.Reply{Status: 400, Body: []byte(fmt.Sprintf("<Response><Errors><Error><Code>%s</Code></Error></Errors></Response>", code))}, nil
+					case "authorization", "validation", "throttle", "server", "unavailable", "service-unavailable", "empty-server":
+						if fault == "throttle" && calls > 2 {
+							return nativeproxy.Reply{Status: 200, Body: []byte("native reply")}, nil
+						}
+						code := map[string]string{"authorization": "UnauthorizedOperation", "validation": "InvalidParameterValue", "throttle": "RequestLimitExceeded", "server": "InternalError", "unavailable": "Unavailable", "service-unavailable": "ServiceUnavailable"}[fault]
+						status := 400
+						if fault == "throttle" || fault == "unavailable" || fault == "service-unavailable" || fault == "empty-server" {
+							status = 503
+						}
+						return nativeproxy.Reply{Status: status, Body: []byte(fmt.Sprintf("<Response><Errors><Error><Code>%s</Code></Error></Errors></Response>", code))}, nil
 					}
 					return nativeproxy.Reply{Status: 200, Body: []byte("native reply")}, nil
 				}
@@ -65,7 +72,13 @@ func TestAWSBuilderCreateJournalMatrix(t *testing.T) {
 					}
 					return
 				}
-				rejected := fault == "authorization" || fault == "validation" || fault == "throttle"
+				if fault == "throttle" {
+					if calls != 3 || err != nil || res.Status != 200 {
+						t.Fatal("throttled create did not retry and checkpoint once", calls, res, err)
+					}
+					return
+				}
+				rejected := fault == "authorization" || fault == "validation"
 				if rejected {
 					if calls != 2 || err != nil || res.Status != 400 {
 						t.Fatal(calls, res, err)

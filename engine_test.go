@@ -20,6 +20,7 @@ type fakeProvider struct {
 	failDelete bool
 	block      chan struct{}
 	entered    chan struct{}
+	rejectOnce error
 }
 
 func freshFake() *fakeProvider { return &fakeProvider{resources: map[string]Resource{}} }
@@ -41,6 +42,11 @@ func (f *fakeProvider) Execute(ctx context.Context, c Command, o Observer) (Resu
 	case "check":
 		return Result{}, nil
 	case "network.create", "gateway.create", "machine.create":
+		if f.rejectOnce != nil {
+			err := f.rejectOnce
+			f.rejectOnce = nil
+			return Result{}, err
+		}
 		key := c.Owner + "/network"
 		kind, name := "network", "private"
 		if c.Action == "machine.create" {
@@ -146,6 +152,35 @@ func TestValidatedPlanCanDeployIndependentInstances(t *testing.T) {
 		t.Fatalf("expected five independent networks, gateways and machines, got %d resources", f.creates)
 	}
 }
+func TestDefiniteThrottleFailureKeepsOriginalDeploymentRetryable(t *testing.T) {
+	ctx := context.Background()
+	f := freshFake()
+	f.rejectOnce = errors.New("EC2 mutation throttled after 6 attempts; no mutation executed; retry the operation: RequestLimitExceeded")
+	e := openFake(t, t.TempDir(), f)
+	p, err := PlanLab(testSource(t), testEnvironment(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, err := e.Deploy(ctx, p)
+	if err == nil || !strings.Contains(err.Error(), "retry the operation") || f.creates != 0 {
+		t.Fatal("definite rejection not surfaced", i, err, f.creates)
+	}
+	saved, err := e.Inspect(ctx, i.ID)
+	if err != nil || saved.Status != "recovery_required" || !strings.Contains(saved.Error, "no mutation executed") {
+		t.Fatal("retry identity/error not durable", saved, err)
+	}
+	ready, err := e.Recover(ctx, i.ID)
+	if err != nil || ready.Status != "ready" || ready.ID != i.ID || f.creates != 3 {
+		t.Fatal("rejected deployment not retryable", ready, err, f.creates)
+	}
+	if err := e.Destroy(ctx, i.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.resources) != 0 {
+		t.Fatal("retried deployment leaked resources", f.resources)
+	}
+}
+
 func TestLostCreateResponseRecoversWithoutDuplicate(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

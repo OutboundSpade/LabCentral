@@ -97,6 +97,7 @@ type concurrentPrepareEngine struct {
 	started         chan string
 	release         chan struct{}
 	fail            string
+	failure         error
 	active, maximum int
 }
 
@@ -136,6 +137,9 @@ func (e *concurrentPrepareEngine) run(ctx context.Context, id string) (lc.Instan
 	if id == e.fail {
 		i.Status = "recovery_required"
 		err = fmt.Errorf("lost provider response")
+		if e.failure != nil {
+			err = e.failure
+		}
 	}
 	e.instances[id] = i
 	return i, err
@@ -207,6 +211,52 @@ func TestPrepareParallelFailureIsolationAndRetry(t *testing.T) {
 	}
 	if e.maximum != 3 {
 		t.Fatal(e.maximum)
+	}
+}
+
+func TestPrepareThrottleFailureRemainsRetryable(t *testing.T) {
+	s, teams := prepareFixture(t)
+	ctx := context.Background()
+	e := &concurrentPrepareEngine{instances: map[string]lc.Instance{}, calls: map[string]int{}, started: make(chan string, 10), release: make(chan struct{}), fail: teams[0].InstanceID,
+		failure: fmt.Errorf("EC2 mutation throttled after 6 attempts; no mutation executed; retry the operation: RequestLimitExceeded")}
+	close(e.release)
+	s.Engine = e
+	job, err := s.Store.Enqueue(ctx, "prepare", "meeting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.meetingOperation(ctx, job)
+	if err == nil || !strings.Contains(err.Error(), "retry the operation") || !strings.Contains(err.Error(), teams[0].Name) {
+		t.Fatal("throttle not surfaced", err)
+	}
+	if _, err = s.Store.DB.Exec(`UPDATE jobs SET status='failed',error=? WHERE id=?`, err.Error(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	blocked, attention, err := s.retryDisposition(ctx, job)
+	if err != nil || blocked != "" || !attention {
+		t.Fatal("definite throttle blocked hosted retry", blocked, attention, err)
+	}
+	e.fail = ""
+	if err := s.meetingOperation(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range teams {
+		want := 1
+		if team.ID == teams[0].ID {
+			want = 2
+		}
+		if e.calls[team.InstanceID] != want {
+			t.Fatal("retry changed identity or recreated successful sibling", team, e.calls)
+		}
+	}
+	current, err := s.Store.Teams(ctx, "meeting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range current {
+		if team.Status != "ready" {
+			t.Fatal("retry did not restore readiness", team)
+		}
 	}
 }
 func TestPrepareCancellationStopsQueuedTeams(t *testing.T) {

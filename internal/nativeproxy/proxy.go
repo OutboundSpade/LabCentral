@@ -157,6 +157,12 @@ func Start(ctx context.Context, c Config) (string, func(), error) {
 				}
 			}
 			req := r.Clone(callCtx)
+			// A journal guard may retry a definitively throttled submission. Each
+			// attempt needs the complete original body and the same client token.
+			req.Body = http.NoBody
+			if len(body) > 0 {
+				req.Body = io.NopCloser(bytes.NewReader(body))
+			}
 			res, err := c.Transport.RoundTrip(req)
 			if err != nil {
 				return Reply{}, err

@@ -415,7 +415,11 @@ connection, use the original state directory and `recover`; do not start a repla
 with a new state directory or delete journal files. Recovery discovers the original
 owned resource. An explicit authorization/validation rejection, documented EC2 launch quota/capacity
 denial, or throttle can be
-submitted again; an uncertain create with no authoritative result stays
+submitted again. Guarded AWS creates automatically retry explicit throttle codes up to
+six attempts with jittered exponential backoff, within the command's context and
+deadline. If throttling persists, retry recovery for the same instance (hosted: retry
+the failed preparation job); earlier successful resources are kept. A plain HTTP 503
+does not establish throttling. An uncertain create with no authoritative result stays
 `recovery_required`, with its allocation and cleanup intent retained.
 
 `ownership_mismatch` means a recorded native object, attached disk/NIC, guest account
