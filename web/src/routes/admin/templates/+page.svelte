@@ -100,9 +100,6 @@
     if (jobActive(job) && job?.kind === "build")
       state = { status: job.status, label: job.status === "queued" ? "Build queued" : `Building · ${count}` };
     else if (base.status === "failed") state = { status: "failed", label: `Needs attention · ${base.label.toLowerCase()}` };
-    else if (base.label === "Not built" && total > 0 && done >= total)
-      // Every image is cached; one build confirms the revision so it can start.
-      state = { status: "cached", label: `All ${total} ${total === 1 ? "image" : "images"} cached` };
     else if (base.label === "Not built" && done > 0) state = { status: "partial", label: count };
     return {
       template,

@@ -37,7 +37,7 @@
   {#if t && current}
     <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1" aria-live="polite">
       <Status status={current.status} label={current.label} />
-      {#if !t.removedAt}<span class="text-xs tabular-nums text-base-content/60"
+      {#if !t.removedAt && current.status !== "cached"}<span class="text-xs tabular-nums text-base-content/60"
           >{t.imagesReady} / {t.imagesTotal} images</span
         >{/if}
     </p>

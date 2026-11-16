@@ -53,6 +53,12 @@ export function revisionState(t: Template, job: Job | null | undefined) {
   if (t.retired) return { status: "ended", label: "Retired" };
   if (t.built) return { status: "ready", label: "Ready" };
   if (t.removedAt) return { status: "ended", label: "Images removed" };
+  // A new revision can find every image already cached; one build confirms it.
+  if (t.imagesTotal > 0 && t.imagesReady >= t.imagesTotal)
+    return {
+      status: "cached",
+      label: `All ${t.imagesTotal} ${t.imagesTotal === 1 ? "image" : "images"} cached`,
+    };
   return { status: "pending", label: "Not built" };
 }
 
