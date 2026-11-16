@@ -62,9 +62,9 @@ export function buildable(t: Template) {
 }
 
 export function buildLabel(t: Template, job: Job | null | undefined) {
-  return job?.kind === "build" && job.status === "failed"
-    ? "Retry build"
-    : t.removedAt
-      ? "Rebuild images"
-      : "Build images";
+  if (job?.kind === "build" && job.status === "failed") return "Retry build";
+  if (t.removedAt) return "Rebuild images";
+  // A new revision can find every image already cached; building only confirms it.
+  if (t.imagesTotal > 0 && t.imagesReady >= t.imagesTotal) return "Confirm build";
+  return t.imagesReady > 0 ? "Finish build" : "Build images";
 }

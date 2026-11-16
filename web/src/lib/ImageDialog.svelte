@@ -22,6 +22,8 @@
     const total = revision?.imagesTotal ?? 0;
     const cached = Math.min(revision?.imagesReady ?? 0, total);
     const remaining = total - cached;
+    if (total > 0 && remaining <= 0)
+      return `All ${total} ${total === 1 ? "image is" : "images are"} already cached. This reuses them and marks the revision built so meetings and workspaces can start.`;
     return cached
       ? `Builds the ${remaining} remaining ${remaining === 1 ? "image" : "images"}; ${cached} of ${total} are already cached. Temporary build machines incur charges.`
       : `Builds ${total} ${total === 1 ? "image" : "images"}. Temporary build machines incur charges; matching images are reused.`;

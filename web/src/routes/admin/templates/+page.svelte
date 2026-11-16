@@ -100,6 +100,9 @@
     if (jobActive(job) && job?.kind === "build")
       state = { status: job.status, label: job.status === "queued" ? "Build queued" : `Building · ${count}` };
     else if (base.status === "failed") state = { status: "failed", label: `Needs attention · ${base.label.toLowerCase()}` };
+    else if (base.label === "Not built" && total > 0 && done >= total)
+      // Every image is cached; one build confirms the revision so it can start.
+      state = { status: "cached", label: `All ${total} ${total === 1 ? "image" : "images"} cached` };
     else if (base.label === "Not built" && done > 0) state = { status: "partial", label: count };
     return {
       template,
@@ -294,8 +297,8 @@
                   oninput={syncURL}
                 /></label
               >
-              <fieldset class="join w-full sm:w-auto">
-                <legend class="sr-only">Image status</legend>
+              <!-- No legend: daisyUI rounds a join's first and last children. -->
+              <div class="join w-full sm:w-auto" role="radiogroup" aria-label="Image status">
                 {#each filters as [value, label] (value)}<input
                     class="join-item btn btn-sm min-h-11 flex-1 tabular-nums sm:flex-none lg:min-h-9"
                     type="radio"
@@ -305,7 +308,7 @@
                     bind:group={filter}
                     onchange={syncURL}
                   />{/each}
-              </fieldset>
+              </div>
             </div>
             <p class="mb-3 text-xs tabular-nums text-base-content/60" aria-live="polite">
               {filtered
@@ -336,9 +339,7 @@
                       class="btn btn-sm btn-ghost min-h-11 lg:min-h-8"
                       aria-label={`${buildLabel(t, card.job)}: ${templateName(t.name)}`}
                       onclick={() => imageDialog.show("build", t)}
-                      ><Hammer size={15} />{t.imagesReady > 0 && buildLabel(t, card.job) === "Build images"
-                        ? "Finish build"
-                        : buildLabel(t, card.job)}</button
+                      ><Hammer size={15} />{buildLabel(t, card.job)}</button
                     >{/if}
                 {/snippet}
               </TemplateCard>
