@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "round": 1,
+  "generatedAt": "2026-11-15T22:00:00Z",
+  "services": [
+    {
+      "id": "aby-ssh2",
+      "name": "ABY-ssh2 (abyssal.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "bath-http",
+      "name": "BATH-http (bathyal.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "bills-http",
+      "name": "BILLS-http (billing.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "casc-ssh2",
+      "name": "CASC-ssh2 (cascade.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "cast-ssh2",
+      "name": "CAST-ssh2 (castelia.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "dns-dns",
+      "name": "DNS-dns (ns1.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "drift-http",
+      "name": "DRIFT-http (scadabr.marill.org:8080)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "fin-http",
+      "name": "FIN-http (finance.marill.org:8069)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ftp-ftp",
+      "name": "FTP-ftp (levincia.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "help-http",
+      "name": "HELP-http (support.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "hr-http",
+      "name": "HR-http (hr.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "inv-http",
+      "name": "INV-http (chem.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "mail-smtp",
+      "name": "MAIL-smtp (mail.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "mesa-http",
+      "name": "MESA-http (rscada.marill.org:10008)",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "nimb-http",
+      "name": "NIMB-http (nimbosa.marill.org:8080)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "pal-ssh2",
+      "name": "PAL-ssh2 (pallet.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "pop-pop3",
+      "name": "POP-pop3 (mail.marill.org)",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "saf-ssh2",
+      "name": "SAF-ssh2 (saffron.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "swe-ssh2",
+      "name": "SWE-ssh2 (swell.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "ver-ssh2",
+      "name": "VER-ssh2 (vermilion.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    },
+    {
+      "id": "vort-http",
+      "name": "VORT-http (vortex.marill.org:3000)",
+      "state": "down",
+      "earned": 0,
+      "possible": 100
+    },
+    {
+      "id": "www-http",
+      "name": "WWW-http (www.marill.org)",
+      "state": "up",
+      "earned": 100,
+      "possible": 100
+    }
+  ]
+}

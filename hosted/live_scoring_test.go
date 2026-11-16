@@ -485,3 +485,31 @@ func TestLiveScoringMWCCDCExportContract(t *testing.T) {
 		t.Fatal("kit scoring projection differs from hosted contract", len(snapshot.Services), passed, earned, possible)
 	}
 }
+
+func TestLiveScoringNCCDCExportContract(t *testing.T) {
+	// Demonstrates that a Quotient / CCDC 22-service round projection validates cleanly.
+	raw, err := os.ReadFile("testdata/nccdc-live-score.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot ScoreSnapshot
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateScore(snapshot, Meeting{Created: snapshot.GeneratedAt.Add(-time.Minute)}, snapshot.GeneratedAt.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	passed, earned, possible := 0, 0, 0
+	for _, service := range snapshot.Services {
+		if service.State == "up" {
+			passed++
+		}
+		earned += service.Earned
+		possible += service.Possible
+	}
+	if len(snapshot.Services) != 22 || passed != 19 || earned != 1900 || possible != 2200 {
+		t.Fatal("NCCDC scoring projection differs from hosted contract", len(snapshot.Services), passed, earned, possible)
+	}
+}

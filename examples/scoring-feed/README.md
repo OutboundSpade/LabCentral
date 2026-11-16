@@ -61,6 +61,17 @@ Engine installation, package commands, adapter setup and private teaching materi
 belong in the lab or kit repository. LabCentral owns the bounded, read-only
 projection and its authenticated display.
 
+### Quotient Scoring Engine Integration
+
+For competitions utilizing [Quotient](https://github.com/dbaseqp/Quotient), run the companion `export_quotient.py` script alongside Quotient inside the scorer container/VM:
+
+```sh
+# Poll Quotient's API or PostgreSQL database and update labcentral.json
+python3 export_quotient.py --api-url http://127.0.0.1:8000 --output /var/lib/scoring/labcentral.json --interval 15
+```
+
+The script polls completed rounds, projects service statuses (`up`, `down`) and points into the `ScoreSnapshot` format, and performs an atomic rename to keep `serve.py` reads consistent and isolated.
+
 Finally, select **Live Red vs. Blue** when creating a meeting from this template.
 The student meeting page displays standings and the student's service breakdown;
 the coach's Scoreboard tab displays all service breakdowns. Without that meeting
