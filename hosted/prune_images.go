@@ -20,8 +20,10 @@ type ImagePruneOutcome struct {
 	Message string `json:"message,omitempty"`
 }
 type ImageSummary struct {
-	Images       int `json:"images"`
-	UnusedImages int `json:"unusedImages"`
+	Templates        int `json:"templates"`
+	PartialTemplates int `json:"partialTemplates"`
+	Images           int `json:"images"`
+	UnusedImages     int `json:"unusedImages"`
 }
 type pruneImage struct {
 	Key     string            `json:"key"`
@@ -40,11 +42,12 @@ func (s *Service) protectedRevisionKeys(ctx context.Context, id string) ([]strin
 	if err != nil {
 		return nil, err
 	}
-	var src lc.Source
-	if err = s.Store.Get(ctx, "source", id, &src); errors.Is(err, sql.ErrNoRows) {
-		return keys, nil
-	} else if err != nil {
+	var exists bool
+	if err = s.Store.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM objects WHERE kind='source' AND id=?)", id).Scan(&exists); err != nil {
 		return nil, err
+	}
+	if !exists {
+		return keys, nil
 	}
 	if err = s.actionableRevision(ctx, id); errors.Is(err, errRetainedRevision) {
 		return keys, nil
@@ -131,11 +134,11 @@ func (s *Service) neededImageKeys(ctx context.Context) (map[string]bool, error) 
 	}
 	// Build records outlive successful builds and are only removed with their image.
 	// Protect a build only while it has no published image yet.
-	builds, err := s.Engine.Builds(ctx)
+	builds, err := s.readBuilds(ctx)
 	if err != nil {
 		return nil, err
 	}
-	images, err := s.Engine.Images(ctx)
+	images, err := s.readImages(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +155,7 @@ func (s *Service) neededImageKeys(ctx context.Context) (map[string]bool, error) 
 }
 func (s *Service) imageInventory(ctx context.Context) (ImageSummary, imagePrune, error) {
 	summary, plan := ImageSummary{}, imagePrune{Images: []pruneImage{}, ReadKeys: []string{}}
-	images, err := s.Engine.Images(ctx)
+	images, err := s.readImages(ctx)
 	if err != nil {
 		return summary, plan, err
 	}
@@ -172,6 +175,35 @@ func (s *Service) imageInventory(ctx context.Context) (ImageSummary, imagePrune,
 		}
 	}
 	summary.UnusedImages = len(plan.Images)
+	_, heads, err := s.templateReadMetadata(ctx)
+	if err != nil {
+		return summary, plan, err
+	}
+	present := map[string]bool{}
+	for _, im := range images {
+		present[im.Key] = true
+	}
+	for _, id := range heads {
+		ks, err := s.templateKeys(ctx, id)
+		if errors.Is(err, errRetainedRevision) {
+			continue
+		}
+		if err != nil {
+			return summary, plan, err
+		}
+		ready := 0
+		for _, k := range ks {
+			if present[k] {
+				ready++
+			}
+		}
+		if ready > 0 {
+			summary.Templates++
+			if ready < len(ks) {
+				summary.PartialTemplates++
+			}
+		}
+	}
 	return summary, plan, nil
 }
 func (s *Service) pruneImages(w http.ResponseWriter, r *http.Request, v Session) {
@@ -304,7 +336,7 @@ func (s *Service) runPruneImages(ctx context.Context, j Job) error {
 		}
 		// A response may have been lost after confirmed removal. Absence in the
 		// engine journal confirms completion; it is never inferred from a timeout.
-		images, err := s.Engine.Images(ctx)
+		images, err := s.readImages(ctx)
 		if err == nil && slices.ContainsFunc(images, func(i lc.ImageRecord) bool { return i.Key == im.Key }) {
 			err = s.Engine.RemoveImage(ctx, im.Key)
 		}
@@ -339,7 +371,7 @@ func (s *Service) runPruneImages(ctx context.Context, j Job) error {
 	return errors.Join(errors.Join(failures...), save)
 }
 func (s *Service) reconcilePrunedRevisions(ctx context.Context) error {
-	images, err := s.Engine.Images(ctx)
+	images, err := s.readImages(ctx)
 	if err != nil {
 		return err
 	}

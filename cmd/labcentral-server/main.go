@@ -130,7 +130,14 @@ func run() error {
 	}
 	defer service.Store.Close()
 	server := &http.Server{Addr: *listen, Handler: service.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
-	results := make(chan error, 2)
+	diagnostics, diagnosticListener, e := hosted.NewDiagnosticsServer(c.Diagnostics)
+	if e != nil {
+		return e
+	}
+	results := make(chan error, 3)
+	if diagnostics != nil {
+		go func() { results <- diagnostics.Serve(diagnosticListener) }()
+	}
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); results <- service.Run(ctx) }()
 	go func() { results <- server.ListenAndServe() }()
@@ -142,6 +149,9 @@ func run() error {
 	stopCtx, stop := context.WithTimeout(context.Background(), 30*time.Second)
 	defer stop()
 	_ = server.Shutdown(stopCtx)
+	if diagnostics != nil {
+		_ = diagnostics.Shutdown(stopCtx)
+	}
 	<-workerDone
 	if errors.Is(e, context.Canceled) || errors.Is(e, http.ErrServerClosed) {
 		return nil

@@ -263,8 +263,9 @@ func (s *Service) scoreAccess(ctx context.Context, v Session) (Meeting, []Team, 
 			return *m, nil, "", src, config, fmt.Errorf("join a meeting team to view scores")
 		}
 	}
-	var b InstructorBundle
-	if s.Store.Get(ctx, "source", m.Template, &src) != nil || src.Lab.Version != 3 || s.Store.Get(ctx, "template-instructor", m.Template, &b) != nil || b.LiveScoring == nil || b.LiveScoring.Validate(src, b.Visibility.HiddenMachines) != nil {
+	src, sourceErr := s.Store.sourceMetadata(ctx, m.Template)
+	b, policyErr := s.Store.instructorPolicy(ctx, m.Template)
+	if sourceErr != nil || src.Lab.Version != 3 || policyErr != nil || b.LiveScoring == nil || b.LiveScoring.Validate(src, b.Visibility.HiddenMachines) != nil {
 		return *m, nil, "", src, config, fmt.Errorf("pinned scoreboard feed unavailable")
 	}
 	return *m, teams, own, src, *b.LiveScoring, nil

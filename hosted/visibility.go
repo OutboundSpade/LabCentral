@@ -55,10 +55,20 @@ func decodePolicy(raw, cached sql.NullString, exists bool) (InstructorBundle, er
 	return b, nil
 }
 
-const policyJSON = `json_object('visibility',json_object('audience',coalesce(json_extract(b.body,'$.visibility.audience'),json_extract(b.body,'$.audience')),'hiddenMachines',coalesce(json_extract(b.body,'$.visibility.hiddenMachines'),json_extract(b.body,'$.hiddenMachines')),'participantTerminals',json_extract(b.body,'$.visibility.participantTerminals')),'practice',json_extract(b.body,'$.practice'))`
+const policyJSON = `json_object('visibility',json_object('audience',coalesce(json_extract(b.body,'$.visibility.audience'),json_extract(b.body,'$.audience')),'hiddenMachines',coalesce(json_extract(b.body,'$.visibility.hiddenMachines'),json_extract(b.body,'$.hiddenMachines')),'participantTerminals',json_extract(b.body,'$.visibility.participantTerminals')),'practice',json_extract(b.body,'$.practice'),'liveScoring',json_extract(b.body,'$.liveScoring'))`
 const cachedPolicyJSON = `CASE WHEN json_extract(t.body,'$.instructor') IS NOT NULL THEN json_object('audience',json_extract(t.body,'$.instructor.audience'),'hiddenMachines',json_extract(t.body,'$.instructor.hiddenMachines')) END`
 
 func (s *Store) instructorPolicy(ctx context.Context, id string) (InstructorBundle, error) {
+	if s.DB.current(ctx) != nil {
+		return s.uncachedInstructorPolicy(ctx, id)
+	}
+	generation, err := s.readGeneration(ctx, "catalog")
+	if err != nil {
+		return InstructorBundle{}, err
+	}
+	return s.policyMemo.get(ctx, fmt.Sprint(generation), id, func() (InstructorBundle, error) { return s.uncachedInstructorPolicy(ctx, id) })
+}
+func (s *Store) uncachedInstructorPolicy(ctx context.Context, id string) (InstructorBundle, error) {
 	var raw, cached sql.NullString
 	var exists bool
 	err := s.DB.QueryRowContext(ctx, `SELECT `+policyJSON+`,`+cachedPolicyJSON+`,b.id IS NOT NULL FROM objects t LEFT JOIN objects b ON b.kind='template-instructor' AND b.id=t.id WHERE t.kind='template' AND t.id=?`, id).Scan(&raw, &cached, &exists)

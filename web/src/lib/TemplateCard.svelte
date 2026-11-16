@@ -9,7 +9,8 @@
     type LibraryTemplate,
   } from "./library";
   // One card for a template in the practice library and in administration.
-  // The page supplies the status (left) and actions (right) for its audience.
+  // The whole card opens the template (its title link covers the card); the page
+  // supplies the status (left) and any other actions (right) for its audience.
   let {
     template: t,
     href,
@@ -30,12 +31,15 @@
 </script>
 
 <li
-  class="card card-sm min-w-0 border border-base-content/9 bg-base-200/70 transition-colors hover:border-base-content/20"
+  class="card card-sm relative min-w-0 border border-base-content/9 bg-base-200/70 transition-colors hover:border-base-content/20 hover:bg-base-200"
 >
   <div class="card-body gap-3">
     <div class="flex items-start justify-between gap-3">
       <h2 class="card-title break-words text-base leading-snug">
-        <a class="hover:underline" {href}>{templateName(t.name)}</a>
+        <a
+          class="after:absolute after:inset-0 after:rounded-box focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-primary"
+          {href}>{templateName(t.name)}</a
+        >
       </h2>
       {@render badge?.()}
     </div>
@@ -61,8 +65,8 @@
     <div
       class="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-base-content/8 pt-3"
     >
-      <div class="min-w-0">{@render status?.()}</div>
-      <div class="flex flex-wrap justify-end gap-2">{@render actions?.()}</div>
+      <div class="min-w-0 flex-1">{@render status?.()}</div>
+      {#if actions}<div class="relative flex flex-wrap justify-end gap-2">{@render actions()}</div>{/if}
     </div>
   </div>
 </li>

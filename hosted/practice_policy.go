@@ -139,5 +139,5 @@ func (s *Service) setPracticeSettings(w http.ResponseWriter, r *http.Request, v 
 }
 func practiceRoute(r *http.Request, admin bool) bool {
 	path := r.URL.Path
-	return strings.HasPrefix(path, "/api/learning") || (strings.HasPrefix(path, "/api/templates") && (!admin || r.Method != "GET"))
+	return strings.HasPrefix(path, "/api/learning") || ((strings.HasPrefix(path, "/api/templates") || strings.HasPrefix(path, "/api/template-revisions/")) && (!admin || r.Method != "GET"))
 }

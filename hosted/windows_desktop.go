@@ -67,8 +67,8 @@ func (s *Service) desktopOS(ctx context.Context, team Team, machine string) (str
 		}
 		template = m.Template
 	}
-	var src lc.Source
-	if err := s.Store.Get(ctx, "source", template, &src); err != nil {
+	src, err := s.Store.sourceMetadata(ctx, template)
+	if err != nil {
 		return "", err
 	}
 	spec, ok := src.Lab.Machines[machine]

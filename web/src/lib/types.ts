@@ -56,6 +56,8 @@ export interface DesktopConflict {
   takenOverBy?: string;
 }
 export interface ImageSummary {
+  templates: number;
+  partialTemplates: number;
   images: number;
   unusedImages: number;
 }
@@ -453,6 +455,19 @@ export interface PublicTemplateMachine {
 }
 export interface TemplateCatalog {
   templates: PublicTemplate[];
+}
+export interface TemplateRevisionList {
+  name: string;
+  latestID: string;
+  revisions: TemplateRevisionSummary[];
+}
+export interface TemplateRevisionSummary {
+  id: string;
+  commit: string;
+  commitTitle: string;
+  committedAt?: string | null;
+  imagesBuilt: boolean;
+  latest: boolean;
 }
 export interface LearningSolutionRequest {
   stepID: string;

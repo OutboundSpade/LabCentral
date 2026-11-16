@@ -46,9 +46,15 @@ flowchart LR
   the coaching guide from that meeting's pinned template revision. Switching
   between notes and Exercises keeps the current team selection. The notes are
   visible to administrators only and opening them does not run guest actions.
-- **Image cleanup.** Admin → Templates shows image counts, and "Remove unused images"
-  removes images that no current template, meeting or workspace needs. The total counts
-  unique cached images across all templates, including images shared by several templates.
+- **Image cleanup.** Admin → Templates summarizes the cache as, for example, "28 cached
+  images · used by 5 templates (4 partially built) · 0 unused"; "How images are counted"
+  explains it. "Remove unused images" removes images that no current template, meeting
+  or workspace needs. The total counts unique cached images across all templates,
+  including images shared by several templates and images of partly built latest
+  revisions, so it can exceed what the fully built templates use. Each card shows its
+  latest revision's state: Ready, "3 of 7 images" with a progress bar, Not built,
+  Building, or Needs attention. Search and the All / Ready / Not built filter narrow the
+  list; the whole card opens the template.
   A new repository commit creates new revisions marked "Not built" until their build
   operation succeeds; their unchanged images can already be cached and are still retained
   for the latest revisions. A template's machine count is separate from this cache total.
@@ -130,6 +136,41 @@ already-built images are kept. **Build images** also handles pending failed atte
 If cleanup cannot be confirmed, the job stays retryable: ask the operator to resolve
 the native build resources, then retry. Removing all of the revision's images is not
 needed for a failed build retry.
+
+Template links use the validated `lab.yaml` name (lowercase letters, digits and
+hyphens, starting with a letter, at most 48 characters). A name stays the same across
+imports unless the author renames it; revision IDs remain pinned 24-character
+hexadecimal identities. `/labs/<name>/` and `/admin/templates/<name>/` follow the
+latest visible revision; an optional `/<revisionID>/` selects history. Renaming
+creates a different stable link; existing revision links, meetings and attempts keep
+their pins.
+
+To share a template, open it and choose **Copy link**: the copied `/<name>/` link always
+opens the newest revision. On an older revision the link pins that revision, and the
+page shows "Viewing an older revision" with **Go to latest**. The **Revision** list
+switches between revisions; choosing the latest returns to the unpinned link. Earlier
+`?template=<revisionID>` links still work and are replaced with the pinned
+`/<name>/<revisionID>/` link. Meeting instructor notes and student previews link to the
+meeting's pinned revision.
+
+Authenticated clients can request `GET /api/templates?latest=1` for one newest visible
+revision per name, preferring the head when visible. Omitting `latest=1` retains the
+complete catalog and its ordering. `GET /api/template-revisions/<name>` returns
+`{name, latestID, revisions}` with newest-first summaries (`id`, `commit`,
+`commitTitle`, optional `committedAt`, `imagesBuilt`, `latest`). Student/coach
+visibility and practice availability apply before responding; an invisible name
+returns 404. Retired names leave discovery, while history remains available under
+the same policy as exact revision reads.
+
+The static server uses the build's `200.html` only for missing GET/HEAD template
+routes with one or two segments under `/labs/` or `/admin/templates/`. Other missing
+routes, API/auth paths and assets return 404. Existing files take priority. Deploy
+the complete static build, including `200.html` and its precompressed siblings.
+The server negotiates `.br`/`.gz` files with `Vary: Accept-Encoding` and the original
+content type. HTML/fallback responses use `Cache-Control: no-cache`;
+`/_app/immutable/` files cache for one year.
+Caddy's [encode directive](https://caddyserver.com/docs/caddyfile/directives/encode)
+skips responses that already have `Content-Encoding`, avoiding recompression.
 
 ## Requirements
 
@@ -387,6 +428,52 @@ concurrent desktops has been verified with the defaults: desktops opened at once
 6–41 seconds, because desktop operations share `aggregate.maxSSHSessions`.
 That desktop sizing measurement does not establish simultaneous shell capacity:
 desktop setup leases are temporary, whereas terminals hold SSH slots until closed.
+
+## Read caching and diagnostics
+
+Template projections, topology metadata, disclosure policy and admin image summaries
+are shared immutable read models. SQLite generations change in the same transaction
+as relevant imports, policy, image, meeting, allocation and lifecycle-job writes;
+rollback leaves the previous generation valid. Identical concurrent reads coalesce.
+Current session, membership, practice availability, holder and user progress checks
+remain per request; shared template results are filtered by the caller's role.
+
+Only open admin pages poll `GET /api/admin`: every five seconds, or every two seconds
+while jobs are queued or running or a meeting is preparing or ending. Background tabs
+stop polling and refresh as soon as they are visible again. Admin polls share local
+engine images, instances and build intents for at most five seconds. Lifecycle jobs invalidate this snapshot when queued or updated, so their
+outcomes appear promptly; partial changes during a job can take five seconds to show.
+These engine inventory methods read local journals, not AWS discovery. Mutations,
+capacity admission and image cleanup read authoritative journals, recheck protection
+rules and retain unconfirmed cleanup intent. Displayed counts are observations,
+not proof that a native operation succeeded.
+
+The total image count is unique cache entries, not fully built templates. Every
+current head protects its saved and currently planned image keys even if only some
+images exist or its build has not completed. Open meetings, unfinished personal runs
+(including cleanup), queued/running builds and unpublished build intents also protect
+their keys. Completed build records alone do not preserve superseded images.
+`imageSummary.templates` counts heads with any cached image; `partialTemplates`
+counts those with some but fewer than all saved/resolved keys ready. Several heads
+may share an image, counted once in `images` and once per applicable name in `templates`.
+
+Profiling is off by default. To enable a separate loopback-only listener, add
+`"diagnostics": "127.0.0.1:6060"` to the protected service JSON and restart. A literal
+loopback IPv4/IPv6 address is required; wildcard, non-loopback and hostname listeners
+are rejected. Startup fails if the port cannot bind. Never reverse-proxy that port.
+Profiling endpoints are not registered on the public application mux.
+
+Capture on the host, keeping profiles outside source; they can contain private data:
+
+```sh
+curl --fail -o /private/labcentral.cpu 'http://127.0.0.1:6060/debug/pprof/profile?seconds=30'
+curl --fail -o /private/labcentral.heap 'http://127.0.0.1:6060/debug/pprof/heap'
+go tool pprof /path/to/labcentral-server /private/labcentral.cpu
+```
+
+Each API request taking at least 500 ms emits one line with its registered route
+pattern, HTTP status and duration. The line omits URL/query values, user identities,
+tokens and request bodies. Desktop frame traffic is not wrapped by this logger.
 
 ## Operations
 

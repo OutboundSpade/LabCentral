@@ -20,7 +20,7 @@ try {
       if (path === "/api/admin/practice") return route.fulfill({json:{enabled:true,confirmation:"fixture",activeLabs:[]}});
       if(path==="/api/me")return route.fulfill({json:{practiceEnabled:true,user:{id:"admin",name:"Administrator",admin:true},csrf:"csrf",meeting:null,membership:{},teams:[],lab:{machines:[]}}});
       if(path==="/api/templates")return route.fulfill({json:{templates:[{...template,description:"Branch recovery",machines:[],stages:[],stageCount:0,practiceStageIDs:[],scenarios:[]}]}});
-      if(path==="/api/admin")return route.fulfill({json:{templates:[template],jobs,teams:[],meeting:null,breaks:[],breakRuns:[],checkRuns:[],imageSummary:{images:19,unusedImages:17}}});
+      if(path==="/api/admin")return route.fulfill({json:{templates:[template],jobs,teams:[],meeting:null,breaks:[],breakRuns:[],checkRuns:[],imageSummary:{images:19,unusedImages:17,templates:1,partialTemplates:0}}});
       assert.equal(req.headers()["x-csrf-token"],"csrf");
       if(path==="/api/admin/images/prune") {
         assert.equal(req.method(),"POST");assert.deepEqual(JSON.parse(req.postData()),{});posts++;
@@ -37,7 +37,7 @@ try {
     await page.goto(app+"/admin/templates/");
     await page.getByRole("heading",{name:"Templates",exact:true}).waitFor();
     await page.getByRole("heading",{name:"Branch services",exact:true}).waitFor();
-    await page.getByText("19 images · 17 unused",{exact:true}).waitFor();
+    await page.locator("summary").filter({hasText:"19 cached images · used by 1 template · 17 unused"}).waitFor();
     const prune=page.getByRole("button",{name:"Remove unused images",exact:true}).first();
     assert((await prune.boundingBox()).height>=44 || width>600);
     await prune.click();

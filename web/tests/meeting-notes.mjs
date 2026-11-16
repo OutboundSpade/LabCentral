@@ -47,7 +47,7 @@ try {
     await panel.getByRole('heading', {name: 'Coach run sheet', exact: true}).waitFor();
     assert((await panel.innerText()).includes('Expected: private SSH evidence.'));
     assert(!(await panel.innerText()).includes('WRONG LATEST REVISION'), 'notes followed the catalog head instead of the meeting pin');
-    assert.equal(await panel.getByRole('link', {name: 'template revision', exact: true}).getAttribute('href'), '/admin/templates/?template=pinned');
+    assert.equal(await panel.getByRole('link', {name: 'template revision', exact: true}).getAttribute('href'), '/admin/templates/class-lab/pinned/');
     assert.equal(await page.evaluate(() => window.unsafeMeetingNotes), undefined, 'notes executed raw HTML');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await panel.getByRole('img', {name: /Mermaid diagram/}).waitFor();

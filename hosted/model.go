@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	Diagnostics        string           `json:"diagnostics,omitempty"`
 	Capacity           SiteCapacity     `json:"capacity,omitempty"`
 	MemberGroup        string           `json:"memberGroup"`
 	AdminGroup         string           `json:"adminGroup"`

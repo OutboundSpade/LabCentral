@@ -697,6 +697,30 @@ format 3 revisions. Cleanup always uses saved image keys, never freshly planned 
 older revision without saved keys owns no current image and is not counted as sharing
 one.
 
+### Read models and profiling
+
+Hosted SQLite persists catalog, source, admin and engine-inventory generations.
+Triggers bump them atomically for relevant object, allocation and lifecycle-job
+writes, including direct SQL and import transactions; rollback also rolls back the
+generation. Bounded in-process memos coalesce concurrent work, retain immutable
+projections/topology/disclosure metadata and cache read-only plans by source generation
+and startup environment. Transactions bypass shared policy/topology caches to avoid
+publishing uncommitted authorization state. Per-user session, membership, availability,
+progress and holder decisions stay outside shared read models; role filtering follows
+the shared public projection.
+
+Admin template readiness and the image summary share one generation-keyed model and
+a five-second on-demand engine snapshot. Lifecycle/build queue, status and allocation
+writes invalidate that snapshot. Engine Images, List and Builds decode local journals
+and do not call provider discovery. Mutation, capacity and cleanup decisions continue
+to use authoritative journals and existing transactional claims. Snapshot staleness
+is display-only; it never confirms cleanup or releases ownership.
+
+An optional diagnostics literal loopback IP:port binds a separate pprof server;
+default is off. No profiling handler is mounted on the app or desktop mux. API
+requests lasting at least 500 ms log only registered route pattern, status and duration,
+without URL values or identity. Profiling/load artifacts stay outside tracked source.
+
 ### Jobs and budgets
 
 One process holds the durable scheduler fence. Resource claims coordinate templates,
@@ -759,7 +783,10 @@ revisions; meetings and attempts keep their pins. New revisions start with `buil
 until their own build operation succeeds, even when all image inputs match cached images.
 Admin image readiness is counted independently from the saved cache keys. The global
 image total counts unique cache entries across templates, rather than machines in the
-built revisions; latest revisions protect their image keys regardless of `built`.
+built revisions; latest revisions protect their image keys regardless of built state.
+ImageSummary.templates counts names whose head has any cached image; partialTemplates
+counts heads with some but fewer than all saved/resolved keys present. Sharing can
+count several names while contributing one image to the global total.
 
 Image operations save cache keys and operation identity before any effect. Removing a
 revision's images blocks new meetings on it, keeps images shared with other built
@@ -1024,11 +1051,37 @@ to 60 seconds after five idle minutes. Only a confirmed pass advances progress.
 ### Web UI
 
 The UI is static SvelteKit (daisyUI, Lucide icons, Instrument Sans), prerendered with
-no SPA fallback and served under a strict CSP with local scripts, styles and fonts.
+a restricted 200.html fallback and served under a strict CSP with local scripts,
+styles and fonts. The fallback serves only missing GET/HEAD paths containing one or
+two non-empty, non-asset segments under /labs/ and /admin/templates/; other missing
+paths remain 404. HTML uses no-cache; immutable build assets cache for a year. Static
+files negotiate precompressed Brotli/gzip siblings, preserving content type and varying
+on Accept-Encoding, so the reverse proxy need not compress them.
 Practice, Meeting and Admin become a bottom navigation bar on phones. Practice and
 Admin → Templates share one card per template; meetings start from a template card or a
-revision's page. Admin data refreshes on a shared two-second poll that clears on
-sign-out or identity changes and shows a separate warning when updates fail repeatedly.
+revision's page. Stable explorer routes use validated template names; an optional
+revision segment pins history. GET /api/templates?latest=1 selects a visible head
+or newest visible revision per name in catalog order; the unqualified catalog
+retains all revisions. GET /api/template-revisions/{name} returns visibility-filtered
+newest-first summaries and the latest visible ID, with exact-revision disclosure and
+practice policy. Retired names stay absent from discovery but their history follows
+exact-revision rules. Pages showing live admin state share a visibility-aware poll:
+five seconds normally and two seconds during queued/running work or meeting preparation
+and cleanup. It clears on sign-out or identity changes and shows a separate warning
+when updates fail repeatedly. Other pages do not keep an admin poll alive.
+The unpinned `/<name>/` URL is the shareable template link and always shows the newest
+visible revision; the revision switcher navigates to `/<name>/<revisionID>/`, returns
+to the unpinned URL when the latest is picked, and an older pin shows a "Go to latest"
+notice. A revision under another name renders not found. Earlier `?template=<revisionID>`
+links resolve through the exact revision read and are replaced by the pinned URL;
+attempt links use that resolver because attempts carry only the revision ID, while
+meeting links pin `<name>/<revisionID>/` directly. Cards are whole-card links. Admin
+cards show the head's image progress (Ready, "n of m images", Not built, Building,
+Needs attention) with at most one primary action, client-side search and a
+Ready/Not built filter; the summary reads cached images, the names using them,
+partially built names and unused images. Identity refreshes every ten seconds while
+the tab is visible; practice, lesson, scoreboard and practice-settings polls pause
+while hidden and never overlap an in-flight request.
 The meeting admin page includes an Instructor notes tab when the meeting's exact
 pinned template has notes. It renders the existing admin-only Markdown alongside
 the meeting tools, keeps exercise selections when switching tabs and performs no

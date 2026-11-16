@@ -19,7 +19,8 @@
   import EmptyState from "$lib/EmptyState.svelte";
   import Guard from "$lib/Guard.svelte";
   import Notice from "$lib/Notice.svelte";
-  import { api, adminView, refreshAdmin, date, session } from "$lib/api";
+  import { adminTemplatePath, revisionPath } from "$lib/library";
+  import { api, adminView, refreshAdmin, watchAdmin, date, session } from "$lib/api";
   let data = $derived($adminView);
   let error = $state("");
   let busy = $state(false);
@@ -90,9 +91,7 @@
   async function load() {
     await refreshAdmin().catch(() => {});
   }
-  onMount(() => {
-    void load();
-  });
+  onMount(() => watchAdmin());
   async function run(path: string, body: unknown = {}) {
     busy = true;
     error = "";
@@ -370,7 +369,7 @@
               <h2 class="text-sm font-semibold">Instructor notes</h2>
               <p class="mt-2 mb-5 text-xs text-base-content/70">
                 From this meeting’s
-                <a class="link" href={`/admin/templates/?template=${encodeURIComponent(data.meeting.template)}`}>template revision</a>.
+                <a class="link" href={meetingTemplate ? adminTemplatePath(meetingTemplate.name, meetingTemplate.id) : revisionPath(data.meeting.template, "/admin/templates/")}>template revision</a>.
               </p>
               <div class={[prose, "min-w-0 break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto"]}>
                 {@html render(meetingNotes)}

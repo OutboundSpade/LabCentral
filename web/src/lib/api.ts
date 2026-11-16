@@ -6,6 +6,9 @@ export const adminUpdated = writable(0);
 export const adminPollError = writable("");
 let adminFailures = 0;
 let adminScope = "";
+// Pages showing live admin state (see watchAdmin) and the single poll timer.
+let watchers = 0;
+let timer: ReturnType<typeof setTimeout> | undefined;
 session.subscribe((value) => {
   const scope = value?.user.admin ? `${value.user.id}:${value.csrf}` : "";
   if (scope !== adminScope) {
@@ -14,11 +17,16 @@ session.subscribe((value) => {
     adminUpdated.set(0);
     adminPollError.set("");
     adminFailures = 0;
+    if (scope && watchers) schedule(0);
   }
 });
 let adminPending: { scope: string; promise: Promise<void> } | null = null;
+// Explicit refreshes (after an action) also revalidate identity; polls do not.
 export async function refreshAdmin() {
   await refresh();
+  return loadAdmin();
+}
+async function loadAdmin() {
   const scope = adminScope;
   if (!scope) return;
   if (adminPending?.scope === scope) return adminPending.promise;
@@ -37,6 +45,7 @@ export async function refreshAdmin() {
         if (e instanceof APIError && [401, 403].includes(e.status)) {
           adminView.set(null);
           adminUpdated.set(0);
+          void refresh();
         }
         if (++adminFailures >= 2)
           adminPollError.set(
@@ -50,6 +59,48 @@ export async function refreshAdmin() {
   });
   adminPending = { scope, promise };
   return promise;
+}
+
+// Live admin updates poll only while a page that shows them is mounted and the
+// tab is visible: every 5 s, or every 2 s while jobs run or a meeting is
+// preparing or ending. One timer at a time; requests never overlap.
+export const adminLive = writable(false);
+function urgent(view: AdminView | null) {
+  return (
+    !!view &&
+    (view.jobs.some((j) => j.status === "queued" || j.status === "running") ||
+      ["preparing", "ending"].includes(view.meeting?.status ?? ""))
+  );
+}
+function schedule(delay: number) {
+  clearTimeout(timer);
+  timer = undefined;
+  if (!watchers || document.hidden) return;
+  timer = setTimeout(poll, delay);
+}
+async function poll() {
+  timer = undefined;
+  if (!watchers || document.hidden || !adminScope) return;
+  await loadAdmin().catch(() => {});
+  if (!timer) schedule(urgent(get(adminView)) ? 2000 : 5000);
+}
+function visibility() {
+  schedule(0);
+}
+// Call from onMount on pages that show live admin state; returns the cleanup.
+export function watchAdmin() {
+  if (++watchers === 1) {
+    adminLive.set(true);
+    document.addEventListener("visibilitychange", visibility);
+    schedule(0);
+  }
+  return () => {
+    if (--watchers > 0) return;
+    adminLive.set(false);
+    document.removeEventListener("visibilitychange", visibility);
+    clearTimeout(timer);
+    timer = undefined;
+  };
 }
 export const loading = writable(true);
 export const loadError = writable("");

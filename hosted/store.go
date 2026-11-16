@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/store"
 	"path/filepath"
 	"time"
 )
 
 type Store struct {
+	policyMemo         readMemo[InstructorBundle]
+	sourceMetadataMemo readMemo[lc.Source]
 	*store.Store
 	DB   *hostedDatabase
 	wake chan struct{}
@@ -58,7 +61,13 @@ func OpenStore(root string) (*Store, error) {
 		return nil, e
 	}
 	s.DB = writer
-	return &Store{Store: s, DB: &hostedDatabase{writer, readers}, wake: make(chan struct{}, 1)}, nil
+	db := &hostedDatabase{writer, readers}
+	if e = installReadVersions(db); e != nil {
+		writer.Close()
+		readers.Close()
+		return nil, e
+	}
+	return &Store{Store: s, DB: db, wake: make(chan struct{}, 1)}, nil
 }
 func (s *Store) Meeting(ctx context.Context) (*Meeting, error) {
 	var m Meeting

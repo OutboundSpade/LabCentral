@@ -77,7 +77,8 @@ try {
         if(step==="lost") return route.fulfill({status:503,json:{error:"Service unavailable"}});
         return route.fulfill({status:201,json:lab});
       }
-      if(path==="/api/templates") return route.fulfill({json:{templates:catalog()}});
+      if(path==="/api/templates") {const all=catalog(); return route.fulfill({json:{templates:new URL(req.url()).searchParams.get("latest")==="1"?all.filter((t,i)=>all.findIndex(x=>x.name===t.name)===i):all}});}
+      if(path.startsWith("/api/template-revisions/")) {const name=decodeURIComponent(path.split("/").at(-1)), revs=catalog().filter(t=>t.name===name); return route.fulfill(revs.length?{json:{name,latestID:revs[0].id,revisions:revs.map((t,i)=>({id:t.id,commit:t.commit,commitTitle:t.commitTitle,committedAt:t.committedAt,imagesBuilt:t.imagesBuilt,latest:i===0}))}}:{status:404,json:{error:"Template not found."}});}
       if(path.startsWith("/api/templates/")) {if(heldDetail) {const gate=heldDetail;heldDetail=null;await gate;} const t=catalog().find(t=>t.id===path.split("/").at(-1)); return route.fulfill(t?{json:t}:{status:404,json:{error:"This template revision is unavailable."}});}
       if(path==="/api/learning") return route.fulfill(practiceFailure?{status:503,json:{error:"Practice unavailable"}}:{json:{labs,quota,run:activeRun}});
       if(path==="/api/learning/practice/solution") {if(heldSolution){const gate=heldSolution;heldSolution=null;await gate;} return route.fulfill({json:{stepID:body.stepID,solution:stages.find(s=>s.id===body.stepID).solution}});}
@@ -94,23 +95,23 @@ try {
     // Template-first library: one card per template, metadata, availability and filters.
     await page.goto(app+"/labs/");
     await page.getByRole("heading",{name:"Practice",exact:true}).waitFor();
-    await page.getByRole("link",{name:"Explore Branch services revision 1234567"}).waitFor();
+    await page.getByRole("link",{name:"Branch services",exact:true}).waitFor();
     assert.equal(await nav().getByRole("link",{name:"Library"}).getAttribute("aria-current"),"page","templates are the default view");
-    assert.equal(await page.getByRole("link",{name:/Explore /}).count(),4,"one card per template, not per revision; coach-only hidden from students");
+    assert.equal(await page.locator("main li.card h2 a").count(),4,"one card per template, not per revision; coach-only hidden from students");
     assert.equal(await page.getByRole("link",{name:"Published labs"}).count(),0,"no published-lab navigation");
-    const bank=page.getByRole("listitem").filter({has:page.getByRole("link",{name:"Explore Branch services revision 1234567"})});
+    const bank=page.getByRole("listitem").filter({has:page.getByRole("link",{name:"Branch services",exact:true})});
     for(const text of ["Incident response","Intermediate","1 h 30 min","2 machines · 4 stages · 1 scenario","Workspace ready"]) await bank.getByText(text,{exact:true}).waitFor();
     for(const text of ["ccdc","Baseline practice","1 scenario"]) assert.equal(await bank.getByText(text,{exact:true}).count(),0,"cards omit tags and separate practice metadata");
-    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Network investigation/})}).getByText("Preview only",{exact:true}).waitFor();
-    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore DNS recovery/})}).getByText("Local only",{exact:true}).waitFor();
-    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:/Explore Ubuntu basics/})}).getByText("Local only",{exact:true}).waitFor();
+    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:"Network investigation",exact:true})}).getByText("Preview only",{exact:true}).waitFor();
+    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:"DNS recovery",exact:true})}).getByText("Local only",{exact:true}).waitFor();
+    await page.getByRole("listitem").filter({has:page.getByRole("link",{name:"Ubuntu basics",exact:true})}).getByText("Local only",{exact:true}).waitFor();
     assert(await fits(page),"library width");
     await shot(page,"library",width);
     await page.getByLabel("Search templates").fill("nmap");
     await page.getByText("1 of 4 templates shown").waitFor();
     await page.getByLabel("Search templates").fill("sweep");
     await page.getByText("1 of 4 templates shown").waitFor();
-    await page.getByRole("link",{name:/Explore Ubuntu basics/}).waitFor();
+    await page.getByRole("link",{name:"Ubuntu basics",exact:true}).waitFor();
     await page.getByLabel("Search templates").fill("");
     await page.getByLabel("Category").selectOption("Networking");
     await page.getByText("1 of 4 templates shown").waitFor();
@@ -118,20 +119,20 @@ try {
     await page.getByRole("heading",{name:"No matching templates"}).waitFor();
     if(width<600) await shot(page,"library-filtered",width);
     await page.getByRole("button",{name:"Clear filters"}).click();
-    await page.getByRole("link",{name:/Explore /}).nth(2).waitFor();
+    await page.locator("main li.card h2 a").nth(2).waitFor();
     assert.equal(await page.getByLabel("Category").inputValue(),"");
     await page.getByLabel("Practice mode").selectOption("scenarios");
     await page.getByText("3 of 4 templates shown").waitFor();
     await page.getByLabel("Difficulty").selectOption("beginner");
     await page.getByText("1 of 4 templates shown").waitFor();
-    await page.getByRole("link",{name:/Explore Ubuntu basics/}).waitFor();
+    await page.getByRole("link",{name:"Ubuntu basics",exact:true}).waitFor();
     await page.goto(app+"/admin/labs/");
     await page.getByRole("heading",{name:"For meeting administrators"}).waitFor();
     assert.equal(new URL(page.url()).pathname,"/admin/labs/","students are not redirected into administration");
 
     // Exact revision detail: baseline and scenario starts, attempts filtered by pin.
     await page.goto(app+"/labs/?q=bank");
-    await page.getByRole("link",{name:"Explore Branch services revision 1234567"}).click();
+    await page.getByRole("link",{name:"Branch services",exact:true}).click();
     await page.getByRole("heading",{name:"Practice",exact:true}).waitFor();
     await page.getByText("ccdc",{exact:true}).waitFor();
     await page.getByText("web",{exact:true}).waitFor();
@@ -185,7 +186,7 @@ try {
     await page.getByRole("button",{name:"Run locally"}).waitFor();
 
     // A committed attempt whose response was lost replays (200) on retry instead of duplicating.
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     const before=labs.length; plan.push("lost");
     await page.getByRole("button",{name:"New scenario: Branch outage"}).click();
     await page.getByText("couldn't confirm",{exact:false}).waitFor();
@@ -220,7 +221,7 @@ try {
     assert.deepEqual(Object.keys(attempts().at(-1).body),["requestID"]);
 
     // A confirmed rejection is reported and the next explicit start is a new request.
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     plan.push("reject");
     await page.getByRole("button",{name:"Start practice: Branch services"}).click();
     await page.getByText("Stop your active cloud workspace before starting another scenario.",{exact:true}).waitFor();
@@ -242,16 +243,16 @@ try {
     await shot(page,"attempts",width);
 
     // Unavailable modes explain themselves; local baseline remains available when unbuilt.
-    await page.goto(app+"/labs/?template=network");
+    await page.goto(app+"/labs/?template=network"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByText("This revision has no self-paced stages.",{exact:true}).waitFor();
     assert(await page.getByRole("button",{name:"Start practice: Network investigation"}).isDisabled());
-    await page.goto(app+"/labs/?template=ubuntu");
+    await page.goto(app+"/labs/?template=ubuntu"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByText("Local only · images not built",{exact:true}).waitFor();
     assert(await page.getByRole("button",{name:"Start practice: Ubuntu basics"}).isEnabled());
     assert(await page.getByRole("button",{name:"New scenario: Service sweep"}).isDisabled());
     await page.getByText("Unavailable · images not built",{exact:false}).waitFor();
     await shot(page,"template-unbuilt",width);
-    await page.goto(app+"/labs/?template=dns");
+    await page.goto(app+"/labs/?template=dns"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByText("Local only · no desktop",{exact:true}).waitFor();
     assert(await page.getByRole("button",{name:"Start practice: DNS recovery"}).isEnabled(),"baseline stays available for local runs");
     assert(await page.getByRole("button",{name:"New scenario: Resolver failure"}).isDisabled(),"built images alone do not make scenarios ready");
@@ -259,7 +260,7 @@ try {
 
     // A lost response survives a hard reload: the retry repeats the stored request ID
     // and routes to the attempt that the server already created.
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     const created=labs.length; plan.push("lost");
     await page.getByRole("button",{name:"Start practice: Branch services"}).click();
     await page.getByText("couldn't confirm",{exact:false}).waitFor();
@@ -279,7 +280,7 @@ try {
     assert.equal(await page.evaluate(()=>sessionStorage.getItem("labcentral.attemptRequests")),null,"confirmed outcome clears the stored request");
 
     // Sign-out discards unconfirmed request IDs; the next start is a new request.
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     plan.push("abort");
     await page.getByRole("button",{name:"New scenario: Branch outage"}).click();
     await page.getByText("couldn't confirm",{exact:false}).waitFor();
@@ -292,7 +293,7 @@ try {
 
     // Confirmed logout through the UI discards an unconfirmed request; a later
     // sign-in by the same user starts a new request instead of resurrecting it.
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     plan.push("lost");
     await page.getByRole("button",{name:"Start practice: Branch services"}).click();
     await page.getByText("couldn't confirm",{exact:false}).waitFor();
@@ -305,7 +306,7 @@ try {
     assert.equal(logouts,1);
     assert.equal(await page.evaluate(()=>sessionStorage.getItem("labcentral.attemptRequests")),null,"confirmed logout clears pending request IDs");
     meFailure=false; signedIn=true;
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByRole("button",{name:"Start practice: Branch services"}).waitFor();
     assert.equal(await page.getByRole("button",{name:/^Retry: /}).count(),0,"same-user sign-in does not resurrect the old request");
     await page.getByRole("button",{name:"Start practice: Branch services"}).click();
@@ -314,7 +315,7 @@ try {
 
     // A late attempt response cannot navigate after logout is confirmed, even while
     // the hard navigation to the signed-out home page is still pending.
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     let releaseLate; heldAttempt=new Promise(r=>releaseLate=r); plan.push("hold");
     const lateSent=attempts().length;
     await page.getByRole("button",{name:"Start practice: Branch services"}).click();
@@ -356,7 +357,7 @@ try {
     // One live cloud run blocks new attempts, as the server does.
     const sentBeforeRun=attempts().length;
     activeRun={id:"run",labID:"a-base",userID:"student",status:"ready",created:iso(0),expires:iso(3600000)};
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByRole("link",{name:"Open lab"}).waitFor();
     assert(await page.getByRole("button",{name:"Start practice: Branch services"}).isDisabled());
     assert(await page.getByRole("button",{name:"New scenario: Branch outage"}).isDisabled());
@@ -372,7 +373,7 @@ try {
     const restricted=await context.newPage(), restrictedErrors=[];
     restricted.on("pageerror",e=>restrictedErrors.push(e.message));
     await restricted.addInitScript(()=>Object.defineProperty(window,"sessionStorage",{configurable:true,get(){throw new DOMException("Storage disabled","SecurityError")}}));
-    await restricted.goto(app+"/labs/?template=ubuntu");
+    await restricted.goto(app+"/labs/?template=ubuntu"); await restricted.waitForURL(u=>!u.search.includes("template="));
     plan.push("abort");
     await restricted.getByRole("button",{name:"Start practice: Ubuntu basics"}).click();
     await restricted.getByText("couldn't confirm",{exact:false}).waitFor();
@@ -384,7 +385,7 @@ try {
     await restricted.close();
 
     // A late attempt response cannot navigate or report into another identity.
-    await page.goto(app+"/labs/?template=ubuntu");
+    await page.goto(app+"/labs/?template=ubuntu"); await page.waitForURL(u=>!u.search.includes("template="));
     let releaseAttempt; heldAttempt=new Promise(r=>releaseAttempt=r); plan.push("hold");
     await page.getByRole("button",{name:"Start practice: Ubuntu basics"}).click();
     const studentRequest=attempts().at(-1).body.requestID;
@@ -393,7 +394,7 @@ try {
     await (await identityRead).finished(); await page.clock.runFor(100);
     releaseAttempt(); await page.clock.runFor(500);
     await page.getByRole("button",{name:"Start practice: Ubuntu basics"}).waitFor();
-    assert.equal(new URL(page.url()).search,"?template=ubuntu","late response for the previous identity does not navigate");
+    assert.equal(new URL(page.url()).pathname,"/labs/ubuntu-basics/ubuntu/","late response for the previous identity does not navigate");
     assert.equal(await page.getByRole("alert").count(),0);
     await page.getByRole("button",{name:"Start practice: Ubuntu basics"}).click();
     await page.waitForURL(/learn\/\?id=attempt-/);
@@ -403,7 +404,7 @@ try {
 
     // Legacy lesson links keep working, including solution isolation.
     practiceFailure=true;
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByText("Your attempts could not be loaded",{exact:false}).waitFor();
     assert.equal(await page.getByText("No attempts on this revision yet.").count(),0,"failed learning load is not empty history");
     practiceFailure=false;await page.getByRole("button",{name:"Retry attempts"}).click();
@@ -439,13 +440,13 @@ try {
     await page.getByRole("heading",{name:"No templates yet",exact:true}).waitFor();
     assert.equal(await page.getByText("Loading templates…",{exact:true}).count(),0,"an empty installation finishes loading");
     emptyCatalog=false;
-    await page.goto(app+"/labs/?template=coach");
+    await page.goto(app+"/labs/?template=coach"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByText("Coach-only",{exact:true}).waitFor();
     // Coaches may practice coach-only revisions privately; students never list them.
     assert(!await page.getByRole("button",{name:"Start practice: Coach support"}).isDisabled());
     assert(!await page.getByRole("button",{name:"New scenario: Coach drill"}).isDisabled());
     assert.equal(await page.getByText("Coach-only revisions are previews for instructors.",{exact:true}).count(),0);
-    await page.goto(app+"/labs/?template=network");
+    await page.goto(app+"/labs/?template=network"); await page.waitForURL(u=>!u.search.includes("template="));
     const administration=page.getByRole("region",{name:"Administration",exact:true});
     await administration.getByRole("button",{name:"Build images",exact:true}).waitFor();
     assert.equal(await page.getByRole("link",{name:"Publish practice"}).count(),0,"no publishing call to action");
@@ -456,9 +457,9 @@ try {
     await adminNav.getByRole("link",{name:"Templates"}).waitFor();
     assert.deepEqual(await adminNav.getByRole("link").allInnerTexts(),["Meeting","Templates"]);
     const cards=page.getByRole("region",{name:"Templates",exact:true});
-    const branch=cards.getByRole("listitem").filter({has:page.getByRole("link",{name:"Explore Branch services revision 1234567"})});
-    assert.equal(await cards.getByRole("link",{name:/Explore /}).count(),5,"admin cards include coach templates, with one card per name");
-    assert.equal(await branch.getByRole("link",{name:/Explore /}).getAttribute("href"),"/labs/?template=latest");
+    const branch=cards.getByRole("listitem").filter({has:page.getByRole("link",{name:"Branch services",exact:true})});
+    assert.equal(await cards.locator("li.card h2 a").count(),5,"admin cards include coach templates, with one card per name");
+    assert.equal(await branch.locator("h2 a").getAttribute("href"),"/admin/templates/branch-services/","admin cards open the unpinned template link");
     await branch.getByText("Ready",{exact:true}).waitFor();
     assert(await fits(page),"admin templates width");
     await shot(page,"admin-templates",width);
@@ -505,7 +506,7 @@ try {
     await branch.getByText("In meeting",{exact:true}).waitFor();
     await cards.getByRole("link",{name:"Open meeting",exact:true}).waitFor();
     assert.equal(await cards.getByRole("button",{name:/Start meeting/}).count(),0,"an open meeting replaces creation actions");
-    await branch.getByRole("link",{name:/Explore /}).click();
+    await branch.locator("h2 a").click();
     await administration.getByRole("link",{name:"Open meeting",exact:true}).waitFor();
     assert.equal(await administration.getByRole("button",{name:"Start meeting",exact:true}).count(),0);
     await page.locator("summary").filter({hasText:"Instructor notes"}).click();
@@ -522,9 +523,9 @@ try {
 
     // A historical detail revision is never substituted if its images become unavailable.
     meetingActive=false;
-    await page.goto(app+"/labs/?template=latest");
+    await page.goto(app+"/labs/?template=latest"); await page.waitForURL(u=>!u.search.includes("template="));
     await page.getByLabel("Revision",{exact:true}).selectOption("older");
-    await page.waitForURL(app+"/labs/?template=older");
+    await page.waitForURL(app+"/labs/branch-services/older/");
     const startMeeting=administration.getByRole("button",{name:"Start meeting",exact:true});
     for(const unavailable of ["unbuilt","removing"]) {
       olderBuilt=true; olderRemoving=false;

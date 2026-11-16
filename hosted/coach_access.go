@@ -37,8 +37,8 @@ func (s *Service) coachTeam(ctx context.Context, id string) (Team, Meeting, lc.S
 	}
 	for _, team := range teams {
 		if team.ID == id && team.Status == "ready" && team.InstanceID != "" {
-			var src lc.Source
-			if s.Store.Get(ctx, "source", meeting.Template, &src) != nil {
+			src, err := s.Store.sourceMetadata(ctx, meeting.Template)
+			if err != nil {
 				return Team{}, Meeting{}, src, fmt.Errorf("Pinned source is unavailable.")
 			}
 			return team, *meeting, src, nil

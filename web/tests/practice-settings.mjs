@@ -27,6 +27,7 @@ try {
    }
    if(path==='/api/templates')return route.fulfill({json:{templates:[template]}});
    if(path==='/api/templates/pinned')return route.fulfill({json:template});
+   if(path==='/api/template-revisions/investigation')return route.fulfill({json:{name:'investigation',latestID:'pinned',revisions:[{id:'pinned',commit:template.commit,commitTitle:template.commitTitle,imagesBuilt:true,latest:true}]}});
    if(path==='/api/learning')return route.fulfill({status:403,json:{error:'Practice disabled'}});
    throw new Error('Unexpected API route '+path);
   });
@@ -52,8 +53,8 @@ try {
    assert.equal(await page.getByRole('button',{name:'Start practice',exact:true}).count(),0);
   }
   admin=false;await page.reload();await page.getByRole('heading',{name:'Practice labs are disabled',exact:true}).waitFor();await page.getByRole('link',{name:'Open meeting',exact:true}).click();await page.getByRole('heading',{name:'No meeting right now',exact:true}).waitFor();
-  admin=true;await page.goto('http://127.0.0.1:5173/admin/templates/');await page.getByRole('link',{name:'Explore Investigation revision aaaaaaa',exact:true}).click();
-  await page.waitForURL('**/admin/templates/?template=pinned');await page.getByText('Instructor notes',{exact:true}).click();await page.getByText('Private meeting run sheet',{exact:true}).waitFor();await page.waitForFunction(()=>[...document.querySelectorAll('details')].some(d=>d.open && d.textContent.includes('Private meeting run sheet')));
+  admin=true;await page.goto('http://127.0.0.1:5173/admin/templates/');await page.getByRole('link',{name:'Investigation',exact:true}).click();
+  await page.waitForURL('**/admin/templates/investigation/');await page.getByText('Instructor notes',{exact:true}).click();await page.getByText('Private meeting run sheet',{exact:true}).waitFor();await page.waitForFunction(()=>[...document.querySelectorAll('details')].some(d=>d.open && d.textContent.includes('Private meeting run sheet')));
   assert.equal(await page.getByRole('heading',{name:'Practice',exact:true}).count(),0,'admin management exposed disabled practice');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`${evidence}/disabled-admin-explore-${width}.png`});
   await page.goto('http://127.0.0.1:5173/admin/');await page.getByRole('button',{name:'Enable practice…',exact:true}).click();

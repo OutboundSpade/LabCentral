@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Hammer, LockKeyhole, Trash2, Users } from "@lucide/svelte";
   import { onMount } from "svelte";
-  import { adminView, date, refreshAdmin } from "./api";
+  import { adminView, date, watchAdmin } from "./api";
   import {
     buildable,
     buildLabel,
@@ -23,9 +23,8 @@
   const working = $derived(jobActive(job));
   const current = $derived(t ? revisionState(t, job) : null);
   const meetingOpen = $derived(!!data?.meeting && data.meeting.status !== "ended");
-  onMount(() => {
-    if (!$adminView) void refreshAdmin().catch(() => {});
-  });
+  // Live build progress for this revision while its page is open.
+  onMount(() => watchAdmin());
 </script>
 
 <section

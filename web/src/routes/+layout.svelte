@@ -13,25 +13,29 @@
     session,
     loading,
     refresh,
-    refreshAdmin,
     adminView,
+    adminLive,
     api,
   } from "$lib/api";
-  import { get } from "svelte/store";
   import { clearAttemptRequests } from "$lib/library";
   import Notice from "$lib/Notice.svelte";
   import Logo from "$lib/Logo.svelte";
   let { children } = $props();
   let error = $state("");
+  // Identity refreshes every 10 s while the tab is visible. Admin pages start
+  // their own live updates (watchAdmin), so other pages never poll /api/admin.
   onMount(() => {
     void refresh();
-    const t = setInterval(refresh, 10000);
-    const updates = setInterval(() => {
-      if (get(session)?.user.admin) void refreshAdmin().catch(() => {});
-    }, 2000);
+    const t = setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 10000);
+    const visible = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", visible);
     return () => {
       clearInterval(t);
-      clearInterval(updates);
+      document.removeEventListener("visibilitychange", visible);
     };
   });
   async function logout() {
@@ -83,12 +87,17 @@
   function active(within: string[]) {
     return within.some((prefix) => page.url.pathname.startsWith(prefix));
   }
+  // Shown only while admin updates are live, so the counts are never stale.
   const running = $derived(
-    $adminView?.jobs.filter((j) => j.status === "running").length ?? 0,
+    $adminLive
+      ? ($adminView?.jobs.filter((j) => j.status === "running").length ?? 0)
+      : 0,
   );
   const failures = $derived(
-    $adminView?.jobs.filter((j) => j.status === "failed" && j.needsAttention)
-      .length ?? 0,
+    $adminLive
+      ? ($adminView?.jobs.filter((j) => j.status === "failed" && j.needsAttention)
+          .length ?? 0)
+      : 0,
   );
 </script>
 

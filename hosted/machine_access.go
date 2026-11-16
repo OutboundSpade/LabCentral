@@ -21,8 +21,7 @@ func (s *Service) machineTeam(ctx context.Context, v Session, teamID string, coa
 	if err != nil {
 		return Team{}, Meeting{}, lc.Source{}, err
 	}
-	var src lc.Source
-	err = s.Store.Get(ctx, "source", meeting.Template, &src)
+	src, err := s.Store.sourceMetadata(ctx, meeting.Template)
 	return team, *meeting, src, err
 }
 
@@ -46,8 +45,8 @@ func (s *Service) machineRecordAllowed(ctx context.Context, a accessRecord) bool
 	if err != nil || meeting == nil {
 		return false
 	}
-	var src lc.Source
-	if s.Store.Get(ctx, "source", meeting.Template, &src) != nil {
+	src, err := s.Store.sourceMetadata(ctx, meeting.Template)
+	if err != nil {
 		return false
 	}
 	return s.machineAllowed(ctx, meeting.Template, src, a.Machine, "desktop", a.Coach)

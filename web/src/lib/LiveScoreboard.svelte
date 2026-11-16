@@ -27,8 +27,11 @@
       finally { if (!controller.signal.aborted) loading = false; pending = false; }
     }
     void load();
-    const timer = setInterval(() => { now = Date.now(); void load(); }, 15000);
-    return () => { controller.abort(); clearInterval(timer); };
+    // Paused while the tab is hidden; refreshed as soon as it is visible again.
+    const timer = setInterval(() => { now = Date.now(); if (!document.hidden) void load(); }, 15000);
+    const visible = () => { if (!document.hidden) { now = Date.now(); void load(); } };
+    document.addEventListener("visibilitychange", visible);
+    return () => { controller.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", visible); };
   });
   function age(value: string) { const seconds = Math.max(0, Math.floor((now-Date.parse(value))/1000)); return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds/60)}m ago`; }
 </script>

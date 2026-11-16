@@ -18,6 +18,14 @@
     error = "";
     dialog.showModal();
   }
+  function buildText() {
+    const total = revision?.imagesTotal ?? 0;
+    const cached = Math.min(revision?.imagesReady ?? 0, total);
+    const remaining = total - cached;
+    return cached
+      ? `Builds the ${remaining} remaining ${remaining === 1 ? "image" : "images"}; ${cached} of ${total} are already cached. Temporary build machines incur charges.`
+      : `Builds ${total} ${total === 1 ? "image" : "images"}. Temporary build machines incur charges; matching images are reused.`;
+  }
   async function run() {
     busy = true;
     error = "";
@@ -50,7 +58,7 @@
       {action === "prune-images"
         ? `Removes ${unused} unused ${unused === 1 ? "image" : "images"}. Latest revisions, open meetings, active practice and builds are kept.`
         : action === "build"
-          ? `Builds ${revision?.imagesTotal ?? 0} images. Temporary build machines incur charges; matching images are reused.`
+          ? buildText()
           : "Removes this revision’s unused images and unfinished builds. Shared images are kept, and the revision can be rebuilt."}
     </p>
     <Notice message={error} />

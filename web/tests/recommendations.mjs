@@ -162,6 +162,7 @@ try {
           : route.fulfill({ json: overview() });
       if (path === "/api/templates") return route.fulfill({json:{templates:[publicTemplate]}});
       if (path === "/api/templates/revision") return route.fulfill({json:publicTemplate});
+      if (path === `/api/template-revisions/${publicTemplate.name}`) return route.fulfill({json:{name:publicTemplate.name,latestID:"revision",revisions:[{id:"revision",commit:publicTemplate.commit,commitTitle:publicTemplate.commitTitle,committedAt:publicTemplate.committedAt,imagesBuilt:true,latest:true}]}});
       if (path === "/api/learning") return route.fulfill({json:{labs:[],run:null,quota:{limitMinutes:180,usedSeconds:0,remainingSeconds:10800,resetsAt:new Date(start+86400000).toISOString()}}});
       if (path === "/api/admin") {
         adminReads++;
@@ -389,12 +390,12 @@ try {
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await page.goto(app + "/admin/templates/");
-    const explore=page.getByRole("link",{name:"Explore Training lab revision abcdef1",exact:true});
+    const explore=page.getByRole("link",{name:"Training lab",exact:true});
     await explore.waitFor();
-    assert.equal(await explore.getAttribute("href"),"/labs/?template=revision");
+    assert.equal(await explore.getAttribute("href"),`/admin/templates/${publicTemplate.name}/`);
     await explore.click();
     await page.clock.runFor(100);
-    await page.waitForURL(app+"/labs/?template=revision");
+    await page.waitForURL(app+`/admin/templates/${publicTemplate.name}/`);
     await page.getByText("abcdef123456",{exact:true}).waitFor().catch(async e=>{console.error(await page.locator("body").innerText(),errors);throw e});
     await page.getByRole("region",{name:"Administration",exact:true}).getByText("Ready",{exact:true}).waitFor();
     await page.locator("summary").filter({hasText:"Instructor notes"}).click();

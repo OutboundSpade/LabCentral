@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Play, RotateCcw, Check, Users, LockKeyhole, BookOpen } from "@lucide/svelte";
   import { api, date } from "$lib/api";
+  import { templatePath } from "$lib/library";
   import { render, prose } from "$lib/markdown";
   import Notice from "$lib/Notice.svelte";
   import Status from "./Status.svelte";
@@ -133,7 +134,7 @@
             {#each stages as s, i (s.id)}<option value={s.id}>{i + 1}. {s.title}</option>{/each}
           </select>
           
-          <a class="link mt-3 inline-flex items-center gap-2 text-xs" href={`/labs/?template=${encodeURIComponent(template?.id ?? "")}`}><BookOpen size={14} />Student preview</a>
+          <a class="link mt-3 inline-flex items-center gap-2 text-xs" href={template ? templatePath(template.name, template.id) : "/labs/"}><BookOpen size={14} />Student preview</a>
         </div>
         {#if stage}<article class="min-w-0 border-t border-base-content/10 pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6" aria-label="Meeting stage guidance">
           <h3 class="text-lg font-semibold">{stage.title}</h3>

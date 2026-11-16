@@ -17,8 +17,34 @@ export type AttemptLab = LearningLab;
 export type AttemptView = LearningView;
 export type AttemptCatalog = LearningCatalog;
 
-export function templatePath(id: string) {
-  return `/labs/?template=${encodeURIComponent(id)}`;
+// Templates are addressed by name, then revision: /labs/<name>/ always opens the
+// newest visible revision (the link to share), /labs/<name>/<revision>/ pins one.
+export type TemplateBase = "/labs/" | "/admin/templates/";
+export function templatePath(
+  name: string,
+  revision = "",
+  base: TemplateBase = "/labs/",
+) {
+  const pinned = revision ? `${encodeURIComponent(revision)}/` : "";
+  return `${base}${encodeURIComponent(name)}/${pinned}`;
+}
+
+export function adminTemplatePath(name: string, revision = "") {
+  return templatePath(name, revision, "/admin/templates/");
+}
+
+// For a revision whose template name is not known (an attempt's pinned revision):
+// the library resolves ?template=<revision> and replaces it with the pinned URL.
+export function revisionPath(revision: string, base: TemplateBase = "/labs/") {
+  return `${base}?template=${encodeURIComponent(revision)}`;
+}
+
+// Resolves an earlier ?template=<revision> link to its pinned URL.
+export async function legacyTemplatePath(revision: string, base: TemplateBase) {
+  const t = await api<LibraryTemplate>(
+    `/api/templates/${encodeURIComponent(revision)}`,
+  );
+  return templatePath(t.name, t.id, base);
 }
 
 export function scenarios(t: LibraryTemplate | null | undefined) {

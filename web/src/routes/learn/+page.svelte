@@ -46,7 +46,7 @@
     hours,
   } from "$lib/learning";
   import {
-    templatePath,
+    revisionPath,
     attemptBlocked,
     difficultyLabel,
     minutes,
@@ -86,11 +86,13 @@
   let seenCompleted = -1;
   let lastCheck = "";
 
+  let loads = 0; // In-flight lesson requests; the timer never overlaps them.
   async function load() {
     const s = scope;
     const lab = loadedID;
     const n = ++seq;
     if (!s || !lab) return;
+    loads++;
     try {
       const next = await api<AttemptView>(endpoint(lab));
       if (n !== seq || s !== scope || lab !== loadedID) return;
@@ -109,6 +111,8 @@
         missing = true;
       }
       failure = (e as Error).message;
+    } finally {
+      loads--;
     }
   }
   $effect(() => {
@@ -226,9 +230,16 @@
   $effect(() => {
     if (!mounted) return;
     const timer = setInterval(() => {
-      if (!document.hidden) void load();
+      if (!document.hidden && !loads) void load();
     }, interval);
-    return () => clearInterval(timer);
+    const visible = () => {
+      if (!document.hidden && !loads) void load();
+    };
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
+    };
   });
 
   function choose(index: number) {
@@ -424,7 +435,7 @@
           >{completed} of {steps.length} stages complete</span
         >
       </div>
-      {#if view.lab.attempt}<a class="btn btn-sm min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}>Template revision</a>{/if}
+      {#if view.lab.attempt}<a class="btn btn-sm min-h-11 lg:min-h-8" href={revisionPath(view.lab.template)}>Template revision</a>{/if}
     </PageHeader>
     {#if scenario}<section
         aria-labelledby="scenario-title"
@@ -475,7 +486,7 @@
             <p class="mt-0.5 break-words text-error">
               {ownRun.error || "The workspace could not be prepared."}
               {#if randomized}Stop it to clean up, then start a new scenario attempt
-                from the <a class="link" href={templatePath(view.lab.template)}>template revision</a
+                from the <a class="link" href={revisionPath(view.lab.template)}>template revision</a
                 >.{:else}Stop it, then start again.{/if}
             </p>
           {:else if ownRun.status === "ending"}
@@ -593,7 +604,7 @@
                   blocked={attemptBlocked(view.run)}
                   describedby="repeat-help"
                 />
-                <a class="btn btn-sm min-h-11 lg:min-h-8" href={templatePath(view.lab.template)}
+                <a class="btn btn-sm min-h-11 lg:min-h-8" href={revisionPath(view.lab.template)}
                   >Template revision<ArrowRight size={15} /></a
                 >
                 {#if attemptBlocked(view.run)}<p id="repeat-help" class="basis-full text-xs text-base-content/70">

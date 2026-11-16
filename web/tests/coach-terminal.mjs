@@ -249,7 +249,7 @@ try {
     await page.getByRole("link", { name: "Open SSH", exact: true }).waitFor({ state: "detached", timeout: 8000 });
     assert.equal(await page.getByLabel("Team", { exact: true }).inputValue(), "");
     f.template = meeting.template;
-    await page.waitForTimeout(2500); // admin poll observes the restored revision
+    await page.waitForTimeout(5500); // the idle admin poll (5 s) observes the restored revision
     await page.getByLabel("Team", { exact: true }).selectOption({ label: "Team 1" });
     await page.getByRole("link", { name: "Open SSH", exact: true }).waitFor();
     assert(await fits(page), "admin picker overflow");

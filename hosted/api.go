@@ -188,19 +188,14 @@ func (s *Service) admin(w http.ResponseWriter, r *http.Request, v Session) {
 		err = s.jobDetails(ctx, out.Jobs)
 	}
 	if err == nil {
-		out.Templates, err = s.templates(ctx)
+		out.Templates, out.ImageSummary, err = s.adminTemplates(ctx)
 		for _, t := range out.Templates {
 			if t.Problem != "" {
 				out.ImportFailures = append(out.ImportFailures, TemplateImportFailure{Directory: t.Name + " (" + t.ID + ")", Error: t.Problem})
 			}
 		}
 	}
-	if err == nil && s.Engine != nil {
-		summary, _, inventoryErr := s.imageInventory(ctx)
-		if inventoryErr == nil {
-			out.ImageSummary = &summary
-		}
-	}
+
 	if err == nil {
 		for n := range out.Templates {
 			if out.Templates[n].Operation != nil {
@@ -427,6 +422,16 @@ func (s *Service) retryJobDecision(w http.ResponseWriter, r *http.Request, v Ses
 }
 
 func (s *Service) plan(ctx context.Context, id string) (lc.Plan, error) {
+	if _, ok := ctx.Value(inventoryReadKey{}).(*inventorySnapshot); ok {
+		generation, err := s.Store.readGeneration(ctx, "source")
+		if err != nil {
+			return lc.Plan{}, err
+		}
+		return s.planMemo.get(ctx, fmt.Sprintf("%d/%s", generation, jsonValue(s.env)), id, func() (lc.Plan, error) { return s.uncachedPlan(ctx, id) })
+	}
+	return s.uncachedPlan(ctx, id)
+}
+func (s *Service) uncachedPlan(ctx context.Context, id string) (lc.Plan, error) {
 	if err := s.actionableRevision(ctx, id); err != nil {
 		return lc.Plan{}, err
 	}

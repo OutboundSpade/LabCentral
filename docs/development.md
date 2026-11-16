@@ -43,6 +43,24 @@ LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_CHROMIUM=… node web/tests/template
 LABCENTRAL_PLAYWRIGHT_MODULE=… LABCENTRAL_BROWSER_EVIDENCE=/outside/source node web/tests/meeting-notes.mjs
 ```
 
+Profile cohort read paths without cloud accounts (profiles stay outside source):
+
+```sh
+LABCENTRAL_READ_LOAD=1 LABCENTRAL_READ_ENGINE_COST=2ms LABCENTRAL_READ_MINUTES=2 go test ./hosted -run '^TestMeetingReadLoad$' -count=1 -v -cpuprofile=/private/hosted.cpu -memprofile=/private/hosted.mem -o /private/hosted.test
+go tool pprof -tags /private/hosted.cpu
+go tool pprof -top -alloc_space /private/hosted.mem
+```
+
+The test extends the catalog/concurrency fixtures with 28 names, 70 revisions,
+Windows/Linux sources, 30 images, 40 instance journals, six teams of six students
+and three admins. It compresses polling intervals into virtual minutes, labels
+endpoint CPU, runs scheduled checks through a failing fixture guest transport and
+refreshes score attempts every virtual 15 seconds. LABCENTRAL_READ_GUEST_COST adds
+fixture transport delay; it does not perform SSH handshakes. The request mix preserves
+the earlier UI intervals for identical backend comparisons even if the frontend
+later reduces polling. TestAdminPollReadBudget checks concurrent inventory coalescing
+and an allocation budget that catches repeated per-head planning.
+
 None of these replace testing against real AWS or Proxmox accounts.
 
 `TestHostedEightMachineBrowser` exercises the built team UI and actual hosted HTTP

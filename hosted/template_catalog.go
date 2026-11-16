@@ -46,6 +46,20 @@ type TemplateCatalog struct {
 	Templates []PublicTemplate `json:"templates"`
 }
 
+type TemplateRevisionSummary struct {
+	ID          string     `json:"id"`
+	Commit      string     `json:"commit"`
+	CommitTitle string     `json:"commitTitle"`
+	CommittedAt *time.Time `json:"committedAt,omitempty"`
+	ImagesBuilt bool       `json:"imagesBuilt"`
+	Latest      bool       `json:"latest"`
+}
+type TemplateRevisionList struct {
+	Name      string                    `json:"name"`
+	LatestID  string                    `json:"latestID"`
+	Revisions []TemplateRevisionSummary `json:"revisions"`
+}
+
 // Read only metadata from pinned snapshots. Guest files and private instructor
 // programs stay in SQLite rather than being copied and base64-decoded per view.
 // The public projection below remains the explicit disclosure boundary.
@@ -54,18 +68,48 @@ func (s *Service) publicTemplates(ctx context.Context, id string) ([]PublicTempl
 }
 
 func (s *Service) templateProjections(ctx context.Context, id string, coach bool) ([]PublicTemplate, error) {
+	return s.readTemplateProjections(ctx, id, "", coach)
+}
+func (s *Service) readTemplateProjections(ctx context.Context, id, name string, coach bool) ([]PublicTemplate, error) {
+	var templates []PublicTemplate
+	var err error
+	if s.Store.DB.current(ctx) != nil {
+		templates, err = s.uncachedTemplateProjections(ctx, id, name)
+	} else {
+		generation, e := s.Store.readGeneration(ctx, "catalog")
+		if e != nil {
+			return nil, e
+		}
+		templates, err = s.projectionMemo.get(ctx, fmt.Sprint(generation), id+"\x00"+name, func() ([]PublicTemplate, error) { return s.uncachedTemplateProjections(ctx, id, name) })
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PublicTemplate, 0, len(templates))
+	for _, t := range templates {
+		if coach || !t.CoachOnly {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+func (s *Service) uncachedTemplateProjections(ctx context.Context, id, name string) ([]PublicTemplate, error) {
 	query := `SELECT json_remove(t.body,'$.instructor'),src.id,json_extract(src.body,'$.lab'),json_extract(b.body,'$.stages'),` + policyJSON + `,` + cachedPolicyJSON + `,b.id IS NOT NULL
  ,json_extract(b.body,'$.library'),json_extract(b.body,'$.scenarios') FROM objects t
  LEFT JOIN objects src ON src.kind='source' AND src.id=t.id
  LEFT JOIN objects b ON b.kind='template-instructor' AND b.id=t.id
  WHERE t.kind='template'`
 	args := []any{}
-	if id == "" {
+	if id == "" && name == "" {
 		query += ` AND NOT EXISTS (SELECT 1 FROM objects h WHERE h.kind='template-retired-name' AND h.id=json_extract(t.body,'$.name'))`
 	}
 	if id != "" {
 		query += ` AND t.id=?`
 		args = append(args, id)
+	}
+	if name != "" {
+		query += ` AND json_extract(t.body,'$.name')=?`
+		args = append(args, name)
 	}
 	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -84,9 +128,7 @@ func (s *Service) templateProjections(ctx context.Context, id string, coach bool
 		if policyErr != nil {
 			return nil, policyErr
 		}
-		if policy.Visibility.Audience == "coaches" && !coach {
-			continue
-		}
+
 		if !sourceID.Valid {
 			return nil, fmt.Errorf("pinned template source is unavailable")
 		}
@@ -152,19 +194,23 @@ func (s *Service) templateCatalog(w http.ResponseWriter, r *http.Request, v Sess
 		writeError(w, 503, "Templates are unavailable. Please retry.")
 		return
 	}
-	sort.Slice(out.Templates, func(i, j int) bool {
-		a, b := out.Templates[i], out.Templates[j]
-		if a.CommittedAt != nil && b.CommittedAt != nil && !a.CommittedAt.Equal(*b.CommittedAt) {
-			return a.CommittedAt.After(*b.CommittedAt)
+	sortPublicTemplates(out.Templates)
+	if r.URL.Query().Get("latest") == "1" {
+		_, heads, e := s.templateReadMetadata(r.Context())
+		if e != nil {
+			writeError(w, 503, "Templates are unavailable. Please retry.")
+			return
 		}
-		if (a.CommittedAt == nil) != (b.CommittedAt == nil) {
-			return a.CommittedAt != nil
+		chosen := latestVisible(out.Templates, heads)
+		filtered := []PublicTemplate{}
+		for _, t := range out.Templates {
+			if chosen[t.Name] == t.ID {
+				filtered = append(filtered, t)
+			}
 		}
-		if a.Name != b.Name {
-			return a.Name < b.Name
-		}
-		return a.ID < b.ID
-	})
+		out.Templates = filtered
+	}
+
 	writeJSON(w, 200, out)
 }
 
@@ -182,4 +228,53 @@ func (s *Service) templateExplorer(w http.ResponseWriter, r *http.Request, v Ses
 		return
 	}
 	writeJSON(w, 200, templates[0])
+}
+
+func sortPublicTemplates(templates []PublicTemplate) {
+	sort.Slice(templates, func(i, j int) bool {
+		a, b := templates[i], templates[j]
+		if a.CommittedAt != nil && b.CommittedAt != nil && !a.CommittedAt.Equal(*b.CommittedAt) {
+			return a.CommittedAt.After(*b.CommittedAt)
+		}
+		if (a.CommittedAt == nil) != (b.CommittedAt == nil) {
+			return a.CommittedAt != nil
+		}
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.ID < b.ID
+	})
+}
+func latestVisible(templates []PublicTemplate, heads map[string]string) map[string]string {
+	chosen := map[string]string{}
+	for _, t := range templates {
+		if _, ok := chosen[t.Name]; !ok || heads[t.Name] == t.ID {
+			chosen[t.Name] = t.ID
+		}
+	}
+	return chosen
+}
+func (s *Service) templateRevisions(w http.ResponseWriter, r *http.Request, v Session) {
+	name := r.PathValue("name")
+	templates, err := s.readTemplateProjections(r.Context(), "", name, v.User.Admin)
+	if err != nil {
+		writeError(w, 503, "This template revision is unavailable. Please retry.")
+		return
+	}
+	if len(templates) == 0 {
+		writeError(w, 404, "This template revision is unavailable.")
+		return
+	}
+	sortPublicTemplates(templates)
+	_, heads, err := s.templateReadMetadata(r.Context())
+	if err != nil {
+		writeError(w, 503, "This template revision is unavailable. Please retry.")
+		return
+	}
+	latest := latestVisible(templates, heads)[name]
+	out := TemplateRevisionList{Name: name, LatestID: latest, Revisions: []TemplateRevisionSummary{}}
+	for _, t := range templates {
+		out.Revisions = append(out.Revisions, TemplateRevisionSummary{ID: t.ID, Commit: t.Commit, CommitTitle: t.CommitTitle, CommittedAt: t.CommittedAt, ImagesBuilt: t.ImagesBuilt, Latest: t.ID == latest})
+	}
+	writeJSON(w, 200, out)
 }

@@ -16,6 +16,13 @@ import (
 )
 
 type Service struct {
+	// inventoryClock supplies virtual time in local load tests; nil uses wall time.
+	inventoryClock func() time.Time
+	inventoryMemo  readMemo[*inventorySnapshot]
+	adminMemo      readMemo[adminTemplatesRead]
+	projectionMemo readMemo[[]PublicTemplate]
+	planMemo       readMemo[lc.Plan]
+
 	scoreMu        sync.Mutex
 	scoreFlights   map[string]*scoreFlight
 	Config         Config
@@ -96,6 +103,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /api/me", s.authorized(false, s.overview))
 	mux.HandleFunc("GET /api/live-scoreboard", s.authorized(false, s.liveScoreboard))
 	mux.HandleFunc("GET /api/templates", s.authorized(false, s.templateCatalog))
+	mux.HandleFunc("GET /api/template-revisions/{name}", s.authorized(false, s.templateRevisions))
 	mux.HandleFunc("GET /api/templates/{id}", s.authorized(false, s.templateExplorer))
 	mux.HandleFunc("POST /api/templates/{id}/attempt", s.authorized(false, s.createTemplateAttempt))
 	mux.HandleFunc("GET /api/learning", s.authorized(false, s.learningCatalog))
@@ -143,7 +151,8 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/checks/schedule", s.authorized(true, s.setCheckSchedule))
 	mux.HandleFunc("POST /api/admin/checks/run", s.authorized(true, s.startChecks))
 	mux.HandleFunc("POST /api/admin/exercises", s.authorized(true, s.startExercises))
-	mux.Handle("/", http.FileServer(http.Dir(s.Config.WebRoot)))
+	mux.HandleFunc("/", s.staticHandler)
+	loggedMux := slowAPI(mux, 500*time.Millisecond, apiRequestLog)
 	origin, _ := url.Parse(s.Config.Origin)
 	desktop, _ := url.Parse(s.Config.DesktopOrigin)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +170,7 @@ func (s *Service) Handler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'none'; form-action 'self' "+s.Config.DesktopOrigin)
-		mux.ServeHTTP(w, r)
+		loggedMux.ServeHTTP(w, r)
 	})
 }
 

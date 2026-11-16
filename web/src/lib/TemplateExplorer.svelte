@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  // The last library list URL (with its filters) per list, for "All templates";
+  // detail URLs stay free of list filters so they can be shared.
+  const returnTo: Record<string, string> = {};
+</script>
+
 <script lang="ts">
   import PageHeader from "$lib/PageHeader.svelte";
   import { templateName } from "$lib/display";
@@ -9,10 +15,13 @@
     ArrowLeft,
     ArrowRight,
     BookOpen,
+    Check,
     Clock,
     Dices,
     Gauge,
     Globe,
+    History,
+    Link,
     ListChecks,
     LockKeyhole,
     Monitor,
@@ -35,33 +44,42 @@
     difficultyLabel,
     minutes,
     breakRange,
+    templatePath,
     type AttemptCatalog,
     type LibraryTemplate,
+    type TemplateBase,
   } from "$lib/library";
+  import type { TemplateRevisionList, TemplateRevisionSummary } from "$lib/types";
   import { render, prose } from "$lib/markdown";
   import Notice from "$lib/Notice.svelte";
   import AttemptButton from "$lib/AttemptButton.svelte";
   import TemplateCard from "$lib/TemplateCard.svelte";
   import RevisionAdmin from "$lib/RevisionAdmin.svelte";
   import Status from "$lib/Status.svelte";
+  import EmptyState from "$lib/EmptyState.svelte";
   let {
     catalog = null,
     catalogError = "",
     retryCatalog,
+    name = "",
+    revision = "",
   }: {
     catalog?: AttemptCatalog | null;
     catalogError?: string;
     retryCatalog?: () => Promise<void>;
+    // With a template name this is the detail view: its newest revision, or the
+    // pinned revision when one is given. Without, it is the library list.
+    name?: string;
+    revision?: string;
   } = $props();
   let mounted = $state(false);
   onMount(() => {
     mounted = true;
   });
-  const param = (name: string) =>
-    browser && mounted ? (page.url.searchParams.get(name) ?? "") : "";
-  const id = $derived(param("template"));
+  const param = (key: string) =>
+    browser && mounted ? (page.url.searchParams.get(key) ?? "") : "";
   const management = $derived(page.url.pathname.startsWith("/admin/"));
-  const catalogPath = $derived(management ? "/admin/templates/" : "/labs/");
+  const catalogPath = $derived<TemplateBase>(management ? "/admin/templates/" : "/labs/");
   const practiceVisible = $derived(!management && !!$session?.practiceEnabled);
   const query = $derived(param("q"));
   const category = $derived(param("category"));
@@ -69,23 +87,30 @@
   const mode = $derived(param("mode"));
   let templates = $state<LibraryTemplate[] | null>(null);
   let template = $state<LibraryTemplate | null>(null);
+  let history = $state<TemplateRevisionList | null>(null);
   let failure = $state("");
   let detailFailure = $state("");
+  let missing = $state(false);
   let selected = $state("");
+  let copied = $state(false);
   let scope = "";
   let seq = 0;
   let detailSeq = 0;
-  let exploredID = "";
-  let exploredScope = "";
+  let explored = "";
+  let detailAudience = "";
+  // A revision switch keeps the previous revision on screen, inert, until the
+  // requested revision loads; its actions never apply to the wrong revision.
+  let switching = $state(false);
   const audienceScope = $derived(
     $session ? `${sessionScope($session)}:${$session.user.admin}` : "",
   );
   async function load() {
     const s = scope,
       n = ++seq;
-    if (!s) return;
+    if (!s || name) return;
     try {
-      const next = await api<{ templates: LibraryTemplate[] }>("/api/templates");
+      // Only the newest visible revision of each template.
+      const next = await api<{ templates: LibraryTemplate[] }>("/api/templates?latest=1");
       if (s !== scope || n !== seq) return;
       templates = next.templates;
       failure = "";
@@ -99,27 +124,48 @@
       failure = (e as Error).message;
     }
   }
-  async function detail(target: string) {
+  async function detail() {
     const s = scope,
-      n = ++detailSeq;
+      n = ++detailSeq,
+      target = name,
+      pinned = revision;
     if (!s || !target) return;
+    const current = () => s === scope && n === detailSeq;
     try {
-      const next = await api<LibraryTemplate>(
-        `/api/templates/${encodeURIComponent(target)}`,
+      const list = api<TemplateRevisionList>(
+        `/api/template-revisions/${encodeURIComponent(target)}`,
       );
-      if (s !== scope || n !== detailSeq || target !== exploredID) return;
-      // The detail view stays on the exact requested revision.
-      if (next.id !== target) throw new Error("This template revision is unavailable.");
+      const fetchRevision = (id: string) =>
+        api<LibraryTemplate>(`/api/templates/${encodeURIComponent(id)}`);
+      const [revisions, next] = pinned
+        ? await Promise.all([list, fetchRevision(pinned)])
+        : await list.then(async (r) => [r, await fetchRevision(r.latestID)] as const);
+      if (!current()) return;
+      // A revision is shown only under its own template name.
+      if (
+        next.name !== target ||
+        (pinned && next.id !== pinned) ||
+        !revisions.revisions.some((r) => r.id === next.id)
+      ) {
+        template = null;
+        history = null;
+        switching = false;
+        missing = true;
+        return;
+      }
+      history = revisions;
       template = next;
+      switching = false;
       detailFailure = "";
     } catch (e) {
-      if (s !== scope || n !== detailSeq || target !== exploredID) return;
-      if (e instanceof APIError && [401, 403].includes(e.status)) {
-        template = null;
-        templates = null;
-        void refresh();
-      }
-      detailFailure = (e as Error).message;
+      if (!current()) return;
+      // Never leave a different revision on screen after a failed load.
+      template = null;
+      history = null;
+      switching = false;
+      if (e instanceof APIError && [401, 403].includes(e.status)) void refresh();
+      if (e instanceof APIError && e.status === 404) missing = true;
+      else detailFailure = (e as Error).message;
     }
   }
   $effect(() => {
@@ -128,27 +174,32 @@
       if (s === scope) return;
       scope = s;
       seq++;
-      detailSeq++;
       templates = null;
       template = null;
+      history = null;
       failure = "";
-      detailFailure = "";
-      selected = "";
       if (s) void load();
     });
   });
   $effect(() => {
-    const target = id,
-      s = audienceScope;
+    const key = `${audienceScope}\n${name}\n${revision}`;
     untrack(() => {
-      if (target === exploredID && s === exploredScope) return;
-      exploredID = target;
-      exploredScope = s;
+      if (key === explored) return;
+      explored = key;
       detailSeq++;
-      template = null;
+      // Switching between revisions of one template, for the same audience, keeps
+      // the page in place. Any audience change drops the previous detail at once.
+      if (template?.name !== name || detailAudience !== audienceScope) {
+        template = null;
+        history = null;
+        switching = false;
+      } else if (template) switching = true;
+      detailAudience = audienceScope;
       detailFailure = "";
+      missing = false;
       selected = "";
-      if (target && s) void detail(target);
+      copied = false;
+      if (name && audienceScope) void detail();
     });
   });
   const practicable = (t: LibraryTemplate) => !baselineBlocked(t);
@@ -191,9 +242,23 @@
     ),
   );
   const filtered = $derived(!!(query || category || difficulty || mode));
-  const revisions = $derived(
-    (templates ?? []).filter((t) => t.name === template?.name),
-  );
+  const revisions = $derived(history?.revisions ?? []);
+  const pinnedOlder = $derived(!!revision && !!history && revision !== history.latestID);
+  const latestPath = $derived(templatePath(name, "", catalogPath));
+  // Picking the newest revision returns to the unpinned, shareable URL.
+  const revisionTarget = (id: string) =>
+    templatePath(name, id === history?.latestID ? "" : id, catalogPath);
+  async function copyLink() {
+    // The shared link follows the newest revision unless an older one is open.
+    const link = new URL(pinnedOlder ? page.url.pathname : latestPath, location.origin).href;
+    try {
+      await navigator.clipboard.writeText(link);
+      copied = true;
+      setTimeout(() => (copied = false), 4000);
+    } catch {
+      copied = false;
+    }
+  }
   const stage = $derived(
     template?.stages.find((s) => s.id === selected) ?? template?.stages[0],
   );
@@ -211,15 +276,14 @@
       if (value) params.set(name, value);
     return params;
   }
-  function path(target: string) {
-    const params = listParams();
-    params.set("template", target);
-    return `${catalogPath}?${params}`;
-  }
   function listPath(params = listParams()) {
     const text = params.toString();
     return text ? `${catalogPath}?${text}` : catalogPath;
   }
+  $effect(() => {
+    if (!name && mounted) returnTo[catalogPath] = listPath();
+  });
+  const backPath = $derived(returnTo[catalogPath] ?? catalogPath);
   function set(name: string, value: string) {
     const params = listParams();
     if (value) params.set(name, value);
@@ -234,7 +298,7 @@
     void goto(catalogPath, { replaceState: true, noScroll: true, keepFocus: true });
   }
   // Native select text is not clipped by padding, so long titles are shortened.
-  function revisionLabel(revision: LibraryTemplate) {
+  function revisionLabel(revision: TemplateRevisionSummary) {
     const title = revision.commitTitle || "Imported revision";
     return `${revision.commit.slice(0, 7)} · ${title.length > 26 ? `${title.slice(0, 25).trimEnd()}…` : title}`;
   }
@@ -246,16 +310,46 @@
     "Randomized scenario";
 </script>
 
-{#if id}
-  {#if template}
+{#if name}
+  {#if missing}<EmptyState icon={BookOpen} title="Template revision not found">
+      {revision
+        ? "This revision does not belong to this template, or it is no longer available."
+        : "No visible revision of this template exists."}
+      {#snippet actions()}{#if revision}<a class="btn btn-sm min-h-11" href={latestPath}
+            >Latest revision<ArrowRight size={15} /></a
+          >{/if}<a class="btn btn-sm min-h-11" href={catalogPath}>All templates</a>{/snippet}
+    </EmptyState>
+  {:else if template}
     {@const meta = template.library}
     {@const baseline = baselineBlocked(template)}
     {@const scenarioReason = scenarioBlocked(template)}
     {@const busyRun = attemptBlocked(catalog?.run)}
+    <div class={switching ? "pointer-events-none opacity-60 transition-opacity" : "transition-opacity"} inert={switching} aria-busy={switching}>
     <PageHeader title={templateName(template.name)} description={template.description}>
-      {#snippet eyebrow()}<a class="link link-hover" href={listPath()}>{management ? "Templates" : "Practice"}</a>{#if meta?.category}{" · "}{meta.category}{/if}{/snippet}
-      <a class="btn btn-sm min-h-11 lg:min-h-8" href={listPath()}><ArrowLeft size={15} />All templates</a>
+      {#snippet eyebrow()}<a class="link link-hover" href={backPath}>{management ? "Templates" : "Practice"}</a>{#if meta?.category}{" · "}{meta.category}{/if}{/snippet}
+      <a class="btn btn-sm min-h-11 lg:min-h-8" href={backPath}><ArrowLeft size={15} />All templates</a>
+      {#if management && $session?.practiceEnabled}<a
+          class="btn btn-sm min-h-11 lg:min-h-8"
+          href={templatePath(name, revision)}>Student view</a
+        >{/if}
+      <button
+        type="button"
+        class="btn btn-sm min-h-11 lg:min-h-8"
+        onclick={copyLink}
+        title={pinnedOlder ? "Copy a link to this revision" : "Copy a link that always opens the latest revision"}
+        >{#if copied}<Check size={15} />Copied{:else}<Link size={15} />Copy link{/if}</button
+      ><span class="sr-only" role="status">{copied ? "Link copied" : ""}</span>
     </PageHeader>
+    {#if pinnedOlder}<div role="status" class="alert alert-soft alert-info mb-8 items-start sm:items-center">
+        <History size={18} aria-hidden="true" class="mt-0.5 shrink-0 sm:mt-0" />
+        <p class="min-w-0 text-sm">
+          <span class="font-medium">Viewing an older revision</span>
+          <span class="text-base-content/80"
+            >· <span class="font-mono">{template.commit.slice(0, 7)}</span>{#if template.committedAt}{` · ${date(template.committedAt, { dateStyle: "medium" })}`}{/if}</span
+          >
+        </p>
+        <a class="btn btn-sm min-h-11 lg:min-h-8" href={latestPath}>Go to latest<ArrowRight size={15} /></a>
+      </div>{/if}
     <div class="grid items-start gap-8 lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10">
       <aside class="contents lg:block lg:min-w-0 lg:space-y-6">
         <div class="order-0">
@@ -276,9 +370,9 @@
               id="template-revision"
               class="select select-sm min-h-11 w-full"
               value={template.id}
-              onchange={(e) => goto(path(e.currentTarget.value))}
-              >{#each revisions as revision (revision.id)}<option value={revision.id}
-                  >{revisionLabel(revision)}</option
+              onchange={(e) => goto(revisionTarget(e.currentTarget.value))}
+              >{#each revisions as r (r.id)}<option value={r.id}
+                  >{revisionLabel(r)}{r.latest ? " · latest" : ""}</option
                 >{/each}</select
             ><p class="mt-1.5 break-words text-xs text-base-content/60">
               {template.name} · {template.commitTitle || "Imported revision"}{#if template.committedAt}{` · ${date(template.committedAt, { dateStyle: "medium" })}`}{/if}
@@ -535,9 +629,10 @@
         </section>
       </div>
     </div>
+    </div>
   {:else if detailFailure}<Notice message={detailFailure} /><button
       class="btn btn-sm min-h-11"
-      onclick={() => detail(id)}><RotateCw size={15} />Retry template</button
+      onclick={detail}><RotateCw size={15} />Retry template</button
     >
   {:else}<div role="status" class="space-y-4">
       <div class="skeleton h-7 w-64 max-w-full"></div>
@@ -596,13 +691,13 @@
       <ul class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {#each visible as t (t.id)}
           {@const state = availability(t)}
-          <TemplateCard template={t} href={path(t.id)}>
-            {#snippet status()}<Status status={state.status} label={state.label} />{/snippet}
-            {#snippet actions()}<a
-                class="btn btn-sm min-h-11 lg:min-h-8"
-                href={path(t.id)}
-                aria-label={`Explore ${templateName(t.name)} revision ${t.commit.slice(0, 7)}`}
-                >Explore<ArrowRight size={15} /></a
+          <TemplateCard template={t} href={templatePath(t.name, "", catalogPath)}>
+            {#snippet status()}<span class="flex items-center justify-between gap-3"
+                ><Status status={state.status} label={state.label} /><ArrowRight
+                  size={15}
+                  class="text-base-content/60"
+                  aria-hidden="true"
+                /></span
               >{/snippet}
           </TemplateCard>
         {:else}<li class="py-10 text-center sm:col-span-2 xl:col-span-3">

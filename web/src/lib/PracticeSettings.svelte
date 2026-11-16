@@ -13,13 +13,16 @@
   }
   onMount(() => {
     void load().catch(e => error = e.message);
+    let polling = false;
     const timer = setInterval(() => {
-      if (busy || confirmation?.open || !settings) return;
+      // Paused while hidden; never overlaps the previous background request.
+      if (polling || document.hidden || busy || confirmation?.open || !settings) return;
       const previous = settings.confirmation;
+      polling = true;
       void api<PracticeSettings>("/api/admin/practice").then(next => {
         // A background response must never replace a list being reviewed.
         if (!busy && !confirmation?.open && settings?.confirmation === previous) settings = next;
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => { polling = false; });
     }, 10000);
     return () => clearInterval(timer);
   });

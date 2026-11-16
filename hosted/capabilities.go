@@ -15,6 +15,16 @@ func (s *Service) planSource(src lc.Source) (lc.Plan, error) {
 	return lc.PlanLab(src, s.env, nil)
 }
 func (s *Service) revisionProblem(ctx context.Context, id string) string {
+	if _, ok := ctx.Value(inventoryReadKey{}).(*inventorySnapshot); ok {
+		if err := s.actionableRevision(ctx, id); err == errRetainedRevision {
+			return ""
+		}
+		_, err := s.plan(ctx, id)
+		if err != nil {
+			return err.Error()
+		}
+		return ""
+	}
 	var src lc.Source
 	if s.Store.Get(ctx, "source", id, &src) != nil {
 		return "Pinned source is unavailable."

@@ -70,15 +70,15 @@ func (s *Service) templates(ctx context.Context) ([]Template, error) {
 	if len(out) == 0 {
 		return out, nil
 	}
-	images, err := s.Engine.Images(ctx)
+	images, err := s.readImages(ctx)
 	if err != nil {
 		return nil, err
 	}
-	instances, err := s.Engine.List(ctx)
+	instances, err := s.readInstances(ctx)
 	if err != nil {
 		return nil, err
 	}
-	builds, err := s.Engine.Builds(ctx)
+	builds, err := s.readBuilds(ctx)
 	if err != nil {
 		return nil, err
 	}
