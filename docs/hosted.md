@@ -346,8 +346,8 @@ is configured. Personal guided practice continues to use that default. Meeting-o
 templates can use per-machine access without configuring a default desktop.
 
 The AWS DCV Web Client SDK supplied in `sdkRoot` must support
-`httpExtraSearchParamsCallback` on authentication and connection callbacks. LabCentral
-uses it to select the authenticated desktop for root-path DCV requests, and strips
+`httpExtraSearchParams(method, url, body)` on authentication and connection callbacks. LabCentral
+returns a `URLSearchParams` value to select the authenticated desktop for root-path DCV requests, and strips
 the selector before forwarding to the native relay. Keep the reverse proxy forwarding
 paths and query strings intact; do not log desktop-origin request bodies or queries.
 SDK files, credentials and DCV resources remain on the authenticated desktop origin.

@@ -7,6 +7,8 @@ import (
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,6 +58,15 @@ func TestHostedBrowserLaunch(t *testing.T) {
 	}
 	desktop := &desktopSession{record: accessRecord{ID: "aaaaaaaaaaaaaaaaaaaaaaaa", UserID: session.User.ID, SessionID: session.ID, TeamID: teams[0].ID, InstanceID: teams[0].InstanceID, Expires: time.Now().Add(time.Hour)}, ctx: ctx, cancel: cancel, cookie: "browser-desktop-cookie"}
 	s.desktops[desktop.record.ID] = desktop
+	// The disconnect callback probes native /status, which DCV does not expose.
+	// Keep the protocol fixture's proxy valid while preserving that native 404.
+	upstream := httptest.NewServer(http.NotFoundHandler())
+	defer upstream.Close()
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desktop.proxy = httputil.NewSingleHostReverseProxy(upstreamURL)
 	s.tickets[digest("browser-ticket")] = launchTicket{desktop.record.ID, session.ID, time.Now().Add(time.Minute)}
 	// Both origins use the real HTTP policy and launch endpoint.
 	app := httptest.NewUnstartedServer(nil)

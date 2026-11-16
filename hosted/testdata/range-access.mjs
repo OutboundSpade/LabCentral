@@ -39,7 +39,8 @@ try {
    await page.getByRole('button',{name:`Open ${machine.name} desktop`,exact:true}).click();
    const tab=await popup;
    await tab.waitForURL(url=>url.origin===desktop&&/^\/sessions\/[a-f0-9]{24}\/$/.test(url.pathname));
-   await tab.waitForFunction(()=>typeof window.fixtureFirstFrame==='function');
+   await tab.waitForFunction(()=>typeof window.fixtureFirstFrame==='function'||/ended|failed/i.test(document.getElementById('status')?.textContent||''));
+   assert.equal(await tab.evaluate(()=>typeof window.fixtureFirstFrame),'function','DCV SDK transport callback contract failed before connect');
    assert.equal(await tab.evaluate(()=>window.opener),null);
    const credentials=await tab.evaluate(async()=>{const r=await fetch('credentials');return r.json()});
    assert.equal(credentials.username,machine.name);

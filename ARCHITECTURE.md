@@ -878,8 +878,8 @@ and optional meeting quick launch, not a limit on meeting machine access.
 Every desktop has a `/sessions/ACCESS_ID/` URL namespace and a distinct secure,
 HTTP-only host cookie. Static assets, guest credentials, lessons and noVNC channels
 retain that namespace, so sibling tabs cannot replace one another's authentication.
-DCV uses its documented `httpExtraSearchParamsCallback` for authentication and channel
-requests at the origin root; the non-secret selector must match the appropriate
+The LabCentral viewer supplies `httpExtraSearchParams(method, url, body)`, which the
+DCV SDK calls for authentication and channel requests at the origin root; the non-secret selector must match the appropriate
 cookie and is removed before forwarding upstream. No infrastructure identity or
 credential is accepted from that selector. Legacy root-cookie sessions remain
 readable during their existing lifetime. A machine close retains only that machine's

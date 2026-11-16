@@ -1,8 +1,10 @@
 // Protocol fixture for UI readiness and viewport behavior; no DCV simulation claim.
+// Match the pinned SDK's public callback names rather than accepting arbitrary options.
 export default {
  LogLevel:{ERROR:0},setLogLevel(){},
- authenticate(url,callbacks){callbacks.success(null,[{sessionId:'',authToken:'fixture'}])},
+ authenticate(url,callbacks){window.fixtureDcvRoute=Object.fromEntries(callbacks.httpExtraSearchParams('GET',new URL('/auth',url),null));callbacks.success(null,[{sessionId:'',authToken:'fixture'}])},
  async connect(options){
+  window.fixtureDcvChannelRoute=Object.fromEntries(options.callbacks.httpExtraSearchParams('GET',new URL('/ws',options.url),null));
   window.fixtureClipboardAuto=options.clipboardAutoSync;window.fixtureDisconnect=()=>options.callbacks.disconnect();
   const display=document.getElementById(options.divId);
   display.style.width='800px';display.style.height='600px';

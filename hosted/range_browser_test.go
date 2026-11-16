@@ -28,8 +28,6 @@ func TestHostedEightMachineBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	sdk = []byte(strings.ReplaceAll(string(sdk), "sessionId:''", "sessionId:'console'"))
-	sdk = []byte(strings.ReplaceAll(string(sdk), "authenticate(url,callbacks){", "authenticate(url,callbacks){window.fixtureDcvRoute=Object.fromEntries(callbacks.httpExtraSearchParamsCallback());"))
-	sdk = []byte(strings.ReplaceAll(string(sdk), "window.fixtureClipboardAuto=", "window.fixtureDcvChannelRoute=Object.fromEntries(options.callbacks.httpExtraSearchParamsCallback());window.fixtureClipboardAuto="))
 	if err = os.WriteFile(filepath.Join(s.Config.SDKRoot, "dcv.js"), sdk, 0600); err != nil {
 		t.Fatal(err)
 	}
