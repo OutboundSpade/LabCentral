@@ -299,8 +299,11 @@
   }
   // Native select text is not clipped by padding, so long titles are shortened.
   function revisionLabel(revision: TemplateRevisionSummary) {
+    // The latest marker leads, so truncation never hides it under the arrow.
     const title = revision.commitTitle || "Imported revision";
-    return `${revision.commit.slice(0, 7)} · ${title.length > 26 ? `${title.slice(0, 25).trimEnd()}…` : title}`;
+    const room = revision.latest ? 18 : 26;
+    const short = title.length > room ? `${title.slice(0, room - 1).trimEnd()}…` : title;
+    return `${revision.commit.slice(0, 7)}${revision.latest ? " (latest)" : ""} · ${short}`;
   }
   // Admin polls carry instructor material only for the meeting's revision, so the
   // detail page loads it for the revision on screen.
@@ -385,11 +388,11 @@
               for="template-revision">Revision</label
             ><select
               id="template-revision"
-              class="select select-sm min-h-11 w-full"
+              class="select select-sm min-h-11 w-full pr-9"
               value={template.id}
               onchange={(e) => goto(revisionTarget(e.currentTarget.value))}
               >{#each revisions as r (r.id)}<option value={r.id}
-                  >{revisionLabel(r)}{r.latest ? " · latest" : ""}</option
+                  >{revisionLabel(r)}</option
                 >{/each}</select
             ><p class="mt-1.5 break-words text-xs text-base-content/60">
               {template.name} · {template.commitTitle || "Imported revision"}{#if template.committedAt}{` · ${date(template.committedAt, { dateStyle: "medium" })}`}{/if}
