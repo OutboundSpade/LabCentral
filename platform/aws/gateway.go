@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	lc "github.com/OutboundSpade/LabCentral/v2"
 	"github.com/OutboundSpade/LabCentral/v2/internal/guest"
@@ -84,7 +83,7 @@ func (p *Provider) gateway(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err != nil {
 		return lc.Result{}, err
 	}
-	if err = ec2.NewInstanceRunningWaiter(a).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{id}}, 10*time.Minute); err != nil {
+	if err = waitInstanceRunning(ctx, ec2.NewInstanceRunningWaiter(a), id); err != nil {
 		return lc.Result{}, err
 	}
 	result, err := p.findGateway(ctx, a, c)

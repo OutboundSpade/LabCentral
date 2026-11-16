@@ -282,7 +282,7 @@ func (p *Provider) network(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 		return lc.Result{}, err
 	}
 	ns.VPC = vpc
-	if err = ec2.NewVpcAvailableWaiter(a).Wait(ctx, &ec2.DescribeVpcsInput{VpcIds: []string{vpc}}, 2*time.Minute); err != nil {
+	if err = waitVPCAvailable(ctx, ec2.NewVpcAvailableWaiter(a), vpc); err != nil {
 		return lc.Result{}, err
 	}
 	for _, cidr := range lc.AWSVPCCIDRs(planned, vpcCIDR)[1:] {
@@ -733,7 +733,7 @@ func (p *Provider) machine(ctx context.Context, a *ec2.Client, c lc.Command) (lc
 	if err != nil {
 		return lc.Result{}, err
 	}
-	if err = ec2.NewInstanceRunningWaiter(a).Wait(ctx, &ec2.DescribeInstancesInput{InstanceIds: []string{instance}}, 10*time.Minute); err != nil {
+	if err = waitInstanceRunning(ctx, ec2.NewInstanceRunningWaiter(a), instance); err != nil {
 		return lc.Result{}, err
 	}
 	r, err := p.findMachine(ctx, a, c)

@@ -399,6 +399,13 @@ and the gateway itself are blocked. Readiness needs pinned SSH and confirmed clo
 completion. The routing follows [AWS NAT instance
 requirements](https://docs.aws.amazon.com/vpc/latest/userguide/work-with-nat-instances.html).
 
+VPC availability and gateway/guest EC2 running waiters share bounded 2–10 second
+polling delays, using the SDK's exponential backoff with jitter and normal read
+retry/throttle handling. Their maximum waits remain two minutes for VPC availability
+and ten minutes for EC2 running, further bounded by the caller's context. EC2 running
+does not replace pinned SSH/cloud-init or appliance readiness; timeouts retain the
+existing recovery intent. Termination polling remains 2–5 seconds.
+
 **Desktop licensing.** Desktop machines get an instance profile whose only permission
 is reading the regional DCV license bucket
 ([DCV licensing](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html)),
