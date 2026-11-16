@@ -15,6 +15,8 @@
   let hours = $state(4);
   let busy = $state(false);
   let error = $state("");
+	let liveRedBlue = $state(false);
+	const liveAvailable = $derived(!!$adminView?.templates.find(t => t.id === revision?.id)?.instructor?.liveScoring);
   // The pin must still be built when the form is submitted.
   const available = $derived(
     !!revision &&
@@ -24,6 +26,7 @@
     revision = next;
     name = templateName(next.name);
     error = "";
+    liveRedBlue = false;
     dialog.showModal();
   }
   async function create(e: SubmitEvent) {
@@ -42,6 +45,7 @@
         hours,
         teamCount,
         capacity,
+        ...(liveRedBlue && liveAvailable ? {liveRedBlue: true} : {}),
       });
       dialog.close();
       await refreshAdmin().catch(() => {});
@@ -62,6 +66,7 @@
       </p>{/if}
     <fieldset class="fieldset mt-4 gap-1.5 p-0 text-sm" disabled={busy}>
       <legend class="sr-only">Meeting settings</legend>
+	  {#if liveAvailable}<label class="label flex items-start gap-3 mb-3"><input type="checkbox" class="checkbox checkbox-sm mt-1" bind:checked={liveRedBlue}/><span class="whitespace-normal"><span class="font-medium">Live Red vs. Blue</span><span class="block mt-1 text-xs text-base-content/60">Show the in-lab scorer's live scoreboard to meeting members.</span></span></label>{/if}
       <label class="label" for="meeting-name">Name</label><input
         class="input input-sm min-h-11 w-full"
         id="meeting-name"

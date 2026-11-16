@@ -24,8 +24,8 @@ func offsetAddress(p netip.Prefix, offset int) string {
 	return netip.AddrFrom4([4]byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)}).String()
 }
 
-// AWSLayout validates before mutation. Author ranges and default allocations
-// must share one primary /16. The legacy default edge remains unchanged.
+// AWSLayout validates before mutation. Each distinct /16 is a VPC CIDR block.
+// The legacy default and single-block layouts remain unchanged.
 func AWSLayout(l Lab) (networks []PlannedNetwork, vpc, edge string, err error) {
 	vpc = "10.77.0.0/16"
 	edge = "10.77.255.0/28"
@@ -42,7 +42,6 @@ func AWSLayout(l Lab) (networks []PlannedNetwork, vpc, edge string, err error) {
 			}
 		}
 	}
-	block, _ := netip.ParsePrefix(vpc)
 	for i, name := range sortedKeys(effectiveNetworks(l)) {
 		n := effectiveNetworks(l)[name]
 		cidr := n.CIDR
@@ -50,8 +49,8 @@ func AWSLayout(l Lab) (networks []PlannedNetwork, vpc, edge string, err error) {
 			cidr = fmt.Sprintf("10.77.%d.0/24", i)
 		}
 		p, e := netip.ParsePrefix(cidr)
-		if e != nil || p.Bits() < 16 || !block.Contains(p.Addr()) {
-			return nil, "", "", problem(Unsupported, "networks."+name+".cidr", "all author CIDRs and default allocations must fit one VPC primary /16")
+		if e != nil || p.Bits() < 16 {
+			return nil, "", "", problem(Invalid, "networks."+name+".cidr", "invalid subnet CIDR")
 		}
 		for _, other := range networks {
 			q, _ := netip.ParsePrefix(other.CIDR)
@@ -65,6 +64,28 @@ func AWSLayout(l Lab) (networks []PlannedNetwork, vpc, edge string, err error) {
 		}
 		networks = append(networks, PlannedNetwork{Name: name, CIDR: cidr, Gateway: offsetAddress(p, 1), Egress: egress})
 	}
+	// AWS does not permit adding 172.31/16 or 10.0/16 as secondary blocks
+	// to an existing VPC in their private range. Use them as primary if needed.
+	for _, n := range networks {
+		p := netip.MustParsePrefix(n.CIDR)
+		b := netip.PrefixFrom(p.Addr(), 16).Masked().String()
+		if b == "172.31.0.0/16" || b == "10.0.0.0/16" {
+			vpc = b
+		}
+	}
+	blocks := AWSVPCCIDRs(networks, vpc)
+	if len(blocks) > 5 {
+		return nil, "", "", problem(Unsupported, "networks", "at most five VPC IPv4 CIDR blocks are supported")
+	}
+	privateRange := func(cidr string) byte {
+		return netip.MustParsePrefix(cidr).Addr().As4()[0]
+	}
+	for _, n := range networks {
+		if privateRange(n.CIDR) != privateRange(vpc) {
+			return nil, "", "", problem(Unsupported, "networks."+n.Name+".cidr", "AWS VPC CIDR blocks must use the same RFC1918 range; set every subnet CIDR explicitly when using 172.16/12 or 192.168/16")
+		}
+	}
+	block, _ := netip.ParsePrefix(vpc)
 	if author {
 		edge = ""
 		for off := 65520; off >= 0; off -= 16 {
@@ -88,17 +109,36 @@ func AWSLayout(l Lab) (networks []PlannedNetwork, vpc, edge string, err error) {
 	return
 }
 
+// AWSVPCCIDRs returns the primary block followed by distinct secondary /16s in
+// network order. Callers supply the validated layout returned by AWSLayout.
+func AWSVPCCIDRs(networks []PlannedNetwork, primary string) []string {
+	blocks := []string{primary}
+	for _, n := range networks {
+		p := netip.MustParsePrefix(n.CIDR)
+		b := netip.PrefixFrom(p.Addr(), 16).Masked().String()
+		if !Contains(blocks, b) {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}
+
 // PlanNetworks is deterministic. Proxmox previews the range start; deployment
 // supplies atomically reserved VLANs and recomputes the same topology and offsets.
 func PlanNetworks(p *Plan, vlans []int) error {
 	l, e := p.Source.Lab, p.Environment
 	names := sortedKeys(effectiveNetworks(l))
 	p.Networks = nil
+	p.SecondaryVPCCIDRs = nil
 	if e.Platform == "aws" {
 		var err error
 		p.Networks, p.VPCCIDR, p.EdgeCIDR, err = AWSLayout(l)
 		if err != nil {
 			return err
+		}
+		blocks := AWSVPCCIDRs(p.Networks, p.VPCCIDR)
+		if len(blocks) > 1 {
+			p.SecondaryVPCCIDRs = blocks[1:]
 		}
 	} else {
 		if e.Proxmox.VLANEnd-e.Proxmox.VLANStart+1 < len(names) {
@@ -162,16 +202,16 @@ func PlanNetworks(p *Plan, vlans []int) error {
 				next[nic.Network] = offset + 1
 				used[nic.Network][offset] = true
 			}
-			max := 250
+			max := 254
 			if usable := (1 << (32 - prefix.Bits())) - 2; usable < max {
 				max = usable
 			}
 			if offset > max {
 				return problem(Invalid, fmtPathIndex("machines."+m.Name+".nics", k)+".address", "network has no usable address for this NIC")
 			}
-			def := !hasDefault && n.Egress == "internet"
+			def := !hasDefault && (n.Egress == "internet" || (l.Networks[n.Name].DefaultRouter != "" && l.Networks[n.Name].DefaultRouter != m.Name))
 			hasDefault = hasDefault || def
-			m.NICs = append(m.NICs, PlannedNIC{Network: n.Name, CIDR: n.CIDR, Address: offsetAddress(prefix, offset), VLAN: n.VLAN, Gateway: n.Gateway, Default: def})
+			m.NICs = append(m.NICs, PlannedNIC{Network: n.Name, CIDR: n.CIDR, Address: offsetAddress(prefix, offset), VLAN: n.VLAN, Gateway: n.Gateway, Default: def, Management: nic.Management})
 		}
 		m.Address = m.NICs[0].Address
 	}
@@ -184,7 +224,13 @@ func PlanNetworks(p *Plan, vlans []int) error {
 			continue
 		}
 		for a, nic := range m.NICs {
+			if nic.Management {
+				continue
+			}
 			for _, other := range m.NICs[a+1:] {
+				if other.Management {
+					continue
+				}
 				x, y := nic.Network, other.Network
 				if x > y {
 					x, y = y, x
@@ -260,6 +306,38 @@ func PlanNetworks(p *Plan, vlans []int) error {
 			}
 		}
 		n.Routes = ordered
+		requests := append([]NetworkRoute(nil), l.Networks[n.Name].Routes...)
+		if router := l.Networks[n.Name].DefaultRouter; router != "" {
+			requests = append(requests, NetworkRoute{CIDR: "0.0.0.0/0", Router: router})
+		}
+		for _, requested := range requests {
+			if requested.CIDR != "0.0.0.0/0" {
+				prefix, err := netip.ParsePrefix(requested.CIDR)
+				if err != nil {
+					return problem(Invalid, "networks."+n.Name+".routes", "invalid explicit route")
+				}
+				for _, other := range p.Networks {
+					if prefix.Overlaps(netip.MustParsePrefix(other.CIDR)) {
+						return problem(Invalid, "networks."+n.Name+".routes", "explicit routes must not overlap allocated subnets")
+					}
+				}
+			}
+			router, ok := machines[requested.Router]
+			if !ok || !router.Spec.Forwarding {
+				return problem(Invalid, "networks."+n.Name+".routes", "unknown forwarding router")
+			}
+			found := false
+			for k, nic := range router.NICs {
+				if nic.Network == n.Name && !nic.Management {
+					n.Routes = append(n.Routes, PlannedRoute{Network: "route:" + requested.CIDR, CIDR: requested.CIDR, Via: nic.Address, Router: router.Name, RouterNIC: k})
+					found = true
+					break
+				}
+			}
+			if !found {
+				return problem(Invalid, "networks."+n.Name+".routes", "router has no data NIC on network")
+			}
+		}
 	}
 	for j := range p.Machines {
 		m := &p.Machines[j]
@@ -268,7 +346,18 @@ func PlanNetworks(p *Plan, vlans []int) error {
 			connected[nic.Network] = true
 		}
 		for k := range m.NICs {
+			if m.NICs[k].Management {
+				continue
+			}
 			for _, r := range p.Networks[indexes[m.NICs[k].Network]].Routes {
+				if r.CIDR == "0.0.0.0/0" {
+					if m.NICs[k].Default && r.Router != m.Name {
+						m.NICs[k].Gateway = r.Via
+					}
+					if m.Appliance != "panos" {
+						continue
+					}
+				}
 				if r.Router != m.Name && !connected[r.Network] {
 					m.NICs[k].Routes = append(m.NICs[k].Routes, r)
 					connected[r.Network] = true
@@ -279,9 +368,26 @@ func PlanNetworks(p *Plan, vlans []int) error {
 			block := netip.MustParsePrefix(p.VPCCIDR)
 			m.Resolver = offsetAddress(block, 2)
 			first := &m.NICs[0]
-			first.Routes = append(first.Routes, PlannedRoute{CIDR: p.EdgeCIDR, Via: first.Gateway})
+			managementGateway := p.Networks[indexes[first.Network]].Gateway
+			first.Routes = append(first.Routes, PlannedRoute{CIDR: p.EdgeCIDR, Via: managementGateway})
 			if !netip.MustParsePrefix(first.CIDR).Contains(netip.MustParseAddr(m.Resolver)) {
-				first.Routes = append(first.Routes, PlannedRoute{CIDR: m.Resolver + "/32", Via: first.Gateway})
+				first.Routes = append(first.Routes, PlannedRoute{CIDR: m.Resolver + "/32", Via: managementGateway})
+			}
+			if m.Appliance == "" {
+				for _, peer := range p.Machines {
+					if peer.Appliance == "panos" && Contains(peer.Spec.ManagementClients, m.Name) && len(peer.NICs) > 0 {
+						mgmt := peer.NICs[0]
+						if mgmt.Network != first.Network {
+							duplicate := false
+							for _, r := range first.Routes {
+								duplicate = duplicate || r.CIDR == mgmt.Address+"/32"
+							}
+							if !duplicate {
+								first.Routes = append(first.Routes, PlannedRoute{CIDR: mgmt.Address + "/32", Via: managementGateway})
+							}
+						}
+					}
+				}
 			}
 		}
 

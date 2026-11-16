@@ -117,8 +117,8 @@ func TestAuthorCIDRLayoutAndFailures(t *testing.T) {
 	}{
 		{map[string]Network{"a": {CIDR: "192.168.2.0/24"}, "b": {CIDR: "192.168.255.240/28"}}, "192.168.0.0/16", "192.168.255.224/28", "", ""},
 		{map[string]Network{"a": {CIDR: "10.77.255.0/24"}, "b": {}}, "10.77.0.0/16", "10.77.254.240/28", "", ""},
-		{map[string]Network{"a": {CIDR: "10.2.0.0/24"}, "b": {}}, "", "", "networks.b.cidr", Unsupported},
-		{map[string]Network{"a": {CIDR: "10.2.0.0/24"}, "b": {CIDR: "10.3.0.0/24"}}, "", "", "networks.b.cidr", Unsupported},
+		{map[string]Network{"a": {CIDR: "10.2.0.0/24"}, "b": {}}, "10.2.0.0/16", "10.2.255.240/28", "", ""},
+		{map[string]Network{"a": {CIDR: "10.2.0.0/24"}, "b": {CIDR: "10.3.0.0/24"}}, "10.2.0.0/16", "10.2.255.240/28", "", ""},
 		{map[string]Network{"a": {CIDR: "10.77.1.0/24"}, "b": {}}, "", "", "networks.b.cidr", Invalid},
 		{map[string]Network{"a": {CIDR: "10.2.0.0/23"}, "b": {CIDR: "10.2.1.0/24"}}, "", "", "networks.b.cidr", Invalid},
 		{map[string]Network{"a": {CIDR: "10.2.0.0/16"}}, "", "", "networks", Unsupported},
@@ -137,6 +137,38 @@ func TestAuthorCIDRLayoutAndFailures(t *testing.T) {
 	s := topologySource(t, map[string]Network{"a": {CIDR: "10.2.0.0/24"}}, map[string]Machine{"client": {NICs: []NIC{{Network: "a"}}}})
 	_, err := PlanLab(s, platformOptionsProxmoxEnvironment(), nil)
 	requireField(t, err, Unsupported, "networks.a.cidr")
+}
+
+func TestAWSMultipleVPCCIDRs(t *testing.T) {
+	networks := map[string]Network{
+		"core": {CIDR: "172.31.26.0/24"}, "kali": {CIDR: "172.17.0.0/24"},
+		"lan": {CIDR: "172.20.240.0/24"}, "transit": {CIDR: "172.16.0.0/24"},
+	}
+	p, err := PlanLab(topologySource(t, networks, map[string]Machine{"client": {NICs: []NIC{{Network: "lan"}}}}), testEnvironment(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.VPCCIDR != "172.31.0.0/16" || !reflect.DeepEqual(p.SecondaryVPCCIDRs, []string{"172.17.0.0/16", "172.20.0.0/16", "172.16.0.0/16"}) || p.Machines[0].Address != "172.20.240.11" {
+		t.Fatal("multi-block plan", p)
+	}
+	// Primary selection must not depend on the core network's name sorting first.
+	delete(networks, "core")
+	networks["z-core"] = Network{CIDR: "172.31.26.0/24"}
+	_, primary, _, err := AWSLayout(Lab{Networks: networks})
+	if err != nil || primary != "172.31.0.0/16" {
+		t.Fatal("restricted secondary block was not selected as primary", primary, err)
+	}
+	for _, tc := range []struct {
+		networks map[string]Network
+		field    string
+	}{
+		{map[string]Network{"a": {CIDR: "172.20.0.0/24"}, "b": {}}, "networks.b.cidr"},
+		{map[string]Network{"a": {CIDR: "10.2.0.0/24"}, "b": {CIDR: "192.168.0.0/24"}}, "networks.b.cidr"},
+		{map[string]Network{"a": {CIDR: "10.2.0.0/24"}, "b": {CIDR: "10.3.0.0/24"}, "c": {CIDR: "10.4.0.0/24"}, "d": {CIDR: "10.5.0.0/24"}, "e": {CIDR: "10.6.0.0/24"}, "f": {CIDR: "10.7.0.0/24"}}, "networks"},
+	} {
+		_, _, _, err := AWSLayout(Lab{Networks: tc.networks})
+		requireField(t, err, Unsupported, tc.field)
+	}
 }
 func TestDefaultNICAndInstanceLimits(t *testing.T) {
 	e := testEnvironment()

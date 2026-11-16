@@ -2,6 +2,7 @@
 package privatefile
 
 import (
+	"github.com/OutboundSpade/LabCentral/v2/internal/durablefile"
 	"os"
 	"path/filepath"
 )
@@ -29,13 +30,5 @@ func Write(path string, b []byte) error {
 	if err != nil {
 		return err
 	}
-	if err = os.Rename(f.Name(), path); err != nil {
-		return err
-	}
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return durablefile.Rename(f.Name(), path)
 }

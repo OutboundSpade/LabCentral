@@ -60,6 +60,22 @@ func TestSelectedImageFilesAndHostnamePeersCrossProviderProtocol(t *testing.T) {
 	}
 }
 
+func TestPANOSManagementGrantSurvivesProviderProtocol(t *testing.T) {
+	spec := lc.Machine{Image: "panos", ManagementClients: []string{"automation", "workstation"}}
+	command := lc.Command{Source: lc.Source{Lab: lc.Lab{Machines: map[string]lc.Machine{"firewall": spec}}}, Machine: lc.PlannedMachine{Name: "firewall", Appliance: "panos", Spec: spec}}
+	w := &wire.Command{}
+	if err := wireconvert.Encode(command, w); err != nil {
+		t.Fatal(err)
+	}
+	var got lc.Command
+	if err := wireconvert.Decode(w, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(command.Machine, got.Machine) || !reflect.DeepEqual(command.Source.Lab.Machines, got.Source.Lab.Machines) {
+		t.Fatal("per-firewall authorization lost across provider protocol", got)
+	}
+}
+
 func TestTypedProtocolRoundTrip(t *testing.T) {
 	c := lc.Command{ClientPrivateKey: []byte("transient"), Operation: "op", Environment: lc.Environment{Version: 2, Platform: "aws", Bases: map[string]lc.Base{"ubuntu": {ID: "ami", DiskGiB: 8}}}, Source: lc.Source{Files: []lc.File{{Path: "lab.yaml", Content: []byte("version: 2")}}}, Prior: lc.Resource{Data: json.RawMessage(`{"native":"state"}`)}}
 	c.Environment.Build.WindowsDCVURL = "https://example.invalid/windows.msi"

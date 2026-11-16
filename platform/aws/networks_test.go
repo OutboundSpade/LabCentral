@@ -27,6 +27,51 @@ func twoNetworks() lc.Command {
 	}
 	return c
 }
+
+func TestSecondaryVPCCIDRRecovery(t *testing.T) {
+	for _, loss := range []string{"", "AssociateVpcCidrBlock:172.20.0.0/16"} {
+		t.Run(loss, func(t *testing.T) {
+			f, a := newNetworkEC2(t)
+			f.loss = loss
+			root := t.TempDir()
+			p := &Provider{Journal: journal.Journal{Root: root}}
+			c := twoNetworks()
+			c.Source.Lab.Networks = map[string]lc.Network{"a": {CIDR: "172.31.26.0/24", Egress: "internet"}, "b": {CIDR: "172.20.240.0/24"}}
+			result, err := p.network(context.Background(), a, c)
+			if loss != "" {
+				if err == nil {
+					t.Fatal("lost association response accepted")
+				}
+				for _, req := range f.requests {
+					if req.Get("Action") == "CreateSubnet" {
+						t.Fatal("subnet created before association recovery")
+					}
+				}
+				p = &Provider{Journal: journal.Journal{Root: root}}
+				result, err = p.network(context.Background(), a, c)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			creates := 0
+			for _, req := range f.requests {
+				if req.Get("Action") == "AssociateVpcCidrBlock" {
+					creates++
+					requestValue(t, req, "CidrBlock", "172.20.0.0/16")
+					requestValue(t, req, "VpcId", result.Resource.ID)
+				}
+			}
+			if creates != 1 {
+				t.Fatal("association replayed", creates)
+			}
+			c.Prior = result.Resource
+			cleanup, err := p.destroyNetwork(context.Background(), a, c)
+			if err != nil || !cleanup.Absent || len(f.objects) != 0 {
+				t.Fatal("multi-CIDR VPC cleanup incomplete", err)
+			}
+		})
+	}
+}
 func TestMultiNetworkRequestsAndInterruptedChildren(t *testing.T) {
 	for _, loss := range []string{"", "CreateSubnet:segment-b-subnet", "CreateRouteTable:segment-b-route", "CreateSecurityGroup:segment-b-sg", "CreateSecurityGroup:management-sg"} {
 		t.Run(loss, func(t *testing.T) {

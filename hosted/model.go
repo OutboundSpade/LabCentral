@@ -113,21 +113,29 @@ type Job struct {
 	Created        time.Time           `json:"created"`
 }
 type Machine struct {
-	OS      string `json:"os" enum:"linux,windows"`
-	Name    string `json:"name"`
-	Status  string `json:"status"`
-	Desktop bool   `json:"desktop"`
+	Appliance     string        `json:"appliance,omitempty" enum:"vyos,panos"`
+	ManagementURL string        `json:"managementURL,omitempty"`
+	SSH           bool          `json:"ssh"`
+	DesktopState  *DesktopState `json:"desktopState,omitempty"`
+	DesktopActive bool          `json:"desktopActive,omitempty"`
+	OS            string        `json:"os" enum:"linux,windows"`
+	Name          string        `json:"name"`
+	Status        string        `json:"status"`
+	Desktop       bool          `json:"desktop"`
 }
 type Teammate struct {
 	Name string `json:"name"`
 }
 type LabView struct {
-	DesktopState  *DesktopState `json:"desktopState,omitempty"`
-	DesktopActive bool          `json:"desktopActive"`
-	Teammates     []Teammate    `json:"teammates"`
-	Team          *Team         `json:"team"`
-	Machines      []Machine     `json:"machines"`
-	Handover      string        `json:"handover"`
+	LiveScoring           bool          `json:"liveScoring,omitempty"`
+	DefaultDesktopMachine string        `json:"defaultDesktopMachine,omitempty"`
+	InstanceID            string        `json:"instanceID,omitempty"`
+	DesktopState          *DesktopState `json:"desktopState,omitempty"`
+	DesktopActive         bool          `json:"desktopActive"`
+	Teammates             []Teammate    `json:"teammates"`
+	Team                  *Team         `json:"team"`
+	Machines              []Machine     `json:"machines"`
+	Handover              string        `json:"handover"`
 }
 type Overview struct {
 	PracticeEnabled bool       `json:"practiceEnabled"`
@@ -139,6 +147,7 @@ type Overview struct {
 	Lab             LabView    `json:"lab"`
 }
 type AdminView struct {
+	LiveRedBlue    bool                    `json:"liveRedBlue,omitempty"`
 	ImageSummary   *ImageSummary           `json:"imageSummary,omitempty"`
 	ImportFailures []TemplateImportFailure `json:"importFailures"`
 	JoinedStudents int                     `json:"joinedStudents"`
@@ -159,11 +168,12 @@ type TeamDesktopCount struct {
 	Count  int    `json:"count"`
 }
 type CreateMeeting struct {
-	Name      string `json:"name"`
-	Template  string `json:"template"`
-	Hours     int    `json:"hours"`
-	TeamCount int    `json:"teamCount"`
-	Capacity  int    `json:"capacity"`
+	LiveRedBlue bool   `json:"liveRedBlue,omitempty"`
+	Name        string `json:"name"`
+	Template    string `json:"template"`
+	Hours       int    `json:"hours"`
+	TeamCount   int    `json:"teamCount"`
+	Capacity    int    `json:"capacity"`
 }
 type JoinTeam struct {
 	TeamID string `json:"teamID"`

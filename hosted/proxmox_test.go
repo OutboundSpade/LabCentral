@@ -75,7 +75,7 @@ func TestProxmoxDesktopOriginPolicy(t *testing.T) {
 		{"/dcvjs/dcv.js", "", "", 404}, {"/websocket", "", "", 403}, {"/credentials", "https://foreign.example.invalid", "", 403},
 		{"/credentials", "", "foreign.example.invalid", 403},
 	} {
-		r = httptest.NewRequest("GET", s.Config.DesktopOrigin+tc.path, nil)
+		r = httptest.NewRequest("GET", s.Config.DesktopOrigin+desktopPath(d.record.ID)+tc.path, nil)
 		r.AddCookie(cookie)
 		r.Header.Set("Origin", tc.origin)
 		if tc.host != "" {
@@ -103,7 +103,7 @@ func TestProxmoxDesktopOriginPolicy(t *testing.T) {
 	if d.ctx.Err() == nil {
 		t.Fatal("revoked transport remained active")
 	}
-	r = httptest.NewRequest("GET", s.Config.DesktopOrigin+"/credentials", nil)
+	r = httptest.NewRequest("GET", s.Config.DesktopOrigin+desktopPath(d.record.ID)+"/credentials", nil)
 	r.AddCookie(cookie)
 	w = httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)

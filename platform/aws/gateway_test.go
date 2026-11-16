@@ -37,6 +37,7 @@ type networkEC2 struct {
 	instanceNICs                       map[string]url.Values
 	routeReject                        string
 	imagePlatform                      string
+	cidrAssociations                   map[string]string
 }
 
 func newNetworkEC2(t *testing.T) (*networkEC2, *ec2.Client) {
@@ -134,6 +135,21 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 		}
 	} else {
 		switch action {
+		case "AssociateVpcCidrBlock":
+			if f.cidrAssociations == nil {
+				f.cidrAssociations = map[string]string{}
+			}
+			cidr := v.Get("CidrBlock")
+			if f.cidrAssociations[cidr] != "" {
+				f.t.Fatal("duplicate CIDR association", cidr)
+			}
+			id := fmt.Sprintf("vpc-cidr-%d", len(f.cidrAssociations)+1)
+			f.cidrAssociations[cidr] = id
+			body = "<vpcId>" + v.Get("VpcId") + "</vpcId><cidrBlockAssociation><associationId>" + id + "</associationId><cidrBlock>" + cidr + "</cidrBlock><cidrBlockState><state>associated</state></cidrBlockState></cidrBlockAssociation>"
+			if f.loss == action+":"+cidr {
+				f.loss = ""
+				return nil, io.ErrUnexpectedEOF
+			}
 		case "DescribeImages":
 			body = "<imagesSet><item><imageId>ami-base</imageId><rootDeviceName>/dev/sda1</rootDeviceName><state>available</state>"
 			if f.imagePlatform != "" {
@@ -211,6 +227,11 @@ func (f *networkEC2) do(r *http.Request) (*http.Response, error) {
 				switch kind {
 				case "vpc":
 					item = "<vpcId>" + o.id + "</vpcId><state>available</state>"
+					item += "<cidrBlockAssociationSet>"
+					for cidr, id := range f.cidrAssociations {
+						item += "<item><associationId>" + id + "</associationId><cidrBlock>" + cidr + "</cidrBlock><cidrBlockState><state>associated</state></cidrBlockState></item>"
+					}
+					item += "</cidrBlockAssociationSet>"
 				case "subnet":
 					item = "<subnetId>" + o.id + "</subnetId><cidrBlock>" + o.cidr + "</cidrBlock><vpcId>vpc-1</vpcId>"
 				case "igw":

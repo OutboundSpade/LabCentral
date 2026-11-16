@@ -28,7 +28,7 @@
       : null,
   );
   const href = $derived(
-    pinned && pinned.machines.some((m) => m.name === machine && m.status === "ready")
+    pinned && pinned.machines.some((m) => m.name === machine && m.status === "ready" && m.ssh)
       ? terminalURL({
           team: pinned.teamID,
           machine,
@@ -63,7 +63,7 @@
     error = "";
     try {
       await launchDesktop(
-        `/api/admin/teams/${encodeURIComponent(team)}/desktop${takeover ? "/takeover" : ""}`,
+        `/api/admin/teams/${encodeURIComponent(team)}${machine ? `/machines/${encodeURIComponent(machine)}` : ""}/desktop${takeover ? "/takeover" : ""}`,
         "Starting the team desktop. Windows can take a few minutes…",
       );
       held = "";
@@ -166,7 +166,7 @@
       <button
         type="button"
         class="btn btn-sm min-h-11"
-        disabled={!teamID || opening}
+        disabled={!teamID || opening || (!!machine && !pinned?.machines.some(m => m.name === machine && m.desktop))}
         aria-busy={opening}
         onclick={() => openDesktop(false)}
         >{#if opening}<span class="loading loading-spinner loading-xs"></span>{:else}<Monitor

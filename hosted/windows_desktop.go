@@ -147,7 +147,7 @@ func (s *Service) coachDesktop(w http.ResponseWriter, r *http.Request, v Session
 	s.meetingDesktop(w, r, v, false)
 }
 func (s *Service) meetingDesktop(w http.ResponseWriter, r *http.Request, v Session, takeover bool) {
-	team, m, machine, err := s.meetingDesktopTarget(r.Context(), v, r.PathValue("id"))
+	team, m, machine, err := s.selectedDesktopTarget(r.Context(), v, r.PathValue("id"), r.PathValue("machine"))
 	if err != nil {
 		status := 409
 		if r.PathValue("id") != "" {
@@ -195,7 +195,7 @@ func (s *Service) desktopState(ctx context.Context, a accessRecord) (DesktopStat
 	return state, nil
 }
 func (s *Service) desktopStatus(w http.ResponseWriter, r *http.Request, v Session) {
-	team, _, machine, err := s.meetingDesktopTarget(r.Context(), v, r.PathValue("id"))
+	team, _, machine, err := s.selectedDesktopTarget(r.Context(), v, r.PathValue("id"), r.PathValue("machine"))
 	if err != nil {
 		writeError(w, 403, "Meeting desktop access is unavailable.")
 		return
@@ -217,9 +217,12 @@ func (s *Service) desktopStatus(w http.ResponseWriter, r *http.Request, v Sessio
 // Cookie records contain no relay credentials. They allow an already displaced
 // browser to poll once its active relay handle has been removed, including after
 // restart. Current identity and the original meeting allocation are rechecked.
-func (s *Service) desktopCookieStatus(w http.ResponseWriter, r *http.Request, cookie string) bool {
+func (s *Service) desktopCookieStatus(w http.ResponseWriter, r *http.Request, cookie string, expected ...string) bool {
 	var a accessRecord
 	if s.Store.Get(r.Context(), "desktop-cookie", digest(cookie), &a) != nil || !s.recordAuthorized(r.Context(), a) {
+		return false
+	}
+	if len(expected) > 0 && expected[0] != "" && a.ID != expected[0] {
 		return false
 	}
 	state, err := s.desktopState(r.Context(), a)

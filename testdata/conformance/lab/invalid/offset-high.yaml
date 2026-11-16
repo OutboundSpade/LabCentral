@@ -13,4 +13,4 @@ machines:
     memory: 2Gi
     disk: 20Gi
     access: [ssh]
-    nics: [{network: lab, address: 251}]
+    nics: [{network: lab, address: 255}]

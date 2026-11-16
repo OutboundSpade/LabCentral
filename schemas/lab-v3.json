@@ -58,6 +58,27 @@
           }
         ],
         "properties": {
+          "appliance": {
+            "additionalProperties": false,
+            "properties": {
+              "configuration": {
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9_./-]+$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "vyos",
+                  "panos"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
           "base": {
             "pattern": "^[a-z][a-z0-9.-]{0,63}$",
             "type": "string"
@@ -305,6 +326,15 @@
             "pattern": "^[a-z][a-z0-9-]{0,47}$",
             "type": "string"
           },
+          "managementClients": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9-]{0,47}$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array",
+            "uniqueItems": true
+          },
           "memory": {
             "pattern": "^([1-9][0-9]*)(Mi|Gi)$",
             "type": "string"
@@ -314,9 +344,12 @@
               "additionalProperties": false,
               "properties": {
                 "address": {
-                  "maximum": 250,
+                  "maximum": 254,
                   "minimum": 4,
                   "type": "integer"
+                },
+                "management": {
+                  "type": "boolean"
                 },
                 "network": {
                   "pattern": "^[a-z][a-z0-9-]{0,47}$",
@@ -428,6 +461,10 @@
             "minLength": 1,
             "type": "string"
           },
+          "defaultRouter": {
+            "pattern": "^[a-z][a-z0-9-]{0,47}$",
+            "type": "string"
+          },
           "egress": {
             "default": "none",
             "enum": [
@@ -442,6 +479,27 @@
               "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
             },
             "type": "object"
+          },
+          "routes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cidr": {
+                  "type": "string"
+                },
+                "router": {
+                  "pattern": "^[a-z][a-z0-9-]{0,47}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cidr",
+                "router"
+              ],
+              "type": "object"
+            },
+            "maxItems": 16,
+            "type": "array"
           }
         },
         "type": "object"

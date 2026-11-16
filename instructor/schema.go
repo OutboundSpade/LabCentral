@@ -25,11 +25,20 @@ func annotateSchema(object, field string, s map[string]any) {
 	items := func(min, max int) { s["minItems"] = min; s["maxItems"] = max }
 	length := func(min, max int) { s["minLength"] = min; s["maxLength"] = max }
 	switch key {
+	case "LiveScoring.machine":
+		s["pattern"] = idPattern.String()
+	case "LiveScoring.port":
+		bound(1024, 65535)
+	case "LiveScoring.path":
+		length(1, 256)
+		s["pattern"] = `^/[a-zA-Z0-9_/-]+[a-zA-Z0-9_.-]*$`
+	case "LiveScoring.staleAfterSeconds":
+		bound(30, 900)
 	case "Bundle.version":
 		s["const"] = 3
 	case "Visibility.audience":
 		s["enum"] = []string{"students", "coaches"}
-	case "Visibility.hiddenMachines", "Step.guestHosts":
+	case "Visibility.hiddenMachines", "Visibility.participantTerminals", "Step.guestHosts":
 		items(0, 32)
 		s["uniqueItems"] = true
 		s["items"] = map[string]any{"type": "string", "pattern": idPattern.String()}

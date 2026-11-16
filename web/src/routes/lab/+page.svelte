@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     ChevronRight,
-    Server,
     Clock,
     ExternalLink,
     Users,
@@ -13,6 +12,8 @@
   import Status from "$lib/Status.svelte";
   import Deadline from "$lib/Deadline.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
+  import MachineAccess from "$lib/MachineAccess.svelte";
+  import LiveScoreboard from "$lib/LiveScoreboard.svelte";
   import { session, api, refresh, APIError } from "$lib/api";
   import { launchDesktop } from "$lib/launch";
   import { render, prose } from "$lib/markdown";
@@ -124,11 +125,12 @@
         >Switch team</a
       >
     </PageHeader>
+	{#if $session.lab.liveScoring && $session.meeting}<div class="mb-8"><LiveScoreboard meetingID={$session.meeting.id} membershipKey={$session.lab.team.id}/></div>{/if}
     <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-12">
-      <aside class="min-w-0 space-y-4 lg:sticky lg:top-20 lg:order-2">
-        <section class="rounded-box border border-base-content/9 bg-base-200/70 p-5" aria-labelledby="desktop-title">
+      <aside class="min-w-0 space-y-4 order-2 lg:sticky lg:top-20">
+        {#if $session.lab.defaultDesktopMachine || !$session.lab.machines.length}<section class="rounded-box border border-base-content/9 bg-base-200/70 p-5" aria-labelledby="desktop-title">
           <div class="flex items-center justify-between gap-3">
-            <h2 id="desktop-title" class="text-sm font-medium">Desktop</h2>
+            <h2 id="desktop-title" class="text-sm font-medium">Default desktop</h2>
             <span aria-live="polite" aria-atomic="true"
               ><Status status={$session.lab.team.status} /></span
             >
@@ -193,7 +195,7 @@
                         ? "Opens in a new tab. Your team shares this desktop."
                         : "Opens in a new tab."}
           </p>{/if}
-          {#if $session.lab.desktopActive}<div class="mt-4 flex items-center justify-between gap-2 border-t border-base-content/8 pt-3">
+          {#if $session.lab.desktopActive}<div class="mt-4 flex flex-wrap items-center gap-2 border-t border-base-content/8 pt-3">
             <p class="flex items-center gap-2 text-xs whitespace-nowrap text-base-content/70" role="status">
               <span
                 class={["size-1.5 rounded-full", $session.lab.desktopActive ? "bg-success" : "bg-base-content/30"]}
@@ -205,8 +207,8 @@
             <button
               class="btn btn-sm min-h-11 lg:min-h-8 text-base-content/70"
               disabled={busy || !$session.lab.desktopActive}
-              title="Closes your session. Files remain until the meeting ends."
-              onclick={close}><Unplug size={13} />Disconnect desktop</button
+              title="Closes all your desktop sessions. Files remain until the meeting ends."
+              onclick={close}><Unplug size={13} />Disconnect all desktops</button
             >
           </div>{/if}
           <details class="group mt-3 text-sm">
@@ -223,27 +225,24 @@
               <li>In Firefox or Safari, use <strong>Paste to desktop</strong> for text.</li>
             </ul>
           </details>
-        </section>
+        </section>{/if}
         <section class="rounded-box border border-base-content/9 bg-base-200/70 p-5" aria-labelledby="team-title">
-          <h2 id="team-title" class="text-xs font-medium text-base-content/70">Machines</h2>
-          <ul class="mt-2 space-y-1.5">
-            {#each $session.lab.machines as machine}<li
-                class="flex items-center gap-2.5 text-sm"
-              >
-                <Server size={14} class="text-base-content/50" aria-hidden="true" /><span
-                  class="flex-1 truncate">{machine.name}</span
-                >{#if machine.os === "windows"}<span class="badge badge-ghost badge-sm">Windows</span>{/if}<Status
-                  status={machine.status}
-                />
-              </li>{:else}<li class="text-sm text-base-content/70">Preparing machines…</li>{/each}
-          </ul>
-          <h2 class="text-xs font-medium text-base-content/70 mt-5">Teammates</h2>
+          <h2 id="team-title" class="text-xs font-medium text-base-content/70">Teammates</h2>
           <p class="mt-2 text-sm leading-relaxed">
             {($session.lab.teammates ?? []).map((m) => m.name).join(", ") || "No one else yet."}
           </p>
         </section>
       </aside>
-      <section class="min-w-0 lg:order-1" aria-label="Handover">
+      <section class="min-w-0 order-1" aria-label="Team machines and handover">
+        {#if $session.meeting}
+          <h2 class="text-lg font-semibold">Team machines</h2>
+          <p class="mt-2 text-sm text-base-content/70">Open each machine in its own tab. Desktop and terminal sessions stay separate between machines.</p>
+          <div class="mt-5 mb-8 grid gap-3 sm:grid-cols-2">
+            {#each $session.lab.machines as machine (machine.name)}
+              <MachineAccess {machine} team={$session.lab.team} meeting={$session.meeting} instance={$session.lab.instanceID ?? ""} />
+            {:else}<p class="text-sm text-base-content/70">Machines will appear when the lab is prepared.</p>{/each}
+          </div>
+        {/if}
         <article class={prose}>
           {@html handover}
         </article>

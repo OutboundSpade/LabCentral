@@ -169,8 +169,11 @@ func TestCoachAccessAndPublicationAuthorization(t *testing.T) {
 		t.Fatal("terminal allocation metadata missing", machines)
 	}
 	overview := decodeLearning[Overview](t, request(s, "GET", "/api/me", "", "", ""), 200)
-	if len(overview.Lab.Machines) != 2 {
+	if len(overview.Lab.Machines) != 1 || overview.Lab.Machines[0].Name != "workstation" {
 		t.Fatal(overview)
+	}
+	if w := request(s, "GET", "/api/machines/support/terminal", "", s.Config.Origin, ""); w.Code != 404 {
+		t.Fatal("participant control bypassed hidden-machine policy", w.Code)
 	}
 	admin := decodeLearning[AdminView](t, request(s, "GET", "/api/admin", "", "", ""), 200)
 	if len(admin.Templates) != 1 || admin.Templates[0].Instructor.Audience != "coaches" || len(admin.Templates[0].Instructor.Stages) != 4 {

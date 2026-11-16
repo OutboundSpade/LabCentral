@@ -27,6 +27,12 @@ type Server struct {
 	// Exec returns fixture output; no shell is started.
 	Exec       func(string) string
 	execResult func(string, string, []byte) ([]byte, uint32)
+	shell      func(ssh.Channel)
+}
+
+// NewShell serves a controlled interactive CLI; it executes no local programs.
+func NewShell(t testing.TB, shell func(ssh.Channel)) *Server {
+	return newServer(t, nil, nil, nil, shell)
 }
 
 func Key(t testing.TB) ([]byte, string) {
@@ -47,15 +53,15 @@ func Key(t testing.TB) ([]byte, string) {
 	return key, string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 }
 func New(t testing.TB, forward func(string) string, exec func(string) string) *Server {
-	return newServer(t, forward, exec, nil)
+	return newServer(t, forward, exec, nil, nil)
 }
 
 // NewWithResult captures stdin and returns a controlled SSH exit status. It
 // executes no programs and accepts connections on loopback only.
 func NewWithResult(t testing.TB, forward func(string) string, result func(string, string, []byte) ([]byte, uint32)) *Server {
-	return newServer(t, forward, nil, result)
+	return newServer(t, forward, nil, result, nil)
 }
-func newServer(t testing.TB, forward func(string) string, exec func(string) string, result func(string, string, []byte) ([]byte, uint32)) *Server {
+func newServer(t testing.TB, forward func(string) string, exec func(string) string, result func(string, string, []byte) ([]byte, uint32), shell func(ssh.Channel)) *Server {
 	t.Helper()
 	private, host := Key(t)
 	signer, err := ssh.ParsePrivateKey(private)
@@ -66,7 +72,7 @@ func newServer(t testing.TB, forward func(string) string, exec func(string) stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Address: listener.Addr().String(), HostKey: host, listener: listener, Forward: forward, Exec: exec, execResult: result}
+	s := &Server{Address: listener.Addr().String(), HostKey: host, listener: listener, Forward: forward, Exec: exec, execResult: result, shell: shell}
 	cfg := &ssh.ServerConfig{NoClientAuth: true}
 	cfg.AddHostKey(signer)
 	s.wg.Go(func() {
@@ -148,6 +154,15 @@ func (s *Server) channel(in ssh.NewChannel, user string) {
 		}
 		defer ch.Close()
 		for r := range reqs {
+			if s.shell != nil && r.Type == "pty-req" {
+				r.Reply(true, nil)
+				continue
+			}
+			if s.shell != nil && r.Type == "shell" {
+				r.Reply(true, nil)
+				s.shell(ch)
+				return
+			}
 			if r.Type != "exec" {
 				r.Reply(false, nil)
 				continue

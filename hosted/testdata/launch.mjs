@@ -19,9 +19,9 @@ try {
  assert.equal((await launch.allHeaders()).origin,app);
  assert([undefined,app+'/'].includes((await launch.allHeaders()).referer));
  const tab=await popup;
- await tab.waitForURL(desktop+'/');
+ await tab.waitForURL(desktop+'/sessions/aaaaaaaaaaaaaaaaaaaaaaaa/');
  assert.equal(await tab.evaluate(()=>window.opener),null);
- assert((await context.cookies(desktop)).some(c=>c.name==='__Host-labcentral_desktop'&&c.httpOnly&&c.secure));
+ assert((await context.cookies(desktop)).some(c=>c.name==='__Host-labcentral_desktop_aaaaaaaaaaaaaaaaaaaaaaaa'&&c.httpOnly&&c.secure));
  await tab.waitForFunction(()=>typeof window.fixtureFirstFrame==='function');
  assert((await tab.locator('#status').innerText()).startsWith('Connecting'));
  await tab.evaluate(()=>window.fixtureFirstFrame());

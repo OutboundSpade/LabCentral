@@ -3,12 +3,15 @@ package remote
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/OutboundSpade/LabCentral/v2/internal/faultinject"
 	"github.com/OutboundSpade/LabCentral/v2/internal/windows"
 	"golang.org/x/crypto/ssh"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -105,6 +108,34 @@ func clientConfig(user string, private []byte, host string) (*ssh.ClientConfig, 
 	key, err := ssh.ParsePrivateKey(private)
 	if err != nil {
 		return nil, err
+	}
+	if strings.HasPrefix(host, "SHA256:") || strings.HasPrefix(host, "MD5:") {
+		pins := strings.Split(host, ",")
+		if len(pins) > 16 {
+			return nil, fmt.Errorf("too many console-attested host pins")
+		}
+		for _, pin := range pins {
+			valid := false
+			if value, ok := strings.CutPrefix(pin, "SHA256:"); ok {
+				b, err := base64.RawStdEncoding.DecodeString(value)
+				valid = err == nil && len(b) == 32
+			}
+			if value, ok := strings.CutPrefix(pin, "MD5:"); ok {
+				b, err := hex.DecodeString(strings.ReplaceAll(value, ":", ""))
+				valid = err == nil && len(b) == 16 && len(value) == 47 && strings.Count(value, ":") == 15 && value == strings.ToLower(value)
+			}
+			if !valid {
+				return nil, fmt.Errorf("invalid console-attested host pin")
+			}
+		}
+		return &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(key)}, HostKeyCallback: func(_ string, _ net.Addr, pub ssh.PublicKey) error {
+			for _, pin := range pins {
+				if pin == ssh.FingerprintSHA256(pub) || pin == "MD5:"+ssh.FingerprintLegacyMD5(pub) {
+					return nil
+				}
+			}
+			return fmt.Errorf("appliance SSH host key differs from the EC2 console attestation")
+		}}, nil
 	}
 	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(host))
 	if err != nil {

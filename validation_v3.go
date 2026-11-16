@@ -124,7 +124,7 @@ func validateV3(l Lab) error {
 			}
 			if nic.Address != nil {
 				offset := *nic.Address
-				max := 250
+				max := 254
 				if net.CIDR != "" {
 					p, _ := netip.ParsePrefix(net.CIDR)
 					usable := (1 << (32 - p.Bits())) - 2
@@ -133,7 +133,7 @@ func validateV3(l Lab) error {
 					}
 				}
 				if offset < 4 || offset > max {
-					return problem(Invalid, nf+".address", "offset must be 4–250 and within the usable subnet")
+					return problem(Invalid, nf+".address", "offset must be 4–254 and within the usable subnet")
 				}
 				if used[nic.Network] == nil {
 					used[nic.Network] = map[int]bool{}

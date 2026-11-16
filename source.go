@@ -259,6 +259,9 @@ func Validate(s Source) error {
 		}
 		paths[f.Path] = true
 	}
+	if err := ValidateAppliances(s); err != nil {
+		return err
+	}
 	for _, n := range sortedKeys(l.Images) {
 		i := l.Images[n]
 		if !namePattern.MatchString(n) {
@@ -387,6 +390,18 @@ func ValidateEnvironment(e Environment) error {
 		}
 	}
 	for n, b := range e.Bases {
+		if b.Appliance != "" {
+			if e.Platform != "aws" || OSFamily(b.OS) != "linux" || !Contains([]string{"vyos", "panos"}, b.Appliance) || !regexp.MustCompile(`^ami-[a-f0-9]{8,17}$`).MatchString(b.ID) || b.Identity != b.ID {
+				return bad("bases."+n+".appliance", "requires an AWS appliance kind and pinned AMI identity")
+			}
+			user := "vyos"
+			if b.Appliance == "panos" {
+				user = "admin"
+			}
+			if b.User != user {
+				return bad("bases."+n+".user", "appliance binding has an incorrect SSH user")
+			}
+		}
 		if OSFamily(b.OS) != "linux" && b.OS != "windows" {
 			return bad("bases."+n+".os", "expected linux or windows")
 		}
@@ -531,6 +546,9 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 		if OSFamily(i.OS) != OSFamily(b.OS) {
 			return p, problem(Invalid, "images."+n+".base", "image OS must match the environment base OS")
 		}
+		if b.Appliance != i.ApplianceKind() {
+			return p, problem(Invalid, "images."+n+".base", "appliance kind must match the operator base binding")
+		}
 		im := PlannedImage{Name: n, Base: b, Playbook: i.BuildPlaybook(), Script: i.BuildScript(), DiskGiB: b.DiskGiB}
 		// Only an explicit request enters the image identity; otherwise the
 		// environment's build instance type applies, as it did before options existed.
@@ -602,6 +620,7 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 			return p, problem(Invalid, "machines."+n+".disk", "cannot shrink the base disk")
 		}
 		pm := PlannedMachine{Name: n, Spec: m, CPU: m.CPU, MemoryMiB: mem, DiskGiB: disk / 1024}
+		pm.Appliance = s.Lab.Images[m.Image].ApplianceKind()
 		if b.OS == "windows" {
 			pm.OS = "windows"
 		}
@@ -641,6 +660,23 @@ func PlanLab(s Source, e Environment, values map[string]string) (Plan, error) {
 	}
 	if err := PlanNetworks(&p, nil); err != nil {
 		return p, err
+	}
+	for _, m := range p.Machines {
+		if m.Appliance == "vyos" {
+			bytes := 2048 + len(m.NICs)*256
+			for _, nic := range m.NICs {
+				bytes += len(nic.Routes) * 160
+			}
+			i := s.Lab.Images[m.Spec.Image]
+			for _, f := range s.Files {
+				if i.Appliance.Configuration == f.Path {
+					bytes += len(f.Content) * 2
+				}
+			}
+			if bytes > 16<<10 {
+				return p, problem(Invalid, "machines."+m.Name, "appliance bootstrap exceeds the safe EC2 user-data budget; reduce configuration/routes")
+			}
+		}
 	}
 	p.Notices = []string{"Instances and native images remain billable until removed; no background cleanup service is installed.", "Builds may access package repositories; runtime Internet egress defaults to none."}
 	if e.Platform == "proxmox" {
@@ -701,7 +737,7 @@ func declarationError(err error) error {
 // author machine allowlist. Defaults still require a pinned base binding.
 func ValidateAWSGateway(e Environment) error {
 	g := e.AWS.Gateway.Effective()
-	if b, ok := e.Bases[g.Base]; !ok || b.ID == "" || b.Identity == "" || b.DiskGiB < 1 || OSFamily(b.OS) != "linux" {
+	if b, ok := e.Bases[g.Base]; !ok || b.ID == "" || b.Identity == "" || b.DiskGiB < 1 || OSFamily(b.OS) != "linux" || b.Appliance != "" {
 		return problem(Invalid, "environment.aws.gateway.base", "no valid environment base binding for "+g.Base)
 	}
 	if !regexp.MustCompile(`^[a-z][a-z0-9-]*\.[a-z0-9]+$`).MatchString(g.InstanceType) {

@@ -32,6 +32,7 @@ type CheckDefinition struct {
 	Points int    `json:"points" yaml:"points"`
 }
 type InstructorView struct {
+	LiveScoring    bool              `json:"liveScoring,omitempty"`
 	Audience       string            `json:"audience,omitempty"`
 	HiddenMachines []string          `json:"hiddenMachines,omitempty"`
 	Notes          string            `json:"notes"`
@@ -45,6 +46,7 @@ func instructorView(b InstructorBundle) InstructorView {
 	for _, c := range b.Checks {
 		v.Checks = append(v.Checks, CheckDefinition{c.ID, c.Name, c.Points})
 	}
+	v.LiveScoring = b.LiveScoring != nil
 	for _, x := range b.Breaks {
 		v.Breaks = append(v.Breaks, BreakDefinition{x.ID, x.Name, x.Description, x.Walkthrough})
 	}

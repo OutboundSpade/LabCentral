@@ -47,24 +47,7 @@ func (s *Service) coachTeam(ctx context.Context, id string) (Team, Meeting, lc.S
 	return Team{}, Meeting{}, lc.Source{}, fmt.Errorf("Choose a ready team in the current meeting.")
 }
 func (s *Service) coachMachines(w http.ResponseWriter, r *http.Request, v Session) {
-	team, meeting, src, err := s.coachTeam(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeError(w, 409, err.Error())
-		return
-	}
-	inst, err := s.Engine.Inspect(r.Context(), team.InstanceID)
-	if err != nil || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest {
-		writeError(w, 503, "Pinned machines are unavailable.")
-		return
-	}
-	out := CoachMachines{TeamID: team.ID, TeamName: team.Name, MeetingID: meeting.ID, MeetingName: meeting.Name, Template: meeting.Template, InstanceID: team.InstanceID, Machines: []Machine{}}
-	for _, m := range inst.Plan.Machines {
-		if spec, declared := src.Lab.Machines[m.Name]; !declared || !lc.Contains(spec.Access, "ssh") {
-			continue
-		}
-		out.Machines = append(out.Machines, Machine{Name: m.Name, OS: lc.OSFamily(m.OS), Status: inst.Status, Desktop: lc.Contains(m.Spec.Access, "desktop")})
-	}
-	writeJSON(w, 200, out)
+	s.machineInventory(w, r, v, true)
 }
 func (s *Service) coachAuthorized(ctx context.Context, v Session, team Team, meeting Meeting) bool {
 	current, err := s.checkedSession(ctx, v.ID)
@@ -109,11 +92,17 @@ func (h coachTerminalHello) valid(v Session, meeting Meeting) bool {
 // The WebSocket holds no recoverable command queue: reconnecting reauthorizes
 // the pinned allocation and starts a fresh guest shell. Cleanup frees its fence.
 func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Session) {
+	s.machineTerminal(w, r, v, true)
+}
+func (s *Service) teamTerminal(w http.ResponseWriter, r *http.Request, v Session) {
+	s.machineTerminal(w, r, v, false)
+}
+func (s *Service) machineTerminal(w http.ResponseWriter, r *http.Request, v Session, coach bool) {
 	if r.Header.Get("Origin") != s.Config.Origin {
 		writeError(w, 403, "Request verification failed.")
 		return
 	}
-	team, meeting, src, err := s.coachTeam(r.Context(), r.PathValue("id"))
+	team, meeting, src, err := s.machineTeam(r.Context(), v, r.PathValue("id"), coach)
 	if err != nil {
 		writeError(w, 409, err.Error())
 		return
@@ -121,10 +110,11 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 	name := r.PathValue("machine")
 	spec, ok := src.Lab.Machines[name]
 	engine, supported := s.Engine.(terminalSSH)
-	if !ok || !lc.Contains(spec.Access, "ssh") || !supported {
+	if !ok || !s.machineAllowed(r.Context(), meeting.Template, src, name, "ssh", coach) || !supported {
 		writeError(w, 404, "Machine SSH access is unavailable.")
 		return
 	}
+	authorized := func(ctx context.Context) bool { return s.machineAuthorized(ctx, v, team, meeting, src, name, coach) }
 	connection, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return
@@ -144,13 +134,20 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 	kind, data, err := connection.Read(helloCtx)
 	helloCancel()
 	var hello coachTerminalHello
-	if err != nil || kind != websocket.MessageText || json.Unmarshal(data, &hello) != nil || !hello.valid(v, meeting) || (hello.InstanceID != "" && hello.InstanceID != team.InstanceID) || !s.coachAuthorized(ctx, v, team, meeting) {
+	if err != nil || kind != websocket.MessageText || json.Unmarshal(data, &hello) != nil || !hello.valid(v, meeting) || (hello.InstanceID != "" && hello.InstanceID != team.InstanceID) || !authorized(ctx) {
 		connection.Close(websocket.StatusPolicyViolation, "Request verification failed")
 		return
 	}
 	if hello.Cols == 0 {
 		hello.Cols, hello.Rows = 100, 30
 	}
+	release, admit := s.acquireTerminalForRole(ctx, v.User.ID, team.ID, coach)
+	if admit != nil {
+		connection.Close(websocket.StatusTryAgainLater, "Terminal capacity reached. Close another terminal and reconnect.")
+		return
+	}
+	defer release()
+	ctx = context.WithValue(ctx, sshBudgetKey{}, s.sshSlots)
 	type frame struct {
 		kind websocket.MessageType
 		data []byte
@@ -179,7 +176,7 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 				return
 			case <-ticker.C:
 				check, stop := context.WithTimeout(ctx, 5*time.Second)
-				allowed := s.coachAuthorized(check, v, team, meeting)
+				allowed := authorized(check)
 				stop()
 				if !allowed {
 					cancel(errCoachRevoked)
@@ -208,13 +205,8 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 			}
 		}
 	}()
-	release, admit := s.acquireSSH(ctx)
-	if admit != nil {
-		return
-	}
-	defer release()
 	err = engine.WithSSHSession(ctx, team.InstanceID, name, func(inst lc.Instance, m lc.PlannedMachine, res lc.Resource, key []byte) error {
-		if !s.coachAuthorized(ctx, v, team, meeting) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) || lc.OSFamily(m.OS) != lc.OSFamily(src.Lab.Images[spec.Image].OS) {
+		if !authorized(ctx) || inst.ID != team.InstanceID || inst.Status != "ready" || inst.Plan.Source.Digest != src.Digest || !coachGuestMatches(team.InstanceID, name, m, res) || lc.OSFamily(m.OS) != lc.OSFamily(src.Lab.Images[spec.Image].OS) {
 			cancel(errCoachRevoked)
 			return errCoachRevoked
 		}
@@ -349,7 +341,7 @@ func (s *Service) coachTerminal(w http.ResponseWriter, r *http.Request, v Sessio
 	})
 	switch {
 	case errors.Is(context.Cause(ctx), errCoachRevoked):
-		connection.Close(coachAccessRevoked, "Meeting or administrator access ended")
+		connection.Close(coachAccessRevoked, "Meeting or machine access ended")
 	case errors.Is(deadlineCtx.Err(), context.DeadlineExceeded):
 		if !meeting.Expires.After(time.Now()) {
 			connection.Close(coachAccessRevoked, "Meeting access ended")

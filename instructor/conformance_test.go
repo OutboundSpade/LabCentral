@@ -100,7 +100,7 @@ func TestConformance(t *testing.T) {
 					if strings.HasPrefix(line, "# ") {
 						pair := strings.SplitN(line[2:], ": ", 2)
 						if len(pair) == 2 {
-							metadata[pair[0]] = pair[1]
+							metadata[pair[0]] = strings.TrimSpace(pair[1])
 						}
 					}
 				}

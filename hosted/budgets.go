@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	lc "github.com/OutboundSpade/LabCentral/v2"
+	"sync"
 )
 
 // AggregateOptions bound service-wide effects across independent engine jobs.
@@ -89,15 +90,83 @@ func (p *BudgetedProvider) Execute(ctx context.Context, c lc.Command, o lc.Obser
 	return p.Provider.Execute(ctx, c, o)
 }
 func (s *Service) acquireSSH(ctx context.Context) (func(), error) {
-	if err := s.Config.Aggregate.Validate(); err != nil {
+	if err := s.initSSH(); err != nil {
 		return nil, err
+	}
+	return acquireSlot(ctx, s.sshSlots)
+}
+
+func (s *Service) initSSH() error {
+	if err := s.Config.Aggregate.Validate(); err != nil {
+		return err
 	}
 	s.sshOnce.Do(func() {
 		if s.sshSlots == nil {
 			s.sshSlots = make(chan struct{}, s.Config.Aggregate.Effective().MaxSSHSessions)
 		}
 	})
-	return acquireSlot(ctx, s.sshSlots)
+	return nil
+}
+
+// Participants use at most half the SSH pool, with per-user and per-team caps.
+// Coaches have a separate allowance of up to four, reduced for small pools to
+// retain at least one control slot even when both terminal allowances are full.
+// Admission never queues behind another long-lived session.
+func (s *Service) acquireTerminal(ctx context.Context, user, team string) (func(), error) {
+	return s.acquireTerminalForRole(ctx, user, team, false)
+}
+
+func (s *Service) acquireTerminalForRole(ctx context.Context, user, team string, coach bool) (func(), error) {
+	if err := s.initSSH(); err != nil {
+		return nil, err
+	}
+	s.terminalMu.Lock()
+	defer s.terminalMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	participantLimit := cap(s.sshSlots) / 2
+	coachLimit := min(4, cap(s.sshSlots)-participantLimit-1)
+	if (coach && s.coachTerminals >= coachLimit) ||
+		(!coach && (s.terminalCount >= participantLimit || s.terminalUsers[user] >= 2 || s.terminalTeams[team] >= 8)) {
+		return nil, fmt.Errorf("terminal capacity reached")
+	}
+	select {
+	case s.sshSlots <- struct{}{}:
+	default:
+		return nil, fmt.Errorf("SSH capacity reached")
+	}
+	if s.terminalUsers == nil {
+		s.terminalUsers, s.terminalTeams = map[string]int{}, map[string]int{}
+	}
+	if coach {
+		s.coachTerminals++
+	} else {
+		s.terminalCount++
+		s.terminalUsers[user]++
+		s.terminalTeams[team]++
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.terminalMu.Lock()
+			defer s.terminalMu.Unlock()
+			<-s.sshSlots
+			if coach {
+				s.coachTerminals--
+				return
+			}
+			s.terminalCount--
+			s.terminalUsers[user]--
+			if s.terminalUsers[user] == 0 {
+				delete(s.terminalUsers, user)
+			}
+			s.terminalTeams[team]--
+			if s.terminalTeams[team] == 0 {
+				delete(s.terminalTeams, team)
+			}
+		})
+	}, nil
 }
 
 type sshBudgetKey struct{}

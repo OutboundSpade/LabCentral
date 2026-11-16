@@ -151,16 +151,29 @@ func annotateSchema(object, field string, s map[string]any) {
 	case "Machine.access":
 		s["uniqueItems"] = true
 		s["items"] = map[string]any{"enum": []string{"ssh", "desktop"}}
+	case "Machine.managementClients":
+		s["maxItems"] = 32
+		s["uniqueItems"] = true
+		s["items"] = map[string]any{"type": "string", "pattern": namePattern.String()}
 	case "Machine.nics":
 		s["minItems"] = 1
 	case "NIC.address":
 		s["minimum"] = 4
-		s["maximum"] = 250
+		s["maximum"] = 254
 	case "Network.cidr":
 		s["minLength"] = 1
 	case "Network.egress":
 		enum("none", "internet")
 		s["default"] = "none"
+	case "ApplianceImage.kind":
+		enum("vyos", "panos")
+	case "ApplianceImage.configuration":
+		s["minLength"] = 1
+		s["pattern"] = `^[a-zA-Z0-9_./-]+$`
+	case "Network.routes":
+		s["maxItems"] = 16
+	case "Network.defaultRouter", "NetworkRoute.router":
+		s["pattern"] = namePattern.String()
 	case "Input.type":
 		enum("string", "integer", "boolean")
 	case "Input.description":

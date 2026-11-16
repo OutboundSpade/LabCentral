@@ -283,6 +283,9 @@ func (s *Service) recordCurrent(ctx context.Context, a accessRecord) bool {
 		return false
 	}
 	ctx = context.WithValue(ctx, verifiedUserKey{}, v.User)
+	if !s.machineRecordAllowed(ctx, a) {
+		return false
+	}
 	if strings.HasPrefix(a.TeamID, "practice:") {
 		run, err := s.Store.practice(ctx, strings.TrimPrefix(a.TeamID, "practice:"))
 		return err == nil && run.UserID == a.UserID && run.InstanceID == a.InstanceID && run.Status == "ready" && run.Expires.After(time.Now()) && s.practiceDisclosure(ctx, run.LabID) == nil

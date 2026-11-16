@@ -135,16 +135,36 @@ summary shown on library cards.
 
 - `cpu`, `memory` (`Mi`/`Gi`) and `disk` are minimums. On AWS the planner picks the
   smallest allowed instance type that fits.
-- `access` is any of `ssh` and `desktop`. Students open desktops in the browser.
+- `access` is any of `ssh` and `desktop`. A visible `desktop` machine offers a
+  separate browser desktop. Participant terminals additionally require an explicit
+  grant in `instructor.yaml`: `visibility.participantTerminals: [workstation, router]`.
+  Each listed machine must be visible and declare `ssh`. Omission grants no
+  participant terminals, including for existing pinned templates. Coaches retain
+  SSH access through coach routes. These shells use the operator account: `lab`
+  with passwordless sudo on AWS Linux, `Administrator` on Windows, or the vendor
+  administrative account on an appliance. Grant only where participants should
+  have that level of control; desktop users keep their existing account policy.
 - `hostnamePeers` controls which machines appear in each guest's `/etc/hosts`: `all`
   (the default), a list of names, or `[]` for none. Machine names resolve to their
   private lab addresses.
+
+For a team range, declare all its machines in **one** `lab.yaml` (1-32 machines).
+The hosted service deploys one copy of the whole lab per team. Eight machines need
+eight machine entries, not eight templates. Keep organizer/scoring machines hidden
+through `instructor.yaml` visibility policy when students must not access them.
+
+`practice.desktopMachine` still selects the default desktop for guided/personal
+practice and the meeting's optional quick-launch control. It does not limit the
+other meeting machines. A meeting-only lab without stages or scenarios can omit
+`practice` and use its per-machine controls. Desktop builds and platform guest
+capability requirements still apply; `desktop` on AWS means DCV, not a raw serial
+console, a web appliance interface or an arbitrary RDP endpoint.
 
 ### Networks and Internet access
 
 Without a `networks` section, a lab has one private network named `lab` and every
 machine has one NIC on it. A machine can pin its host address with
-`nics: [{network: lab, address: 20}]` (offsets 4–250); the others are numbered from 11
+`nics: [{network: lab, address: 20}]` (offsets 4–254); the others are numbered from 11
 in name order.
 
 Networks are isolated from each other. To connect two, add a machine with a NIC on
@@ -170,13 +190,154 @@ machines:
   share, or to its first-NIC address if they share none.
 - The planner adds static routes through routers, including chains of routers. Two
   routers joining the same pair of networks, or a cycle, is rejected.
-- On AWS, a network may set its own private `cidr`; all networks must fit in one /16.
+- On AWS, a network may set its own private `cidr`. Distinct /16 ranges become
+  separate VPC CIDR blocks (up to five, all within the same RFC1918 range).
+  Specify every network CIDR when using 172.16/12 or 192.168/16; omitted CIDRs
+  still use 10.77.x.0/24. Plans list `vpcCIDR` and `secondaryVPCCIDRs`.
   Proxmox assigns ranges itself and rejects author CIDRs.
+
+AWS subnets must be /16 through /28. AWS reserves the first four addresses and the
+last address of each subnet; packet addresses such as a router at `.1` or `.2`
+cannot be assigned to an EC2 NIC. Multiple VPC CIDR blocks do not provide layer-2
+networking or DHCP from a guest server. Native appliance and VIP support is
+explicitly declared as described below.
 
 Internet access is off by default. `egress: internet` on a network requests it, and the
 operator must also allow it (`aws.allowEgress` or `proxmox.allowEgress`). It is general
 Internet access with private ranges blocked, not a URL allowlist. Image builds have
 their own network and are not affected.
+
+### Native AWS routers and firewalls
+
+An AWS template can select native VyOS or PAN-OS bootstrap instead of a Linux
+cloud-init image. The operator must bind the same appliance kind to a pinned AMI.
+These images cannot have `build` programs or desktop access; declare `access: [ssh]`
+for their browser terminals. PAN-OS also requires at least two vCPUs, 8 GiB RAM,
+and a separate first management NIC. Choose capacity and disks supported by the AMI
+and its license; these minimums do not establish vendor compatibility.
+
+```yaml
+images:
+  edge:
+    base: vyos-1.4
+    appliance: {kind: vyos, configuration: policy/vyos.set}
+  firewall:
+    base: panos-11
+    appliance: {kind: panos, configuration: policy/panos.set}
+networks:
+  outside:
+    cidr: 172.31.26.0/24
+    egress: internet
+    routes: [{cidr: 172.25.26.0/24, router: edge}]
+  transit: {cidr: 172.16.0.0/24, defaultRouter: edge}
+  inside: {cidr: 172.20.240.0/24, defaultRouter: firewall}
+  management: {cidr: 172.30.0.0/24}
+machines:
+  edge:
+    image: edge
+    cpu: 2
+    memory: 4Gi
+    disk: 20Gi
+    forwarding: true
+    nics: [{network: outside, address: 10}, {network: transit, address: 254}]
+    access: [ssh]
+  firewall:
+    image: firewall
+    cpu: 4
+    memory: 16Gi
+    disk: 60Gi
+    forwarding: true
+    managementClients: []
+    nics:
+      - {network: management, address: 200, management: true}
+      - {network: transit, address: 10}
+      - {network: inside, address: 254}
+    access: [ssh]
+```
+
+`defaultRouter` sends that segment's default traffic through a declared router's
+data NIC. It cannot be combined with `egress: internet` on the same network.
+`routes` adds up to 16 private /16 through /32 destinations, each targeting a forwarding
+machine on the source network. Explicit routes cannot overlap managed subnets.
+The VIP example describes an exercise address pool, not public Internet addresses.
+A route does not allocate a VIP or install NAT: the template must provide the
+matching vendor policy and return routes on each hop.
+
+`management: true` excludes that NIC from the forwarding graph. PAN-OS preserves
+the standard mapping: first NIC is MGT, second is `ethernet1/1`, third is
+`ethernet1/2`. VyOS uses `eth0`, `eth1`, and so on. LabCentral owns addresses, static
+routes, management identity and the PAN-OS virtual router named `labcentral`.
+Appliance route-installation errors fail deployment; they do not silently fall back
+to a bypass path. PAN-OS `managementClients` names the declared non-appliance
+machines allowed to use that firewall's HTTPS management. The default is empty;
+desktop access does not grant management access. Headless automation clients are
+supported. For example, on a firewall with existing clients named `workstation`
+and `automation`, set `managementClients: [workstation, automation]`.
+
+Each authorized client gets a direct /32 route to that firewall's MGT address and
+a first-NIC security group with outbound TCP 443 to its dedicated destination
+group. Each firewall has a separate group pair, so disjoint grants stay disjoint.
+PAN-OS NIC0 omits the segment's self/routed ingress group: an unlisted machine on
+the management subnet is denied too. The shared management group retains only
+gateway TCP 22/8443 ingress. Data NIC routing/security policy stays separate.
+The supported five-group limit per ENI leaves room for at most three firewall
+grants per client, after its two base groups; validation rejects excess grants
+before provisioning even if an operator has increased the AWS quota.
+The machine card displays the private URL; open it from an authorized client and
+set the web login using the device terminal. Existing implicit-management networks
+need ownership-checked teardown/redeployment rather than in-place grant migration.
+
+Configuration files contain one vendor `set` or `delete` command per line; `#`
+comments and blank lines are allowed. Files are limited to 12 KiB, 128 commands,
+and 1,024 bytes per command. VyOS permits firewall, NAT, policy, zone-policy and
+interface firewall attachment settings. PAN-OS permits zones, rulebase, address and
+service objects/groups, and tags. Interface/route/authentication overrides, shell
+commands, control operators and the reserved `labcentral` namespace are rejected.
+VyOS uses an unquoted command path and at most one single-quoted final value.
+For example, `set firewall ipv4 name LAN-IN default-action 'drop'` is supported;
+quoting `LAN-IN` before that value, double-quoted paths, embedded single quotes,
+or tokens after a quoted value are rejected before provisioning. Commands that
+set/delete a node without a value may remain entirely unquoted. See the
+[vendor cloud-init grammar](https://docs.vyos.io/en/1.4/automation/cloud-init.html).
+Generated addresses, keys and route next hops follow this same format.
+For example:
+
+```text
+# policy/vyos.set
+set nat source rule 10 outbound-interface name 'eth0'
+set nat source rule 10 source address '172.20.240.0/24'
+set nat source rule 10 translation address 'masquerade'
+```
+
+```text
+# policy/panos.set
+set zone outside network layer3 ethernet1/1
+set zone inside network layer3 ethernet1/2
+```
+
+These snippets establish the configuration format, not a complete competition
+firewall policy. Add security/NAT rules and service-specific checks in the template.
+LabCentral does not supply Marketplace subscriptions, PAN-OS licenses, guest DHCP,
+AD/domain-join orchestration, or external competition scoring. Qualify the selected
+AMI versions and the complete service path in a disposable AWS range before use.
+The native appliance path is AWS-only; Proxmox rejects these fields.
+
+The provider owns bootstrap and verified identity. The platform renders cloud
+infrastructure and topology-derived addresses/routes. The lab owns device policy
+and exercise behavior through its selected policy files; probes, weights, penalties,
+scenario content and private teaching material belong to the lab/scorer.
+Ansible currently executes locally inside the configured guest. Network-device
+Ansible needs a separate guest controller/runtime design. Lab-managed routing and
+additional policy features are also separate designs.
+
+### Live competition scoring
+
+For live Red vs. Blue meetings, an optional private `liveScoring` declaration lets
+LabCentral display a guest scorer's results. It does not add competition scoring to
+ordinary labs. See the [feed configuration and example](../examples/scoring-feed/README.md)
+and [hosted scoring guide](hosted.md#live-red-vs-blue-scoreboards). The scorer runs
+its own probes, publishes only completed-round public JSON, and remains hidden from
+student machine access. The coach must also opt in when creating the meeting.
 
 ### Inputs
 
@@ -601,4 +762,4 @@ Before publishing, check:
 | Scenario `description` | 2000 bytes |
 | Library tags | 12, each up to 48 bytes |
 | Extensions | 64 KiB per file |
-| Network host offsets | 4–250 |
+| Network host offsets | 4–254 |

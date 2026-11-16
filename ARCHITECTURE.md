@@ -44,6 +44,14 @@ flowchart TD
 | `hosted` | Product policy: users, sessions, meetings, attempts, jobs and desktop authorization. |
 | `web` | The static UI served by the hosted service. |
 
+Ownership of native appliance behavior is explicit: the provider owns bootstrap
+and verified identity; the platform owns cloud infrastructure and topology
+rendering; the lab owns selected device policy and exercise behavior. Probes,
+weights, penalties, scenario content and private teaching material remain in the
+lab/scorer. Author Ansible runs locally inside its target guest; a network-device
+controller/runtime workflow, lab-managed routing and extra policy capabilities
+require separate designs.
+
 Rules that hold across the codebase:
 
 - **Author code runs only in guests.** Playbooks, PowerShell scripts, checks and breaks
@@ -86,7 +94,7 @@ egress. An optional `platforms` list restricts a lab to AWS, Proxmox or both.
   platform can install its desktop components.
 - **Machines** have an image, CPU, memory and disk (`Mi`/`Gi`; disks cannot shrink a
   base) and declare `ssh` and/or `desktop` access.
-- **Addresses** are host offsets 4–250, unique per network. Explicit offsets are
+- **Addresses** are host offsets 4–254, unique per network. Explicit offsets are
   reserved first; the rest are assigned from 11 in machine-name order.
 - **Name resolution:** `hostnamePeers` defaults to all peers, accepts a list, or `[]` for
   localhost only. It changes the initial hosts file, not firewall policy.
@@ -106,7 +114,33 @@ several networks joins them:
 - A peer's hostname resolves to its address on the first network both machines share
   (in the requester's NIC order), otherwise to the peer's first-NIC address.
 - Each machine has one default route, through its first NIC on an Internet-enabled
-  network. Other NICs carry connected and planned static routes.
+  network or an explicit `defaultRouter`. Other NICs carry connected and planned
+  static routes. PAN-OS keeps a separate data-plane default route.
+- AWS supports typed `vyos`/`panos` native appliance images, explicit private VIP
+  routes, and management-only first NICs excluded from the forwarding graph.
+  Appliance routing errors fail closed. Addresses and routes are platform owned;
+  bounded template vendor configuration supplies zones, security and NAT policy.
+  PAN-OS uses MGT-first mapping and a platform virtual router named `labcentral`.
+  PAN-OS `managementClients` is an explicit per-firewall list, empty by default,
+  accepting named non-appliance clients regardless of desktop capability. Each
+  firewall gets its own destination and client groups; first-NIC membership and
+  paired TCP 443 rules enforce individual grants without authorizing their union.
+  Only listed clients receive a direct /32 route to that firewall's MGT address.
+  MGT NIC0 omits segment self/routed ingress, protecting against unlisted neighbors
+  on the management subnet. The shared management group retains gateway-only
+  TCP 22/8443. Planning and provider admission enforce five groups per ENI (two
+  base groups plus at most three firewall grants for each client). Groups have journaled
+  creation/discovery and ownership-checked cleanup like other network children.
+  Operator bases pin the appliance kind, AMI identity and vendor SSH user.
+- Native appliance SSH keys are attested through exact-instance EC2 console output.
+  VyOS publishes public host keys from its documented initial boot hook; PAN-OS
+  uses non-FIPS MD5 console fingerprints. The local client key is RSA for appliance
+  ranges. An owned shared EC2 public key pair seeds PAN-OS login and is retained in
+  the cleanup journal until confirmed absent. Vendor CLI uses a bounded verified
+  guest PTY. PAN-OS commits are journaled before submission and reconciled by a
+  unique committed receipt, never replayed after an unknown outcome. Native
+  readiness is bounded to 15 minutes. See the template and operator guides for
+  the configuration contract and AMI requirements.
 - Author CIDRs must be private IPv4 /16–/28 ranges. Only AWS implements them.
 
 Internet egress needs both the author's `egress: internet` on a network and the
@@ -324,8 +358,11 @@ flowchart TB
 
 **Layout.** Each lab owns one VPC in one availability zone. By default it is
 `10.77.0.0/16`; networks get `10.77.<n>.0/24` in name order and the gateway's edge
-subnet is `10.77.255.0/28`. With author CIDRs, the /16 containing them becomes the VPC
-and the edge subnet takes its highest free /28. Each network has its own subnet, route
+subnet is `10.77.255.0/28`. With author CIDRs, each distinct /16 becomes a VPC CIDR
+block (at most five, within one RFC1918 range). The first author range is primary,
+except that 172.31/16 or 10.0/16 is selected as primary when present to satisfy AWS
+secondary-association restrictions. The edge subnet takes the primary block's highest
+free /28. Plans disclose secondary blocks separately. Each network has its own subnet, route
 table and security group:
 
 - Routes to remote networks go through the local router's ENI (more specific than VPC
@@ -338,6 +375,16 @@ table and security group:
   admits ports 22 and 8443 from the gateway only.
 - Lab machines never get public addresses, and operator CIDRs are never added to their
   management ingress.
+
+Secondary CIDR associations use the provider intent journal before native submission,
+with SDK create retries disabled. Discovery verifies the exact VPC's ownership and
+matches the requested CIDR and recorded association ID. Subnet creation waits for
+`associated`; timeouts, changed identities and failed or unknown states retain intent.
+VPC deletion confirms final absence after child cleanup. Single-block layouts and
+their existing journal keys are unchanged. Planner and readiness unit checks cover
+the layout and state handling. The maintainer-reported native CIDR-association
+response-loss check is scoped under [Qualification status](#qualification-status);
+it does not establish the complete native association failure matrix.
 
 **Gateway.** One platform-owned gateway per lab, outside the author's inventory, holds
 the lab's only public IPv4 address (default `ubuntu-24.04` on `t3.micro`). It has one
@@ -590,6 +637,32 @@ without authoritative discovery need an operator to investigate.
 
 ## Hosted service
 
+Live Red vs. Blue scoring is a separate opt-in hosted read model. A pinned private
+instructor bundle declares `liveScoring` for a hidden Linux scorer VM's loopback
+HTTP JSON endpoint. Meeting creation atomically records an optional `live-red-blue`
+flag scoped to the new meeting ID. Omitted configuration and ordinary meetings do
+not poll any feed, mount the live scoreboard UI, or change teaching check behavior.
+Only verified guest SSH transports can reach the endpoint; requests accept no
+client-supplied URL, team identity, credentials or executable content. Redirects,
+oversized bodies, malformed projections and regressing completed rounds are
+rejected. Per-allocation reads coalesce and persist the last good snapshot, keyed
+by meeting, allocation, template source and feed contract. Failures preserve points
+as stale. Saved projections load through the request context before refresh-slot
+admission; slot, read and coalesced-flight timeouts retain those saved totals even
+after the refresh deadline expires. Students receive standings plus their own service details; coaches see
+all service details. Authorization and allocation pins are checked after guest
+reads as well as before them. The bot owns probes, scoring rules and round history.
+See the hosted guide for bounds and the reference loopback file-feed helper.
+The lab/scorer owns engine selection and installation, probes, weights, penalties,
+round history, scenario content and private teaching material. Engine-specific
+setup stays in its lab or kit repository. The generic projection supports different
+scorers without changing hosted identity or range policy.
+
+Hidden-machine disclosure continues to require explicit peer lists and bounded
+source selection for visible image builds. Native appliances receive only their
+selected vendor configuration and never receive a build source bundle, so they
+can coexist with a hidden scorer without artificial image-build declarations.
+
 The `hosted` package uses the public library and adds identity, HTTP policy, jobs and
 the product's records. Operator configuration and credentials stay outside source and
 public APIs.
@@ -737,6 +810,46 @@ with DCV. noVNC supports scaling, guest resize, full screen and clipboard text w
 the native guest channel supports it.
 
 ### Single-console desktop holders and terminals
+
+Meeting access is per machine. Student inventory and desktop/terminal routes derive
+the team from current membership; only the coach routes accept a team ID, under
+administrator authorization. Both paths pin the current meeting, source and allocation.
+Author `access` controls desktop/SSH eligibility. Participant shells additionally
+require the pinned instructor `visibility.participantTerminals` allowlist, empty
+by default for both new and retained templates. Hidden machines fail closed on
+participant routes, including the admin participant page; coach controls remain
+separate. These shells use operator accounts, including passwordless sudo on AWS
+Linux and Administrator on Windows. `practice.desktopMachine` remains the default for personal learning
+and optional meeting quick launch, not a limit on meeting machine access.
+
+Every desktop has a `/sessions/ACCESS_ID/` URL namespace and a distinct secure,
+HTTP-only host cookie. Static assets, guest credentials, lessons and noVNC channels
+retain that namespace, so sibling tabs cannot replace one another's authentication.
+DCV uses its documented `httpExtraSearchParamsCallback` for authentication and channel
+requests at the origin root; the non-secret selector must match the appropriate
+cookie and is removed before forwarding upstream. No infrastructure identity or
+credential is accepted from that selector. Legacy root-cookie sessions remain
+readable during their existing lifetime. A machine close retains only that machine's
+cleanup intent; logout/team switching and the legacy close-all operation cover all
+the user's grants. Scoped grant authorization rechecks machine visibility and access.
+
+Students and coaches share the same bounded, pinned SSH/WebSocket transport with
+separate authorization. Student authorization is rechecked throughout the shell and
+ends on team switches; coaches additionally require current administrator status.
+The UI offers a separate terminal workspace per machine with allocation-pinned links,
+independent transcript state, reconnect and revocation handling. Terminals admit
+without queuing into the shared total SSH pool. Participants use at most half its
+slots and enforce two sessions per user and eight per team (12 simultaneous
+participant terminals by default; 32 at the maximum aggregate setting of 64).
+Coaches use a separate service-wide allowance outside participant caps:
+`min(4, N - floor(N/2) - 1)` for an N-slot pool. Both allowances consume the total
+pool, reserving at least one slot for desktop/control, provider readiness and
+scoring work (eight at the default 24). A one-slot budget disables terminals.
+Disconnect and revocation release all admission counts. The 36-desktop sizing
+measurement below is separate from simultaneous shell capacity.
+Eight simultaneous desktop identities and bounded student terminal admissions have local hosted tests;
+desktop/mobile browser checks exercise real hosted HTTP with fixture DCV/SSH
+transports. Native multi-machine desktop and OIDC release acceptance remain required.
 
 The library still uses opaque per-principal access identities. Hosted policy adds a
 single holder for each meeting AWS Windows or Proxmox allocation/machine; AWS Linux keeps independent
@@ -957,6 +1070,37 @@ its retirement marker. Incomplete imports do not retire other names.
 
 ## Qualification status
 
+Native appliance acceptance is scoped to the provider build and image. Local
+planning, bootstrap, SSH identity, CLI error and lost-commit recovery fixtures
+establish local behavior. The reported native VyOS subset below does not qualify
+all vendor AMIs, licensing modes or the PAN-OS management contract.
+The local browser range fixture passed with eight independent desktops and ten
+browser terminal tabs using mocked WebSockets, including both appliances, at 1366
+and 390 pixel widths. Those tabs do not represent ten server-admitted shells. AWS, guest, SSH
+and journal package race checks and affected hosted authorization checks passed.
+The address-boundary and instructor conformance checks pass, including offset 254
+and invalid 255. Affected hosted race tests cover participant opt-in, bounded
+terminal admission/revocation and saved totals under a 19-team refresh deadline.
+The full AWS and instructor race suites pass locally. Windows full-suite runs
+still encounter symlink privileges, missing Unix tools, Git/retained fixtures,
+SQLite cleanup and meeting preparation/maintenance expectations. Linux CI at
+`f1892611` passed Go vet, the full race suite, the fault-injection matrix, generated
+files, examples and frontend checks/build ([run 43235482964](https://github.com/OutboundSpade/LabCentral/actions/runs/43235482964)).
+That run predates the subsequent bootstrap and explicit management-grant fixes;
+each new revision requires its own CI run.
+
+The [maintainer's review](https://github.com/OutboundSpade/LabCentral/pull/1#issuecomment-6839294347)
+reports native AWS acceptance on a private build of that head plus four VyOS fixes:
+boot, console-pinned SSH, HTTP/VIP/NAT return paths, score-shaped JSON delivery,
+isolated-client denial, lost router-create result adoption, password/configuration
+assertions, reboot persistence and ownership-verified cleanup. A separate native
+CIDR-association response-loss check used PR-head fault-injection source. These
+are attributed results for those builds, not live validation of this checkout or
+the later PAN-OS management contract. The private hybrid image used an upstream
+nightly ISO with its asset digest checked; no detached signature was verified.
+Official vendor AMIs/stable releases, native PAN-OS, real OIDC, rendered DCV and
+hosted scoring-feed ingestion remain unverified for these changes.
+
 What has been verified on real platforms. Evidence applies to the source, environment
 and layout it was recorded with; detailed records stay outside this repository. Mocks,
 request capture, browser fixtures and local load models establish local behavior only.
@@ -1001,6 +1145,9 @@ Design intentions, not contracts. Each needs failure tests and live qualificatio
 explicitly configured environment.
 
 - **Proxmox:** wider storage/firmware coverage and the native failure matrix.
+- **Native appliances:** additional vendor AMI qualification and native failure
+  matrices. A network-device Ansible controller/runtime workflow, an optional
+  lab-managed routing mode and additional policy features require separate designs.
 - **Windows:** Proxmox bootstrap and firmware bindings, more NICs, and an optional
   disposable Linux controller for Ansible targeting Windows (author code still only in
   guests).
